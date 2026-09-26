@@ -1,0 +1,31 @@
+# Build artifacts
+/build/
+*.exe
+*.test
+*.out
+
+# SQLite databases (local state, never committed)
+*.db
+*.db-wal
+*.db-shm
+
+# Frontend
+node_modules/
+dist/
+.venv/
+__pycache__/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Hermes local scratch
+.hermes/cache/
