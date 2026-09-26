@@ -751,3 +751,99 @@ func TestGetTaskMissingReturnsNotFound(t *testing.T) {
 		t.Fatalf("GetTask error = %v, want errors.Is ErrNotFound", err)
 	}
 }
+
+// TestListActiveTasksExcludesTerminal seeds one task in each of the six
+// statuses on a single asset and verifies the lease-recovery sweep input
+// holds exactly the three non-terminal ones.
+func TestListActiveTasksExcludesTerminal(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID:       "clip_001",
+		Status:        model.AssetStatusIngested,
+		AllowedAgents: []string{"narrator"},
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+
+	seed := func(id, status string) {
+		t.Helper()
+		if err := s.CreateTask(ctx, model.Task{
+			TaskID:    id,
+			AssetID:   "clip_001",
+			Type:      model.TaskTypeTTS,
+			AgentRole: "narrator",
+			Status:    status,
+		}); err != nil {
+			t.Fatalf("CreateTask(%s): %v", id, err)
+		}
+	}
+	seed("t_001", model.TaskStatusQueued)
+	seed("t_002", model.TaskStatusClaimed)
+	seed("t_003", model.TaskStatusRunning)
+	seed("t_004", model.TaskStatusSucceeded)
+	seed("t_005", model.TaskStatusFailed)
+	seed("t_006", model.TaskStatusCancelled)
+
+	got, err := s.ListActiveTasks(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveTasks: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("ListActiveTasks returned %d tasks, want 3: %+v", len(got), got)
+	}
+
+	wantStatus := map[string]bool{
+		model.TaskStatusQueued:    true,
+		model.TaskStatusClaimed:   true,
+		model.TaskStatusRunning:   true,
+		model.TaskStatusSucceeded: false,
+		model.TaskStatusFailed:    false,
+		model.TaskStatusCancelled: false,
+	}
+	for _, tk := range got {
+		if !wantStatus[tk.Status] {
+			t.Errorf("ListActiveTasks returned status %q, want only queued/claimed/running", tk.Status)
+		}
+	}
+	if got[0].AssetID != "clip_001" {
+		t.Errorf("ListActiveTasks[0].AssetID = %q, want %q", got[0].AssetID, "clip_001")
+	}
+}
+
+// TestListActiveTasksEmptyWhenOnlyTerminal verifies the sweep has nothing to
+// look at once every task is terminal, and that it is a non-nil empty slice.
+func TestListActiveTasksEmptyWhenOnlyTerminal(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID: "clip_001",
+		Status:  model.AssetStatusIngested,
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+	for _, id := range []string{"t_001", "t_002"} {
+		if err := s.CreateTask(ctx, model.Task{
+			TaskID:    id,
+			AssetID:   "clip_001",
+			Type:      model.TaskTypeTTS,
+			AgentRole: "narrator",
+			Status:    model.TaskStatusSucceeded,
+		}); err != nil {
+			t.Fatalf("CreateTask(%s): %v", id, err)
+		}
+	}
+
+	got, err := s.ListActiveTasks(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveTasks: %v", err)
+	}
+	if got == nil {
+		t.Fatal("ListActiveTasks returned a nil slice, want an empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Fatalf("ListActiveTasks returned %d tasks, want 0", len(got))
+	}
+}

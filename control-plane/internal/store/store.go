@@ -324,6 +324,30 @@ func (s *Store) ClaimCandidates(ctx context.Context, role string) ([]model.Task,
 	return out, nil
 }
 
+// ListActiveTasks returns every task that has not reached a terminal status,
+// oldest update first. It is the input of the lease-recovery sweep: the queue
+// only needs to look at tasks that could still be holding a lease.
+//
+// The terminal set is spelled out as an inclusion list rather than a NOT IN
+// exclusion so a future status added to model has to be placed explicitly on
+// one side of the line. Ordering by updated_at puts the most stale — and
+// therefore the first worth recovering — row first.
+func (s *Store) ListActiveTasks(ctx context.Context) ([]model.Task, error) {
+	rows, err := s.db.QueryContext(ctx,
+		taskColumns+` WHERE status IN (?, ?, ?) ORDER BY updated_at`,
+		model.TaskStatusQueued, model.TaskStatusClaimed, model.TaskStatusRunning)
+	if err != nil {
+		return nil, fmt.Errorf("store: list active tasks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out, err := scanTasks(rows)
+	if err != nil {
+		return nil, fmt.Errorf("store: list active tasks: %w", err)
+	}
+	return out, nil
+}
+
 // UpdateTask overwrites the mutable columns of an existing task. A missing
 // row wraps model.ErrNotFound. An empty TaskID is rejected with
 // model.ErrArgument.
