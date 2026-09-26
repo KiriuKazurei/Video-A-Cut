@@ -47,6 +47,13 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first open: %v", err)
 	}
+	// Read the ledger before closing the first handle: the pool is gone
+	// afterwards, and the whole point of the assertion is what the first open
+	// recorded.
+	var before int
+	if err := s1.DB().QueryRow(`select count(*) from schema_migrations`).Scan(&before); err != nil {
+		t.Fatalf("count migrations before reopen: %v", err)
+	}
 	if err := s1.Close(); err != nil {
 		t.Fatalf("close first: %v", err)
 	}
@@ -57,12 +64,17 @@ func TestOpenIsIdempotent(t *testing.T) {
 	}
 	defer func() { _ = s2.Close() }()
 
-	var count int
-	if err := s2.DB().QueryRow(`select count(*) from schema_migrations`).Scan(&count); err != nil {
-		t.Fatalf("count migrations: %v", err)
+	// The count itself is not the point; that the second open did not grow it
+	// is. Asserting a fixed total here would break every time a new migration
+	// is added, which is the normal way this schema evolves. The migration
+	// set is verified separately, against sqlite_master, in the tests that
+	// own each version.
+	var after int
+	if err := s2.DB().QueryRow(`select count(*) from schema_migrations`).Scan(&after); err != nil {
+		t.Fatalf("count migrations after reopen: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("schema_migrations rows = %d, want 1", count)
+	if after != before {
+		t.Fatalf("schema_migrations rows = %d after reopen, want %d (unchanged: no migration may re-apply)", after, before)
 	}
 }
 
