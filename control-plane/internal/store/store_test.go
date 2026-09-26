@@ -6,10 +6,10 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
-// mustMust opens a store on a fresh temp DB and fails the test on any error.
+// mustOpen opens a store on a fresh temp DB and fails the test on any error.
 // t.TempDir() returns backslash-separated absolute paths on Windows; modernc
 // SQLite handles those directly, so no path rewriting happens here.
-func mustMust(t *testing.T) *store.Store {
+func mustOpen(t *testing.T) *store.Store {
 	t.Helper()
 	s, err := store.Open(t.TempDir() + "/vac.db")
 	if err != nil {
@@ -20,7 +20,7 @@ func mustMust(t *testing.T) *store.Store {
 }
 
 func TestOpenAppliesMigrations(t *testing.T) {
-	s := mustMust(t)
+	s := mustOpen(t)
 
 	for _, table := range []string{"assets", "tasks", "agents", "audit_logs"} {
 		var name string
