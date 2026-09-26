@@ -28,4 +28,11 @@ Thumbs.db
 *.swp
 
 # Hermes local scratch
-.hermes/cache/
+.hermes/
+
+# Design documents: finalized upstream (企业微信/共享盘), not versioned here.
+# Committing them would fork two copies that drift apart, and this repo is
+# where the executable truth of those requirements lives in code.
+IDEA.md
+docs/
+视频剪辑流程方案.txt
