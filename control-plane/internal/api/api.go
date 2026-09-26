@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
@@ -80,8 +81,8 @@ const (
 // server sees one error shape from day one and a later task only replaces the
 // response behind the status.
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /api/assets", s.notImplementedYet("list assets"))
-	s.mux.HandleFunc("GET /api/assets/{id}", s.notImplementedYet("get asset"))
+	s.mux.HandleFunc("GET /api/assets", s.listAssets)
+	s.mux.HandleFunc("GET /api/assets/{id}", s.getAsset)
 	s.mux.HandleFunc("PATCH /api/assets/{id}", s.notImplementedYet("update asset"))
 	s.mux.HandleFunc("POST /api/tasks", s.notImplementedYet("create task"))
 	s.mux.HandleFunc("GET /api/tasks/{id}", s.notImplementedYet("get task"))
@@ -261,6 +262,61 @@ func (s *Server) notImplementedYet(operation string) http.HandlerFunc {
 		writeError(w, http.StatusNotImplemented, codeNotImplemented,
 			fmt.Sprintf("operation %q is not implemented yet", operation))
 	}
+}
+
+// listAssets answers GET /api/assets with every asset the plane holds.
+//
+// It is the human governance view, so it calls service.ListAllAssets and
+// never ListVisibleAssets. §11.2 makes the latter the single decision point
+// of "what may an agent see"; filtering here instead would create the second
+// copy of that rule the docs warn about, and a governance screen that hid
+// agent-invisible or locked rows would hide exactly the rows an operator
+// opens this list to change.
+//
+// The array is encoded straight through as the response body: the service
+// already guarantees a non-nil slice, which is what makes an empty store
+// encode as [] rather than null.
+func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
+	assets, err := s.svc.ListAllAssets(r.Context())
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, assets)
+}
+
+// getAsset answers GET /api/assets/{id} with one asset, governance view: no
+// visibility filtering, because the WebUI is already the human side of §11.3.
+//
+// The id is rejected before it reaches the store if it carries a path
+// separator. r.PathValue returns the URL-decoded segment, so an escaped
+// separator (a%2Fb) decodes to "a/b" and reaches this handler rather than
+// being split into two segments by the router. The store would look such a
+// value up as a literal and return not found, but answering 400 says the
+// truth: this is a malformed id, not a missing one, and a caller that sees a
+// 404 has no way to learn the difference. Keeping the separator out of the
+// query also means no value derived from the URL can ever be assembled into
+// a path.
+func (s *Server) getAsset(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, codeArgument, "asset id is required")
+		return
+	}
+	// Both separators are checked, not just "/": "\\" separates path
+	// components on Windows, and an id carrying either is equally malformed.
+	if strings.ContainsAny(id, "/\\") {
+		writeError(w, http.StatusBadRequest, codeArgument,
+			"asset id must not contain a path separator")
+		return
+	}
+
+	asset, err := s.svc.GetAsset(r.Context(), id)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, asset)
 }
 
 // writeError is the single place an error body is formatted, so the envelope
