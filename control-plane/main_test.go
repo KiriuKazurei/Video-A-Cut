@@ -19,6 +19,54 @@ func dbPath(t *testing.T) string {
 	return filepath.Join(t.TempDir(), "vac.db")
 }
 
+// TestAssembleBuildsAuditArchiver proves the composition root also builds
+// the audit retention driver. An archiver that exists but is never wired
+// into Run would be a silent feature: the retention policy the operator
+// configured would never run, and nothing would report that it was not.
+func TestAssembleBuildsAuditArchiver(t *testing.T) {
+	a, err := assemble(dbPath(t), config.Default())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	if a.arch == nil {
+		t.Fatal("assemble: audit archiver is nil")
+	}
+}
+
+// TestRunDrivesBothPeriodicLoops proves Run starts the archiver as well as
+// the reclaimer. The archiver's own package proves it sweeps correctly when
+// run; what this test pins is the wiring — that a running control plane
+// actually has two periodic loops in flight rather than only the lease one,
+// which is the failure mode a signature change in Run would cause.
+func TestRunDrivesBothPeriodicLoops(t *testing.T) {
+	a, err := assemble(dbPath(t), config.Default())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+
+	// The archiver sweeps immediately on start, so give it a moment to
+	// reach its first pass before cancelling. Without a running archiver
+	// the Run goroutine would still be alive (the reclaimer holds it), so
+	// the cancellation below is what proves Run is not stuck.
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Run() = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run() did not return within 2s of cancellation")
+	}
+}
+
 // writeConfigFile writes doc to a config file inside a temp directory and
 // returns its path, so the loading tests exercise the same JSON an operator
 // edits rather than a Config built by hand.

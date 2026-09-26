@@ -33,6 +33,15 @@ const defaultConfigPath = "control.json"
 // lets the check find a row a previous run of the process already left behind.
 const selfcheckAssetID = "_selfcheck"
 
+// archiveSweepInterval is how often the audit retention policy runs.
+//
+// Retention is a daily-scale operation: rows age in days, so a sweep every
+// month would let a log grow far past its window and a sweep every lease
+// cycle would replay the same aged rows against the database all day for no
+// benefit. The value is stated here rather than left to queue's own default
+// because a cadence is a deployment choice, not a rule about audits.
+const archiveSweepInterval = 24 * time.Hour
+
 // app is the wired process. It exists so tests can assemble the same graph
 // without touching process-global state such as os.Exit or signal handlers.
 //
@@ -45,6 +54,7 @@ type app struct {
 	svc  *service.Service
 	bus  *events.Bus
 	recl *queue.Reclaimer
+	arch *queue.Archiver
 	cfg  config.Config
 }
 
@@ -103,6 +113,7 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 		svc:  svc,
 		bus:  bus,
 		recl: queue.New(svc, leaseInterval(cfg)),
+		arch: queue.NewArchiver(svc, archiveSweepInterval, cfg.AuditRetentionDays, cfg.ArchiveRetentionDays),
 		cfg:  cfg,
 	}, nil
 }
@@ -137,25 +148,32 @@ func (a *app) Close() error {
 	return errors.Join(errs...)
 }
 
-// Run drives the assembled app until ctx is cancelled: it runs the reclaimer
-// and blocks, so the caller only has to supply a cancellable context and this
-// owns the goroutine that keeps the process alive.
+// Run drives the assembled app until ctx is cancelled: it runs the lease
+// reclaimer and the audit archiver and blocks, so the caller only has to
+// supply a cancellable context and this owns the goroutines that keep the
+// process alive.
 //
-// The reclaimer is started through a WaitGroup rather than a bare goroutine so
-// its last sweep — which may be the one that recycles a lease that lapsed
-// while the process was shutting down — is not cut off by a Close on the way
-// out. The bus is closed first because no user-facing subscriber exists yet;
-// closing it here is what stops a future handler from being handed an event
-// after the reclaimer has already stopped producing them.
+// Both loops are started through a WaitGroup rather than bare goroutines so
+// their last pass — the reclaimer's may recycle a lease that lapsed while the
+// process was shutting down, the archiver's may be the only sweep of the day —
+// is not cut off by a Close on the way out.
+//
+// ctx.Err() is returned rather than swallowed: a caller that runs the app and
+// gets nil back cannot tell "shut down cleanly" from "was asked to stop",
+// and the two lead to different decisions about whether to report anything.
 func (a *app) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		a.recl.Run(ctx)
 	}()
+	go func() {
+		defer wg.Done()
+		a.arch.Run(ctx)
+	}()
 	wg.Wait()
-	return nil
+	return ctx.Err()
 }
 
 // selfcheck exercises one pass through every layer the process depends on,
@@ -240,7 +258,10 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := a.Run(ctx); err != nil {
+	// A termination signal is not a failure: it is how the process is
+	// meant to stop, so it exits 0 without an error on stderr. Anything
+	// else Run reports is a real fault and exits 1.
+	if err := a.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "control plane: running: %v\n", err)
 		os.Exit(1)
 	}
