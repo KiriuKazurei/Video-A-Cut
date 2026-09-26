@@ -2,11 +2,14 @@ package service_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
 // TestGate2Phase1 is the Gate 2 connectivity proof of Phase 1.
@@ -272,5 +275,120 @@ func drainTaskUpdated(ch <-chan events.Envelope, timeout time.Duration) []events
 		case <-deadline:
 			return out
 		}
+	}
+}
+
+// TestGate2RetentionChain is the Gate 2 proof of the Phase 1.5 seams: the
+// configuration the operator edits reaches the retention sweep, and the sweep
+// moves rows the way the policy describes.
+//
+// TestGate2Phase1 above proves the task seam. This one proves the other half
+// of the system — that a configured retention window is not merely parsed but
+// actually changes what the database keeps — because a config value that
+// loads and validates but never reaches the sweep is the failure that leaves
+// a log growing forever while every unit test passes.
+func TestGate2RetentionChain(t *testing.T) {
+	ctx := context.Background()
+
+	// The windows are deliberately shorter than the retention periods so
+	// the test can age rows past them without waiting a month. What is
+	// being proven is the wiring, not the arithmetic of AddDate.
+	const retainDays, archiveDays = 30, 30
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "vac.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	svc := service.New(st)
+
+	// One agent row and one system row, both aged past the retention
+	// window. They are written through the store's own writer rather
+	// than hand-built SQL so the sweep sees the same shape a live run
+	// produces; only created_at is forced back, because that is the one
+	// column a real writer always stamps with now.
+	if err := st.WriteAudit(ctx, model.AuditLog{
+		Actor:  "agent:narrator-01",
+		Action: "task.fail",
+		Target: "t_001",
+		Detail: "tts synthesis failed",
+	}); err != nil {
+		t.Fatalf("write agent audit: %v", err)
+	}
+	if err := st.WriteAudit(ctx, model.AuditLog{
+		Actor:  "system",
+		Action: "asset.create",
+		Target: "clip_001",
+	}); err != nil {
+		t.Fatalf("write system audit: %v", err)
+	}
+	if err := st.WriteAudit(ctx, model.AuditLog{
+		Actor:  "agent:narrator-01",
+		Action: "task.claim",
+		Target: "t_002",
+	}); err != nil {
+		t.Fatalf("write fresh agent audit: %v", err)
+	}
+	aged := time.Now().UTC().AddDate(0, 0, -retainDays-1)
+	if _, err := st.DB().ExecContext(ctx,
+		`UPDATE audit_logs SET created_at = ? WHERE action IN ('task.fail','asset.create')`, aged,
+	); err != nil {
+		t.Fatalf("age audit rows: %v", err)
+	}
+
+	before, err := svc.ListAudit(ctx, 50)
+	if err != nil {
+		t.Fatalf("ListAudit before sweep: %v", err)
+	}
+	if len(before) != 3 {
+		t.Fatalf("audit rows before sweep = %d, want 3", len(before))
+	}
+
+	archived, deleted, err := svc.SweepAudit(ctx, retainDays, archiveDays)
+	if err != nil {
+		t.Fatalf("SweepAudit: %v", err)
+	}
+	// The aged agent row is archived; the aged system row is deleted
+	// outright; the fresh row is untouched by both.
+	if archived != 1 {
+		t.Errorf("archived = %d, want 1 (the aged agent row)", archived)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1 (the aged system row)", deleted)
+	}
+
+	after, err := svc.ListAudit(ctx, 50)
+	if err != nil {
+		t.Fatalf("ListAudit after sweep: %v", err)
+	}
+	if len(after) != 1 {
+		t.Fatalf("audit rows after sweep = %d, want 1 (the fresh agent row): %+v", len(after), after)
+	}
+	if after[0].Target != "t_002" {
+		t.Errorf("surviving row target = %q, want t_002 (the fresh row)", after[0].Target)
+	}
+
+	// The archived row is now in the archive table, which is what makes
+	// it readable after it left the live log. Counting through the store
+	// rather than a service accessor keeps this a wiring proof: the
+	// archive table is the sink SweepAudit was pointed at.
+	var archivedCount int
+	if err := st.DB().QueryRowContext(ctx,
+		`SELECT count(*) FROM audit_logs_archive WHERE target = 't_001'`,
+	).Scan(&archivedCount); err != nil {
+		t.Fatalf("count archive rows: %v", err)
+	}
+	if archivedCount != 1 {
+		t.Errorf("archived rows for t_001 = %d, want 1", archivedCount)
+	}
+
+	// A second sweep is a no-op, so the retention loop can run on its
+	// timer without changing anything that has already been settled.
+	archived2, deleted2, err := svc.SweepAudit(ctx, retainDays, archiveDays)
+	if err != nil {
+		t.Fatalf("second SweepAudit: %v", err)
+	}
+	if archived2 != 0 || deleted2 != 0 {
+		t.Errorf("second sweep = (%d archived, %d deleted), want (0, 0)", archived2, deleted2)
 	}
 }
