@@ -164,6 +164,24 @@ func TestNewDefaultsNonPositiveInterval(t *testing.T) {
 	}
 }
 
+// TestIntervalReportsConfiguredAndCorrectedValues proves the read-only view
+// of the cadence: a positive interval is reported exactly as chosen, and a
+// non-positive one is reported after New corrected it, because reporting the
+// raw value would let a caller believe it got the cadence it asked for.
+func TestIntervalReportsConfiguredAndCorrectedValues(t *testing.T) {
+	svc := claimable(t)
+
+	if got, want := queue.New(svc, 45*time.Second).Interval(), 45*time.Second; got != want {
+		t.Errorf("Interval() = %v, want %v", got, want)
+	}
+	if got, want := queue.New(svc, 0).Interval(), 30*time.Second; got != want {
+		t.Errorf("Interval() after a zero interval = %v, want %v (the corrected value)", got, want)
+	}
+	if got, want := queue.New(svc, -5*time.Second).Interval(), 30*time.Second; got != want {
+		t.Errorf("Interval() after a negative interval = %v, want %v (the corrected value)", got, want)
+	}
+}
+
 // TestReclaimerSurvivesStoreFailure is the anti-crash rule of the ticker: the
 // sweep talks to a store that can fail, and a failing store must not take the
 // control plane down with it.

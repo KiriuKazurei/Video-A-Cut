@@ -75,6 +75,19 @@ func (r *Reclaimer) Run(ctx context.Context) error {
 	}
 }
 
+// Interval returns the cadence sweeps run at after any correction New
+// applied.
+//
+// It exists so a caller that derives this value from an operator setting —
+// the composition root turns lease_seconds into the sweep cadence — can tell
+// what cadence the reclaimer will actually use. Without it, a non-positive
+// interval would be corrected to defaultInterval in total silence: the loop
+// would keep running happily on a cadence nobody chose and nothing anywhere
+// would report the substitution.
+func (r *Reclaimer) Interval() time.Duration {
+	return r.every
+}
+
 // LastErr returns the most recent sweep failure, or nil. It is mutex-guarded
 // because Run and LastErr are meant to be called from different goroutines
 // (an operator endpoint reading health while the loop runs).

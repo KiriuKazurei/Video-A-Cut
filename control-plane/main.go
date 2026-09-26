@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/config"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/queue"
@@ -22,11 +23,10 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
-// reclaimInterval is the cadence the expired-lease reclaimer runs at. It lives
-// here rather than inside the reclaimer because it is a deployment choice —
-// how quickly this process wants stuck tasks recovered — not a rule about
-// leases, which belongs to service.
-const reclaimInterval = 30 * time.Second
+// defaultConfigPath is where the process reads its runtime settings when
+// -config is not given. A missing file at this path is not an error — it
+// means "run on defaults", which is the documented first boot.
+const defaultConfigPath = "control.json"
 
 // selfcheckAssetID is the id of the probe asset the startup check writes. The
 // leading underscore keeps it out of the agent namespace, and the fixed value
@@ -35,11 +35,45 @@ const selfcheckAssetID = "_selfcheck"
 
 // app is the wired process. It exists so tests can assemble the same graph
 // without touching process-global state such as os.Exit or signal handlers.
+//
+// cfg is kept rather than consumed on the way in: the surfaces planned for
+// later phases need MaxAgents and the audit retention windows, and a
+// composition root that threw them away would leave them unrecoverable
+// except by reading the configuration file a second time.
 type app struct {
 	st   *store.Store
 	svc  *service.Service
 	bus  *events.Bus
 	recl *queue.Reclaimer
+	cfg  config.Config
+}
+
+// registerFlags declares the process's command-line flags on fs and returns
+// pointers to the values parsed into them.
+//
+// It takes an explicit FlagSet rather than writing to the package-level
+// flag.CommandLine so the declared defaults — the contract with an operator
+// running the binary — can be asserted in a test without touching the
+// process-global flag state every test in the binary shares.
+func registerFlags(fs *flag.FlagSet) (configPath, dbPath *string) {
+	configPath = fs.String("config", defaultConfigPath, "runtime configuration path (JSON; an absent file means defaults)")
+	dbPath = fs.String("db", "vac.db", "sqlite database path")
+	return configPath, dbPath
+}
+
+// leaseInterval turns the configured lease window into the reclaimer's sweep
+// cadence: a lease that lasts N seconds means a stranded task cannot be
+// recovered any sooner than N seconds after it died, so looking for stranded
+// tasks on any other rhythm would either waste work or let a task sit stuck
+// for longer than the operator asked for.
+//
+// The conversion is safe only because cfg.Validate guarantees LeaseSeconds
+// > 0, so a Config that has not been validated must not reach this point:
+// queue.New silently corrects a non-positive interval to its own 30-second
+// default, which would sweep on a cadence the configuration never asked for
+// with nothing anywhere reporting the substitution.
+func leaseInterval(cfg config.Config) time.Duration {
+	return time.Duration(cfg.LeaseSeconds) * time.Second
 }
 
 // assemble builds the whole object graph for a database file.
@@ -47,7 +81,16 @@ type app struct {
 // It opens the store, attaches the event bus, and starts nothing: the
 // reclaimer is constructed here but only run by Run, so a caller (including
 // tests) can assemble and inspect without launching goroutines.
-func assemble(dbPath string) (*app, error) {
+//
+// cfg is the already-loaded configuration; assemble never reads a config file
+// itself, so exactly one place understands the file format. It is validated
+// here, before anything is built, because this is where the configuration
+// stops being a value and starts being behaviour: the sweep cadence is
+// derived from it now, and every later surface derives more.
+func assemble(dbPath string, cfg config.Config) (*app, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("control plane: refusing configuration: %w", err)
+	}
 	st, err := store.Open(dbPath)
 	if err != nil {
 		return nil, err
@@ -59,8 +102,23 @@ func assemble(dbPath string) (*app, error) {
 		st:   st,
 		svc:  svc,
 		bus:  bus,
-		recl: queue.New(svc, reclaimInterval),
+		recl: queue.New(svc, leaseInterval(cfg)),
+		cfg:  cfg,
 	}, nil
+}
+
+// startup is the testable first half of main: load the configuration file,
+// then assemble the process from it.
+//
+// Loading and assembling sit together because a failure in either has the
+// same consequence — the process must not serve — and separating them would
+// only give main two failure paths to report identically.
+func startup(configPath, dbPath string) (*app, error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading configuration from %s: %w", configPath, err)
+	}
+	return assemble(dbPath, cfg)
 }
 
 // Close releases every resource in reverse construction order. It is safe to
@@ -151,20 +209,25 @@ func (a *app) selfcheck(ctx context.Context) error {
 	return nil
 }
 
-// main parses flags, assembles the process, refuses to serve if the startup
-// check fails, and then runs until a termination signal arrives.
+// main parses flags, loads the configuration, assembles the process, refuses
+// to serve if either the configuration or the startup check fails, and then
+// runs until a termination signal arrives.
 //
 // Every decision it makes is about wiring and process lifetime. The rules that
 // turn bytes into tasks and tasks into assets live in service, and the loops
 // that keep them running live in queue; a rule appearing here would be a
 // second copy of it with a different owner.
+//
+// A refusal to start exits 1 for a configuration failure and for a failed
+// self-check alike: to an operator both mean the same thing — the process is
+// not serving — and the message on stderr is what says which.
 func main() {
-	dbPath := flag.String("db", "vac.db", "sqlite database path")
+	configPath, dbPath := registerFlags(flag.CommandLine)
 	flag.Parse()
 
-	a, err := assemble(*dbPath)
+	a, err := startup(*configPath, *dbPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "control plane: assembling from %s: %v\n", *dbPath, err)
+		fmt.Fprintf(os.Stderr, "control plane: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = a.Close() }()
