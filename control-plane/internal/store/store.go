@@ -260,6 +260,156 @@ func (s *Store) UpdateAsset(ctx context.Context, a model.Asset) error {
 	return nil
 }
 
+// taskColumns is the projection the task read paths share. It is spelled out
+// in full rather than with `select *` so a schema change cannot silently
+// shift the scanTask column order. The column named `type` is a keyword-ish
+// identifier but modernc accepts it unquoted here; it is only named in the
+// projection, never in ORDER BY or GROUP BY, so no quoting is needed.
+const taskColumns = `select task_id,asset_id,type,agent_role,agent_id,status,progress,message,lease_expires_at,claimed_at,updated_at,artifacts from tasks`
+
+// CreateTask inserts a task. updated_at is stamped by the store; all other
+// columns come from the caller, so a task can be created in any status the
+// caller needs to seed. An empty TaskID or AssetID is rejected with
+// model.ErrArgument.
+func (s *Store) CreateTask(ctx context.Context, tk model.Task) error {
+	if tk.TaskID == "" {
+		return fmt.Errorf("store: create task: task_id is required: %w", model.ErrArgument)
+	}
+	if tk.AssetID == "" {
+		return fmt.Errorf("store: create task %s: asset_id is required: %w", tk.TaskID, model.ErrArgument)
+	}
+
+	_, err := s.db.ExecContext(ctx, `INSERT INTO tasks
+  (task_id, asset_id, type, agent_role, agent_id, status, progress, message, lease_expires_at, claimed_at, updated_at, artifacts)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tk.TaskID, tk.AssetID, tk.Type, tk.AgentRole, nullIfEmpty(tk.AgentID),
+		tk.Status, tk.Progress, nullIfEmpty(tk.Message), tk.LeaseUntil, tk.ClaimedAt,
+		time.Now().UTC(), marshalStringMap(tk.Artifacts))
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique constraint") {
+			return fmt.Errorf("store: create task %s: %w", tk.TaskID, model.ErrConflict)
+		}
+		return fmt.Errorf("store: create task %s: %w", tk.TaskID, err)
+	}
+	return nil
+}
+
+// GetTask returns the task with the given id, or an error wrapping
+// model.ErrNotFound.
+func (s *Store) GetTask(ctx context.Context, id string) (model.Task, error) {
+	row := s.db.QueryRowContext(ctx, taskColumns+` WHERE task_id = ?`, id)
+
+	tk, err := scanTask(row)
+	if err != nil {
+		return model.Task{}, fmt.Errorf("store: get task %s: %w", id, err)
+	}
+	return tk, nil
+}
+
+// ClaimCandidates returns queued tasks for a role, oldest task_id first.
+// It performs no leasing: that is service's job.
+func (s *Store) ClaimCandidates(ctx context.Context, role string) ([]model.Task, error) {
+	rows, err := s.db.QueryContext(ctx,
+		taskColumns+` WHERE agent_role = ? AND status = ? ORDER BY task_id`,
+		role, model.TaskStatusQueued)
+	if err != nil {
+		return nil, fmt.Errorf("store: claim candidates for role %s: %w", role, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out, err := scanTasks(rows)
+	if err != nil {
+		return nil, fmt.Errorf("store: claim candidates for role %s: %w", role, err)
+	}
+	return out, nil
+}
+
+// UpdateTask overwrites the mutable columns of an existing task. A missing
+// row wraps model.ErrNotFound. An empty TaskID is rejected with
+// model.ErrArgument.
+func (s *Store) UpdateTask(ctx context.Context, tk model.Task) error {
+	if tk.TaskID == "" {
+		return fmt.Errorf("store: update task: task_id is required: %w", model.ErrArgument)
+	}
+
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET
+  status = ?, progress = ?, message = ?, agent_id = ?, agent_role = ?,
+  lease_expires_at = ?, claimed_at = ?, artifacts = ?, updated_at = ?
+  WHERE task_id = ?`,
+		tk.Status, tk.Progress, nullIfEmpty(tk.Message), nullIfEmpty(tk.AgentID), tk.AgentRole,
+		tk.LeaseUntil, tk.ClaimedAt, marshalStringMap(tk.Artifacts), time.Now().UTC(), tk.TaskID)
+	if err != nil {
+		return fmt.Errorf("store: update task %s: %w", tk.TaskID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: update task %s: rows affected: %w", tk.TaskID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("store: update task %s: %w", tk.TaskID, model.ErrNotFound)
+	}
+	return nil
+}
+
+// scanTask decodes one tasks row into a model.Task. The nullable agent_id,
+// message, lease_expires_at and claimed_at columns are read through sql
+// null wrappers so an absent value leaves the corresponding field at its
+// zero value ("" / nil pointer) instead of failing the scan. Timestamps are
+// normalised to UTC because SQLite stores DATETIME as text.
+func scanTask(row scanner) (model.Task, error) {
+	var (
+		tk        model.Task
+		agentID   sql.NullString
+		message   sql.NullString
+		lease     sql.NullTime
+		claimedAt sql.NullTime
+		artsJSON  string
+	)
+
+	err := row.Scan(&tk.TaskID, &tk.AssetID, &tk.Type, &tk.AgentRole, &agentID, &tk.Status,
+		&tk.Progress, &message, &lease, &claimedAt, &tk.UpdatedAt, &artsJSON)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Task{}, fmt.Errorf("store: task: %w", model.ErrNotFound)
+		}
+		return model.Task{}, fmt.Errorf("store: scan task: %w", err)
+	}
+
+	arts, err := unmarshalStringMap(artsJSON)
+	if err != nil {
+		return model.Task{}, fmt.Errorf("store: decode task %s artifacts: %w", tk.TaskID, err)
+	}
+
+	tk.AgentID = agentID.String
+	tk.Message = message.String
+	tk.Artifacts = arts
+	if lease.Valid {
+		v := lease.Time.UTC()
+		tk.LeaseUntil = &v
+	}
+	if claimedAt.Valid {
+		v := claimedAt.Time.UTC()
+		tk.ClaimedAt = &v
+	}
+	return tk, nil
+}
+
+// scanTasks decodes every remaining row of a task result set.
+func scanTasks(rows *sql.Rows) ([]model.Task, error) {
+	out := []model.Task{}
+	for rows.Next() {
+		tk, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, tk)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: scan tasks: %w", err)
+	}
+	return out, nil
+}
+
 // boolToInt converts a bool into the SQLite integer the schema stores.
 func boolToInt(b bool) int {
 	if b {

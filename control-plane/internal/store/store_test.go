@@ -489,3 +489,265 @@ func TestUpdateAssetRefreshesUpdatedAt(t *testing.T) {
 		t.Errorf("Status = %q, want %q", after.Status, model.AssetStatusRecognized)
 	}
 }
+
+// TestTaskClaimCandidates verifies the claim candidate query yields only the
+// queued tasks of the requested role: a claimed task of the same role and a
+// queued task of another role must both be filtered out.
+func TestTaskClaimCandidates(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID:       "clip_001",
+		Status:        model.AssetStatusIngested,
+		AllowedAgents: []string{"narrator"},
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+
+	seed := func(id, role, status string) {
+		t.Helper()
+		if err := s.CreateTask(ctx, model.Task{
+			TaskID:    id,
+			AssetID:   "clip_001",
+			Type:      model.TaskTypeTTS,
+			AgentRole: role,
+			Status:    status,
+		}); err != nil {
+			t.Fatalf("CreateTask(%s): %v", id, err)
+		}
+	}
+	seed("t_001", "narrator", model.TaskStatusQueued)
+	seed("t_002", "narrator", model.TaskStatusClaimed)
+	seed("t_003", "recognizer", model.TaskStatusQueued)
+
+	got, err := s.ClaimCandidates(ctx, "narrator")
+	if err != nil {
+		t.Fatalf("ClaimCandidates: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("ClaimCandidates returned %d tasks, want 1: %+v", len(got), got)
+	}
+	if got[0].TaskID != "t_001" {
+		t.Errorf("TaskID = %q, want %q", got[0].TaskID, "t_001")
+	}
+	if got[0].Status != model.TaskStatusQueued {
+		t.Errorf("Status = %q, want %q", got[0].Status, model.TaskStatusQueued)
+	}
+	// Seeded without a lease or a claim: the nullable columns must decode to
+	// nil pointers rather than the zero time.
+	if got[0].LeaseUntil != nil {
+		t.Errorf("LeaseUntil = %v, want nil", got[0].LeaseUntil)
+	}
+	if got[0].ClaimedAt != nil {
+		t.Errorf("ClaimedAt = %v, want nil", got[0].ClaimedAt)
+	}
+	if got[0].AssetID != "clip_001" {
+		t.Errorf("AssetID = %q, want %q", got[0].AssetID, "clip_001")
+	}
+}
+
+// TestClaimCandidatesOrderedByTaskID verifies the oldest-task-first ordering
+// the claim loop relies on, and that an unknown role yields an empty slice.
+func TestClaimCandidatesOrderedByTaskID(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{AssetID: "clip_001", Status: model.AssetStatusIngested, AllowedAgents: []string{"narrator"}}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+	for _, id := range []string{"t_003", "t_001", "t_002"} {
+		if err := s.CreateTask(ctx, model.Task{
+			TaskID:    id,
+			AssetID:   "clip_001",
+			Type:      model.TaskTypeTTS,
+			AgentRole: "narrator",
+			Status:    model.TaskStatusQueued,
+		}); err != nil {
+			t.Fatalf("CreateTask(%s): %v", id, err)
+		}
+	}
+
+	got, err := s.ClaimCandidates(ctx, "narrator")
+	if err != nil {
+		t.Fatalf("ClaimCandidates: %v", err)
+	}
+	want := []string{"t_001", "t_002", "t_003"}
+	if len(got) != len(want) {
+		t.Fatalf("ClaimCandidates returned %d tasks, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i].TaskID != id {
+			t.Errorf("ClaimCandidates[%d].TaskID = %q, want %q", i, got[i].TaskID, id)
+		}
+	}
+
+	none, err := s.ClaimCandidates(ctx, "recognizer")
+	if err != nil {
+		t.Fatalf("ClaimCandidates(recognizer): %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("ClaimCandidates(recognizer) = %+v, want empty", none)
+	}
+}
+
+// TestTaskRoundTrip drives every stored task column through CreateTask and
+// GetTask, including the nullable lease/claim columns and the store-stamped
+// updated_at.
+func TestTaskRoundTrip(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID:       "clip_001",
+		Status:        model.AssetStatusIngested,
+		AllowedAgents: []string{"narrator"},
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+
+	lease := time.Now().UTC().Add(30 * time.Minute)
+	claimed := time.Now().UTC()
+	in := model.Task{
+		TaskID:     "t_001",
+		AssetID:    "clip_001",
+		Type:       model.TaskTypeTTS,
+		AgentRole:  "narrator",
+		AgentID:    "narrator-01",
+		Status:     model.TaskStatusRunning,
+		Progress:   0.42,
+		Message:    "TTS 合成中 3/7",
+		LeaseUntil: &lease,
+		ClaimedAt:  &claimed,
+		Artifacts:  map[string]string{"voice": "voice.wav"},
+	}
+
+	before := time.Now().UTC()
+	if err := s.CreateTask(ctx, in); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	got, err := s.GetTask(ctx, "t_001")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+
+	if got.TaskID != "t_001" {
+		t.Errorf("TaskID = %q, want %q", got.TaskID, "t_001")
+	}
+	if got.AssetID != "clip_001" {
+		t.Errorf("AssetID = %q, want %q", got.AssetID, "clip_001")
+	}
+	if got.Type != model.TaskTypeTTS {
+		t.Errorf("Type = %q, want %q", got.Type, model.TaskTypeTTS)
+	}
+	if got.AgentRole != "narrator" {
+		t.Errorf("AgentRole = %q, want %q", got.AgentRole, "narrator")
+	}
+	if got.AgentID != "narrator-01" {
+		t.Errorf("AgentID = %q, want %q", got.AgentID, "narrator-01")
+	}
+	if got.Status != model.TaskStatusRunning {
+		t.Errorf("Status = %q, want %q", got.Status, model.TaskStatusRunning)
+	}
+	if got.Progress != 0.42 {
+		t.Errorf("Progress = %v, want 0.42", got.Progress)
+	}
+	if got.Message != "TTS 合成中 3/7" {
+		t.Errorf("Message = %q, want %q", got.Message, "TTS 合成中 3/7")
+	}
+	if got.Artifacts["voice"] != "voice.wav" {
+		t.Errorf(`Artifacts["voice"] = %q, want %q`, got.Artifacts["voice"], "voice.wav")
+	}
+
+	if got.LeaseUntil == nil {
+		t.Fatal("LeaseUntil = nil, want non-nil")
+	}
+	if !got.LeaseUntil.Equal(lease) {
+		t.Errorf("LeaseUntil = %v, want %v", got.LeaseUntil, lease)
+	}
+	if got.LeaseUntil.Location() != time.UTC {
+		t.Errorf("LeaseUntil location = %v, want UTC", got.LeaseUntil.Location())
+	}
+	if got.ClaimedAt == nil {
+		t.Fatal("ClaimedAt = nil, want non-nil")
+	}
+	if !got.ClaimedAt.Equal(claimed) {
+		t.Errorf("ClaimedAt = %v, want %v", got.ClaimedAt, claimed)
+	}
+
+	// updated_at is stamped by the store, not by the caller.
+	if got.UpdatedAt.Before(before) {
+		t.Errorf("UpdatedAt = %v, want at or after %v", got.UpdatedAt, before)
+	}
+	if got.UpdatedAt.Location() != time.UTC {
+		t.Errorf("UpdatedAt location = %v, want UTC", got.UpdatedAt.Location())
+	}
+}
+
+// TestUpdateTaskMissingReturnsNotFound verifies the mutable-column update
+// refuses silently-missing rows by wrapping model.ErrNotFound.
+func TestUpdateTaskMissingReturnsNotFound(t *testing.T) {
+	s := mustOpen(t)
+
+	err := s.UpdateTask(context.Background(), model.Task{
+		TaskID:    "does-not-exist",
+		AssetID:   "clip_001",
+		Type:      model.TaskTypeTTS,
+		AgentRole: "narrator",
+		Status:    model.TaskStatusSucceeded,
+	})
+	if err == nil {
+		t.Fatal("UpdateTask on unknown task_id must fail")
+	}
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("UpdateTask error = %v, want errors.Is ErrNotFound", err)
+	}
+}
+
+// TestCreateTaskRequiresIDs verifies the identifier guards.
+func TestCreateTaskRequiresIDs(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		task model.Task
+	}{
+		{
+			"empty task_id",
+			model.Task{AssetID: "clip_001", Type: model.TaskTypeTTS, AgentRole: "narrator", Status: model.TaskStatusQueued},
+		},
+		{
+			"empty asset_id",
+			model.Task{TaskID: "t_001", Type: model.TaskTypeTTS, AgentRole: "narrator", Status: model.TaskStatusQueued},
+		},
+		{
+			"both empty",
+			model.Task{Type: model.TaskTypeTTS, AgentRole: "narrator", Status: model.TaskStatusQueued},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := s.CreateTask(ctx, tc.task)
+			if !errors.Is(err, model.ErrArgument) {
+				t.Errorf("CreateTask error = %v, want errors.Is ErrArgument", err)
+			}
+		})
+	}
+}
+
+// TestGetTaskMissingReturnsNotFound verifies the single-row read maps
+// sql.ErrNoRows onto the model sentinel.
+func TestGetTaskMissingReturnsNotFound(t *testing.T) {
+	s := mustOpen(t)
+
+	_, err := s.GetTask(context.Background(), "missing")
+	if err == nil {
+		t.Fatal("GetTask on unknown id must fail")
+	}
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("GetTask error = %v, want errors.Is ErrNotFound", err)
+	}
+}
