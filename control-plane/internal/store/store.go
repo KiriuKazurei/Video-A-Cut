@@ -6,10 +6,14 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 
 	// Register the pure-Go SQLite driver. Driver-level behaviour (Windows
 	// absolute paths, WAL, busy timeout) is configured through the DSN.
@@ -20,6 +24,10 @@ import (
 //
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
+
+// defaultAuditLimit is the page size ListAudit falls back to when the
+// caller passes a non-positive limit.
+const defaultAuditLimit = 100
 
 // Store is a thin wrapper over *sql.DB. It performs no business logic and
 // holds no state beyond the connection pool.
@@ -69,6 +77,314 @@ func (s *Store) Close() error {
 		return fmt.Errorf("store: close: %w", err)
 	}
 	return nil
+}
+
+// scanner is the subset of *sql.Row / *sql.Rows the asset scan path needs,
+// so both call sites can share scanAsset.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+// marshalStringMap encodes a string map as a JSON object. A nil or empty map
+// encodes as "{}" so the NOT NULL artifacts column always holds valid JSON.
+func marshalStringMap(m map[string]string) string {
+	if len(m) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+// marshalStringSlice encodes a string slice as a JSON array. A nil or empty
+// slice encodes as "[]" so the NOT NULL allowed_agents column always holds
+// valid JSON.
+func marshalStringSlice(s []string) string {
+	if len(s) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// scanAsset decodes one assets row into a model.Asset. sql.ErrNoRows is
+// translated to model.ErrNotFound so callers can use errors.Is uniformly.
+func scanAsset(row scanner) (model.Asset, error) {
+	var (
+		a          model.Asset
+		agentsJSON string
+		artsJSON   string
+		agentVis   int
+		humanAppr  int
+		locked     int
+	)
+
+	scanErr := row.Scan(&a.AssetID, &a.Status, &agentVis, &humanAppr, &locked,
+		&agentsJSON, &artsJSON, &a.CreatedAt, &a.UpdatedAt)
+	if scanErr != nil {
+		if errors.Is(scanErr, sql.ErrNoRows) {
+			return model.Asset{}, fmt.Errorf("store: asset: %w", model.ErrNotFound)
+		}
+		return model.Asset{}, fmt.Errorf("store: scan asset: %w", scanErr)
+	}
+
+	agents, err := unmarshalStringSlice(agentsJSON)
+	if err != nil {
+		return model.Asset{}, fmt.Errorf("store: decode asset %s allowed_agents: %w", a.AssetID, err)
+	}
+	arts, err := unmarshalStringMap(artsJSON)
+	if err != nil {
+		return model.Asset{}, fmt.Errorf("store: decode asset %s artifacts: %w", a.AssetID, err)
+	}
+
+	a.AgentVisible = agentVis != 0
+	a.HumanApproved = humanAppr != 0
+	a.Locked = locked != 0
+	a.AllowedAgents = agents
+	a.Artifacts = arts
+	return a, nil
+}
+
+// unmarshalStringSlice decodes a JSON array of strings. An empty document
+// yields a nil slice, which behaves as empty for range/len/index purposes.
+func unmarshalStringSlice(s string) ([]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// unmarshalStringMap decodes a JSON object of string values.
+func unmarshalStringMap(s string) (map[string]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+	out := map[string]string{}
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CreateAsset inserts a new asset. CreatedAt and UpdatedAt are set to the
+// current UTC time; callers must not pre-populate them. An empty AssetID is
+// rejected with model.ErrArgument and a duplicate id with model.ErrConflict.
+func (s *Store) CreateAsset(ctx context.Context, a model.Asset) error {
+	if a.AssetID == "" {
+		return fmt.Errorf("store: create asset: asset_id is required: %w", model.ErrArgument)
+	}
+
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `INSERT INTO assets
+  (asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.AssetID, a.Status, boolToInt(a.AgentVisible), boolToInt(a.HumanApproved), boolToInt(a.Locked),
+		marshalStringSlice(a.AllowedAgents), marshalStringMap(a.Artifacts), now, now)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique constraint") {
+			return fmt.Errorf("store: create asset %s: %w", a.AssetID, model.ErrConflict)
+		}
+		return fmt.Errorf("store: create asset %s: %w", a.AssetID, err)
+	}
+	return nil
+}
+
+// GetAsset returns the asset with the given id, or an error wrapping
+// model.ErrNotFound.
+func (s *Store) GetAsset(ctx context.Context, id string) (model.Asset, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
+  FROM assets WHERE asset_id = ?`, id)
+
+	a, err := scanAsset(row)
+	if err != nil {
+		return model.Asset{}, fmt.Errorf("store: get asset %s: %w", id, err)
+	}
+	return a, nil
+}
+
+// ListAssets returns every asset ordered by asset_id.
+func (s *Store) ListAssets(ctx context.Context) ([]model.Asset, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
+  FROM assets ORDER BY asset_id`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list assets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []model.Asset{}
+	for rows.Next() {
+		a, err := scanAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list assets: %w", err)
+	}
+	return out, nil
+}
+
+// UpdateAsset overwrites every mutable column of an existing asset and
+// refuses silently-missing rows by wrapping model.ErrNotFound.
+func (s *Store) UpdateAsset(ctx context.Context, a model.Asset) error {
+	if a.AssetID == "" {
+		return fmt.Errorf("store: update asset: asset_id is required: %w", model.ErrArgument)
+	}
+
+	res, err := s.db.ExecContext(ctx, `UPDATE assets SET
+  status = ?, agent_visible = ?, human_approved = ?, locked = ?,
+  allowed_agents = ?, artifacts = ?, updated_at = ?
+  WHERE asset_id = ?`,
+		a.Status, boolToInt(a.AgentVisible), boolToInt(a.HumanApproved), boolToInt(a.Locked),
+		marshalStringSlice(a.AllowedAgents), marshalStringMap(a.Artifacts), time.Now().UTC(), a.AssetID)
+	if err != nil {
+		return fmt.Errorf("store: update asset %s: %w", a.AssetID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: update asset %s: rows affected: %w", a.AssetID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("store: update asset %s: %w", a.AssetID, model.ErrNotFound)
+	}
+	return nil
+}
+
+// boolToInt converts a bool into the SQLite integer the schema stores.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// UpsertAgent inserts an agent or refreshes it, recording last_seen as now.
+// The conflict target is the primary key, so a known agent_id updates in
+// place instead of creating a duplicate row. An empty AgentID is rejected
+// with model.ErrArgument.
+func (s *Store) UpsertAgent(ctx context.Context, a model.Agent) error {
+	if a.AgentID == "" {
+		return fmt.Errorf("store: upsert agent: agent_id is required: %w", model.ErrArgument)
+	}
+
+	_, err := s.db.ExecContext(ctx, `INSERT INTO agents (agent_id, role, last_seen, current_task_id, health)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(agent_id) DO UPDATE SET
+    role = excluded.role,
+    last_seen = excluded.last_seen,
+    current_task_id = excluded.current_task_id,
+    health = excluded.health`,
+		a.AgentID, a.Role, time.Now().UTC(), nullIfEmpty(a.CurrentTaskID), a.Health)
+	if err != nil {
+		return fmt.Errorf("store: upsert agent %s: %w", a.AgentID, err)
+	}
+	return nil
+}
+
+// GetAgent returns the agent with the given id, or an error wrapping
+// model.ErrNotFound.
+func (s *Store) GetAgent(ctx context.Context, id string) (model.Agent, error) {
+	var (
+		a      model.Agent
+		last   sql.NullTime
+		taskID sql.NullString
+	)
+
+	err := s.db.QueryRowContext(ctx, `SELECT agent_id, role, last_seen, current_task_id, health
+  FROM agents WHERE agent_id = ?`, id).
+		Scan(&a.AgentID, &a.Role, &last, &taskID, &a.Health)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Agent{}, fmt.Errorf("store: agent %s: %w", id, model.ErrNotFound)
+		}
+		return model.Agent{}, fmt.Errorf("store: scan agent %s: %w", id, err)
+	}
+
+	if last.Valid {
+		a.LastSeen = last.Time
+	}
+	if taskID.Valid {
+		a.CurrentTaskID = taskID.String
+	}
+	return a, nil
+}
+
+// WriteAudit appends one audit entry. Empty actor/action/target wrap
+// model.ErrArgument. CreatedAt is set to the current UTC time.
+func (s *Store) WriteAudit(ctx context.Context, l model.AuditLog) error {
+	if l.Actor == "" {
+		return fmt.Errorf("store: write audit: actor is required: %w", model.ErrArgument)
+	}
+	if l.Action == "" {
+		return fmt.Errorf("store: write audit: action is required: %w", model.ErrArgument)
+	}
+	if l.Target == "" {
+		return fmt.Errorf("store: write audit: target is required: %w", model.ErrArgument)
+	}
+
+	res, err := s.db.ExecContext(ctx, `INSERT INTO audit_logs (actor, action, target, detail, created_at)
+  VALUES (?, ?, ?, ?, ?)`,
+		l.Actor, l.Action, l.Target, nullIfEmpty(l.Detail), time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("store: write audit %s/%s: %w", l.Actor, l.Action, err)
+	}
+	if _, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("store: write audit %s/%s: rows affected: %w", l.Actor, l.Action, err)
+	}
+	return nil
+}
+
+// ListAudit returns the newest `limit` audit entries, newest first. A
+// non-positive limit falls back to 100.
+func (s *Store) ListAudit(ctx context.Context, limit int) ([]model.AuditLog, error) {
+	if limit <= 0 {
+		limit = defaultAuditLimit
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT id, actor, action, target, detail, created_at
+  FROM audit_logs ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: list audit: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []model.AuditLog{}
+	for rows.Next() {
+		var (
+			l      model.AuditLog
+			detail sql.NullString
+		)
+		if err := rows.Scan(&l.ID, &l.Actor, &l.Action, &l.Target, &detail, &l.CreatedAt); err != nil {
+			return nil, fmt.Errorf("store: scan audit: %w", err)
+		}
+		if detail.Valid {
+			l.Detail = detail.String
+		}
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list audit: %w", err)
+	}
+	return out, nil
+}
+
+// nullIfEmpty maps an empty string to SQL NULL so nullable text columns
+// stay absent instead of holding an empty placeholder.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // migrationApplied reports whether version is already recorded in the ledger.

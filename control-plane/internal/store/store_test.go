@@ -1,8 +1,12 @@
 package store_test
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
@@ -59,5 +63,429 @@ func TestOpenIsIdempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("schema_migrations rows = %d, want 1", count)
+	}
+}
+
+// TestAgentAndAudit exercises UpsertAgent/GetAgent round-trips plus the
+// audit log write/list path.
+func TestAgentAndAudit(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.UpsertAgent(ctx, model.Agent{
+		AgentID:       "narrator-01",
+		Role:          "narrator",
+		Health:        model.AgentHealthHealthy,
+		CurrentTaskID: "t_001",
+	}); err != nil {
+		t.Fatalf("UpsertAgent: %v", err)
+	}
+
+	got, err := s.GetAgent(ctx, "narrator-01")
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.Role != "narrator" {
+		t.Errorf("Role = %q, want %q", got.Role, "narrator")
+	}
+	if got.CurrentTaskID != "t_001" {
+		t.Errorf("CurrentTaskID = %q, want %q", got.CurrentTaskID, "t_001")
+	}
+
+	if _, err := s.GetAgent(ctx, "ghost"); !errors.Is(err, model.ErrNotFound) {
+		t.Errorf("GetAgent(ghost) err = %v, want model.ErrNotFound", err)
+	}
+
+	if err := s.WriteAudit(ctx, model.AuditLog{
+		Actor:  "human:webui",
+		Action: "asset.approve",
+		Target: "clip_001",
+		Detail: "{}",
+	}); err != nil {
+		t.Fatalf("WriteAudit: %v", err)
+	}
+
+	logs, err := s.ListAudit(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("ListAudit returned %d entries, want 1", len(logs))
+	}
+	if logs[0].Target != "clip_001" {
+		t.Errorf("Target = %q, want %q", logs[0].Target, "clip_001")
+	}
+	if logs[0].ID <= 0 {
+		t.Errorf("ID = %d, want > 0", logs[0].ID)
+	}
+}
+
+// TestUpsertAgentUpdatesExisting verifies the upsert is idempotent by
+// primary key rather than inserting a second row.
+func TestUpsertAgentUpdatesExisting(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	first := model.Agent{AgentID: "narrator-01", Role: "narrator", Health: model.AgentHealthHealthy, CurrentTaskID: "t_001"}
+	if err := s.UpsertAgent(ctx, first); err != nil {
+		t.Fatalf("first UpsertAgent: %v", err)
+	}
+	second := first
+	second.CurrentTaskID = "t_002"
+	if err := s.UpsertAgent(ctx, second); err != nil {
+		t.Fatalf("second UpsertAgent: %v", err)
+	}
+
+	got, err := s.GetAgent(ctx, "narrator-01")
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if got.CurrentTaskID != "t_002" {
+		t.Errorf("CurrentTaskID = %q, want %q", got.CurrentTaskID, "t_002")
+	}
+
+	var count int
+	if err := s.DB().QueryRow(`select count(*) from agents`).Scan(&count); err != nil {
+		t.Fatalf("count agents: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("agents rows = %d, want 1", count)
+	}
+}
+
+// TestWriteAuditRequiresFields checks the required-field guards.
+func TestWriteAuditRequiresFields(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		log  model.AuditLog
+	}{
+		{"empty actor", model.AuditLog{Actor: "", Action: "asset.approve", Target: "clip_001"}},
+		{"empty action", model.AuditLog{Actor: "human:webui", Action: "", Target: "clip_001"}},
+		{"empty target", model.AuditLog{Actor: "human:webui", Action: "asset.approve", Target: ""}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := s.WriteAudit(ctx, tc.log)
+			if !errors.Is(err, model.ErrArgument) {
+				t.Errorf("err = %v, want model.ErrArgument", err)
+			}
+		})
+	}
+}
+
+// TestListAuditLimitGuard verifies a non-positive limit falls back to a
+// default instead of erroring or returning nothing.
+func TestListAuditLimitGuard(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		if err := s.WriteAudit(ctx, model.AuditLog{Actor: "human:webui", Action: "asset.approve", Target: "clip_001"}); err != nil {
+			t.Fatalf("WriteAudit %d: %v", i, err)
+		}
+	}
+
+	logs, err := s.ListAudit(ctx, 0)
+	if err != nil {
+		t.Fatalf("ListAudit(0): %v", err)
+	}
+	if len(logs) != 3 {
+		t.Errorf("ListAudit(0) returned %d entries, want 3", len(logs))
+	}
+
+	logs, err = s.ListAudit(ctx, -5)
+	if err != nil {
+		t.Fatalf("ListAudit(-5): %v", err)
+	}
+	if len(logs) != 3 {
+		t.Errorf("ListAudit(-5) returned %d entries, want 3", len(logs))
+	}
+}
+
+// TestAssetCRUD drives the full create/get/update round trip through one
+// store instance and asserts the persisted column values.
+func TestAssetCRUD(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	created := model.Asset{
+		AssetID:       "clip-001",
+		Status:        model.AssetStatusIngested,
+		AgentVisible:  true,
+		HumanApproved: false,
+		Locked:        false,
+		AllowedAgents: []string{"asr", "editor"},
+		Artifacts:     map[string]string{"edl": "edl.json"},
+	}
+	if err := s.CreateAsset(ctx, created); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+
+	got, err := s.GetAsset(ctx, "clip-001")
+	if err != nil {
+		t.Fatalf("GetAsset after create: %v", err)
+	}
+	if got.Status != model.AssetStatusIngested {
+		t.Errorf("Status = %q, want %q", got.Status, model.AssetStatusIngested)
+	}
+	if !got.AgentVisible {
+		t.Error("AgentVisible = false, want true")
+	}
+	if len(got.AllowedAgents) != 2 {
+		t.Errorf("len(AllowedAgents) = %d, want 2", len(got.AllowedAgents))
+	}
+	if got.CreatedAt.IsZero() || got.UpdatedAt.IsZero() {
+		t.Error("CreateAsset must populate CreatedAt/UpdatedAt")
+	}
+	if got.Artifacts["edl"] != "edl.json" {
+		t.Errorf(`Artifacts["edl"] = %q, want %q`, got.Artifacts["edl"], "edl.json")
+	}
+
+	if err := s.UpdateAsset(ctx, model.Asset{
+		AssetID:       "clip-001",
+		Status:        model.AssetStatusExported,
+		AgentVisible:  true,
+		HumanApproved: true,
+		Locked:        true,
+		AllowedAgents: []string{"asr", "editor", "narrator"},
+		Artifacts:     map[string]string{"edl": "edl.json", "video": "final.mp4"},
+	}); err != nil {
+		t.Fatalf("UpdateAsset: %v", err)
+	}
+
+	updated, err := s.GetAsset(ctx, "clip-001")
+	if err != nil {
+		t.Fatalf("GetAsset after update: %v", err)
+	}
+	if !updated.Locked {
+		t.Error("Locked = false after update, want true")
+	}
+	if updated.Status != model.AssetStatusExported {
+		t.Errorf("Status = %q, want %q", updated.Status, model.AssetStatusExported)
+	}
+	if !updated.HumanApproved {
+		t.Error("HumanApproved = false after update, want true")
+	}
+	if len(updated.AllowedAgents) != 3 {
+		t.Errorf("len(AllowedAgents) = %d, want 3", len(updated.AllowedAgents))
+	}
+	if updated.Artifacts["video"] != "final.mp4" {
+		t.Errorf(`Artifacts["video"] = %q, want %q`, updated.Artifacts["video"], "final.mp4")
+	}
+
+	list, err := s.ListAssets(ctx)
+	if err != nil {
+		t.Fatalf("ListAssets: %v", err)
+	}
+	if len(list) != 1 || list[0].AssetID != "clip-001" {
+		t.Fatalf("ListAssets = %+v, want one clip-001 row", list)
+	}
+}
+
+// TestCreateAssetRequiresID verifies the empty-id guard.
+func TestCreateAssetRequiresID(t *testing.T) {
+	s := mustOpen(t)
+
+	err := s.CreateAsset(context.Background(), model.Asset{Status: model.AssetStatusIngested})
+	if err == nil {
+		t.Fatal("CreateAsset with empty AssetID must fail")
+	}
+	if !errors.Is(err, model.ErrArgument) {
+		t.Fatalf("CreateAsset error = %v, want errors.Is ErrArgument", err)
+	}
+}
+
+// TestUpdateAssetMissingReturnsNotFound verifies the update guard.
+func TestUpdateAssetMissingReturnsNotFound(t *testing.T) {
+	s := mustOpen(t)
+
+	err := s.UpdateAsset(context.Background(), model.Asset{
+		AssetID: "does-not-exist",
+		Status:  model.AssetStatusExported,
+	})
+	if err == nil {
+		t.Fatal("UpdateAsset on unknown asset_id must fail")
+	}
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("UpdateAsset error = %v, want errors.Is ErrNotFound", err)
+	}
+}
+
+// TestGetAssetMissingReturnsNotFound verifies the read path maps
+// sql.ErrNoRows onto the model sentinel.
+func TestGetAssetMissingReturnsNotFound(t *testing.T) {
+	s := mustOpen(t)
+
+	_, err := s.GetAsset(context.Background(), "missing")
+	if err == nil {
+		t.Fatal("GetAsset on unknown id must fail")
+	}
+	if !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("GetAsset error = %v, want errors.Is ErrNotFound", err)
+	}
+}
+
+// TestUpdateAssetRequiresID verifies the update path rejects an empty id.
+func TestUpdateAssetRequiresID(t *testing.T) {
+	s := mustOpen(t)
+
+	err := s.UpdateAsset(context.Background(), model.Asset{Status: model.AssetStatusExported})
+	if !errors.Is(err, model.ErrArgument) {
+		t.Fatalf("UpdateAsset error = %v, want errors.Is ErrArgument", err)
+	}
+}
+
+// TestCreateAssetDuplicateID verifies the primary-key conflict surfaces as
+// model.ErrConflict rather than a raw driver error.
+func TestCreateAssetDuplicateID(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	a := model.Asset{
+		AssetID:       "clip-dup",
+		Status:        model.AssetStatusIngested,
+		AllowedAgents: []string{"asr"},
+	}
+	if err := s.CreateAsset(ctx, a); err != nil {
+		t.Fatalf("first CreateAsset: %v", err)
+	}
+	err := s.CreateAsset(ctx, a)
+	if !errors.Is(err, model.ErrConflict) {
+		t.Fatalf("second CreateAsset error = %v, want errors.Is ErrConflict", err)
+	}
+}
+
+// TestListAssetsOrderedByID verifies ListAssets sorts by asset_id.
+func TestListAssetsOrderedByID(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"clip-c", "clip-a", "clip-b"} {
+		if err := s.CreateAsset(ctx, model.Asset{
+			AssetID:       id,
+			Status:        model.AssetStatusIngested,
+			AllowedAgents: []string{"asr"},
+		}); err != nil {
+			t.Fatalf("CreateAsset(%s): %v", id, err)
+		}
+	}
+
+	list, err := s.ListAssets(ctx)
+	if err != nil {
+		t.Fatalf("ListAssets: %v", err)
+	}
+	want := []string{"clip-a", "clip-b", "clip-c"}
+	if len(list) != len(want) {
+		t.Fatalf("ListAssets returned %d rows, want %d", len(list), len(want))
+	}
+	for i, id := range want {
+		if list[i].AssetID != id {
+			t.Errorf("ListAssets[%d].AssetID = %q, want %q", i, list[i].AssetID, id)
+		}
+	}
+}
+
+// TestCreateAssetSetsTimestamps verifies the store sets both timestamps to a
+// recent UTC instant, overwriting whatever the caller supplied.
+func TestCreateAssetSetsTimestamps(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	before := time.Now().UTC().Add(-time.Second)
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID:       "clip-ts",
+		Status:        model.AssetStatusIngested,
+		AllowedAgents: []string{"asr"},
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+	after := time.Now().UTC().Add(time.Second)
+
+	got, err := s.GetAsset(ctx, "clip-ts")
+	if err != nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if got.CreatedAt.Before(before) || got.CreatedAt.After(after) {
+		t.Errorf("CreatedAt = %v, want between %v and %v", got.CreatedAt, before, after)
+	}
+	if !got.UpdatedAt.Equal(got.CreatedAt) {
+		t.Errorf("UpdatedAt = %v, want equal to CreatedAt %v", got.UpdatedAt, got.CreatedAt)
+	}
+	if got.CreatedAt.Location() != time.UTC {
+		t.Errorf("CreatedAt location = %v, want UTC", got.CreatedAt.Location())
+	}
+}
+
+// TestCreateAssetDefaultsOptionalCollections verifies nil slices and nil maps
+// round-trip as empty collections rather than NULL.
+func TestCreateAssetDefaultsOptionalCollections(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID: "clip-bare",
+		Status:  model.AssetStatusIngested,
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+
+	got, err := s.GetAsset(ctx, "clip-bare")
+	if err != nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if len(got.AllowedAgents) != 0 {
+		t.Errorf("AllowedAgents = %v, want empty", got.AllowedAgents)
+	}
+	if len(got.Artifacts) != 0 {
+		t.Errorf("Artifacts = %v, want empty", got.Artifacts)
+	}
+}
+
+// TestUpdateAssetRefreshesUpdatedAt verifies the mutable-column update moves
+// UpdatedAt while leaving CreatedAt alone.
+func TestUpdateAssetRefreshesUpdatedAt(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+
+	if err := s.CreateAsset(ctx, model.Asset{
+		AssetID:       "clip-upd",
+		Status:        model.AssetStatusIngested,
+		AllowedAgents: []string{"asr"},
+	}); err != nil {
+		t.Fatalf("CreateAsset: %v", err)
+	}
+	original, err := s.GetAsset(ctx, "clip-upd")
+	if err != nil {
+		t.Fatalf("GetAsset before update: %v", err)
+	}
+
+	before := time.Now().UTC().Add(-time.Second)
+	if err := s.UpdateAsset(ctx, model.Asset{
+		AssetID:       "clip-upd",
+		Status:        model.AssetStatusRecognized,
+		AllowedAgents: []string{"asr"},
+	}); err != nil {
+		t.Fatalf("UpdateAsset: %v", err)
+	}
+
+	after, err := s.GetAsset(ctx, "clip-upd")
+	if err != nil {
+		t.Fatalf("GetAsset after update: %v", err)
+	}
+	if !after.CreatedAt.Equal(original.CreatedAt) {
+		t.Errorf("CreatedAt = %v, want unchanged %v", after.CreatedAt, original.CreatedAt)
+	}
+	if after.UpdatedAt.Before(before) {
+		t.Errorf("UpdatedAt = %v, want >= %v", after.UpdatedAt, before)
+	}
+	if after.UpdatedAt.Equal(original.UpdatedAt) {
+		t.Error("UpdatedAt did not move on update")
+	}
+	if after.Status != model.AssetStatusRecognized {
+		t.Errorf("Status = %q, want %q", after.Status, model.AssetStatusRecognized)
 	}
 }
