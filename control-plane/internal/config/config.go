@@ -32,8 +32,10 @@ const (
 	DefaultMaxAgents = 2
 	// DefaultAuditRetentionDays is how long normal audit rows are kept.
 	DefaultAuditRetentionDays = 30
-	// DefaultArchiveRetentionDays is how long archived rows are kept.
-	DefaultArchiveRetentionDays = 60
+	// DefaultArchiveRetentionDays is how long archived rows are kept. It
+	// matches the normal retention window, so an archived record lives about
+	// twice as long as an ordinary one rather than being kept forever.
+	DefaultArchiveRetentionDays = 30
 )
 
 // Bounds on lease duration. A lease longer than maxLeaseSeconds would keep a
@@ -58,7 +60,8 @@ type Config struct {
 	// sweeper removes them. Default 30.
 	AuditRetentionDays int
 	// ArchiveRetentionDays is how long archived rows are kept before the
-	// sweeper removes them. Default 60.
+	// sweeper removes them. Default 30, so an archived record survives about
+	// twice as long as an ordinary one.
 	ArchiveRetentionDays int
 }
 

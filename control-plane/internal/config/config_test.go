@@ -29,7 +29,7 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.AuditRetentionDays != 30 {
 		t.Errorf("AuditRetentionDays = %d, want DefaultAuditRetentionDays %d", cfg.AuditRetentionDays, DefaultAuditRetentionDays)
 	}
-	if cfg.ArchiveRetentionDays != 60 {
+	if cfg.ArchiveRetentionDays != DefaultArchiveRetentionDays {
 		t.Errorf("ArchiveRetentionDays = %d, want DefaultArchiveRetentionDays %d", cfg.ArchiveRetentionDays, DefaultArchiveRetentionDays)
 	}
 	if err := cfg.Validate(); err != nil {
