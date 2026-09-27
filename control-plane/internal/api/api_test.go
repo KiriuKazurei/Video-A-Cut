@@ -53,10 +53,11 @@ func decodeErr(t *testing.T, rec *httptest.ResponseRecorder) apiErrorBody {
 // error shape no matter which endpoint it called.
 //
 // want is the status the endpoint is expected to answer with today. An
-// implemented endpoint answers 200 (or 404 for a well-formed unknown id);
-// one still awaiting its handler answers 501. The point of the table is that
-// every URL is registered and every answer is JSON — a route that regressed
-// to ServeMux's plain text would fail on the body shape below, not on this
+// implemented endpoint answers 200 (or 404 for a well-formed unknown id); a
+// PATCH with no body at all is a client bug and answers 400; one still
+// awaiting its handler answers 501. The point of the table is that every URL
+// is registered and every answer is JSON — a route that regressed to
+// ServeMux's plain text would fail on the body shape below, not on this
 // number.
 func TestHandlerServesEveryDocumentedRoute(t *testing.T) {
 	routes := []struct {
@@ -66,7 +67,11 @@ func TestHandlerServesEveryDocumentedRoute(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/assets", http.StatusOK},
 		{http.MethodGet, "/api/assets/a_1", http.StatusNotFound},
-		{http.MethodPatch, "/api/assets/a_1", http.StatusNotImplemented},
+		// Body-less on purpose: the update endpoint is implemented, so the
+		// answer comes from decodeJSON refusing an empty body rather than
+		// from the 501 stub. Both go through the JSON writer, which is what
+		// this test exists to check.
+		{http.MethodPatch, "/api/assets/a_1", http.StatusBadRequest},
 		{http.MethodPost, "/api/tasks", http.StatusNotImplemented},
 		{http.MethodGet, "/api/tasks/t_1", http.StatusNotImplemented},
 		{http.MethodGet, "/api/events", http.StatusNotImplemented},
