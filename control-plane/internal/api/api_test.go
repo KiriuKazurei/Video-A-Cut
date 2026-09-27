@@ -80,7 +80,12 @@ func TestHandlerServesEveryDocumentedRoute(t *testing.T) {
 		// this test exists to check.
 		{http.MethodPost, "/api/tasks", http.StatusBadRequest},
 		{http.MethodGet, "/api/tasks/t_1", http.StatusNotFound},
-		{http.MethodGet, "/api/events", http.StatusNotImplemented},
+		// Body-less, against a server with no event bus attached: the
+		// stream endpoint is implemented now, so the answer is its own
+		// refusal to open a connection that could never deliver an
+		// event, rather than the 501 stub. Both still go through the
+		// JSON writer, which is what this test exists to check.
+		{http.MethodGet, "/api/events", http.StatusServiceUnavailable},
 		{http.MethodGet, "/api/audit", http.StatusNotImplemented},
 	}
 

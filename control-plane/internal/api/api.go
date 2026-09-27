@@ -86,7 +86,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PATCH /api/assets/{id}", s.patchAsset)
 	s.mux.HandleFunc("POST /api/tasks", s.createTask)
 	s.mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
-	s.mux.HandleFunc("GET /api/events", s.notImplementedYet("event stream"))
+	s.mux.HandleFunc("GET /api/events", s.streamEvents)
 	s.mux.HandleFunc("GET /api/audit", s.notImplementedYet("audit log"))
 }
 
