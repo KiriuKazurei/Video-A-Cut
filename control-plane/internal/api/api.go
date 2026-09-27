@@ -64,7 +64,6 @@ const (
 	codeBodyTooLarge     = "payload_too_large"
 	codeInternal         = "internal_error"
 	codeMethodNotAllowed = "method_not_allowed"
-	codeNotImplemented   = "not_implemented"
 )
 
 // routes registers every documented URL (docs/项目开发文档.md §9.1).
@@ -248,20 +247,6 @@ func (c *captureWriter) release() {
 // forwarded.
 func (c *captureWriter) discard() {
 	c.released = true
-}
-
-// notImplementedYet returns a handler that reports the operation by
-// name with codeNotImplemented and HTTP 501.
-//
-// A registered route answering 501 rather than a bare 404 matters to a
-// WebUI: 404 means "this URL will never exist", while 501 means "this URL is
-// the right one and the plane does not speak it yet", which is the case here
-// — the skeleton deliberately registers the surface ahead of the handlers.
-func (s *Server) notImplementedYet(operation string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotImplemented, codeNotImplemented,
-			fmt.Sprintf("operation %q is not implemented yet", operation))
-	}
 }
 
 // listAssets answers GET /api/assets with every asset the plane holds.
