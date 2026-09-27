@@ -72,8 +72,14 @@ func TestHandlerServesEveryDocumentedRoute(t *testing.T) {
 		// from the 501 stub. Both go through the JSON writer, which is what
 		// this test exists to check.
 		{http.MethodPatch, "/api/assets/a_1", http.StatusBadRequest},
-		{http.MethodPost, "/api/tasks", http.StatusNotImplemented},
-		{http.MethodGet, "/api/tasks/t_1", http.StatusNotImplemented},
+		// Body-less, against an empty store: the create endpoint is
+		// implemented, so the answer is decodeJSON refusing an empty
+		// body rather than the 501 stub. The detail endpoint is
+		// implemented too, so a well-formed unknown id is a 404 rather
+		// than 501. Both still go through the JSON writer, which is what
+		// this test exists to check.
+		{http.MethodPost, "/api/tasks", http.StatusBadRequest},
+		{http.MethodGet, "/api/tasks/t_1", http.StatusNotFound},
 		{http.MethodGet, "/api/events", http.StatusNotImplemented},
 		{http.MethodGet, "/api/audit", http.StatusNotImplemented},
 	}
