@@ -32,6 +32,15 @@ func (s *Service) CreateTask(ctx context.Context, tk model.Task) error {
 	if tk.AgentRole == "" {
 		return fmt.Errorf("service: create task %s: agent_role is required: %w", tk.TaskID, model.ErrArgument)
 	}
+	// Type is validated here and not only at the transport, because it is
+	// the field ClaimTask matches an agent on: an untyped task queues as
+	// claimable work that no agent could ever claim, which reads as a
+	// stall rather than a rejected request. A REST-only guard would leave
+	// the same hole open for the MCP dispatch surface of Phase 3, which
+	// reaches this method without passing through internal/api.
+	if tk.Type == "" {
+		return fmt.Errorf("service: create task %s: type is required: %w", tk.TaskID, model.ErrArgument)
+	}
 
 	if _, err := s.st.GetAsset(ctx, tk.AssetID); err != nil {
 		return fmt.Errorf("service: create task %s: %w", tk.TaskID, err)

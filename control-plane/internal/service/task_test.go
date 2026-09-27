@@ -426,6 +426,7 @@ func TestCreateTaskRejectsEmptyFields(t *testing.T) {
 		{"empty task_id", model.Task{AssetID: "clip_001", Type: model.TaskTypeTTS, AgentRole: "narrator"}},
 		{"empty asset_id", model.Task{TaskID: "t_001", Type: model.TaskTypeTTS, AgentRole: "narrator"}},
 		{"empty agent_role", model.Task{TaskID: "t_001", AssetID: "clip_001", Type: model.TaskTypeTTS}},
+		{"empty type", model.Task{TaskID: "t_001", AssetID: "clip_001", AgentRole: "narrator"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
