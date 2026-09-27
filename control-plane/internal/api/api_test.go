@@ -86,7 +86,11 @@ func TestHandlerServesEveryDocumentedRoute(t *testing.T) {
 		// event, rather than the 501 stub. Both still go through the
 		// JSON writer, which is what this test exists to check.
 		{http.MethodGet, "/api/events", http.StatusServiceUnavailable},
-		{http.MethodGet, "/api/audit", http.StatusNotImplemented},
+		// Body-less, against an empty store: the audit endpoint is
+		// implemented now, so the answer is the empty [] array rather
+		// than the 501 stub. It still goes through the JSON writer,
+		// which is what this test exists to check.
+		{http.MethodGet, "/api/audit", http.StatusOK},
 	}
 
 	for _, rt := range routes {

@@ -87,7 +87,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/tasks", s.createTask)
 	s.mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	s.mux.HandleFunc("GET /api/events", s.streamEvents)
-	s.mux.HandleFunc("GET /api/audit", s.notImplementedYet("audit log"))
+	s.mux.HandleFunc("GET /api/audit", s.listAudit)
 }
 
 // Handler returns the http.Handler to mount. It is the process's single entry
