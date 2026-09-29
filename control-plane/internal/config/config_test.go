@@ -32,6 +32,9 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.ArchiveRetentionDays != DefaultArchiveRetentionDays {
 		t.Errorf("ArchiveRetentionDays = %d, want DefaultArchiveRetentionDays %d", cfg.ArchiveRetentionDays, DefaultArchiveRetentionDays)
 	}
+	if cfg.HttpAddr != DefaultHTTPAddr {
+		t.Errorf("HttpAddr = %q, want DefaultHTTPAddr %q", cfg.HttpAddr, DefaultHTTPAddr)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() on Default() = %v, want nil", err)
 	}
@@ -48,6 +51,18 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	}
 }
 
+func TestDeliveryRootMustBeAbsoluteWhenConfigured(t *testing.T) {
+	cfg := Default()
+	cfg.DeliveryRoot = "relative-package-directory"
+	if !errors.Is(cfg.Validate(), ErrInvalid) {
+		t.Fatal("relative delivery root must be rejected")
+	}
+	cfg.DeliveryRoot = t.TempDir()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("absolute delivery root: %v", err)
+	}
+}
+
 func TestLoadAppliesOverrides(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, "control.json", `{
@@ -61,10 +76,12 @@ func TestLoadAppliesOverrides(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	want := Config{
+		MaxAttempts:          DefaultMaxAttempts,
 		LeaseSeconds:         45,
 		MaxAgents:            4,
 		AuditRetentionDays:   7,
 		ArchiveRetentionDays: 14,
+		HttpAddr:             DefaultHTTPAddr,
 	}
 	if cfg != want {
 		t.Errorf("Load() = %+v, want %+v", cfg, want)
@@ -223,8 +240,160 @@ func TestValidateAcceptsBoundaries(t *testing.T) {
 		MaxAgents:            1,
 		AuditRetentionDays:   1,
 		ArchiveRetentionDays: DefaultArchiveRetentionDays,
+		HttpAddr:             DefaultHTTPAddr,
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want nil", err)
+	}
+}
+
+// TestValidateAcceptsEmptyHTTPAddr pins that the empty address is the
+// documented way to disable the HTTP surface: a headless deployment that
+// runs the workers only must be expressible rather than refused, and the
+// alternative — deleting the key after it exists — is not something a
+// deployment tool can do to a file it did not write.
+func TestValidateAcceptsEmptyHTTPAddr(t *testing.T) {
+	cfg := Default()
+	cfg.HttpAddr = ""
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() with HttpAddr %q = %v, want nil", cfg.HttpAddr, err)
+	}
+}
+
+// TestValidateRejectsMalformedHTTPAddr pins the operator-facing failure
+// mode: an address with no port, and one with a stray colon, are both
+// refused with ErrInvalid rather than passed to net.Listen, whose error
+// would name a socket the operator never typed.
+func TestValidateRejectsMalformedHTTPAddr(t *testing.T) {
+	for _, addr := range []string{
+		"invalid addr without port",
+		"host:port:extra",
+		"127.0.0.1",
+	} {
+		t.Run(addr, func(t *testing.T) {
+			cfg := Default()
+			cfg.HttpAddr = addr
+
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("Validate() with http_addr %q = nil, want ErrInvalid", addr)
+			}
+			if !errors.Is(err, ErrInvalid) {
+				t.Errorf("Validate() error = %v, want it to wrap ErrInvalid", err)
+			}
+			if !strings.Contains(err.Error(), "http_addr") {
+				t.Errorf("Validate() error = %v, want it to name http_addr", err)
+			}
+		})
+	}
+}
+
+// TestLoadAppliesHTTPAddr proves the file key an operator edits reaches the
+// field the server binds, both for a normal address and for the empty string
+// that disables the surface. The empty-string arm is the one that matters
+// most: if apply substituted the default for it, no file could ever switch
+// the governance surface off.
+func TestLoadAppliesHTTPAddr(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"loopback", `{"http_addr": "127.0.0.1:9001"}`, "127.0.0.1:9001"},
+		{"localhost", `{"http_addr": "localhost:9002"}`, "localhost:9002"},
+		{"disabled", `{"http_addr": ""}`, ""},
+		{"ipv6 literal", `{"http_addr": "[::1]:9003"}`, "[::1]:9003"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeConfig(t, dir, "control.json", tc.doc)
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.HttpAddr != tc.want {
+				t.Errorf("Load() HttpAddr = %q, want %q", cfg.HttpAddr, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsNonLoopbackHTTPAddr(t *testing.T) {
+	for _, addr := range []string{
+		"0.0.0.0:8787",
+		"192.168.1.10:8787",
+		"example.com:8787",
+		":8787",
+		"127.0.0.1:bad",
+		"127.0.0.1:65536",
+	} {
+		t.Run(addr, func(t *testing.T) {
+			cfg := Default()
+			cfg.HttpAddr = addr
+			if err := cfg.Validate(); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("Validate() with HttpAddr %q = %v, want ErrInvalid", addr, err)
+			}
+		})
+	}
+}
+
+// TestLoadDefaultsHTTPAddrWhenKeyAbsent proves the documented deployment
+// stays the default one: a file that predates the setting, and one that
+// never mentioned it, both get DefaultHTTPAddr rather than the empty string
+// that would silently switch the governance surface off.
+func TestLoadDefaultsHTTPAddrWhenKeyAbsent(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, "control.json", `{"lease_seconds": 45}`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.HttpAddr != DefaultHTTPAddr {
+		t.Errorf("Load() HttpAddr = %q, want default %q", cfg.HttpAddr, DefaultHTTPAddr)
+	}
+}
+
+// TestLoadRejectsMalformedHTTPAddr proves a bad address is rejected at load,
+// so the refusal happens before the process opens a store or binds anything.
+func TestLoadRejectsMalformedHTTPAddr(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConfig(t, dir, "control.json", `{"http_addr": "no-port-here"}`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() = nil error, want a rejection for a malformed http_addr")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Errorf("Load() error = %v, want it to wrap ErrInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "http_addr") {
+		t.Errorf("Load() error = %v, want it to name http_addr", err)
+	}
+}
+
+// TestLoadRejectsHTTPAddrWrongType proves a non-string value is refused
+// rather than silently replaced by the default: an operator who wrote a
+// number where an address belongs must be told, not given a surface bound to
+// a port they never named.
+func TestLoadRejectsHTTPAddrWrongType(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		doc  string
+	}{
+		{"number", `{"http_addr": 8787}`},
+		{"boolean", `{"http_addr": true}`},
+		{"list", `{"http_addr": ["127.0.0.1:8787"]}`},
+		{"null", `{"http_addr": null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeConfig(t, dir, "control.json", tc.doc)
+			cfg, err := Load(path)
+			if err == nil {
+				t.Fatalf("Load() = %+v, want error", cfg)
+			}
+			if !strings.Contains(err.Error(), "http_addr") {
+				t.Errorf("Load() error = %v, want it to name key %q", err, "http_addr")
+			}
+		})
 	}
 }

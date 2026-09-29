@@ -3,6 +3,7 @@ package queue_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
+
+var storesByService sync.Map
 
 // newStore opens a fresh SQLite database in the test's temp directory, closed
 // by t.Cleanup. A second Close after a test already closed it is tolerated:
@@ -32,7 +35,9 @@ func newStore(t *testing.T) *store.Store {
 // would prove nothing about lease recovery.
 func claimable(t *testing.T) *service.Service {
 	t.Helper()
-	svc := service.New(newStore(t))
+	st := newStore(t)
+	svc := service.New(st)
+	storesByService.Store(svc, st)
 	ctx := context.Background()
 
 	if err := svc.CreateAsset(ctx, model.Asset{
@@ -58,8 +63,18 @@ func claimable(t *testing.T) *service.Service {
 // claimed, owned, and holding a lease that lapsed a second ago.
 func claimWithLapsedLease(t *testing.T, svc *service.Service) {
 	t.Helper()
-	if _, err := svc.ClaimTask(context.Background(), "narrator-01", "narrator", time.Now().Add(-time.Second)); err != nil {
-		t.Fatalf("ClaimTask with lapsed lease: %v", err)
+	tk, err := svc.ClaimTask(context.Background(), "narrator-01", "narrator", time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ClaimTask with live lease: %v", err)
+	}
+	value, ok := storesByService.Load(svc)
+	if !ok {
+		t.Fatal("no store registered for service fixture")
+	}
+	st := value.(*store.Store)
+	tk.LeaseUntil = func() *time.Time { v := time.Now().Add(-time.Second); return &v }()
+	if err := st.UpdateTask(context.Background(), tk); err != nil {
+		t.Fatalf("seed expired lease: %v", err)
 	}
 }
 
@@ -195,6 +210,7 @@ func TestIntervalReportsConfiguredAndCorrectedValues(t *testing.T) {
 func TestReclaimerSurvivesStoreFailure(t *testing.T) {
 	st := newStore(t)
 	svc := service.New(st)
+	storesByService.Store(svc, st)
 	ctx := context.Background()
 
 	// Seed through a live connection, then break it: the loop has real work

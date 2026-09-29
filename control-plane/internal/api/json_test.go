@@ -169,6 +169,9 @@ func TestDecodeJSONRejectsBadBodies(t *testing.T) {
 		{"wrong field type", `{"task_id":7}`, model.ErrArgument},
 		{"unknown field", `{"task_id":"t_1","nope":true}`, model.ErrArgument},
 		{"two values", `{"task_id":"t_1"}{"task_id":"t_2"}`, model.ErrArgument},
+		{"null", `null`, model.ErrArgument},
+		{"array", `[]`, model.ErrArgument},
+		{"string", `"task"`, model.ErrArgument},
 	}
 
 	for _, c := range cases {

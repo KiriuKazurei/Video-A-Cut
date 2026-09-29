@@ -1,0 +1,12 @@
+{
+  "timeline": { "fps": 60, "sample_rate": 48000 },
+  "video": [
+    { "src": "clip_01.mp4", "in": 0, "out": 12.5, "timeline_in": 0 }
+  ],
+  "game_audio": [
+    { "src": "clip_01.mp4", "in": 0, "out": 12.5, "timeline_in": 0, "gain_db": -15 }
+  ],
+  "voice": [],
+  "subtitle": [],
+  "music": []
+}

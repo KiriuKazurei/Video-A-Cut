@@ -59,9 +59,14 @@ func auditActions(rows []model.AuditLog) []string {
 // the handler read a path no production write ever goes through.
 func seedAuditServer(t *testing.T) *Server {
 	t.Helper()
-	srv := newSeededServer(t, governanceAsset())
+	srv := newSeededServer(t, model.Asset{
+		AssetID:       "a_1",
+		Status:        model.AssetStatusIngested,
+		AgentVisible:  true,
+		AllowedAgents: []string{"recognizer"},
+	})
 
-	if rec := patch(t, srv, "/api/assets/a_1", `{"locked":true}`); rec.Code != http.StatusOK {
+	if rec := patch(t, srv, "/api/assets/a_1", `{"human_approved":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("governance PATCH status = %d, want %d (%s)",
 			rec.Code, http.StatusOK, rec.Body.String())
 	}

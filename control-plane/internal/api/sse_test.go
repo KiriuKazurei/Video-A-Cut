@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +19,12 @@ import (
 // sseAsset is the row every stream test queues work on. It is created before
 // the bus is attached so opening a stream starts from a quiet bus, and a test
 // decides for itself which event it forces.
-var sseAsset = model.Asset{AssetID: "a_1", Status: model.AssetStatusIngested}
+var sseAsset = model.Asset{
+	AssetID:       "a_1",
+	Status:        model.AssetStatusIngested,
+	AgentVisible:  true,
+	AllowedAgents: []string{"recognizer"},
+}
 
 // sseStream is one live connection to the event endpoint.
 //
@@ -64,15 +70,18 @@ type sseFrame struct {
 // subscriber bookkeeping to the bus itself.
 type sseHarness struct {
 	mu sync.Mutex
-	// taken holds the subscription ids per event name, in subscribe order.
+	// taken holds the ids registered for each event name. One ordered
+	// multi-topic subscription should appear under all four names.
 	taken map[string][]int
+	// subscribed counts actual bus subscriptions, not topic filters.
+	subscribed int
 	// released holds every id handed back so far.
 	released []int
 
 	readyOnce sync.Once
 	ready     chan struct{}
-	// want is how many distinct event names must be subscribed before the
-	// harness reports the stream ready.
+	// want is how many actual subscriptions must exist before the stream is
+	// ready. A single multi-topic subscription preserves cross-topic order.
 	want int
 }
 
@@ -80,7 +89,7 @@ func newSSEHarness() *sseHarness {
 	return &sseHarness{
 		taken: map[string][]int{},
 		ready: make(chan struct{}),
-		want:  len(sseEventNames),
+		want:  1,
 	}
 }
 
@@ -92,21 +101,27 @@ func (h *sseHarness) install(t *testing.T) {
 	t.Cleanup(func() { sseOps = prev })
 
 	sseOps = streamOps{
-		subscribe: func(bus *events.Bus, name string, handler events.Handler) int {
-			id := prev.subscribe(bus, name, handler)
+		subscribe: func(bus *events.Bus, names []string, handler events.Handler) (int, <-chan struct{}, error) {
+			id, done, err := prev.subscribe(bus, names, handler)
+			if err != nil {
+				return id, done, err
+			}
 			h.mu.Lock()
-			h.taken[name] = append(h.taken[name], id)
-			if len(h.taken) >= h.want {
+			for _, name := range names {
+				h.taken[name] = append(h.taken[name], id)
+			}
+			h.subscribed++
+			if h.subscribed >= h.want {
 				h.readyOnce.Do(func() { close(h.ready) })
 			}
 			h.mu.Unlock()
-			return id
+			return id, done, nil
 		},
-		unsubscribe: func(bus *events.Bus, name string, id int) {
+		unsubscribe: func(bus *events.Bus, id int) {
 			h.mu.Lock()
 			h.released = append(h.released, id)
 			h.mu.Unlock()
-			prev.unsubscribe(bus, name, id)
+			prev.unsubscribe(bus, id)
 		},
 	}
 }
@@ -121,7 +136,7 @@ func (h *sseHarness) waitReady(t *testing.T) {
 	select {
 	case <-h.ready:
 	case <-time.After(3 * time.Second):
-		t.Fatalf("stream did not subscribe to all %d event names within 3s", h.want)
+		t.Fatalf("stream did not establish %d ordered subscription(s) within 3s", h.want)
 	}
 }
 
@@ -132,7 +147,7 @@ func (h *sseHarness) waitReleased(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		h.mu.Lock()
-		taken, released := len(h.taken), len(h.released)
+		taken, released := h.subscribed, len(h.released)
 		h.mu.Unlock()
 
 		if taken > 0 && released >= taken {
@@ -190,6 +205,11 @@ func connectSSE(t *testing.T, srv *Server) (*sseStream, *sseHarness) {
 	}
 
 	st := &sseStream{ts: ts, resp: resp, rd: bufio.NewReader(resp.Body), stop: cancel}
+	first, err := st.frame(t)
+	if err != nil || !first.comment || len(first.lines) != 1 || first.lines[0] != ": connected" {
+		st.stop()
+		t.Fatalf("initial SSE frame = %+v, err = %v; want immediate connected comment", first, err)
+	}
 	h.waitReady(t)
 	return st, h
 }
@@ -506,7 +526,7 @@ func TestSSEClientDisconnectUnsubscribes(t *testing.T) {
 // forever for events that cannot come.
 func TestSSEWithoutBusReturnsError(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newServer(t).Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/events", nil))
+	newServer(t).Handler().ServeHTTP(rec, localRequest(http.MethodGet, "/api/events", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
@@ -521,6 +541,91 @@ func TestSSEWithoutBusReturnsError(t *testing.T) {
 	// the plane can tell "the stream is not wired" from a server error.
 	if body := rec.Body.String(); !strings.Contains(body, "event stream") {
 		t.Fatalf("body = %q, want a message naming the event stream", body)
+	}
+}
+
+func TestSSEHeadIsRejectedWithoutSubscription(t *testing.T) {
+	srv := newBusServer(t)
+	h := newSSEHarness()
+	h.install(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodHead, ts.URL+"/api/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("HEAD /api/events = %d, want 405", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Allow"); got != http.MethodGet {
+		t.Fatalf("Allow = %q, want GET", got)
+	}
+	taken, released := h.snapshot()
+	if len(taken) != 0 || released != 0 {
+		t.Fatalf("HEAD created an event subscription: taken=%v released=%d", taken, released)
+	}
+}
+
+func TestSSEClosesWhenBusSubscriptionOverflows(t *testing.T) {
+	srv := newBusServer(t)
+	bus := srv.svc.Bus()
+	releaseHandler := make(chan struct{})
+	started := make(chan struct{}, 1)
+	prev := sseOps
+	sseOps = streamOps{
+		subscribe: func(bus *events.Bus, names []string, handler events.Handler) (int, <-chan struct{}, error) {
+			return bus.SubscribeManySignal(names, func(ev events.Envelope) {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+				<-releaseHandler
+				handler(ev)
+			})
+		},
+		unsubscribe: func(bus *events.Bus, id int) { bus.UnsubscribeID(id) },
+	}
+	t.Cleanup(func() {
+		sseOps = prev
+		close(releaseHandler)
+	})
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	resp, err := ts.Client().Get(ts.URL + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/events = %d, want 200", resp.StatusCode)
+	}
+
+	bus.Publish(events.Envelope{Name: "asset_updated", Payload: map[string]int{"n": 0}})
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("bus callback did not start")
+	}
+	for i := 1; i <= 70; i++ {
+		bus.Publish(events.Envelope{Name: "asset_updated", Payload: map[string]int{"n": i}})
+	}
+
+	readDone := make(chan error, 1)
+	go func() { _, err := io.Copy(io.Discard, resp.Body); readDone <- err }()
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatalf("read closed stream: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("SSE stayed open after its bus subscription overflowed")
 	}
 }
 

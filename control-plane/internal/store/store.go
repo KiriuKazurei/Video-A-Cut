@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,12 +34,26 @@ const defaultAuditLimit = 100
 // holds no state beyond the connection pool.
 type Store struct {
 	db *sql.DB
+	q  queryExecutor
+	// tx is true on the transaction-scoped Store passed to Transaction. It
+	// prevents a callback from accidentally starting a nested transaction on
+	// the pool while its outer SQLite write lock is held.
+	tx bool
+}
+
+type queryExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 // Open opens (creating if necessary) the SQLite database at path, applies all
 // pending embedded migrations and returns a ready store.
 func Open(path string) (*Store, error) {
-	dsn := fmt.Sprintf("file:%s?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", path)
+	dsn, err := databaseDSN(path)
+	if err != nil {
+		return nil, fmt.Errorf("store: prepare sqlite path %s: %w", path, err)
+	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open sqlite at %s: %w", path, err)
@@ -61,7 +76,53 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("store: migrate sqlite at %s: %w", path, err)
 	}
 
-	return &Store{db: db}, nil
+	return &Store{db: db, q: db}, nil
+}
+
+// databaseDSN encodes the filesystem path as a file URL before adding driver
+// options. Raw concatenation treats # as a fragment, % as an escape and ? as
+// the start of the query, so Ping can succeed while SQLite opens a different
+// file from the one the caller named.
+func databaseDSN(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	slash := filepath.ToSlash(abs)
+	// A Windows drive path must be rooted in the URL path so url.URL does not
+	// mistake the drive letter for a hostname.
+	if len(slash) >= 2 && slash[1] == ':' {
+		slash = "/" + slash
+	}
+	u := url.URL{Scheme: "file", Path: slash}
+	u.RawQuery = "_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)"
+	return u.String(), nil
+}
+
+// Transaction runs fn on one SQLite transaction and commits only when fn
+// returns nil. The DSN's _txlock=immediate obtains SQLite's write reservation
+// before service reads state, serializing read/modify/write workflows across
+// all Store and Service instances that open the same database.
+func (s *Store) Transaction(ctx context.Context, fn func(*Store) error) error {
+	if s.tx {
+		return errors.New("store: nested transaction")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	view := &Store{db: s.db, q: tx, tx: true}
+	if err := fn(view); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			return errors.Join(err, fmt.Errorf("store: rollback transaction: %w", rollbackErr))
+		}
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit transaction: %w", err)
+	}
+	return nil
 }
 
 // DB exposes the underlying *sql.DB for callers that need raw access.
@@ -184,7 +245,7 @@ func (s *Store) CreateAsset(ctx context.Context, a model.Asset) error {
 	}
 
 	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO assets
+	_, err := s.q.ExecContext(ctx, `INSERT INTO assets
   (asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.AssetID, a.Status, boolToInt(a.AgentVisible), boolToInt(a.HumanApproved), boolToInt(a.Locked),
@@ -201,7 +262,7 @@ func (s *Store) CreateAsset(ctx context.Context, a model.Asset) error {
 // GetAsset returns the asset with the given id, or an error wrapping
 // model.ErrNotFound.
 func (s *Store) GetAsset(ctx context.Context, id string) (model.Asset, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
+	row := s.q.QueryRowContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
   FROM assets WHERE asset_id = ?`, id)
 
 	a, err := scanAsset(row)
@@ -213,7 +274,7 @@ func (s *Store) GetAsset(ctx context.Context, id string) (model.Asset, error) {
 
 // ListAssets returns every asset ordered by asset_id.
 func (s *Store) ListAssets(ctx context.Context) ([]model.Asset, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
+	rows, err := s.q.QueryContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
   FROM assets ORDER BY asset_id`)
 	if err != nil {
 		return nil, fmt.Errorf("store: list assets: %w", err)
@@ -241,7 +302,7 @@ func (s *Store) UpdateAsset(ctx context.Context, a model.Asset) error {
 		return fmt.Errorf("store: update asset: asset_id is required: %w", model.ErrArgument)
 	}
 
-	res, err := s.db.ExecContext(ctx, `UPDATE assets SET
+	res, err := s.q.ExecContext(ctx, `UPDATE assets SET
   status = ?, agent_visible = ?, human_approved = ?, locked = ?,
   allowed_agents = ?, artifacts = ?, updated_at = ?
   WHERE asset_id = ?`,
@@ -265,7 +326,7 @@ func (s *Store) UpdateAsset(ctx context.Context, a model.Asset) error {
 // shift the scanTask column order. The column named `type` is a keyword-ish
 // identifier but modernc accepts it unquoted here; it is only named in the
 // projection, never in ORDER BY or GROUP BY, so no quoting is needed.
-const taskColumns = `select task_id,asset_id,type,agent_role,agent_id,status,progress,message,lease_expires_at,claimed_at,updated_at,artifacts from tasks`
+const taskColumns = `select task_id,asset_id,type,agent_role,agent_id,status,progress,message,lease_expires_at,claimed_at,updated_at,artifacts,depends_on,attempts from tasks`
 
 // CreateTask inserts a task. updated_at is stamped by the store; all other
 // columns come from the caller, so a task can be created in any status the
@@ -279,12 +340,13 @@ func (s *Store) CreateTask(ctx context.Context, tk model.Task) error {
 		return fmt.Errorf("store: create task %s: asset_id is required: %w", tk.TaskID, model.ErrArgument)
 	}
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO tasks
-  (task_id, asset_id, type, agent_role, agent_id, status, progress, message, lease_expires_at, claimed_at, updated_at, artifacts)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := s.q.ExecContext(ctx, `INSERT INTO tasks
+	  (task_id, asset_id, type, agent_role, agent_id, status, progress, message, lease_expires_at, claimed_at, updated_at, artifacts, enqueued_at, depends_on, attempts)
+	  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tk.TaskID, tk.AssetID, tk.Type, tk.AgentRole, nullIfEmpty(tk.AgentID),
 		tk.Status, tk.Progress, nullIfEmpty(tk.Message), tk.LeaseUntil, tk.ClaimedAt,
-		time.Now().UTC(), marshalStringMap(tk.Artifacts))
+		time.Now().UTC(), marshalStringMap(tk.Artifacts), time.Now().UTC(),
+		marshalStringSlice(tk.DependsOn), tk.Attempts)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique constraint") {
 			return fmt.Errorf("store: create task %s: %w", tk.TaskID, model.ErrConflict)
@@ -297,7 +359,7 @@ func (s *Store) CreateTask(ctx context.Context, tk model.Task) error {
 // GetTask returns the task with the given id, or an error wrapping
 // model.ErrNotFound.
 func (s *Store) GetTask(ctx context.Context, id string) (model.Task, error) {
-	row := s.db.QueryRowContext(ctx, taskColumns+` WHERE task_id = ?`, id)
+	row := s.q.QueryRowContext(ctx, taskColumns+` WHERE task_id = ?`, id)
 
 	tk, err := scanTask(row)
 	if err != nil {
@@ -309,8 +371,8 @@ func (s *Store) GetTask(ctx context.Context, id string) (model.Task, error) {
 // ClaimCandidates returns queued tasks for a role, oldest task_id first.
 // It performs no leasing: that is service's job.
 func (s *Store) ClaimCandidates(ctx context.Context, role string) ([]model.Task, error) {
-	rows, err := s.db.QueryContext(ctx,
-		taskColumns+` WHERE agent_role = ? AND status = ? ORDER BY task_id`,
+	rows, err := s.q.QueryContext(ctx,
+		taskColumns+` WHERE agent_role = ? AND status = ? ORDER BY CASE WHEN enqueued_at IS NULL THEN 0 ELSE 1 END, enqueued_at, rowid`,
 		role, model.TaskStatusQueued)
 	if err != nil {
 		return nil, fmt.Errorf("store: claim candidates for role %s: %w", role, err)
@@ -333,7 +395,7 @@ func (s *Store) ClaimCandidates(ctx context.Context, role string) ([]model.Task,
 // one side of the line. Ordering by updated_at puts the most stale — and
 // therefore the first worth recovering — row first.
 func (s *Store) ListActiveTasks(ctx context.Context) ([]model.Task, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.q.QueryContext(ctx,
 		taskColumns+` WHERE status IN (?, ?, ?) ORDER BY updated_at`,
 		model.TaskStatusQueued, model.TaskStatusClaimed, model.TaskStatusRunning)
 	if err != nil {
@@ -356,12 +418,12 @@ func (s *Store) UpdateTask(ctx context.Context, tk model.Task) error {
 		return fmt.Errorf("store: update task: task_id is required: %w", model.ErrArgument)
 	}
 
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET
+	res, err := s.q.ExecContext(ctx, `UPDATE tasks SET
   status = ?, progress = ?, message = ?, agent_id = ?, agent_role = ?,
-  lease_expires_at = ?, claimed_at = ?, artifacts = ?, updated_at = ?
+  lease_expires_at = ?, claimed_at = ?, artifacts = ?, updated_at = ?, attempts = ?
   WHERE task_id = ?`,
 		tk.Status, tk.Progress, nullIfEmpty(tk.Message), nullIfEmpty(tk.AgentID), tk.AgentRole,
-		tk.LeaseUntil, tk.ClaimedAt, marshalStringMap(tk.Artifacts), time.Now().UTC(), tk.TaskID)
+		tk.LeaseUntil, tk.ClaimedAt, marshalStringMap(tk.Artifacts), time.Now().UTC(), tk.Attempts, tk.TaskID)
 	if err != nil {
 		return fmt.Errorf("store: update task %s: %w", tk.TaskID, err)
 	}
@@ -388,10 +450,11 @@ func scanTask(row scanner) (model.Task, error) {
 		lease     sql.NullTime
 		claimedAt sql.NullTime
 		artsJSON  string
+		depsJSON  string
 	)
 
 	err := row.Scan(&tk.TaskID, &tk.AssetID, &tk.Type, &tk.AgentRole, &agentID, &tk.Status,
-		&tk.Progress, &message, &lease, &claimedAt, &tk.UpdatedAt, &artsJSON)
+		&tk.Progress, &message, &lease, &claimedAt, &tk.UpdatedAt, &artsJSON, &depsJSON, &tk.Attempts)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Task{}, fmt.Errorf("store: task: %w", model.ErrNotFound)
@@ -402,6 +465,14 @@ func scanTask(row scanner) (model.Task, error) {
 	arts, err := unmarshalStringMap(artsJSON)
 	if err != nil {
 		return model.Task{}, fmt.Errorf("store: decode task %s artifacts: %w", tk.TaskID, err)
+	}
+
+	deps, err := unmarshalStringSlice(depsJSON)
+	if err != nil {
+		return model.Task{}, fmt.Errorf("store: decode task %s depends_on: %w", tk.TaskID, err)
+	}
+	if len(deps) > 0 {
+		tk.DependsOn = deps
 	}
 
 	tk.AgentID = agentID.String
@@ -451,7 +522,7 @@ func (s *Store) UpsertAgent(ctx context.Context, a model.Agent) error {
 		return fmt.Errorf("store: upsert agent: agent_id is required: %w", model.ErrArgument)
 	}
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO agents (agent_id, role, last_seen, current_task_id, health)
+	_, err := s.q.ExecContext(ctx, `INSERT INTO agents (agent_id, role, last_seen, current_task_id, health)
   VALUES (?, ?, ?, ?, ?)
   ON CONFLICT(agent_id) DO UPDATE SET
     role = excluded.role,
@@ -474,7 +545,7 @@ func (s *Store) GetAgent(ctx context.Context, id string) (model.Agent, error) {
 		taskID sql.NullString
 	)
 
-	err := s.db.QueryRowContext(ctx, `SELECT agent_id, role, last_seen, current_task_id, health
+	err := s.q.QueryRowContext(ctx, `SELECT agent_id, role, last_seen, current_task_id, health
   FROM agents WHERE agent_id = ?`, id).
 		Scan(&a.AgentID, &a.Role, &last, &taskID, &a.Health)
 	if err != nil {
@@ -506,7 +577,7 @@ func (s *Store) WriteAudit(ctx context.Context, l model.AuditLog) error {
 		return fmt.Errorf("store: write audit: target is required: %w", model.ErrArgument)
 	}
 
-	res, err := s.db.ExecContext(ctx, `INSERT INTO audit_logs (actor, action, target, detail, created_at)
+	res, err := s.q.ExecContext(ctx, `INSERT INTO audit_logs (actor, action, target, detail, created_at)
   VALUES (?, ?, ?, ?, ?)`,
 		l.Actor, l.Action, l.Target, nullIfEmpty(l.Detail), time.Now().UTC())
 	if err != nil {
@@ -525,7 +596,7 @@ func (s *Store) ListAudit(ctx context.Context, limit int) ([]model.AuditLog, err
 		limit = defaultAuditLimit
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, actor, action, target, detail, created_at
+	rows, err := s.q.QueryContext(ctx, `SELECT id, actor, action, target, detail, created_at
   FROM audit_logs ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: list audit: %w", err)

@@ -34,7 +34,7 @@ func newSeededServer(t *testing.T, assets ...model.Asset) *Server {
 func get(t *testing.T, srv *Server, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	srv.Handler().ServeHTTP(rec, localRequest(http.MethodGet, path, nil))
 	return rec
 }
 
@@ -319,7 +319,7 @@ func TestGetAssetEmptyIDRejected(t *testing.T) {
 
 	// The handler half: an empty id that does reach getAsset is a 400, not
 	// a store round-trip.
-	req := httptest.NewRequest(http.MethodGet, "/api/assets/", nil)
+	req := localRequest(http.MethodGet, "/api/assets/", nil)
 	req.SetPathValue("id", "")
 	rec2 := httptest.NewRecorder()
 	srv.getAsset(rec2, req)

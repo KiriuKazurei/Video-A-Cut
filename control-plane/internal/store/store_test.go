@@ -3,6 +3,8 @@ package store_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -559,9 +561,9 @@ func TestTaskClaimCandidates(t *testing.T) {
 	}
 }
 
-// TestClaimCandidatesOrderedByTaskID verifies the oldest-task-first ordering
-// the claim loop relies on, and that an unknown role yields an empty slice.
-func TestClaimCandidatesOrderedByTaskID(t *testing.T) {
+// TestClaimCandidatesOrderedByEnqueueTime verifies queue arrival order wins
+// over caller-chosen ids, and that an unknown role yields an empty slice.
+func TestClaimCandidatesOrderedByEnqueueTime(t *testing.T) {
 	s := mustOpen(t)
 	ctx := context.Background()
 
@@ -584,7 +586,7 @@ func TestClaimCandidatesOrderedByTaskID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClaimCandidates: %v", err)
 	}
-	want := []string{"t_001", "t_002", "t_003"}
+	want := []string{"t_003", "t_001", "t_002"}
 	if len(got) != len(want) {
 		t.Fatalf("ClaimCandidates returned %d tasks, want %d", len(got), len(want))
 	}
@@ -600,6 +602,42 @@ func TestClaimCandidatesOrderedByTaskID(t *testing.T) {
 	}
 	if len(none) != 0 {
 		t.Errorf("ClaimCandidates(recognizer) = %+v, want empty", none)
+	}
+}
+
+func TestOpenUsesExactPathForURICharacters(t *testing.T) {
+	// Windows forbids '?' in a filesystem component, so the runtime test uses
+	// the two URI-special characters that Windows can actually create.
+	for _, name := range []string{"clip#draft.db", "clip%41.db"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, name)
+			st, err := store.Open(path)
+			if err != nil {
+				t.Fatalf("store.Open(%q): %v", path, err)
+			}
+			if err := st.CreateAsset(context.Background(), model.Asset{AssetID: "a_1", Status: model.AssetStatusIngested}); err != nil {
+				t.Fatalf("CreateAsset: %v", err)
+			}
+			if err := st.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("requested database file %q was not created: %v", path, err)
+			}
+			for _, wrong := range []string{
+				filepath.Join(dir, "clip"),
+				filepath.Join(dir, "clipA.db"),
+				filepath.Join(dir, "clip"),
+			} {
+				if wrong == path {
+					continue
+				}
+				if _, err := os.Stat(wrong); err == nil {
+					t.Errorf("unexpected database path %q was created", wrong)
+				}
+			}
+		})
 	}
 }
 

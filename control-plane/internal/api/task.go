@@ -35,6 +35,9 @@ type createTaskRequest struct {
 	AssetID   string `json:"asset_id"`
 	Type      string `json:"type"`
 	AgentRole string `json:"agent_role"`
+	// DependsOn is optional: task ids on the same asset that must succeed
+	// before this one can be claimed.
+	DependsOn []string `json:"depends_on,omitempty"`
 }
 
 // task builds the model.Task the request describes.
@@ -50,6 +53,7 @@ func (r createTaskRequest) task() model.Task {
 		AssetID:   r.AssetID,
 		Type:      r.Type,
 		AgentRole: r.AgentRole,
+		DependsOn: r.DependsOn,
 	}
 }
 
@@ -86,14 +90,9 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The four required fields are checked before the service, uniformly.
-	// service.CreateTask already validates task_id, asset_id and
-	// agent_role, so those three would arrive there anyway; type is the
-	// one it does not check, and an untyped task would queue as claimable
-	// work no agent could ever match on agent_role. Checking all four
-	// here makes the transport's answer one rule rather than a split
-	// between "the service's 400" and "a 500 from a later constraint",
-	// and the service keeps enforcing its own for its non-HTTP callers.
+	// Report missing request fields together at the transport boundary for a
+	// useful client error. service.CreateTask repeats the business validation
+	// for non-HTTP callers and owns the queued task's state rules.
 	var missing []string
 	if req.TaskID == "" {
 		missing = append(missing, "task_id")

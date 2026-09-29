@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
 // CreateAsset registers a new asset.
@@ -20,21 +21,31 @@ import (
 // log under the "system" actor, because an ingest is automatic rather than a
 // human governance action.
 func (s *Service) CreateAsset(ctx context.Context, a model.Asset) error {
-	if a.AssetID == "" {
-		return fmt.Errorf("service: create asset: asset_id is required: %w", model.ErrArgument)
+	if !validTaskID(a.AssetID) {
+		return fmt.Errorf("service: create asset: asset_id must be a non-empty URL path segment: %w", model.ErrArgument)
 	}
+	a.AllowedAgents = normalizeAllowedAgents(a.AllowedAgents)
+	a.Artifacts = cloneStringMap(a.Artifacts)
 
-	if _, err := s.st.GetAsset(ctx, a.AssetID); err == nil {
-		return fmt.Errorf("service: create asset %s: %w", a.AssetID, model.ErrConflict)
-	} else if !isNotFound(err) {
-		return fmt.Errorf("service: create asset %s: %w", a.AssetID, err)
-	}
-
-	if err := s.st.CreateAsset(ctx, a); err != nil {
+	var saved model.Asset
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
+		if _, err := tx.GetAsset(ctx, a.AssetID); err == nil {
+			return fmt.Errorf("service: create asset %s: %w", a.AssetID, model.ErrConflict)
+		} else if !isNotFound(err) {
+			return fmt.Errorf("service: create asset %s: %w", a.AssetID, err)
+		}
+		if err := tx.CreateAsset(ctx, a); err != nil {
+			return fmt.Errorf("service: create asset %s: %w", a.AssetID, err)
+		}
+		var err error
+		saved, err = tx.GetAsset(ctx, a.AssetID)
+		return err
+	})
+	if err != nil {
 		return err
 	}
 
-	s.publish("asset_created", a)
+	s.publish("asset_created", cloneAsset(saved))
 	s.audit(ctx, "system", "asset.create", a.AssetID, "")
 	return nil
 }
@@ -69,15 +80,23 @@ func (s *Service) ListVisibleAssets(ctx context.Context, role string) ([]model.A
 
 	out := []model.Asset{}
 	for _, a := range all {
-		if !a.AgentVisible || a.Locked {
-			continue
+		if assetVisibleForRole(a, role) {
+			out = append(out, a)
 		}
-		if !slices.Contains(a.AllowedAgents, role) {
-			continue
-		}
-		out = append(out, a)
 	}
 	return out, nil
+}
+
+// assetVisibleForRole is the one service-level visibility decision used by
+// both list views and the transactional task claim path.
+func assetVisibleForRole(a model.Asset, role string) bool {
+	return role != "" && a.AgentVisible && !a.Locked && slices.Contains(a.AllowedAgents, role)
+}
+
+func cloneAsset(a model.Asset) model.Asset {
+	a.AllowedAgents = slices.Clone(a.AllowedAgents)
+	a.Artifacts = cloneStringMap(a.Artifacts)
+	return a
 }
 
 // ApproveAsset is a human governance action (docs §11.3): it flips the
@@ -93,21 +112,32 @@ func (s *Service) ApproveAsset(ctx context.Context, actor, assetID string, appro
 		return fmt.Errorf("service: approve asset %s: actor is required: %w", assetID, model.ErrArgument)
 	}
 
-	a, err := s.st.GetAsset(ctx, assetID)
+	var saved model.Asset
+	changed := false
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
+		a, err := tx.GetAsset(ctx, assetID)
+		if err != nil {
+			return fmt.Errorf("service: approve asset %s: %w", assetID, err)
+		}
+		if a.HumanApproved == approved {
+			saved = a
+			return nil
+		}
+		a.HumanApproved = approved
+		if err := tx.UpdateAsset(ctx, a); err != nil {
+			return fmt.Errorf("service: approve asset %s: %w", assetID, err)
+		}
+		saved, err = tx.GetAsset(ctx, assetID)
+		changed = err == nil
+		return err
+	})
 	if err != nil {
-		return fmt.Errorf("service: approve asset %s: %w", assetID, err)
+		return err
 	}
-	if a.HumanApproved == approved {
-		return nil
+	if changed {
+		s.publish("asset_updated", cloneAsset(saved))
+		s.audit(ctx, actor, approveAction(approved), assetID, "")
 	}
-
-	a.HumanApproved = approved
-	if err := s.st.UpdateAsset(ctx, a); err != nil {
-		return fmt.Errorf("service: approve asset %s: %w", assetID, err)
-	}
-
-	s.publish("asset_updated", a)
-	s.audit(ctx, actor, approveAction(approved), assetID, "")
 	return nil
 }
 
@@ -178,46 +208,87 @@ func (s *Service) ListAllAssets(ctx context.Context) ([]model.Asset, error) {
 // text in the audit log and rendered by the governance UI, and two states
 // that differ only by order or a repeated entry must not look like two
 // different states to either.
+// GovernancePatch carries only fields the caller supplied. A nil pointer
+// means preserve the current value, so the service can merge a PATCH while it
+// holds the same database transaction used to write the row.
+type GovernancePatch struct {
+	AgentVisible  *bool
+	Locked        *bool
+	HumanApproved *bool
+	AllowedAgents *[]string
+}
+
+// UpdateAssetGovernance preserves the original whole-state service entry
+// point for callers that intentionally set all governance fields. REST PATCH
+// uses PatchAssetGovernance so omitted fields are merged under the write
+// transaction instead of being filled from a stale handler read.
 func (s *Service) UpdateAssetGovernance(
 	ctx context.Context, actor, assetID string, upd model.Asset,
+) (model.Asset, error) {
+	return s.PatchAssetGovernance(ctx, actor, assetID, GovernancePatch{
+		AgentVisible:  &upd.AgentVisible,
+		Locked:        &upd.Locked,
+		HumanApproved: &upd.HumanApproved,
+		AllowedAgents: &upd.AllowedAgents,
+	})
+}
+
+// PatchAssetGovernance merges only named governance fields inside a SQLite
+// write transaction. Two requests changing separate fields therefore read
+// the latest committed row after acquiring the writer reservation, and both
+// changes survive.
+func (s *Service) PatchAssetGovernance(
+	ctx context.Context, actor, assetID string, patch GovernancePatch,
 ) (model.Asset, error) {
 	if actor == "" {
 		return model.Asset{}, fmt.Errorf("service: update asset governance %s: actor is required: %w",
 			assetID, model.ErrArgument)
 	}
-
-	a, err := s.st.GetAsset(ctx, assetID)
+	var saved model.Asset
+	var detail string
+	changed := false
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
+		before, err := tx.GetAsset(ctx, assetID)
+		if err != nil {
+			return fmt.Errorf("service: update asset governance %s: %w", assetID, err)
+		}
+		a := cloneAsset(before)
+		if patch.AgentVisible != nil {
+			a.AgentVisible = *patch.AgentVisible
+		}
+		if patch.Locked != nil {
+			a.Locked = *patch.Locked
+		}
+		if patch.HumanApproved != nil {
+			a.HumanApproved = *patch.HumanApproved
+		}
+		if patch.AllowedAgents != nil {
+			a.AllowedAgents = normalizeAllowedAgents(*patch.AllowedAgents)
+		}
+		if before.AgentVisible == a.AgentVisible && before.Locked == a.Locked &&
+			before.HumanApproved == a.HumanApproved && slices.Equal(before.AllowedAgents, a.AllowedAgents) {
+			saved = a
+			return nil
+		}
+		detail = governanceDetail(before, a)
+		if detail == "" {
+			detail = "allowed_agents=normalized"
+		}
+		if err := tx.UpdateAsset(ctx, a); err != nil {
+			return fmt.Errorf("service: update asset governance %s: %w", assetID, err)
+		}
+		saved, err = tx.GetAsset(ctx, assetID)
+		changed = err == nil
+		return err
+	})
 	if err != nil {
-		return model.Asset{}, fmt.Errorf("service: update asset governance %s: %w", assetID, err)
+		return model.Asset{}, err
 	}
-
-	agents := normalizeAllowedAgents(upd.AllowedAgents)
-	if a.AgentVisible == upd.AgentVisible &&
-		a.Locked == upd.Locked &&
-		a.HumanApproved == upd.HumanApproved &&
-		slices.Equal(a.AllowedAgents, agents) {
-		// Nothing changes, so nothing is written, published or audited. The
-		// normalized list is still handed back so the caller sees the same
-		// canonical shape the write path would have stored.
-		a.AllowedAgents = agents
-		return a, nil
+	if changed {
+		s.publish("asset_updated", cloneAsset(saved))
+		s.audit(ctx, actor, "asset.governance", assetID, detail)
 	}
-
-	// Taken before the mutation: the audit detail is a diff against what the
-	// row actually held, not against what it is about to hold.
-	before := a.AllowedAgents
-	a.AgentVisible = upd.AgentVisible
-	a.Locked = upd.Locked
-	a.HumanApproved = upd.HumanApproved
-	a.AllowedAgents = agents
-
-	if err := s.st.UpdateAsset(ctx, a); err != nil {
-		return model.Asset{}, fmt.Errorf("service: update asset governance %s: %w", assetID, err)
-	}
-
-	s.publish("asset_updated", a)
-	s.audit(ctx, actor, "asset.governance", assetID, governanceDetail(upd, before))
-	return a, nil
+	return cloneAsset(saved), nil
 }
 
 // normalizeAllowedAgents deduplicates and sorts an allowed-agents list. A nil
@@ -241,13 +312,18 @@ func normalizeAllowedAgents(agents []string) []string {
 // one where that field was never touched. The allowed-agents list is shown as
 // the entries the update added, prefixed by "+", and the ones it removed,
 // prefixed by "-"; an unchanged list contributes nothing.
-func governanceDetail(upd model.Asset, previousAgents []string) string {
-	parts := []string{
-		fmt.Sprintf("agent_visible=%t", upd.AgentVisible),
-		fmt.Sprintf("locked=%t", upd.Locked),
-		fmt.Sprintf("human_approved=%t", upd.HumanApproved),
+func governanceDetail(before, after model.Asset) string {
+	var parts []string
+	if before.AgentVisible != after.AgentVisible {
+		parts = append(parts, fmt.Sprintf("agent_visible=%t", after.AgentVisible))
 	}
-	if d := agentListDiff(previousAgents, upd.AllowedAgents); d != "" {
+	if before.Locked != after.Locked {
+		parts = append(parts, fmt.Sprintf("locked=%t", after.Locked))
+	}
+	if before.HumanApproved != after.HumanApproved {
+		parts = append(parts, fmt.Sprintf("human_approved=%t", after.HumanApproved))
+	}
+	if d := agentListDiff(before.AllowedAgents, after.AllowedAgents); d != "" {
 		parts = append(parts, "allowed_agents="+d)
 	}
 	return strings.Join(parts, " ")

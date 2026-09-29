@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -19,11 +20,16 @@ import (
 type Service struct {
 	// st is the persistence layer. It never sees a business rule.
 	st *store.Store
+	// deliveryRoot is configured before serving HTTP and never changes after startup.
+	deliveryRoot string
+	// maxAttempts caps lease recoveries per task; see SetMaxAttempts.
+	maxAttempts int
 
 	// bus is the optional fan-out sink for state-change events. It is nil
 	// until SetBus is called, which keeps the service usable (and testable)
 	// before the Phase 2 SSE handler exists. Every publish path checks it.
-	bus *events.Bus
+	bus   *events.Bus
+	busMu sync.RWMutex
 }
 
 // New returns a Service backed by st with no bus attached. SetBus attaches
@@ -35,10 +41,19 @@ func New(st *store.Store) *Service {
 // SetBus attaches the bus that state-change events are published to. Passing
 // the bus a second time replaces the previous one, so a restart or a test
 // re-wire is not an error. Passing nil detaches it again.
-func (s *Service) SetBus(b *events.Bus) { s.bus = b }
+func (s *Service) SetBus(b *events.Bus) {
+	s.busMu.Lock()
+	s.bus = b
+	s.busMu.Unlock()
+}
 
 // Bus returns the attached bus, or nil when none is attached.
-func (s *Service) Bus() *events.Bus { return s.bus }
+func (s *Service) Bus() *events.Bus {
+	s.busMu.RLock()
+	b := s.bus
+	s.busMu.RUnlock()
+	return b
+}
 
 // publish fans one envelope out to every subscriber of name.
 //
@@ -46,10 +61,11 @@ func (s *Service) Bus() *events.Bus { return s.bus }
 // rather than a panic: the write path must succeed whether or not anybody is
 // listening for it.
 func (s *Service) publish(name string, payload any) {
-	if s.bus == nil {
+	b := s.Bus()
+	if b == nil {
 		return
 	}
-	s.bus.Publish(events.Envelope{Name: name, Payload: payload})
+	b.Publish(events.Envelope{Name: name, Payload: payload})
 }
 
 // audit records one governance or system action and deliberately swallows

@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
+
+var storesByService sync.Map
 
 // newService returns a Service backed by a fresh, empty SQLite database. The
 // database lives in the test's temp directory and is closed by t.Cleanup.
@@ -21,7 +24,34 @@ func newService(t *testing.T) *service.Service {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	return service.New(st)
+	svc := service.New(st)
+	storesByService.Store(svc, st)
+	return svc
+}
+
+// setTaskFixture writes intentionally unusual database states that an agent
+// is not allowed to create through Service, such as an expired lease left by
+// a crashed process. Tests use the store directly only for that fixture.
+func setTaskFixture(t *testing.T, svc *service.Service, taskID string, edit func(*model.Task)) model.Task {
+	t.Helper()
+	value, ok := storesByService.Load(svc)
+	if !ok {
+		t.Fatalf("no store registered for service fixture")
+	}
+	st := value.(*store.Store)
+	tk, err := st.GetTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetTask fixture %s: %v", taskID, err)
+	}
+	edit(&tk)
+	if err := st.UpdateTask(context.Background(), tk); err != nil {
+		t.Fatalf("UpdateTask fixture %s: %v", taskID, err)
+	}
+	updated, err := st.GetTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("read updated task fixture %s: %v", taskID, err)
+	}
+	return updated
 }
 
 // seedAsset creates one asset through the service and fails the test if the

@@ -16,6 +16,16 @@ import (
 // leases.
 func claimTaskWithLease(t *testing.T, svc *service.Service, agentID string, lease time.Time) model.Task {
 	t.Helper()
+	if !lease.After(time.Now()) {
+		// ClaimTask must refuse an already-dead lease. Model a process crash
+		// by first making a valid claim, then seed the persisted expiry through
+		// the store fixture helper.
+		tk, err := svc.ClaimTask(context.Background(), agentID, "narrator", time.Now().Add(time.Minute))
+		if err != nil {
+			t.Fatalf("ClaimTask(%s) with live lease: %v", agentID, err)
+		}
+		return setTaskFixture(t, svc, tk.TaskID, func(task *model.Task) { task.LeaseUntil = &lease })
+	}
 	tk, err := svc.ClaimTask(context.Background(), agentID, "narrator", lease)
 	if err != nil {
 		t.Fatalf("ClaimTask(%s): %v", agentID, err)

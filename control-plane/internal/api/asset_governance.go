@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"strings"
+
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
 
 // humanActor is the attribution every human governance write carries while
@@ -24,13 +26,10 @@ const humanActor = "human:webui"
 // fields and nothing else, each as a pointer so "absent" and "set to zero
 // value" are distinguishable.
 //
-// The pointers are what make the request a partial update. Decoding into
-// model.Asset instead would leave every unspecified field at its zero value,
-// which the service would read as "set agent_visible to false and clear the
-// allow-list" — so a client that touches one switch would quietly clear the
-// rest. With a nil pointer meaning "leave alone", the handler passes the
-// stored value through for every field the client did not name, and the
-// service's absolute-value semantics stop being a hazard.
+// The pointers are what make the request a partial update. The service merges
+// them against the row inside its SQLite transaction, so absent fields keep
+// their latest committed value even when concurrent PATCH requests update
+// different governance fields.
 //
 // The type is closed on purpose. decodeJSON sets DisallowUnknownFields, so a
 // body carrying status, asset_id, artifacts or updated_at is refused outright
@@ -89,52 +88,12 @@ func (s *Server) patchAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A partial body is completed against the stored row before it is
-	// handed to the service, because UpdateAssetGovernance treats the four
-	// governance fields of its argument as absolute values: it overwrites
-	// every stored governance field with whatever the caller's Asset holds,
-	// and re-reads only the non-governance ones. So a zero-valued field in
-	// the argument means "clear this", not "leave this alone".
-	//
-	// Reading the row first is what turns that into the partial update the
-	// request body describes. It is not a second decision point for any
-	// rule — every governance decision still belongs to the service; this
-	// is the transport's own bookkeeping for which fields the client named,
-	// which is information the service's signature has no way to carry.
-	//
-	// It also collapses the not-found case into one read: an id that does not
-	// exist fails here with the same model.ErrNotFound the update would have
-	// raised, so the answer is identical either way.
-	//
-	// There is no TOCTOU concern in reading first: the service re-reads the
-	// row itself before writing, so the copy read here is only ever used to
-	// fill fields the client left unnamed, never to decide what the client
-	// asked for.
-	stored, err := s.svc.GetAsset(r.Context(), id)
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-
-	// Only the fields the client named override the stored values; the rest
-	// keep them. The service still re-reads the row and still overwrites
-	// everything outside the four governance fields, so this Asset's other
-	// members are never written.
-	upd := stored
-	if req.AgentVisible != nil {
-		upd.AgentVisible = *req.AgentVisible
-	}
-	if req.Locked != nil {
-		upd.Locked = *req.Locked
-	}
-	if req.HumanApproved != nil {
-		upd.HumanApproved = *req.HumanApproved
-	}
-	if req.AllowedAgents != nil {
-		upd.AllowedAgents = *req.AllowedAgents
-	}
-
-	asset, err := s.svc.UpdateAssetGovernance(r.Context(), humanActor, id, upd)
+	asset, err := s.svc.PatchAssetGovernance(r.Context(), humanActor, id, service.GovernancePatch{
+		AgentVisible:  req.AgentVisible,
+		Locked:        req.Locked,
+		HumanApproved: req.HumanApproved,
+		AllowedAgents: req.AllowedAgents,
+	})
 	if err != nil {
 		writeServiceError(w, err)
 		return

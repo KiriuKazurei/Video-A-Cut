@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -147,11 +148,17 @@ func TestCreateTaskForcesQueuedStatus(t *testing.T) {
 	seedAsset(t, svc, model.Asset{AssetID: "clip_001", Status: model.AssetStatusIngested})
 
 	if err := svc.CreateTask(ctx, model.Task{
-		TaskID:    "t_001",
-		AssetID:   "clip_001",
-		Type:      model.TaskTypeTTS,
-		AgentRole: "narrator",
-		Status:    model.TaskStatusRunning,
+		TaskID:     "t_001",
+		AssetID:    "clip_001",
+		Type:       model.TaskTypeTTS,
+		AgentRole:  "narrator",
+		Status:     model.TaskStatusRunning,
+		AgentID:    "pre-filled-agent",
+		Progress:   .85,
+		Message:    "stale progress",
+		LeaseUntil: func() *time.Time { v := time.Now().Add(time.Hour); return &v }(),
+		ClaimedAt:  func() *time.Time { v := time.Now().Add(-time.Minute); return &v }(),
+		Artifacts:  map[string]string{"voice": "stale.wav"},
 	}); err != nil {
 		t.Fatalf("CreateTask: %v", err)
 	}
@@ -162,6 +169,9 @@ func TestCreateTaskForcesQueuedStatus(t *testing.T) {
 	}
 	if got.Status != model.TaskStatusQueued {
 		t.Fatalf("Status = %q, want %q (a created task must start queued)", got.Status, model.TaskStatusQueued)
+	}
+	if got.AgentID != "" || got.Progress != 0 || got.Message != "" || got.LeaseUntil != nil || got.ClaimedAt != nil || len(got.Artifacts) != 0 {
+		t.Errorf("execution fields were not reset for a new task: %+v", got)
 	}
 }
 
@@ -295,6 +305,27 @@ func TestStateMachineRejectsBackwards(t *testing.T) {
 	}
 }
 
+func TestFailTaskCannotOverwriteCancelledTask(t *testing.T) {
+	svc := taskQueue(t)
+	tk := claimOne(t, svc, "narrator-01")
+	setTaskFixture(t, svc, tk.TaskID, func(task *model.Task) {
+		task.Status = model.TaskStatusCancelled
+		task.LeaseUntil = nil
+	})
+
+	err := svc.FailTask(context.Background(), "narrator-01", tk.TaskID, "late failure")
+	if !errors.Is(err, model.ErrInvalidState) {
+		t.Fatalf("FailTask on cancelled task = %v, want ErrInvalidState", err)
+	}
+	got, err := svc.GetTask(context.Background(), tk.TaskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if got.Status != model.TaskStatusCancelled {
+		t.Errorf("status = %q, want cancelled", got.Status)
+	}
+}
+
 // TestForeignAgentCannotMutate verifies only the holder may report, submit or
 // fail a task: another agent failing a task it does not own would be a way to
 // unqueue somebody else's work.
@@ -341,15 +372,14 @@ func TestLeaseExpiryBlocksProgressAndSubmit(t *testing.T) {
 	svc := taskQueue(t)
 	ctx := context.Background()
 
-	tk, err := svc.ClaimTask(ctx, "narrator-01", "narrator", time.Now().Add(-time.Second))
-	if err != nil {
-		t.Fatalf("ClaimTask with an already-expired lease: %v", err)
-	}
+	tk := claimOne(t, svc, "narrator-01")
+	expired := time.Now().Add(-time.Second)
+	tk = setTaskFixture(t, svc, tk.TaskID, func(task *model.Task) { task.LeaseUntil = &expired })
 	if tk.Status != model.TaskStatusClaimed {
 		t.Fatalf("Status = %q, want %q", tk.Status, model.TaskStatusClaimed)
 	}
 
-	err = svc.ReportProgress(ctx, "narrator-01", tk.TaskID, 0.5, "late")
+	err := svc.ReportProgress(ctx, "narrator-01", tk.TaskID, 0.5, "late")
 	if !errors.Is(err, model.ErrLeaseExpired) {
 		t.Errorf("ReportProgress with an expired lease: got %v, want errors.Is ErrLeaseExpired", err)
 	}
@@ -365,6 +395,23 @@ func TestLeaseExpiryBlocksProgressAndSubmit(t *testing.T) {
 	}
 	if got.Status != model.TaskStatusClaimed {
 		t.Errorf("Status = %q, want %q (an expired lease blocks every mutation)", got.Status, model.TaskStatusClaimed)
+	}
+}
+
+func TestClaimRejectsNonFutureLease(t *testing.T) {
+	svc := taskQueue(t)
+	ctx := context.Background()
+	for _, lease := range []time.Time{time.Time{}, time.Now().Add(-time.Second)} {
+		if _, err := svc.ClaimTask(ctx, "narrator-01", "narrator", lease); !errors.Is(err, model.ErrArgument) {
+			t.Errorf("ClaimTask with lease %v error = %v, want ErrArgument", lease, err)
+		}
+	}
+	queued, err := svc.GetTask(ctx, "t_001")
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if queued.Status != model.TaskStatusQueued || queued.AgentID != "" || queued.LeaseUntil != nil {
+		t.Errorf("invalid claim changed task: %+v", queued)
 	}
 }
 
@@ -412,6 +459,24 @@ func TestProgressClamped(t *testing.T) {
 	}
 }
 
+func TestReportProgressRejectsNonFiniteValues(t *testing.T) {
+	svc := taskQueue(t)
+	tk := claimOne(t, svc, "narrator-01")
+	for _, progress := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		err := svc.ReportProgress(context.Background(), "narrator-01", tk.TaskID, progress, "bad")
+		if !errors.Is(err, model.ErrArgument) {
+			t.Errorf("ReportProgress(%v) error = %v, want ErrArgument", progress, err)
+		}
+	}
+	stored, err := svc.GetTask(context.Background(), tk.TaskID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if stored.Progress != 0 || stored.Status != model.TaskStatusClaimed {
+		t.Errorf("invalid progress changed task: %+v", stored)
+	}
+}
+
 // TestCreateTaskRejectsEmptyFields verifies the argument guards run before
 // the asset existence check, so a malformed request costs no database work.
 func TestCreateTaskRejectsEmptyFields(t *testing.T) {
@@ -424,6 +489,7 @@ func TestCreateTaskRejectsEmptyFields(t *testing.T) {
 		task model.Task
 	}{
 		{"empty task_id", model.Task{AssetID: "clip_001", Type: model.TaskTypeTTS, AgentRole: "narrator"}},
+		{"task_id path separator", model.Task{TaskID: "t/001", AssetID: "clip_001", Type: model.TaskTypeTTS, AgentRole: "narrator"}},
 		{"empty asset_id", model.Task{TaskID: "t_001", Type: model.TaskTypeTTS, AgentRole: "narrator"}},
 		{"empty agent_role", model.Task{TaskID: "t_001", AssetID: "clip_001", Type: model.TaskTypeTTS}},
 		{"empty type", model.Task{TaskID: "t_001", AssetID: "clip_001", AgentRole: "narrator"}},

@@ -1,5 +1,6 @@
 # Build artifacts
 /build/
+.run-data/
 *.exe
 *.test
 *.out
@@ -35,4 +36,12 @@ Thumbs.db
 # where the executable truth of those requirements lives in code.
 IDEA.md
 docs/
+# Keep this implementation handoff visible to version control while the
+# upstream design documents remain ignored.
+!docs/
+docs/*
+!docs/一阶段开发文档.md
+!docs/二阶段开发文档.md
+!docs/二阶段验收记录-2026-09-29.md
+!docs/三阶段开发文档.md
 视频剪辑流程方案.txt

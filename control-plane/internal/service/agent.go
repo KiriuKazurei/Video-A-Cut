@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
 // Heartbeat is the single entry point an agent uses to say "I am alive"
@@ -51,41 +53,110 @@ func (s *Service) Heartbeat(ctx context.Context, agentID, role, taskID string, l
 		return fmt.Errorf("service: heartbeat: agent_role is required: %w", model.ErrArgument)
 	}
 
-	if err := s.st.UpsertAgent(ctx, model.Agent{
-		AgentID:       agentID,
-		Role:          role,
-		Health:        model.AgentHealthHealthy,
-		CurrentTaskID: taskID,
-	}); err != nil {
-		return fmt.Errorf("service: heartbeat for agent %s: %w", agentID, err)
-	}
+	var saved model.Task
+	changed := false
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
+		currentTask := ""
+		var tk model.Task
+		if taskID != "" {
+			var err error
+			tk, err = tx.GetTask(ctx, taskID)
+			if err != nil {
+				return fmt.Errorf("service: heartbeat on task %s: %w", taskID, err)
+			}
+			if tk.AgentID != agentID {
+				return fmt.Errorf("service: heartbeat on task %s: agent %q is not the holder: %w",
+					taskID, agentID, model.ErrForbidden)
+			}
+			if tk.AgentRole != role {
+				return fmt.Errorf("service: heartbeat on task %s: role %q does not match task role %q: %w",
+					taskID, role, tk.AgentRole, model.ErrForbidden)
+			}
+			active, err := activeTasksForAgent(ctx, tx, agentID)
+			if err != nil {
+				return fmt.Errorf("service: heartbeat for agent %s: %w", agentID, err)
+			}
+			var otherLiveTask string
+			now := time.Now().UTC()
+			for _, held := range active {
+				if held.TaskID == taskID ||
+					(held.Status != model.TaskStatusClaimed && held.Status != model.TaskStatusRunning) ||
+					held.LeaseUntil == nil || !held.LeaseUntil.After(now) {
+					continue
+				}
+				otherLiveTask = held.TaskID
+				break
+			}
+			switch tk.Status {
+			case model.TaskStatusSucceeded, model.TaskStatusFailed, model.TaskStatusCancelled:
+				// A terminal task is no longer the agent's current work,
+				// but do not erase another live lease's pointer.
+				currentTask = otherLiveTask
+			case model.TaskStatusClaimed, model.TaskStatusRunning:
+				if otherLiveTask != "" {
+					return fmt.Errorf("service: heartbeat on task %s: agent already holds live task %s: %w",
+						taskID, otherLiveTask, model.ErrLeaseHeld)
+				}
+				if !validLeaseUntil(lease, time.Now().UTC()) {
+					return fmt.Errorf("service: heartbeat on task %s: lease expiry must be in the future: %w",
+						taskID, model.ErrArgument)
+				}
+				tk.LeaseUntil = &lease
+				if err := tx.UpdateTask(ctx, tk); err != nil {
+					return fmt.Errorf("service: heartbeat on task %s: %w", taskID, err)
+				}
+				saved, err = tx.GetTask(ctx, taskID)
+				if err != nil {
+					return err
+				}
+				changed = true
+				currentTask = taskID
+			default:
+				return fmt.Errorf("service: heartbeat on task %s: status %q is not active: %w",
+					taskID, tk.Status, model.ErrInvalidState)
+			}
+		}
 
-	// A heartbeat without a task id is a bare liveness ping: the agent is
-	// idle, or is still between tasks, and there is no lease to renew.
-	if taskID == "" {
+		agent, err := tx.GetAgent(ctx, agentID)
+		if err != nil && !errors.Is(err, model.ErrNotFound) {
+			return fmt.Errorf("service: heartbeat for agent %s: %w", agentID, err)
+		}
+		// The authenticated role comes from the operator's credentials file
+		// and wins over the stored row: a reassigned agent must not be locked
+		// out by its own history. The one exception is a live lease under
+		// the old role — switching then would let the agent keep working a
+		// task it is no longer entitled to — so the change waits until that
+		// lease ends (submit, fail, or recovery).
+		if err != nil || agent.Role != role {
+			held, err := activeTasksForAgent(ctx, tx, agentID)
+			if err != nil {
+				return fmt.Errorf("service: heartbeat for agent %s: %w", agentID, err)
+			}
+			now := time.Now().UTC()
+			for _, tk := range held {
+				if (tk.Status == model.TaskStatusClaimed || tk.Status == model.TaskStatusRunning) &&
+					tk.LeaseUntil != nil && tk.LeaseUntil.After(now) && tk.AgentRole != role {
+					return fmt.Errorf("service: heartbeat for agent %s: role changed to %q while holding %s task %s: %w",
+						agentID, role, tk.AgentRole, tk.TaskID, model.ErrLeaseHeld)
+				}
+			}
+		}
+		if err := tx.UpsertAgent(ctx, model.Agent{
+			AgentID:       agentID,
+			Role:          role,
+			Health:        model.AgentHealthHealthy,
+			CurrentTaskID: currentTask,
+		}); err != nil {
+			return fmt.Errorf("service: heartbeat for agent %s: %w", agentID, err)
+		}
 		return nil
-	}
-
-	tk, err := s.st.GetTask(ctx, taskID)
+	})
 	if err != nil {
-		return fmt.Errorf("service: heartbeat on task %s: %w", taskID, err)
+		return err
 	}
-	if tk.AgentID != agentID {
-		return fmt.Errorf("service: heartbeat on task %s: agent %q is not the holder: %w",
-			taskID, agentID, model.ErrForbidden)
+	if changed {
+		s.publish("task_updated", cloneTask(saved))
 	}
-	if tk.Status == model.TaskStatusSucceeded ||
-		tk.Status == model.TaskStatusFailed ||
-		tk.Status == model.TaskStatusCancelled {
-		return nil
-	}
-
-	tk.LeaseUntil = &lease
-	if err := s.st.UpdateTask(ctx, tk); err != nil {
-		return fmt.Errorf("service: heartbeat on task %s: %w", taskID, err)
-	}
-
-	s.publish("task_updated", tk)
 	return nil
 }
 

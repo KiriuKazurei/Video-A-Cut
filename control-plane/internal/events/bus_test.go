@@ -57,6 +57,7 @@ func TestSlowSubscriberDoesNotBlockPublisher(t *testing.T) {
 
 	// A handler that never signals and never returns.
 	never := make(chan struct{})
+	defer close(never)
 	b.Subscribe("task_updated", func(events.Envelope) { <-never })
 
 	done := make(chan struct{})

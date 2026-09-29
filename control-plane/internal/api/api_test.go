@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,6 +12,36 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
+
+type flushErrorWriter struct {
+	header http.Header
+	status int
+	body   []byte
+	err    error
+}
+
+func (w *flushErrorWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *flushErrorWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+func (w *flushErrorWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	w.body = append(w.body, p...)
+	return len(p), nil
+}
+
+func (w *flushErrorWriter) FlushError() error { return w.err }
 
 // newServer returns a Server wired to a real Service over a throwaway
 // database.
@@ -32,8 +64,14 @@ func newServer(t *testing.T) *Server {
 func do(t *testing.T, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	newServer(t).Handler().ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	newServer(t).Handler().ServeHTTP(rec, localRequest(method, path, nil))
 	return rec
+}
+
+func localRequest(method, path string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, path, body)
+	req.Host = "127.0.0.1"
+	return req
 }
 
 // envelope mirrors the JSON error body every handler writes, so a test fails
@@ -232,9 +270,13 @@ func TestWrapJSONErrorsPassesFlushThrough(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("event: task_updated\n"))
-		w.(http.Flusher).Flush()
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Errorf("first Flush() = %v", err)
+		}
 		_, _ = w.Write([]byte("data: {}\n\n"))
-		w.(http.Flusher).Flush()
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Errorf("second Flush() = %v", err)
+		}
 	})
 	rec := httptest.NewRecorder()
 	wrapJSONErrors(inner).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/events", nil))
@@ -248,6 +290,64 @@ func TestWrapJSONErrorsPassesFlushThrough(t *testing.T) {
 	}
 	if !rec.Flushed {
 		t.Fatal("streaming handler's Flush was not passed through")
+	}
+}
+
+func TestCaptureWriterPreservesCommitSemanticsAndFlushError(t *testing.T) {
+	flushErr := errors.New("flush failed")
+	underlying := &flushErrorWriter{err: flushErr}
+	capture := &captureWriter{ResponseWriter: underlying}
+	capture.Header().Set("X-Before", "kept")
+	capture.WriteHeader(http.StatusCreated)
+	capture.WriteHeader(http.StatusInternalServerError)
+	capture.Header().Set("X-After", "ignored")
+	if _, err := capture.Write([]byte("body")); err != nil {
+		t.Fatal(err)
+	}
+	if err := capture.FlushError(); !errors.Is(err, flushErr) {
+		t.Fatalf("FlushError() = %v, want underlying error %v", err, flushErr)
+	}
+	if underlying.status != http.StatusCreated {
+		t.Fatalf("status = %d, want first status %d", underlying.status, http.StatusCreated)
+	}
+	if got := underlying.Header().Get("X-Before"); got != "kept" {
+		t.Fatalf("committed header = %q, want kept", got)
+	}
+	if got := underlying.Header().Get("X-After"); got != "" {
+		t.Fatalf("late header = %q, want it excluded after commit", got)
+	}
+	if got := string(underlying.body); got != "body" {
+		t.Fatalf("body = %q, want body", got)
+	}
+	if _, ok := any(capture).(http.Flusher); ok {
+		t.Fatal("captureWriter advertises http.Flusher without knowing the underlying capability")
+	}
+	if got := capture.Unwrap(); got != underlying {
+		t.Fatal("Unwrap() did not expose the underlying ResponseWriter")
+	}
+}
+
+func TestWrapJSONErrorsUsesHeadersFrozenAtCommit(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", "GET")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Header().Set("Allow", "DELETE")
+		_, _ = w.Write([]byte("Method Not Allowed\n"))
+	})
+	rec := httptest.NewRecorder()
+	wrapJSONErrors(inner).ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/assets/a_1", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); got != "GET" {
+		t.Fatalf("Allow = %q, want frozen value GET", got)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	if got := decodeErr(t, rec).Code; got != codeMethodNotAllowed {
+		t.Fatalf("error code = %q, want %q", got, codeMethodNotAllowed)
 	}
 }
 

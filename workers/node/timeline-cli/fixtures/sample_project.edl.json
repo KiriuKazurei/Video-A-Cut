@@ -1,0 +1,53 @@
+{
+  "timeline": { "fps": 30, "sample_rate": 48000 },
+  "video": [
+    {
+      "src": "clip_01.mp4",
+      "in": 0,
+      "out": 25,
+      "timeline_in": 0
+    },
+    {
+      "src": "clip_02.mp4",
+      "in": 1.5,
+      "out": 10,
+      "timeline_in": 25
+    }
+  ],
+  "game_audio": [
+    {
+      "src": "clip_01.mp4",
+      "in": 0,
+      "out": 25,
+      "timeline_in": 0,
+      "gain_db": -15
+    }
+  ],
+  "voice": [
+    {
+      "id": "vo_001",
+      "src": "voice_001.wav",
+      "start": 1.9,
+      "end": 4.6,
+      "gain_db": 0
+    }
+  ],
+  "subtitle": [
+    {
+      "id": "sub_001",
+      "text": "喂 今天用帧表对时间线",
+      "start": 0.3333333333333333,
+      "end": 1.6666666666666667
+    }
+  ],
+  "music": [
+    {
+      "id": "bgm_001",
+      "src": "bgm_loop.wav",
+      "start": 7.5,
+      "end": 25,
+      "gain_db": -20,
+      "duck": true
+    }
+  ]
+}

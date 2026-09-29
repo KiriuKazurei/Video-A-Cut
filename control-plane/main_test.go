@@ -2,10 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,12 +24,18 @@ func dbPath(t *testing.T) string {
 	return filepath.Join(t.TempDir(), "vac.db")
 }
 
+func headlessConfig() config.Config {
+	cfg := config.Default()
+	cfg.HttpAddr = ""
+	return cfg
+}
+
 // TestAssembleBuildsAuditArchiver proves the composition root also builds
 // the audit retention driver. An archiver that exists but is never wired
 // into Run would be a silent feature: the retention policy the operator
 // configured would never run, and nothing would report that it was not.
 func TestAssembleBuildsAuditArchiver(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -41,7 +52,7 @@ func TestAssembleBuildsAuditArchiver(t *testing.T) {
 // actually has two periodic loops in flight rather than only the lease one,
 // which is the failure mode a signature change in Run would cause.
 func TestRunDrivesBothPeriodicLoops(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -84,7 +95,7 @@ func writeConfigFile(t *testing.T, doc string) string {
 // reclaimer all exist afterwards, and the bus handed to the service is the one
 // assemble created, not a second bus nobody publishes to.
 func TestAssembleOpensStoreAndWiresService(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -113,7 +124,7 @@ func TestAssembleOpensStoreAndWiresService(t *testing.T) {
 // TestSelfcheckDetectsHealthyStore proves a freshly assembled app passes its
 // own startup check: the probe write reaches the database and reads back.
 func TestSelfcheckDetectsHealthyStore(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -129,7 +140,7 @@ func TestSelfcheckDetectsHealthyStore(t *testing.T) {
 // is broken, so it must report an error instead of returning nil on a process
 // that cannot persist anything.
 func TestSelfcheckFailsAfterStoreClosed(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -157,7 +168,7 @@ func TestCloseIsSafeOnZeroApp(t *testing.T) {
 // of a process against the same database finds the probe row already there —
 // and that the probe row really is persisted afterwards.
 func TestSelfcheckIsIdempotent(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -218,7 +229,7 @@ func TestAssembleUsesConfiguredLease(t *testing.T) {
 // expectation is taken from config.DefaultLeaseSeconds so the two cannot
 // drift apart silently.
 func TestAssembleDefaultsLeaseInterval(t *testing.T) {
-	a, err := assemble(dbPath(t), config.Default())
+	a, err := assemble(dbPath(t), headlessConfig())
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
@@ -258,7 +269,8 @@ func TestStartupAppliesConfigFile(t *testing.T) {
 		"lease_seconds": 90,
 		"max_agents": 5,
 		"audit_retention_days": 7,
-		"archive_retention_days": 14
+		"archive_retention_days": 14,
+		"http_addr": ""
 	}`)
 
 	a, err := startup(path, dbPath(t))
@@ -292,6 +304,394 @@ func TestStartupRejectsInvalidConfig(t *testing.T) {
 	}
 	if !errors.Is(err, config.ErrInvalid) {
 		t.Errorf("startup: error = %v, want it to wrap config.ErrInvalid", err)
+	}
+}
+
+// serveHTTPStartupGrace bounds how long a test waits for the HTTP surface to
+// come up and then to drain. It is generous against the binary's own
+// httpShutdownGrace so a test that fails does so because Run is stuck, not
+// because the suite misjudged how long a local bind takes.
+const serveHTTPStartupGrace = 5 * time.Second
+
+// waitForAddr blocks until addr accepts a connection, fails the test if it
+// never does, and returns once it does.
+//
+// The wait proves Serve began accepting. assemble has already bound the
+// listener, so it does not race a temporary port probe against a second bind.
+func waitForAddr(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(serveHTTPStartupGrace)
+	var lastErr error
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never accepted a connection: %v", addr, lastErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// appForHTTP assembles an app whose HTTP surface listens on addr. It registers
+// a cleanup that closes the app, so a test cannot leak the store.
+func appForHTTP(t *testing.T, addr string) *app {
+	t.Helper()
+	cfg := config.Default()
+	cfg.HttpAddr = addr
+	a, err := assemble(dbPath(t), cfg)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	return a
+}
+
+// runAppInBackground starts Run and returns a function that cancels it and
+// collects its result, failing the test if Run does not return in time.
+//
+// The cancellation and the collection are one helper because they are one
+// operation: cancelling without collecting leaves a goroutine that outlives
+// the test, and the two written separately at each call site is how the drain
+// deadline ends up asserted in one test and forgotten in the rest.
+func runAppInBackground(t *testing.T, a *app) (cancelAndWait func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+
+	return func() error {
+		cancel()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(serveHTTPStartupGrace + httpShutdownGrace):
+			t.Fatalf("Run did not return within %v of cancellation", serveHTTPStartupGrace+httpShutdownGrace)
+			return nil
+		}
+	}
+}
+
+// TestServeHTTPStartsAndStopsCleanly proves the HTTP surface is actually
+// served by Run: the address app.cfg.HttpAddr names accepts connections once
+// Run is in flight, and Run returns when the context is cancelled.
+//
+// The two are asserted separately because either can be the thing that is
+// broken. A Run that started no serve loop would still return on cancellation
+// — the two workers end it — so the wait for a connection is what proves
+// something is listening, and the return is what proves shutting that
+// something down terminates Run instead of hanging on it.
+func TestServeHTTPStartsAndStopsCleanly(t *testing.T) {
+	a := appForHTTP(t, "127.0.0.1:0")
+	addr := a.httpLn.Addr().String()
+
+	wait := runAppInBackground(t, a)
+	waitForAddr(t, addr)
+
+	// context.Canceled is the expected answer, not nil: Run's contract is
+	// that it reports the cancellation that stopped it so a caller can
+	// tell "asked to stop" from "stopped". What must not appear is
+	// http.ErrServerClosed dressed as a fault, which an unswallowed
+	// ListenAndServe error would surface here.
+	if err := wait(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() = %v, want context.Canceled", err)
+	}
+}
+
+// TestServeHTTPServesAssetsEndpoint proves the surface a governance client
+// actually uses is wired to the service: GET /api/assets answers 200 with a
+// JSON array, not the router's 404 and not a stream of nothing.
+//
+// The body is required to decode as a JSON array because a handler that
+// answered 200 with an empty body would pass a status-only check while
+// breaking every client that parses the response.
+func TestServeHTTPServesAssetsEndpoint(t *testing.T) {
+	a := appForHTTP(t, "127.0.0.1:0")
+	addr := a.httpLn.Addr().String()
+
+	wait := runAppInBackground(t, a)
+	waitForAddr(t, addr)
+
+	resp, err := http.Get("http://" + addr + "/api/assets")
+	if err != nil {
+		t.Fatalf("GET /api/assets: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /api/assets = %d, want 200 (body: %s)", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "application/json") {
+		t.Errorf("Content-Type = %q, want it to contain application/json", got)
+	}
+	var arr []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&arr); err != nil {
+		t.Fatalf("GET /api/assets body is not a JSON array: %v", err)
+	}
+
+	if err := wait(); !errors.Is(err, context.Canceled) {
+		t.Errorf("Run() = %v, want context.Canceled", err)
+	}
+}
+
+// TestRunReturnsContextError pins that Run keeps reporting the cancellation
+// that stopped it: the HTTP surface must not change the Phase 1.5 contract
+// that a caller can tell "asked to stop" from "stopped cleanly".
+func TestRunReturnsContextError(t *testing.T) {
+	a, err := assemble(dbPath(t), headlessConfig())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Run() = %v, want context.Canceled", err)
+		}
+	case <-time.After(serveHTTPStartupGrace):
+		t.Fatal("Run() did not return after cancellation")
+	}
+}
+
+// TestServeHTTPDisabledWhenAddrEmpty proves an empty http_addr disables the
+// HTTP surface entirely rather than falling back to the configured default.
+func TestServeHTTPDisabledWhenAddrEmpty(t *testing.T) {
+	cfg := config.Default()
+	cfg.HttpAddr = ""
+	a, err := assemble(dbPath(t), cfg)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if a.httpSrv != nil || a.httpLn != nil {
+		t.Fatal("empty http_addr created an HTTP server or listener")
+	}
+
+	wait := runAppInBackground(t, a)
+
+	if err := wait(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() with http_addr disabled = %v, want context.Canceled", err)
+	}
+}
+
+// TestServeHTTPInvalidAddrFailsStartup proves a malformed address is refused
+// during config validation, before the store is opened or a listener is
+// created.
+func TestServeHTTPInvalidAddrFailsStartup(t *testing.T) {
+	cfg := config.Default()
+	cfg.HttpAddr = "invalid addr without port"
+	if _, err := assemble(dbPath(t), cfg); err == nil {
+		t.Fatal("assemble: expected an error for an unbindable http_addr, got nil")
+	}
+}
+
+// TestServeHTTPServesEveryEndpoint is the lightweight form of Gate 2: every
+// documented URL answers over a real connection, and none of them answers 501
+// not_implemented (the stub that would mean a route was registered without a
+// handler behind it).
+//
+// The endpoints are driven with bodies that are actually legal for them — a
+// governance PATCH on the selfcheck asset, a POST task on that same asset —
+// because a request refused with 400 still proves the route and the handler
+// exist, while one refused with 501 proves nothing useful. The SSE endpoint is
+// the exception: it is a long-lived stream, so it is asserted on its status
+// and headers and its body closed immediately, which is also what keeps the
+// drain from waiting on it.
+func TestServeHTTPServesEveryEndpoint(t *testing.T) {
+	a := appForHTTP(t, "127.0.0.1:0")
+	addr := a.httpLn.Addr().String()
+	if err := a.selfcheck(context.Background()); err != nil {
+		t.Fatalf("selfcheck: %v", err)
+	}
+
+	wait := runAppInBackground(t, a)
+	waitForAddr(t, addr)
+
+	base := "http://" + addr
+	for _, tc := range []struct {
+		name   string
+		method string
+		url    string
+		body   string
+		want   int
+	}{
+		{"asset list", "GET", "/api/assets", "", 200},
+		{"asset detail", "GET", "/api/assets/" + selfcheckAssetID, "", 200},
+		{"asset detail unknown", "GET", "/api/assets/does-not-exist", "", 404},
+		{"asset governance", "PATCH", "/api/assets/" + selfcheckAssetID, `{"agent_visible":true}`, 200},
+		{"task create", "POST", "/api/tasks", `{"task_id":"_smoke","asset_id":"_selfcheck","type":"probe","agent_role":"prober"}`, 201},
+		{"task detail", "GET", "/api/tasks/_smoke", "", 200},
+		{"task detail unknown", "GET", "/api/tasks/does-not-exist", "", 404},
+		{"audit log", "GET", "/api/audit", "", 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var body io.Reader
+			if tc.body != "" {
+				body = strings.NewReader(tc.body)
+			}
+			req, err := http.NewRequest(tc.method, base+tc.url, body)
+			if err != nil {
+				t.Fatalf("new request: %v", err)
+			}
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.method, tc.url, err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode == http.StatusNotImplemented {
+				t.Errorf("%s %s = 501, want a real answer (no stub may survive)", tc.method, tc.url)
+			}
+			if resp.StatusCode != tc.want {
+				t.Errorf("%s %s = %d, want %d", tc.method, tc.url, resp.StatusCode, tc.want)
+			}
+		})
+	}
+
+	// The stream is checked separately: it never completes on its own, so
+	// it is requested, its headers asserted, and its body closed at once.
+	t.Run("event stream", func(t *testing.T) {
+		resp, err := http.Get(base + "/api/events")
+		if err != nil {
+			t.Fatalf("GET /api/events: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /api/events = %d, want 200", resp.StatusCode)
+		}
+		if got := resp.Header.Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+			t.Errorf("Content-Type = %q, want it to contain text/event-stream", got)
+		}
+	})
+
+	if err := wait(); !errors.Is(err, context.Canceled) {
+		t.Errorf("Run() = %v, want context.Canceled", err)
+	}
+}
+
+// TestServeHTTPDrainsThenReturns proves the drain is bounded rather than
+// infinite: an SSE subscription is a request that never completes on its own,
+// so leaving a body open until the client gives up would hold Run open for as
+// long as the client kept the connection, and the process would never exit.
+//
+// The assertion is that Run returns, and returns promptly — within
+// httpShutdownGrace plus slack — rather than that it returns nil. The timeout
+// is deliberately logged rather than raised as an error, because a shutdown
+// the operator asked for is not made worse by a client that has not left yet.
+func TestServeHTTPDrainsThenReturns(t *testing.T) {
+	a := appForHTTP(t, "127.0.0.1:0")
+	addr := a.httpLn.Addr().String()
+
+	wait := runAppInBackground(t, a)
+	waitForAddr(t, addr)
+
+	// The stream is opened and deliberately never closed: the handler holds
+	// it until the request context is cancelled or the drain gives up, and
+	// closing it here would remove the only thing the timeout exists for.
+	// The response is discarded rather than read, because reading would
+	// block on frames the server is not sending.
+	resp, err := http.Get("http://" + addr + "/api/events")
+	if err != nil {
+		t.Fatalf("GET /api/events: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/events = %d, want 200", resp.StatusCode)
+	}
+
+	start := time.Now()
+	if err := wait(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() = %v, want context.Canceled", err)
+	}
+	// The drain is allowed to end early — a real client that hung up, or
+	// the deadline — so the upper bound is the grace plus the time the
+	// cancel has to travel through the workers, and the lower bound is
+	// simply "did not return instantly", which would mean Shutdown was
+	// never called at all.
+	if elapsed := time.Since(start); elapsed > httpShutdownGrace+2*time.Second {
+		t.Errorf("Run took %v to return, want it bounded by the %v drain", elapsed, httpShutdownGrace)
+	}
+}
+
+// TestServeHTTPClosesListenerOnFailure covers the one serve error Run is
+// meant to report. A server whose listener is closed underneath it returns a
+// real error from Serve, and serveHTTP must report it as its result: a socket
+// that dies while the process believes it is serving is a fault the operator
+// has to see, and swallowing it would leave a plane that answers nothing while
+// reporting healthy.
+//
+// It calls serveHTTP directly rather than going through Run because Run waits
+// for the workers, which only end when the caller's context does — so a
+// listener that dies without a cancellation would leave Run waiting for a
+// shutdown nobody asked for. That is Run's correct behaviour (the workers are
+// still sweeping and still have work), and it means the propagation itself has
+// to be observed at the layer where the result is produced.
+func TestServeHTTPClosesListenerOnFailure(t *testing.T) {
+	a := appForHTTP(t, "127.0.0.1:0")
+	addr := a.httpLn.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	waitForAddr(t, addr)
+
+	// Closing the listener is what makes Serve fail: the accept loop exits
+	// with an error that is not http.ErrServerClosed, because nothing asked
+	// the server to shut down — the socket simply went away. Shutdown's own
+	// close produces the sentinel and is filtered; this does not.
+	if err := a.httpLn.Close(); err != nil {
+		t.Fatalf("close the listener: %v", err)
+	}
+
+	// serveHTTP is given a context that is never cancelled, so the select
+	// that watches it falls through to Serve's own return rather than
+	// reaching the drain. The one-shot error is what the surface reports.
+	err := a.serveHTTP(ctx)
+	if err == nil {
+		t.Fatal("serveHTTP() = nil, want the accept-loop failure to propagate")
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		t.Errorf("serveHTTP() = %v, want a real fault rather than the deliberate-close sentinel", err)
+	}
+}
+
+// TestServeHTTPSwallowsDeliberateClose pins the counterpart: when the caller's
+// context is cancelled, the listener that Serve was using is closed by
+// serveHTTP's own drain, and the http.ErrServerClosed that produces must not
+// reach the caller as a fault. Without this the previous test would pass and
+// every ordinary shutdown would exit 1.
+func TestServeHTTPSwallowsDeliberateClose(t *testing.T) {
+	a := appForHTTP(t, "127.0.0.1:0")
+	addr := a.httpLn.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.serveHTTP(ctx) }()
+
+	waitForAddr(t, addr)
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("serveHTTP() = %v, want nil for a deliberate close", err)
+		}
+	case <-time.After(httpShutdownGrace + serveHTTPStartupGrace):
+		t.Fatal("serveHTTP() did not return after cancellation")
 	}
 }
 

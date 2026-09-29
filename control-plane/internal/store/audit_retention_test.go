@@ -81,8 +81,8 @@ func TestOpenAppliesAuditArchiveMigration(t *testing.T) {
 	if err := s.DB().QueryRow(`select count(*) from schema_migrations`).Scan(&versions); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if versions != 2 {
-		t.Fatalf("schema_migrations rows = %d, want 2", versions)
+	if versions != 4 {
+		t.Fatalf("schema_migrations rows = %d, want 4", versions)
 	}
 
 	// Reopen the same file: both versions are already recorded, so the ledger

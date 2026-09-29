@@ -21,7 +21,9 @@ import (
 func post(t *testing.T, srv *Server, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+	req := localRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	srv.Handler().ServeHTTP(rec, req)
 	return rec
 }
 
@@ -361,7 +363,7 @@ func TestGetTaskEmptyIDRejected(t *testing.T) {
 
 	// The handler half: an empty id that does reach getTask is a 400, not
 	// a store round-trip.
-	req := httptest.NewRequest(http.MethodGet, "/api/tasks/", nil)
+	req := localRequest(http.MethodGet, "/api/tasks/", nil)
 	req.SetPathValue("id", "")
 	rec2 := httptest.NewRecorder()
 	srv.getTask(rec2, req)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
 // RequeueExpiredLeases is the recovery sweep of docs §7.2 (超时回收): every
@@ -51,24 +52,59 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("service: requeue expired leases: %w", err)
 	}
 
-	now := time.Now().UTC()
 	requeued := 0
-	for _, tk := range tasks {
-		if tk.LeaseUntil == nil || tk.LeaseUntil.After(now) {
+	for _, candidate := range tasks {
+		var saved model.Task
+		changed, exhausted := false, false
+		err := s.st.Transaction(ctx, func(tx *store.Store) error {
+			now := time.Now().UTC()
+			tk, err := tx.GetTask(ctx, candidate.TaskID)
+			if err != nil {
+				return err
+			}
+			if tk.Status != model.TaskStatusClaimed && tk.Status != model.TaskStatusRunning {
+				return nil
+			}
+			if tk.LeaseUntil == nil || tk.LeaseUntil.After(now) {
+				return nil
+			}
+
+			tk.Attempts++
+			tk.LeaseUntil = nil
+			tk.Artifacts = map[string]string{}
+			if tk.Attempts >= s.attemptCap() {
+				// Give up: keep the last holder for the audit trail and
+				// state the reason instead of handing the task out again.
+				tk.Status = model.TaskStatusFailed
+				tk.Message = fmt.Sprintf("lease expired %d times; retry limit reached", tk.Attempts)
+				exhausted = true
+			} else {
+				tk.Status = model.TaskStatusQueued
+				tk.AgentID = ""
+				tk.Progress = 0
+				tk.Message = ""
+			}
+			if err := tx.UpdateTask(ctx, tk); err != nil {
+				return fmt.Errorf("service: requeue task %s: %w", tk.TaskID, err)
+			}
+			saved, err = tx.GetTask(ctx, tk.TaskID)
+			changed = true
+			return err
+		})
+		if err != nil {
+			return requeued, fmt.Errorf("service: requeue task %s: %w", candidate.TaskID, err)
+		}
+		if !changed {
 			continue
 		}
 
-		tk.Status = model.TaskStatusQueued
-		tk.AgentID = ""
-		tk.LeaseUntil = nil
-		tk.Progress = 0
-		tk.Message = ""
-		if err := s.st.UpdateTask(ctx, tk); err != nil {
-			return requeued, fmt.Errorf("service: requeue task %s: %w", tk.TaskID, err)
+		s.publish("task_updated", cloneTask(saved))
+		if exhausted {
+			s.audit(ctx, "queue", "task.fail", saved.TaskID, saved.Message)
+			s.cascadeFailure(ctx, saved.TaskID)
+			continue
 		}
-
-		s.publish("task_updated", tk)
-		s.audit(ctx, "queue", "task.requeue", tk.TaskID, "lease expired")
+		s.audit(ctx, "queue", "task.requeue", saved.TaskID, fmt.Sprintf("lease expired (attempt %d)", saved.Attempts))
 		requeued++
 	}
 	return requeued, nil

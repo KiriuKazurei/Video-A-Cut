@@ -16,6 +16,11 @@ type Task struct {
 	ClaimedAt  *time.Time        `json:"claimed_at,omitempty"`
 	UpdatedAt  time.Time         `json:"updated_at"`
 	Artifacts  map[string]string `json:"artifacts,omitempty"`
+	// DependsOn lists task ids that must be succeeded before this task can
+	// be claimed. Fixed at creation.
+	DependsOn []string `json:"depends_on,omitempty"`
+	// Attempts counts how many times an expired lease was recovered.
+	Attempts int `json:"attempts"`
 }
 
 // Task state machine: queued -> claimed -> running -> succeeded.

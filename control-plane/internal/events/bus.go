@@ -1,141 +1,162 @@
-// Package events provides the in-process event bus that fans state changes out
-// to subscribers such as the Phase 2 SSE handler. It knows nothing about HTTP
-// or any other transport: a subscriber receives an Envelope and decides itself
-// how to encode it, so the bus is usable standalone before Phase 2 exists.
+// Package events provides the bounded in-process event fan-out used by SSE.
+// It contains no transport or business rules.
 package events
 
 import (
+	"errors"
 	"log/slog"
 	"sync"
 )
 
-// Envelope is a single bus event.
-//
-// Name is the SSE event name the Phase 2 handler writes on the wire; Payload is
-// the domain value that handler serialises.
+const subscriberBuffer = 64
+
+var ErrClosed = errors.New("events: bus is closed")
+
 type Envelope struct {
 	Name    string
 	Payload any
 }
 
-// Handler consumes one Envelope.
-//
-// A handler must not block. The bus dispatches every handler in its own
-// goroutine, so blocking work does not delay the publisher, but it does pin a
-// goroutine for as long as it blocks. Long work belongs in a goroutine owned by
-// the handler itself.
-//
-// A handler should also avoid panicking: the bus recovers, logs and discards
-// the event, so a panic costs only its own delivery — never the publisher.
 type Handler func(Envelope)
 
-// Bus fans envelopes out to every subscriber of the matching event name.
-//
-// Handlers of one name receive envelopes in an unspecified order. The zero
-// value is unusable; call New. A Bus is safe for concurrent use.
+type subscription struct {
+	id      int
+	names   map[string]struct{}
+	handler Handler
+	queue   chan Envelope
+	done    chan struct{}
+}
+
+// Bus delivers each subscriber's events in Publish order using one bounded
+// queue and one worker per subscription. A full queue removes and closes that
+// subscription; queued events drain and no later event is silently appended.
+// A slow or panicking subscriber cannot block other subscribers or create a
+// goroutine per event.
 type Bus struct {
-	// subs holds, per event name, the subscribers of that name keyed by the
-	// id Subscribe handed out.
-	subs map[string]map[int]Handler
-	// next is the id the next Subscribe call returns. It starts at 1 so a
-	// subscription id is never the zero value.
-	next int
-
-	// mu guards subs, next and done.
-	mu sync.RWMutex
-	// done is the shutdown sentinel: Close closes it and then nils it, which
-	// is what makes Close idempotent. Publish delivers nothing once done is
-	// nil.
-	done chan struct{}
-	// log records subscriber panics recovered during dispatch.
-	log *slog.Logger
+	mu     sync.Mutex
+	subs   map[int]*subscription
+	next   int
+	closed bool
+	log    *slog.Logger
 }
 
-// New returns a started Bus ready to take subscriptions.
 func New() *Bus {
-	return &Bus{
-		subs: make(map[string]map[int]Handler),
-		done: make(chan struct{}),
-		log:  slog.Default(),
-	}
+	return &Bus{subs: make(map[int]*subscription), log: slog.Default()}
 }
 
-// Subscribe registers h for name and returns the subscription id to hand back
-// to Unsubscribe. Several handlers may subscribe to the same name.
+// Subscribe registers h for one event name. It returns 0 if the bus is closed.
 func (b *Bus) Subscribe(name string, h Handler) int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.next++
-	id := b.next
-	if b.subs[name] == nil {
-		b.subs[name] = make(map[int]Handler)
+	id, err := b.SubscribeMany([]string{name}, h)
+	if err != nil {
+		return 0
 	}
-	b.subs[name][id] = h
 	return id
 }
 
-// Unsubscribe removes the subscription id that Subscribe returned for name.
-// Unknown names and ids are ignored, so a double unsubscribe is harmless.
-func (b *Bus) Unsubscribe(name string, id int) {
+// SubscribeMany registers one ordered subscription for several event names.
+// Using one subscription for a stream preserves order across event topics.
+func (b *Bus) SubscribeMany(names []string, h Handler) (int, error) {
+	id, _, err := b.SubscribeManySignal(names, h)
+	return id, err
+}
+
+// SubscribeManySignal is SubscribeMany plus a channel closed when the bus
+// cancels this subscription because it was removed, overflowed, or the bus
+// closed.
+func (b *Bus) SubscribeManySignal(names []string, h Handler) (int, <-chan struct{}, error) {
+	filters := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name != "" {
+			filters[name] = struct{}{}
+		}
+	}
+	if len(filters) == 0 || h == nil {
+		return 0, nil, errors.New("events: subscription requires names and a handler")
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	hs, ok := b.subs[name]
-	if !ok {
-		return
+	if b.closed {
+		return 0, nil, ErrClosed
 	}
-	delete(hs, id)
-	// Drop the now-empty inner map so names do not accumulate over time.
-	if len(hs) == 0 {
-		delete(b.subs, name)
+	b.next++
+	sub := &subscription{
+		id:      b.next,
+		names:   filters,
+		handler: h,
+		queue:   make(chan Envelope, subscriberBuffer),
+		done:    make(chan struct{}),
+	}
+	b.subs[sub.id] = sub
+	go b.run(sub)
+	return sub.id, sub.done, nil
+}
+
+// Unsubscribe removes the subscription returned for name. The name is kept in
+// the signature for source compatibility; ids are unique across the bus.
+func (b *Bus) Unsubscribe(_ string, id int) { b.UnsubscribeID(id) }
+
+func (b *Bus) UnsubscribeID(id int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.removeLocked(id)
+}
+
+func (b *Bus) removeLocked(id int) {
+	if sub, ok := b.subs[id]; ok {
+		delete(b.subs, id)
+		close(sub.queue)
+		close(sub.done)
 	}
 }
 
-// Publish hands ev to every subscriber of ev.Name.
-//
-// The handler set is copied under the read lock and the lock is released before
-// any dispatch. That is what keeps a slow or panicking subscriber from blocking
-// the publisher: no handler code runs while the lock is held, so the publisher
-// never waits on a subscriber, and concurrent Subscribe, Unsubscribe and
-// Publish calls never queue behind handler work either.
-//
-// Each handler then runs in its own goroutine with a deferred recover, so a
-// panic is logged and contained instead of crashing the process. Nothing is
-// delivered once the bus has been closed.
+// Publish enqueues an event for every matching subscriber. Calls made
+// sequentially are observed in that order by each subscriber, including
+// subscribers registered for several event names.
 func (b *Bus) Publish(ev Envelope) {
-	b.mu.RLock()
-	if b.done == nil {
-		b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
 		return
 	}
-	handlers := make([]Handler, 0, len(b.subs[ev.Name]))
-	for _, h := range b.subs[ev.Name] {
-		handlers = append(handlers, h)
+	for id, sub := range b.subs {
+		if _, ok := sub.names[ev.Name]; !ok {
+			continue
+		}
+		select {
+		case sub.queue <- ev:
+		default:
+			b.log.Warn("events: subscriber queue overflow; closing subscription",
+				"subscription", id, "event", ev.Name)
+			b.removeLocked(id)
+		}
 	}
-	b.mu.RUnlock()
+}
 
-	for _, h := range handlers {
-		go func(h Handler) {
+func (b *Bus) run(sub *subscription) {
+	for ev := range sub.queue {
+		func() {
 			defer func() {
-				if r := recover(); r != nil {
-					b.log.Error("events: subscriber panic", "event", ev.Name, "recover", r)
+				if recovered := recover(); recovered != nil {
+					b.log.Error("events: subscriber panic", "event", ev.Name, "recover", recovered)
 				}
 			}()
-			h(ev)
-		}(h)
+			sub.handler(ev)
+		}()
 	}
 }
 
-// Close shuts the bus down; a later Publish delivers nothing. It is idempotent,
-// so calling it twice is safe.
+// Close prevents new subscriptions and publishing, and releases every
+// subscriber queue. A handler currently running is allowed to return; Close
+// does not wait on user callback code.
 func (b *Bus) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	if b.done == nil {
+	if b.closed {
 		return
 	}
-	close(b.done)
-	b.done = nil
+	b.closed = true
+	for id := range b.subs {
+		b.removeLocked(id)
+	}
 }

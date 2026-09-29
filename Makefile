@@ -6,20 +6,19 @@ TEST_FLAGS ?= -count=1
 all: fmt vet build test
 
 build:
-	$(GO) build ./...
+	$(GO) -C control-plane build ./...
 
 test:
-	$(GO) test $(TEST_FLAGS) ./...
+	$(GO) -C control-plane test $(TEST_FLAGS) ./...
 
 vet:
-	$(GO) vet ./...
+	$(GO) -C control-plane vet ./...
 
 fmt:
-	$(GO) fmt ./...
+	$(GO) -C control-plane fmt ./...
 
 tidy:
-	cd control-plane && $(GO) mod tidy
+	$(GO) -C control-plane mod tidy
 
 clean:
-	$(GO) clean -cache
-	rm -f video-auto-cut.db video-auto-cut.db-wal video-auto-cut.db-shm
+	$(GO) -C control-plane clean

@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,12 +33,21 @@ const (
 	DefaultLeaseSeconds = 30
 	// DefaultMaxAgents is how many agents may hold a lease at once.
 	DefaultMaxAgents = 2
+	// DefaultMaxAttempts is how many lease recoveries a task survives.
+	DefaultMaxAttempts = 3
 	// DefaultAuditRetentionDays is how long normal audit rows are kept.
 	DefaultAuditRetentionDays = 30
 	// DefaultArchiveRetentionDays is how long archived rows are kept. It
 	// matches the normal retention window, so an archived record lives about
 	// twice as long as an ordinary one rather than being kept forever.
 	DefaultArchiveRetentionDays = 30
+	// DefaultHTTPAddr is where the governance surface listens. The plane has
+	// no authentication layer yet, so the default binds the loopback
+	// interface only: a governance surface that can write asset visibility,
+	// locks and approvals must not be reachable from another host until
+	// Phase 3 gives it an identity to check. Validation rejects non-loopback
+	// bindings while this surface has no authentication.
+	DefaultHTTPAddr = "127.0.0.1:8787"
 )
 
 // Bounds on lease duration. A lease longer than maxLeaseSeconds would keep a
@@ -63,6 +75,23 @@ type Config struct {
 	// sweeper removes them. Default 30, so an archived record survives about
 	// twice as long as an ordinary one.
 	ArchiveRetentionDays int
+	// HttpAddr is the host:port the governance HTTP surface binds. Default
+	// 127.0.0.1:8787. The empty string disables the surface entirely: the
+	// process then runs the workers only, which is the documented headless
+	// deployment where nothing on this host serves the WebUI.
+	HttpAddr string
+	// DeliveryRoot confines human preview and package downloads. Empty disables
+	// file delivery until an operator explicitly chooses a directory.
+	DeliveryRoot string
+	// WebRoot optionally serves the built React application from the same
+	// loopback origin as the API. Empty leaves frontend hosting to a proxy.
+	WebRoot string
+	// MCPAgentsFile enables the agent-only MCP endpoint when set. It contains
+	// SHA-256 token hashes, never bearer tokens.
+	MCPAgentsFile string
+	// MaxAttempts is how many lease recoveries a task survives before the
+	// sweep fails it. Default 3.
+	MaxAttempts int
 }
 
 // Default returns the configuration the process runs with when no file is
@@ -74,6 +103,8 @@ func Default() Config {
 		MaxAgents:            DefaultMaxAgents,
 		AuditRetentionDays:   DefaultAuditRetentionDays,
 		ArchiveRetentionDays: DefaultArchiveRetentionDays,
+		HttpAddr:             DefaultHTTPAddr,
+		MaxAttempts:          DefaultMaxAttempts,
 	}
 }
 
@@ -81,9 +112,9 @@ func Default() Config {
 // it over Default(), validated.
 //
 // The file format is JSON with snake_case keys: lease_seconds, max_agents,
-// audit_retention_days, archive_retention_days. lease_seconds also accepts a
-// duration string ("30s", "5m") so an operator never has to convert units in
-// their head.
+// audit_retention_days, archive_retention_days, http_addr. lease_seconds also
+// accepts a duration string ("30s", "5m") so an operator never has to convert
+// units in their head.
 //
 // A missing file is not an error. The documented deployment is a single file
 // whose absence means "run with defaults", and treating it as a failure would
@@ -119,6 +150,10 @@ func (c Config) Validate() error {
 	if c.LeaseSeconds <= 0 || c.LeaseSeconds > maxLeaseSeconds {
 		return fmt.Errorf("config: lease_seconds must be > 0 and <= %d: got %d: %w", maxLeaseSeconds, c.LeaseSeconds, ErrInvalid)
 	}
+	// 0 means "use the service default" so hand-built configs stay valid.
+	if c.MaxAttempts < 0 || c.MaxAttempts > 100 {
+		return fmt.Errorf("config: max_attempts must be 0 (default) or 1..100: got %d: %w", c.MaxAttempts, ErrInvalid)
+	}
 	if c.MaxAgents <= 0 || c.MaxAgents > maxAgents {
 		return fmt.Errorf("config: max_agents must be > 0 and <= %d: got %d: %w", maxAgents, c.MaxAgents, ErrInvalid)
 	}
@@ -128,7 +163,42 @@ func (c Config) Validate() error {
 	if c.ArchiveRetentionDays <= 0 {
 		return fmt.Errorf("config: archive_retention_days must be > 0: got %d: %w", c.ArchiveRetentionDays, ErrInvalid)
 	}
+	// An empty address is the documented way to disable the surface, so it
+	// is checked for emptiness rather than validity — there is nothing to
+	// validate about not listening.
+	if c.HttpAddr != "" && !validHTTPAddr(c.HttpAddr) {
+		return fmt.Errorf("config: http_addr must be a loopback host:port, got %q: %w", c.HttpAddr, ErrInvalid)
+	}
+	if c.DeliveryRoot != "" && !filepath.IsAbs(c.DeliveryRoot) {
+		return fmt.Errorf("config: delivery_root must be an absolute directory: %w", ErrInvalid)
+	}
+	if c.WebRoot != "" && !filepath.IsAbs(c.WebRoot) {
+		return fmt.Errorf("config: web_root must be an absolute directory: %w", ErrInvalid)
+	}
+	if c.MCPAgentsFile != "" && (!filepath.IsAbs(c.MCPAgentsFile) || c.HttpAddr == "") {
+		return fmt.Errorf("config: mcp_agents_file needs an absolute path and enabled http_addr: %w", ErrInvalid)
+	}
 	return nil
+}
+
+// validHTTPAddr accepts only a loopback host because the HTTP surface has no
+// authentication layer yet. SplitHostPort validates the address shape, and
+// the port is checked separately so malformed values fail during config
+// validation rather than later in net.Listen.
+func validHTTPAddr(addr string) bool {
+	host, portText, err := net.SplitHostPort(addr)
+	if err != nil || host == "" || portText == "" {
+		return false
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 0 || port > 65535 {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // apply decodes the recognised keys of raw over cfg, in place.
@@ -156,6 +226,13 @@ func apply(cfg *Config, raw map[string]any) error {
 		}
 		cfg.MaxAgents = n
 	}
+	if v, ok := raw["max_attempts"]; ok {
+		n, err := decodeInt(v)
+		if err != nil {
+			return fmt.Errorf("max_attempts: %w", err)
+		}
+		cfg.MaxAttempts = n
+	}
 	if v, ok := raw["audit_retention_days"]; ok {
 		n, err := decodeInt(v)
 		if err != nil {
@@ -170,7 +247,54 @@ func apply(cfg *Config, raw map[string]any) error {
 		}
 		cfg.ArchiveRetentionDays = n
 	}
+	if v, ok := raw["http_addr"]; ok {
+		s, err := decodeAddr(v)
+		if err != nil {
+			return fmt.Errorf("http_addr: %w", err)
+		}
+		cfg.HttpAddr = s
+	}
+	if v, ok := raw["delivery_root"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("delivery_root: expected a path string: %w", ErrInvalid)
+		}
+		cfg.DeliveryRoot = s
+	}
+	if v, ok := raw["web_root"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("web_root: expected a path string: %w", ErrInvalid)
+		}
+		cfg.WebRoot = s
+	}
+	if v, ok := raw["mcp_agents_file"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("mcp_agents_file: expected a path string: %w", ErrInvalid)
+		}
+		cfg.MCPAgentsFile = s
+	}
 	return nil
+}
+
+// decodeAddr turns a JSON-decoded value into a listen address. Only a string
+// is accepted: every other JSON type in this position is an operator writing
+// a number where an address belongs, and the default must not be silently
+// kept for the same reason decodeInt refuses to.
+//
+// An empty string decodes to the empty string rather than the default,
+// because the empty string is the documented way to disable the surface.
+// Substituting the default here would make it impossible to switch the HTTP
+// surface off from a file — the key would have to be removed entirely, and a
+// file that is dropped into place by a deployment tool would have to know
+// that.
+func decodeAddr(v any) (string, error) {
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("expected a host:port string, got %s (%T)", describeType(v), v)
+	}
+	return s, nil
 }
 
 // decodeInt turns a JSON-decoded number into an int. json.Unmarshal yields

@@ -104,9 +104,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 	body := http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	dec := json.NewDecoder(body)
-	dec.DisallowUnknownFields()
+	var raw json.RawMessage
 
-	if err := dec.Decode(v); err != nil {
+	if err := dec.Decode(&raw); err != nil {
 		if isBodyTooLarge(err) {
 			return fmt.Errorf("api: body exceeds %d bytes: %w", maxBodyBytes, errBodyTooLarge)
 		}
@@ -115,11 +115,25 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 		}
 		return fmt.Errorf("api: malformed JSON body: %w", model.ErrArgument)
 	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return fmt.Errorf("api: request body must be a JSON object: %w", model.ErrArgument)
+	}
+	strict := json.NewDecoder(bytes.NewReader(trimmed))
+	strict.DisallowUnknownFields()
+	if err := strict.Decode(v); err != nil {
+		return fmt.Errorf("api: malformed JSON body: %w", model.ErrArgument)
+	}
 
 	// A second value must not exist: refuse it rather than let the first
 	// object stand in for the whole request. It is a client bug, so it maps
 	// to 400 exactly like a malformed one does.
-	if err := dec.Decode(&struct{}{}); !isEOF(err) {
+	var trailing json.RawMessage
+	err := dec.Decode(&trailing)
+	if isBodyTooLarge(err) {
+		return fmt.Errorf("api: body exceeds %d bytes: %w", maxBodyBytes, errBodyTooLarge)
+	}
+	if !isEOF(err) {
 		return fmt.Errorf("api: body must hold exactly one JSON object: %w", model.ErrArgument)
 	}
 	return nil
@@ -203,6 +217,9 @@ func isClassified(err error) bool {
 // the documented string so a wrapped or older presentation of the same
 // failure still maps to 413 instead of a 400.
 func isBodyTooLarge(err error) bool {
+	if err == nil {
+		return false
+	}
 	var mb *http.MaxBytesError
 	if errors.As(err, &mb) {
 		return true

@@ -14,7 +14,11 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"mime"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
@@ -54,16 +58,17 @@ func New(svc *service.Service) *Server {
 // branch on; the human message is allowed to change and to carry detail a
 // client must not parse.
 const (
-	codeNotFound         = "not_found"
-	codeArgument         = "invalid_argument"
-	codeForbidden        = "forbidden"
-	codeConflict         = "conflict"
-	codeInvalidState     = "invalid_state"
-	codeLeaseExpired     = "lease_expired"
-	codeLeaseHeld        = "lease_held"
-	codeBodyTooLarge     = "payload_too_large"
-	codeInternal         = "internal_error"
-	codeMethodNotAllowed = "method_not_allowed"
+	codeNotFound             = "not_found"
+	codeArgument             = "invalid_argument"
+	codeForbidden            = "forbidden"
+	codeConflict             = "conflict"
+	codeInvalidState         = "invalid_state"
+	codeLeaseExpired         = "lease_expired"
+	codeLeaseHeld            = "lease_held"
+	codeBodyTooLarge         = "payload_too_large"
+	codeInternal             = "internal_error"
+	codeMethodNotAllowed     = "method_not_allowed"
+	codeUnsupportedMediaType = "unsupported_media_type"
 )
 
 // routes registers every documented URL (docs/项目开发文档.md §9.1).
@@ -87,6 +92,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	s.mux.HandleFunc("GET /api/events", s.streamEvents)
 	s.mux.HandleFunc("GET /api/audit", s.listAudit)
+	s.mux.HandleFunc("POST /api/deliveries/import", s.importDelivery)
+	s.mux.HandleFunc("POST /api/assets/{id}/reopen", s.reopenAsset)
+	s.mux.HandleFunc("GET /api/assets/{id}/files", s.listDeliveryFiles)
+	s.mux.HandleFunc("GET /api/assets/{id}/files/{key}", s.getDeliveryFile)
+	s.mux.HandleFunc("GET /api/assets/{id}/delivery.zip", s.downloadDelivery)
 }
 
 // Handler returns the http.Handler to mount. It is the process's single entry
@@ -97,7 +107,90 @@ func (s *Server) routes() {
 // 404 and 405 answers. Without the wrapper a client would receive a text/plain
 // error body for every unmatched path and every wrong method, which is the
 // case exactly when the caller cannot tell what went wrong.
-func (s *Server) Handler() http.Handler { return wrapJSONErrors(s.mux) }
+func (s *Server) Handler() http.Handler { return localRequestGate(wrapJSONErrors(s.mux)) }
+
+// localRequestGate protects this unauthenticated local control surface from
+// DNS-rebinding and cross-origin browser writes. Requests without Origin are
+// retained for command-line clients; browser requests must match the exact
+// scheme and authority of the loopback request.
+func localRequestGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackAuthority(r.Host) {
+			writeError(w, http.StatusForbidden, codeForbidden, "request Host must be a loopback address")
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && !sameOriginRequest(origin, r) {
+			writeError(w, http.StatusForbidden, codeForbidden, "cross-origin requests are not allowed")
+			return
+		}
+		if requestHasJSONBody(r) {
+			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || !strings.EqualFold(mediaType, "application/json") {
+				writeError(w, http.StatusUnsupportedMediaType, codeUnsupportedMediaType,
+					"request body must use application/json")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func requestHasJSONBody(r *http.Request) bool {
+	if r.Method != http.MethodPost && r.Method != http.MethodPatch {
+		return false
+	}
+	return r.ContentLength != 0
+}
+
+func isLoopbackAuthority(authority string) bool {
+	if authority == "" {
+		return false
+	}
+	host := authority
+	port := ""
+	if strings.HasPrefix(authority, "[") {
+		parsed, parsedPort, err := net.SplitHostPort(authority)
+		if err == nil {
+			host, port = parsed, parsedPort
+		} else if strings.HasSuffix(authority, "]") {
+			host = strings.TrimSuffix(strings.TrimPrefix(authority, "["), "]")
+		} else {
+			return false
+		}
+	} else if strings.Count(authority, ":") == 1 {
+		parsed, parsedPort, err := net.SplitHostPort(authority)
+		if err != nil {
+			return false
+		}
+		host, port = parsed, parsedPort
+	} else if strings.Contains(authority, ":") {
+		return false
+	}
+	if port != "" {
+		p, err := strconv.Atoi(port)
+		if err != nil || p < 0 || p > 65535 {
+			return false
+		}
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func sameOriginRequest(origin string, r *http.Request) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+		(u.Path != "" && u.Path != "/") {
+		return false
+	}
+	wantScheme := "http"
+	if r.TLS != nil {
+		wantScheme = "https"
+	}
+	return strings.EqualFold(u.Scheme, wantScheme) && strings.EqualFold(u.Host, r.Host) && isLoopbackAuthority(u.Host)
+}
 
 // wrapJSONErrors translates net/http's own failure answers into the JSON
 // envelope, and contains a handler panic.
@@ -120,11 +213,9 @@ func (s *Server) Handler() http.Handler { return wrapJSONErrors(s.mux) }
 // and dropping the connection, which leaves the client with a truncated
 // response and no status at all.
 //
-// Two documented behaviours are relied on here, which is why they are worth
-// stating: ServeMux sets "Content-Type: text/plain; charset=utf-8" for its own
-// 404 and 405 and nothing else does, so the two statuses are identified by
-// status alone, and the standard server's own error body is discarded rather
-// than forwarded.
+// Router failures are identified by ServeMux's exact default body, with the
+// frozen Allow header required for 405. Handler-level JSON errors keep their
+// own response even when their status is also 404.
 func wrapJSONErrors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := &captureWriter{ResponseWriter: w}
@@ -145,12 +236,15 @@ func wrapJSONErrors(next http.Handler) http.Handler {
 
 		// Nothing to translate once the handler produced a real answer:
 		// rewriting it would duplicate a response already decided.
-		switch rec.status {
-		case http.StatusNotFound, http.StatusMethodNotAllowed:
+		//
+		// The exact body emitted by ServeMux distinguishes an unmatched
+		// route from a handler-level 404 for a missing row.
+		switch {
+		case isRouterAnswer(rec):
 			// ServeMux's own plain-text answer is dropped. Allow survives:
 			// it is the operational information a 405 exists to deliver,
 			// and it was computed by the router, not by the error writer.
-			for _, v := range rec.Header().Values("Allow") {
+			for _, v := range rec.committedHeaders().Values("Allow") {
 				w.Header().Add("Allow", v)
 			}
 			if rec.status == http.StatusNotFound {
@@ -166,6 +260,20 @@ func wrapJSONErrors(next http.Handler) http.Handler {
 	})
 }
 
+// isRouterAnswer recognizes the exact default body and headers emitted by
+// this ServeMux for an unmatched path or method.
+func isRouterAnswer(rec *captureWriter) bool {
+	switch rec.status {
+	case http.StatusNotFound:
+		return rec.buf.String() == "404 page not found\n"
+	case http.StatusMethodNotAllowed:
+		return rec.buf.String() == "Method Not Allowed\n" &&
+			len(rec.committedHeaders().Values("Allow")) > 0
+	default:
+		return false
+	}
+}
+
 // captureWriter holds back a response so the wrapper can decide whether to
 // translate it, and forwards it unchanged when it should not.
 //
@@ -174,15 +282,18 @@ func wrapJSONErrors(next http.Handler) http.Handler {
 // before it calls WriteHeader, and if the map were the real one the client
 // would already have a text/plain body committed by the time the wrapper runs.
 //
-// The body is buffered for the same reason. Flush bypasses the buffer, so a
-// streaming handler (the SSE endpoint of a later task) is not turned into a
-// slow one: the first flush releases the header and commits the response.
+// The body is buffered for the same reason. FlushError releases the captured
+// response when ResponseController flushes, preserving the streaming behavior
+// and the underlying transport's flush result.
 type captureWriter struct {
 	http.ResponseWriter
 
 	// hdr is the handler's view of the response headers. A copy is taken so
 	// nothing written through it reaches the client before release.
 	hdr http.Header
+	// committedHeader freezes the header values at the first status or body
+	// write, matching net/http's commit semantics despite buffering.
+	committedHeader http.Header
 
 	// status is the code WriteHeader recorded; 0 means none was written.
 	status int
@@ -201,45 +312,80 @@ func (c *captureWriter) Header() http.Header {
 	return c.hdr
 }
 
-// WriteHeader records the status and holds the response back.
-func (c *captureWriter) WriteHeader(status int) { c.status = status }
+// WriteHeader records only the first status, matching ResponseWriter.
+func (c *captureWriter) WriteHeader(status int) {
+	if c.released {
+		c.ResponseWriter.WriteHeader(status)
+		return
+	}
+	if c.status == 0 {
+		c.commit(status)
+	}
+}
 
 // Write buffers the body while the response is held back.
 func (c *captureWriter) Write(p []byte) (int, error) {
 	if c.released {
 		return c.ResponseWriter.Write(p)
 	}
+	if c.status == 0 {
+		c.commit(http.StatusOK)
+	}
 	return c.buf.Write(p)
 }
 
-// Flush releases the response and flushes the wrapped writer, so a streaming
-// handler keeps working through this wrapper.
-func (c *captureWriter) Flush() {
-	if f, ok := c.ResponseWriter.(http.Flusher); ok {
-		c.release()
-		f.Flush()
+// Unwrap lets ResponseController reach optional transport controls such as
+// SetWriteDeadline on the underlying server writer.
+func (c *captureWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
+
+// FlushError releases buffered headers/body and preserves a transport flush
+// error. ResponseController uses this method when present.
+func (c *captureWriter) FlushError() error {
+	if err := c.release(); err != nil {
+		return err
 	}
+	return http.NewResponseController(c.ResponseWriter).Flush()
+}
+
+func (c *captureWriter) commit(status int) {
+	c.status = status
+	c.committedHeader = c.Header().Clone()
+}
+
+func (c *captureWriter) committedHeaders() http.Header {
+	if c.committedHeader != nil {
+		return c.committedHeader
+	}
+	return c.Header()
 }
 
 // release writes the held response to the client exactly as it was captured.
 //
 // A status that was never written defaults to 200, which is what
 // ResponseWriter does on the first Write with no WriteHeader.
-func (c *captureWriter) release() {
+func (c *captureWriter) release() error {
 	if c.released {
-		return
+		return nil
 	}
 	c.released = true
 
 	h := c.ResponseWriter.Header()
-	for k, vs := range c.hdr {
-		h[k] = vs
+	for k := range h {
+		delete(h, k)
+	}
+	committed := c.committedHeader
+	if committed == nil {
+		committed = c.Header().Clone()
+	}
+	for k, vs := range committed {
+		h[k] = append([]string(nil), vs...)
 	}
 	if c.status == 0 {
 		c.status = http.StatusOK
 	}
 	c.ResponseWriter.WriteHeader(c.status)
-	_, _ = c.ResponseWriter.Write(c.buf.Bytes())
+	_, err := c.ResponseWriter.Write(c.buf.Bytes())
+	return err
 }
 
 // discard abandons a held response. It is what a translated 404 or 405 leaves
