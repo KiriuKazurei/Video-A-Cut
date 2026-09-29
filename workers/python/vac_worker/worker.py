@@ -7,8 +7,9 @@ import re
 import shutil
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from .mcp import Client, ToolError, TransportError
 from .content import make_content_provider
@@ -31,6 +32,10 @@ class Config:
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
     content_provider: str = "builtin"
+    content_provider_config: dict[str, Any] = field(default_factory=dict)
+
+
+WorkerConfig = Config
 
 
 def load_config(path: str, env=os.environ) -> Config:
@@ -48,13 +53,20 @@ def load_config(path: str, env=os.environ) -> Config:
     prefix = raw.get("output_prefix", "stages")
     if not _PREFIX.match(prefix):
         raise ValueError("config: output_prefix must be a relative slash path of [A-Za-z0-9_-]")
+    content_provider_config = raw.get("content_provider_config") or {}
+    if not isinstance(content_provider_config, dict):
+        raise ValueError("config: content_provider_config must be an object")
     cfg = Config(mcp_url=raw["mcp_url"], token=token, delivery_root=root.resolve(), output_prefix=prefix,
                  poll_interval=float(raw.get("poll_interval_ms", 2000)) / 1000,
                  heartbeat_interval=float(raw.get("heartbeat_interval_ms", 5000)) / 1000,
                  tool_timeout=float(raw.get("task_timeout_ms", 300000)) / 1000,
                  ffmpeg=raw.get("ffmpeg", "ffmpeg"), ffprobe=raw.get("ffprobe", "ffprobe"),
-                 content_provider=raw.get("content_provider", "builtin"))
-    make_content_provider(cfg.content_provider)
+                 content_provider=raw.get("content_provider", "builtin"),
+                 content_provider_config=content_provider_config)
+    try:
+        make_content_provider(cfg.content_provider, **cfg.content_provider_config)
+    except Exception as err:
+        raise ValueError(f"config: content provider unavailable ({err})") from err
     if min(cfg.poll_interval, cfg.heartbeat_interval, cfg.tool_timeout) <= 0:
         raise ValueError("config: intervals and timeout must be positive")
     return cfg
@@ -128,7 +140,7 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
 
             ctx = StageContext(edl=edl, source_dir=edl_path.parent, out_dir=staging,
                                tools=Tools(ffmpeg=cfg.ffmpeg, ffprobe=cfg.ffprobe, timeout=cfg.tool_timeout),
-                               progress=progress, content_provider=make_content_provider(cfg.content_provider))
+                               progress=progress, content_provider=make_content_provider(cfg.content_provider, **cfg.content_provider_config))
             summary = stages[kind](ctx)
             if beat.lost:
                 return {"outcome": "abandoned", "reason": "lease lost during stage"}

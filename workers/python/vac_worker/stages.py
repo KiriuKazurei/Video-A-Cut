@@ -10,6 +10,7 @@ can never silently stand in for speech in a production delivery.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -20,6 +21,7 @@ from pathlib import Path
 
 from .content import (ClipEvidence, ContentError, ContentProvider, SceneDecision,
                       make_content_provider, validate_narration, validate_scenes)
+from .sampling import SamplingError, sample_clip_frames
 
 
 class StageFailure(Exception):
@@ -34,6 +36,7 @@ class StageContext:
     tools: "Tools"
     progress: callable = field(default=lambda p, m: None)
     content_provider: ContentProvider | None = None
+    work_dir: Path | None = None
 
 
 @dataclass
@@ -155,40 +158,141 @@ def recognize(ctx: StageContext) -> dict:
     edl = ctx.edl
     _require_edl(edl)
     durations = []
+    clips_evidence: list[ClipEvidence] = []
     for i, clip in enumerate(edl["video"]):
         path = _resolve_src(ctx, clip["src"])
         dur = ctx.tools.duration(path)
         if clip["out"] > dur + 1 / edl["timeline"]["fps"]:
             raise StageFailure(f"video[{i}] out {clip['out']} exceeds media duration {dur:.3f}")
         durations.append(dur)
+
+        frames = ()
+        if ctx.work_dir is not None and path.is_file():
+            dest_dir = ctx.work_dir / "samples" / f"clip_{i}"
+            try:
+                sampled = sample_clip_frames(
+                    clip_path=path,
+                    source_in=clip["in"],
+                    source_out=clip["out"],
+                    dest_dir=dest_dir,
+                    relative_source_path=clip["src"],
+                    clip_prefix=f"clip_{i}",
+                    ffmpeg_bin=ctx.tools.ffmpeg,
+                    ffprobe_bin=ctx.tools.ffprobe,
+                )
+                frames = tuple(sampled)
+            except SamplingError as err:
+                raise StageFailure(f"sampling failed: {err}") from err
+            except Exception as err:
+                raise StageFailure(f"frame sampling failed: {err}") from err
+
+        clips_evidence.append(
+            ClipEvidence(
+                index=i,
+                src=clip["src"],
+                media_duration=dur,
+                source_in=clip["in"],
+                source_out=clip["out"],
+                timeline_in=clip["timeline_in"],
+                frames=frames,
+            )
+        )
         ctx.progress(0.2 + 0.6 * (i + 1) / len(edl["video"]), f"recognized {i + 1}/{len(edl['video'])}")
-    clips = _clip_evidence(edl, durations)
+
     try:
-        decisions = validate_scenes(clips, (ctx.content_provider or make_content_provider("builtin")).recognize(clips))
+        decisions = validate_scenes(
+            clips_evidence,
+            (ctx.content_provider or make_content_provider("builtin")).recognize(clips_evidence),
+        )
     except ContentError as err:
         raise StageFailure(str(err)) from err
     except Exception as err:
         raise StageFailure(f"content provider recognize failed ({type(err).__name__})") from err
-    scenes = [{"index": item.clip_index, "src": edl["video"][item.clip_index]["src"],
-               "media_duration": round(durations[item.clip_index], 3),
-               "span": [edl["video"][item.clip_index]["in"], edl["video"][item.clip_index]["out"]],
-               "label": item.label, "method": item.method, "confidence": item.confidence}
-              for item in decisions]
+
+    scenes = [
+        {
+            "index": item.clip_index,
+            "src": edl["video"][item.clip_index]["src"],
+            "media_duration": round(durations[item.clip_index], 3),
+            "span": [edl["video"][item.clip_index]["in"], edl["video"][item.clip_index]["out"]],
+            "label": item.label,
+            "method": item.method,
+            "confidence": item.confidence,
+            "evidence_frames": list(item.evidence_frames),
+            "sequence_rank": item.sequence_rank,
+        }
+        for item in decisions
+    ]
     out = dict(edl)
     out["scenes"] = scenes
     package(ctx, out, {})
     return {"scenes": len(scenes)}
 
 
+def _resolve_sort_order(edl: dict, min_confidence: float = 0.5) -> list[int]:
+    """Determine clip execution order based on sequence_rank and timeline position.
+
+    Rules:
+    - If no scenes or all scenes have sequence_rank is None, preserve timeline order.
+    - If any scene has sequence_rank, all scenes must have a valid non-negative sequence_rank;
+      otherwise raise StageFailure (partial ranking / conflicting signal).
+    - If sequence_rank is negative or not an int, raise StageFailure / ContentError.
+    - If any scene has confidence < min_confidence, raise StageFailure (low confidence).
+    - If duplicate sequence_rank values exist, raise StageFailure (duplicate rank conflict).
+    - Otherwise, sort by sequence_rank ascending.
+    """
+    video_count = len(edl["video"])
+    scenes = edl.get("scenes") or []
+    if not scenes:
+        return sorted(range(video_count), key=lambda i: edl["video"][i]["timeline_in"])
+
+    by_index = {scene["index"]: scene for scene in scenes}
+    if set(by_index) != set(range(video_count)):
+        raise StageFailure("scene indices differ from video clips")
+
+    ranks = [by_index[i].get("sequence_rank") for i in range(video_count)]
+    has_rank = [r is not None for r in ranks]
+
+    if not any(has_rank):
+        return sorted(range(video_count), key=lambda i: edl["video"][i]["timeline_in"])
+
+    if not all(has_rank):
+        missing = [i for i, r in enumerate(ranks) if r is None]
+        raise StageFailure(f"sort conflict: partial sequence_rank missing for clips {missing}")
+
+    for i in range(video_count):
+        r = ranks[i]
+        if type(r) is not int or r < 0:
+            raise ContentError(f"sort conflict: invalid sequence_rank {r} for clip {i}")
+        conf = by_index[i].get("confidence")
+        if conf is not None:
+            if not isinstance(conf, (int, float)) or not math.isfinite(conf) or not 0 <= conf <= 1:
+                raise ContentError(f"sort conflict: invalid confidence {conf} for clip {i}")
+            if conf < min_confidence:
+                raise StageFailure(f"sort conflict: low confidence {conf} for clip {i} (threshold {min_confidence})")
+
+    if len(set(ranks)) != len(ranks):
+        seen = set()
+        dupes = set()
+        for r in ranks:
+            if r in seen:
+                dupes.add(r)
+            seen.add(r)
+        raise StageFailure(f"sort conflict: duplicate sequence_rank {sorted(dupes)}")
+
+    return sorted(range(video_count), key=lambda i: ranks[i])
+
+
 def sort(ctx: StageContext) -> dict:
     """Re-lay video and matching game audio back to back in scene order.
 
-    Order is the recognized scene order (stable by original timeline_in).
+    Order is determined by sequence_rank if provided (reviewable order),
+    or stable timeline_in order if unranked.
     Gaps are closed so the timeline is contiguous from 0.
     """
     edl = json.loads(json.dumps(ctx.edl))
     _require_edl(edl)
-    order = sorted(range(len(edl["video"])), key=lambda i: edl["video"][i]["timeline_in"])
+    order = _resolve_sort_order(edl)
     cursor = 0.0
     video, audio = [], []
     ga_by_key = {(g["src"], g["in"], g["out"]): g for g in edl["game_audio"]}
@@ -224,9 +328,17 @@ def narrate(ctx: StageContext) -> dict:
     edl = json.loads(json.dumps(ctx.edl))
     _require_edl(edl)
     clips = _clip_evidence(edl)
-    scenes = [SceneDecision(clip_index=scene["index"], label=scene["label"],
-                            method=scene.get("method", "metadata_only"),
-                            confidence=scene.get("confidence")) for scene in edl.get("scenes", [])]
+    scenes = [
+        SceneDecision(
+            clip_index=scene["index"],
+            label=scene["label"],
+            method=scene.get("method", "metadata_only"),
+            confidence=scene.get("confidence"),
+            evidence_frames=tuple(scene.get("evidence_frames") or ()),
+            sequence_rank=scene.get("sequence_rank"),
+        )
+        for scene in edl.get("scenes", [])
+    ]
     try:
         scenes = validate_scenes(clips, scenes)
         decisions = validate_narration(clips, (ctx.content_provider or make_content_provider("builtin")).narrate(clips, scenes))
@@ -234,8 +346,20 @@ def narrate(ctx: StageContext) -> dict:
         raise StageFailure(str(err)) from err
     except Exception as err:
         raise StageFailure(f"content provider narrate failed ({type(err).__name__})") from err
-    lines = [{"id": f"nar_{i + 1:03d}", "text": item.text, "start": round(item.start, 6),
-              "end": round(item.end, 6)} for i, item in enumerate(decisions)]
+    lines = []
+    for i, item in enumerate(decisions):
+        lines.append({
+            "id": f"nar_{i + 1:03d}",
+            "text": item.text,
+            "start": round(item.start, 6),
+            "end": round(item.end, 6),
+            "clip_index": item.clip_index,
+            "duration": round(item.duration, 6),
+            "source_scene": item.source_scene_label,
+            "source_scene_label": item.source_scene_label,
+            "model_version": item.model_version,
+            "needs_review": item.needs_review,
+        })
     edl["narration"] = lines
     package(ctx, edl, {})
     return {"lines": len(lines)}
@@ -254,6 +378,7 @@ def _sapi_script(text: str, out: Path) -> str:
         "$voices=$s.GetVoices('Language=804','');"
         "if($voices.Count -lt 1){throw 'Chinese SAPI voice unavailable'};"
         "$s.Voice=$voices.Item(0);"
+        "$s.Rate=5;"
         "$stream=New-Object -ComObject SAPI.SpFileStream;"
         "try{$stream.Open($p,3,$false);$s.AudioOutputStream=$stream;[void]$s.Speak($t)}"
         "finally{$stream.Close()}"

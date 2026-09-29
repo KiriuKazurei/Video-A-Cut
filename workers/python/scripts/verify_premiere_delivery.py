@@ -145,8 +145,9 @@ def verify(delivery: Path) -> dict:
     require(len(edl["music"]) == 1 and edl["music"][0]["duck"], "expected one ducked music bed")
     music = left_samples(delivery / edl["music"][0]["src"], rate)
     baseline = measured_gain(music, stems["a3"], rate, 3.0, 3.6)
-    ducked = [measured_gain(music, stems["a3"], rate, start, start + 0.6)
-              for start in (0.8, 4.8)]
+    ducked = [measured_gain(music, stems["a3"], rate, voice["start"] + 0.5 * (voice["end"] - voice["start"]) - 0.3,
+                            voice["start"] + 0.5 * (voice["end"] - voice["start"]) + 0.3)
+              for voice in edl["voice"]]
     ratios = [v / baseline for v in ducked]
     require(0.07 <= baseline <= 0.13, f"music baseline gain differs from -20 dB: {baseline}")
     require(all(0.20 <= ratio <= 0.30 for ratio in ratios),

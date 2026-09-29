@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from vac_worker.content import VisionContentProvider, make_content_provider
 from vac_worker.mcp import Client, ToolError
 from vac_worker.stages import StageFailure
 from vac_worker.worker import Config, load_config, process_task, resolve_under_root
@@ -141,6 +142,37 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "not_found")
         with self.assertRaises(ValueError):
             Client("http://x", "short")
+
+
+    def test_worker_load_config_with_content_provider_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            cfg_path = tmp / "config.json"
+            cfg_path.write_text(json.dumps({
+                "mcp_url": "http://localhost:8080/mcp",
+                "delivery_root": str(tmp.resolve()),
+                "content_provider": "vision",
+                "content_provider_config": {
+                    "endpoint": "https://api.vision.local/v1/scenes",
+                    "allow_external": True,
+                    "timeout_seconds": 15.0,
+                    "model": "gpt-4o"
+                }
+            }))
+            cfg = load_config(cfg_path, env={"VAC_WORKER_TOKEN": "token-12345"})
+            self.assertEqual(cfg.content_provider, "vision")
+            self.assertEqual(cfg.content_provider_config, {
+                "endpoint": "https://api.vision.local/v1/scenes",
+                "allow_external": True,
+                "timeout_seconds": 15.0,
+                "model": "gpt-4o"
+            })
+            provider = make_content_provider(cfg.content_provider, **cfg.content_provider_config)
+            self.assertIsInstance(provider, VisionContentProvider)
+            self.assertEqual(provider.endpoint, "https://api.vision.local/v1/scenes")
+            self.assertTrue(provider.allow_external)
+            self.assertEqual(provider.timeout_seconds, 15.0)
+            self.assertEqual(provider.model, "gpt-4o")
 
 
 if __name__ == "__main__":
