@@ -1,6 +1,6 @@
 # Python 流水线 Worker
 
-领取并执行 `recognize / sort / narrate / tts / subtitle / mix` 六类任务的Worker。每类任务的最小可验证实现只依赖本机工具（ffmpeg / ffprobe / Windows SAPI），换用多模态或 LLM 后端只改阶段函数体，契约不变。
+领取并执行 `recognize / sort / narrate / tts / subtitle / mix` 六类任务的 Worker。三阶段的最小可验证实现只依赖本机工具（ffmpeg / ffprobe / Windows SAPI）；四阶段将识别与解说抽为 `ContentProvider`，目前只内置 `builtin` 确定性实现，真实多模态/LLM 适配器尚待开发。
 
 只通过 MCP（`/mcp`）与控制面通信：不打开 SQLite，不自报 agent ID 或角色。
 
@@ -24,11 +24,14 @@ VAC_WORKER_TOKEN=<明文 bearer token> python -m vac_worker --config worker.json
   "heartbeat_interval_ms": 5000,
   "task_timeout_ms": 300000,
   "ffmpeg": "ffmpeg",
-  "ffprobe": "ffprobe"
+  "ffprobe": "ffprobe",
+  "content_provider": "builtin"
 }
 ```
 
 `delivery_root` 必须是控制面 `delivery_root` 的同一目录；`heartbeat_interval_ms` 必须小于 `lease_seconds`。ffmpeg/ffprobe 需在 PATH 上。
+
+`content_provider` 默认 `builtin`，其标签标记 `metadata_only`，旁白为“第 N 段”模板。指定未知 provider 会在启动时失败，不会暗中使用模板；实现新适配器、取样证据和人工审查的顺序见 `docs/四阶段开发文档.md`。
 
 `tts` 在 Windows 上使用本机中文 SAPI 语音。若语音不可用或合成失败，任务失败，不会用测试音冒充旁白。旁白窗口是最长可用时长；超长语音拒绝交付，实际语音长度回填 EDL，字幕与音乐压低跟随实际长度。单元测试可显式启用测试音；真实交付不启用。
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .mcp import Client, ToolError, TransportError
+from .content import make_content_provider
 from .stages import STAGES, StageContext, StageFailure, Tools
 
 _ID = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -29,6 +30,7 @@ class Config:
     tool_timeout: float = 300.0
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
+    content_provider: str = "builtin"
 
 
 def load_config(path: str, env=os.environ) -> Config:
@@ -50,7 +52,9 @@ def load_config(path: str, env=os.environ) -> Config:
                  poll_interval=float(raw.get("poll_interval_ms", 2000)) / 1000,
                  heartbeat_interval=float(raw.get("heartbeat_interval_ms", 5000)) / 1000,
                  tool_timeout=float(raw.get("task_timeout_ms", 300000)) / 1000,
-                 ffmpeg=raw.get("ffmpeg", "ffmpeg"), ffprobe=raw.get("ffprobe", "ffprobe"))
+                 ffmpeg=raw.get("ffmpeg", "ffmpeg"), ffprobe=raw.get("ffprobe", "ffprobe"),
+                 content_provider=raw.get("content_provider", "builtin"))
+    make_content_provider(cfg.content_provider)
     if min(cfg.poll_interval, cfg.heartbeat_interval, cfg.tool_timeout) <= 0:
         raise ValueError("config: intervals and timeout must be positive")
     return cfg
@@ -124,7 +128,7 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
 
             ctx = StageContext(edl=edl, source_dir=edl_path.parent, out_dir=staging,
                                tools=Tools(ffmpeg=cfg.ffmpeg, ffprobe=cfg.ffprobe, timeout=cfg.tool_timeout),
-                               progress=progress)
+                               progress=progress, content_provider=make_content_provider(cfg.content_provider))
             summary = stages[kind](ctx)
             if beat.lost:
                 return {"outcome": "abandoned", "reason": "lease lost during stage"}

@@ -18,6 +18,9 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .content import (ClipEvidence, ContentError, ContentProvider, SceneDecision,
+                      make_content_provider, validate_narration, validate_scenes)
+
 
 class StageFailure(Exception):
     """A task-level failure reported to the control plane via fail_task."""
@@ -30,6 +33,7 @@ class StageContext:
     out_dir: Path             # staging directory for the new package (exists, empty)
     tools: "Tools"
     progress: callable = field(default=lambda p, m: None)
+    content_provider: ContentProvider | None = None
 
 
 @dataclass
@@ -105,6 +109,9 @@ def package(ctx: StageContext, edl: dict, generated: dict[str, Path], extra: lis
                 copied[src] = f"media/{name}"
                 artifacts.append({"kind": "video" if track == "video" else track, "path": copied[src]})
             item["src"] = copied[src]
+    for scene in out.get("scenes", []):
+        if scene.get("src") in copied:
+            scene["src"] = copied[scene["src"]]
     for kind, rel in extra:
         artifacts.append({"kind": kind, "path": rel})
     # Kinds must be unique per path only; the control plane numbers repeats.
@@ -128,6 +135,14 @@ def _timeline_end(edl: dict) -> float:
     return max(v["timeline_in"] + (v["out"] - v["in"]) for v in edl["video"])
 
 
+def _clip_evidence(edl: dict, durations: list[float] | None = None) -> list[ClipEvidence]:
+    return [ClipEvidence(index=i, src=clip["src"],
+                         media_duration=durations[i] if durations else clip["out"],
+                         source_in=clip["in"], source_out=clip["out"],
+                         timeline_in=clip["timeline_in"])
+            for i, clip in enumerate(edl["video"])]
+
+
 # ------------------------------------------------------------------ stages
 
 def recognize(ctx: StageContext) -> dict:
@@ -139,15 +154,26 @@ def recognize(ctx: StageContext) -> dict:
     """
     edl = ctx.edl
     _require_edl(edl)
-    scenes = []
+    durations = []
     for i, clip in enumerate(edl["video"]):
         path = _resolve_src(ctx, clip["src"])
         dur = ctx.tools.duration(path)
         if clip["out"] > dur + 1 / edl["timeline"]["fps"]:
             raise StageFailure(f"video[{i}] out {clip['out']} exceeds media duration {dur:.3f}")
-        scenes.append({"index": i, "src": clip["src"], "media_duration": round(dur, 3),
-                       "span": [clip["in"], clip["out"]], "label": f"scene_{i + 1:02d}"})
+        durations.append(dur)
         ctx.progress(0.2 + 0.6 * (i + 1) / len(edl["video"]), f"recognized {i + 1}/{len(edl['video'])}")
+    clips = _clip_evidence(edl, durations)
+    try:
+        decisions = validate_scenes(clips, (ctx.content_provider or make_content_provider("builtin")).recognize(clips))
+    except ContentError as err:
+        raise StageFailure(str(err)) from err
+    except Exception as err:
+        raise StageFailure(f"content provider recognize failed ({type(err).__name__})") from err
+    scenes = [{"index": item.clip_index, "src": edl["video"][item.clip_index]["src"],
+               "media_duration": round(durations[item.clip_index], 3),
+               "span": [edl["video"][item.clip_index]["in"], edl["video"][item.clip_index]["out"]],
+               "label": item.label, "method": item.method, "confidence": item.confidence}
+              for item in decisions]
     out = dict(edl)
     out["scenes"] = scenes
     package(ctx, out, {})
@@ -178,6 +204,12 @@ def sort(ctx: StageContext) -> dict:
             audio.append(ga)
         cursor += span
     edl["video"], edl["game_audio"] = video, audio
+    if edl.get("scenes"):
+        by_index = {scene["index"]: scene for scene in edl["scenes"]}
+        if set(by_index) != set(order):
+            raise StageFailure("scene indices differ from video clips")
+        edl["scenes"] = [{**by_index[old_index], "index": new_index}
+                         for new_index, old_index in enumerate(order)]
     package(ctx, edl, {})
     return {"clips": len(video), "duration": round(cursor, 6)}
 
@@ -191,16 +223,19 @@ def narrate(ctx: StageContext) -> dict:
     """
     edl = json.loads(json.dumps(ctx.edl))
     _require_edl(edl)
-    lines = []
-    for i, clip in enumerate(edl["video"]):
-        span = clip["out"] - clip["in"]
-        start = clip["timeline_in"] + min(0.2, span / 4)
-        end = min(clip["timeline_in"] + span - 0.1, start + max(0.6, span * 0.6))
-        if end <= start:
-            continue
-        lines.append({"id": f"nar_{i + 1:03d}", "text": f"第 {i + 1} 段", "start": round(start, 3), "end": round(end, 3)})
-    if not lines:
-        raise StageFailure("no scene is long enough to narrate")
+    clips = _clip_evidence(edl)
+    scenes = [SceneDecision(clip_index=scene["index"], label=scene["label"],
+                            method=scene.get("method", "metadata_only"),
+                            confidence=scene.get("confidence")) for scene in edl.get("scenes", [])]
+    try:
+        scenes = validate_scenes(clips, scenes)
+        decisions = validate_narration(clips, (ctx.content_provider or make_content_provider("builtin")).narrate(clips, scenes))
+    except ContentError as err:
+        raise StageFailure(str(err)) from err
+    except Exception as err:
+        raise StageFailure(f"content provider narrate failed ({type(err).__name__})") from err
+    lines = [{"id": f"nar_{i + 1:03d}", "text": item.text, "start": round(item.start, 6),
+              "end": round(item.end, 6)} for i, item in enumerate(decisions)]
     edl["narration"] = lines
     package(ctx, edl, {})
     return {"lines": len(lines)}

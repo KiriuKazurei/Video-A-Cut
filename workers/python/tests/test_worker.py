@@ -116,6 +116,9 @@ class WorkerTest(unittest.TestCase):
             p.write_text(json.dumps({**good, "delivery_root": "rel"}))
             with self.assertRaisesRegex(ValueError, "absolute"):
                 load_config(str(p), env={"VAC_WORKER_TOKEN": "x" * 40})
+            p.write_text(json.dumps({**good, "content_provider": "remote-unconfigured"}))
+            with self.assertRaisesRegex(ValueError, "unavailable"):
+                load_config(str(p), env={"VAC_WORKER_TOKEN": "x" * 40})
 
     def test_client_maps_is_error(self):
         class Resp:
