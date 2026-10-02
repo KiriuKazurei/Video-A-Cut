@@ -38,7 +38,9 @@ Thumbs.db
 # Hermes local scratch
 .hermes/
 
-# Development documents stay local; do not upload.
-/docs/
+# Development documents stay local, except the frontend API handoff.
+/docs/*
+!/docs/前端接口清单与重构交接.md
+!/docs/frontend-api-inventory.json
 /IDEA.md
 /视频剪辑流程方案.txt
