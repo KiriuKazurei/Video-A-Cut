@@ -11,6 +11,7 @@ const wait=async expr=>{for(let i=0;i<120;i++){if(await evaluate(expr))return;aw
 const click=async(text,scope='body')=>{const expr=`[...document.querySelectorAll(${JSON.stringify(scope)}+' button')].find(b=>b.textContent.includes(${JSON.stringify(text)})&&!b.disabled)`;await wait(`!!(${expr})`);await evaluate(`(${expr}).click()`);};
 const input=async(selector,value)=>{await wait(`!!document.querySelector(${JSON.stringify(selector)})`);await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const p=e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await new Promise(r=>setTimeout(r,80));};
 const http=async(path,body)=>{const response=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body&&JSON.stringify(body)});const value=await response.json();if(!response.ok)throw Error(JSON.stringify(value));return value;};
+const openPage=async page=>{const tab=`.workspace-tabs button[data-page="${page}"]`;await wait(`!!document.querySelector(${JSON.stringify(tab)})`);await evaluate(`document.querySelector(${JSON.stringify(tab)}).click()`);await wait(`document.querySelector(${JSON.stringify(tab)}).getAttribute('aria-current')==='page'`);};
 const report={mode,human_acceptance:'pending',driver:'real Edge CDP; automated DOM interaction',layout:[],actions:[]};
 const layouts=async(stage)=>{
  for(const width of [375,520,900,1280]){
@@ -26,7 +27,9 @@ const layouts=async(stage)=>{
 try{
  await send('Page.enable');await send('Runtime.enable');await send('Page.navigate',{url:base+'/'});
  const asset=mode==='failed'?'phase7_failure':mode==='paging'?'phase7_cancel':'phase7_synthetic';
- await click(asset,'.asset-list');
+ // 前端按工作流分页：导入/切分在「粗剪」页，场景与解说审查在「编辑」页，预检在「准备」页。
+ const workspacePage=mode==='scene'||mode==='draft'?'edit':mode==='governance'?'prepare':'assembly';
+ await click(asset,'.asset-list');await openPage(workspacePage);
  if(mode==='probe'){
   await wait(`!!document.querySelector('.ingest-analysis')`);
   await input('.ingest-analysis .field-label:nth-child(4) input','00:00.000');

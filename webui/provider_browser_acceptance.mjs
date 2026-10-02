@@ -17,10 +17,12 @@ const labeled = async (scope, label, value) => {
   const selector = await evaluate(`(()=>{const labels=[...document.querySelectorAll(${JSON.stringify(scope)}+' label')];const label=labels.find(e=>e.childNodes[0]?.textContent===${JSON.stringify(label)});const input=label?.querySelector('input,select');if(!input)throw Error('missing labeled field');input.id=input.id||'provider-test-'+Math.random().toString(36).slice(2);return '#'+input.id})()`);
   await input(selector, value);
 };
+// 前端按工作流分页：处理预设与服务商配置位于「准备」页。
+const openPage = async (page) => { const tab = `.workspace-tabs button[data-page="${page}"]`; await wait(`!!document.querySelector(${JSON.stringify(tab)})`); await evaluate(`document.querySelector(${JSON.stringify(tab)}).click()`); await wait(`document.querySelector(${JSON.stringify(tab)}).getAttribute('aria-current')==='page'`); };
 const report = { engineering: 'pending', human_acceptance: 'pending', driver: 'real headless Edge CDP', actions: [], layout: [] };
 try {
   await send('Page.enable'); await send('Runtime.enable'); await send('Page.navigate', { url: base + '/' });
-  await click('phase7_synthetic', '.asset-list');
+  await click('phase7_synthetic', '.asset-list'); await openPage('prepare');
   await click('新建预设', '.preparation-panel');
   await labeled('.preparation-panel', '内容模式', 'configured');
   for (const format of ['openai', 'anthropic', 'gemini']) {
