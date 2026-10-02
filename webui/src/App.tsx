@@ -9,6 +9,9 @@ import { TaskOrchestrator } from './components/TaskOrchestrator';
 import AssetManager from './components/AssetManager';
 import AuditLogViewer from './components/AuditLogViewer';
 import { DeliveryPanel } from './components/DeliveryPanel';
+import { WorkflowPanel } from './components/WorkflowPanel';
+import { PreparationPanel } from './components/PreparationPanel';
+import { IngestPanel } from './components/IngestPanel';
 
 const taskTypes = ['recognize', 'sort', 'narrate', 'tts', 'subtitle', 'mix', 'export', 'preview'];
 
@@ -166,6 +169,10 @@ export default function App() {
                 <p className="hint">产物字段当前仅显示记录数量。文件预览与下载需由服务端提供受控接口。</p>
               </>}
             </section>
+
+            <IngestPanel asset={selected} onSelect={setSelectedId} />
+            {selected && <PreparationPanel key={'preparation-'+selected.asset_id} assetId={selected.asset_id} />}
+            {selected && <WorkflowPanel key={selected.asset_id} assetId={selected.asset_id} />}
 
             <section className="panel" aria-labelledby="task-title">
               <div className="panel-heading"><div><p className="eyebrow">DISPATCH</p><h2 id="task-title">任务</h2></div></div>

@@ -7,12 +7,13 @@ structures are strictly relative / normalized to prevent host path leaks.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import time
 
 
 class SamplingError(RuntimeError):
@@ -44,6 +45,45 @@ class SamplingLimits:
     max_height: int = 1080
     max_bytes_per_frame: int = 10 * 1024 * 1024  # 10 MB
     timeout_per_clip: float = 30.0  # seconds
+    # Task-wide caps. A missing or unlimited budget is not a valid configuration:
+    # every clip in one recognize call must share these totals.
+    max_total_frames: int = 48
+    max_total_bytes: int = 48 * 1024 * 1024
+    max_total_time: float = 120.0
+
+
+@dataclass
+class SamplingBudgetTracker:
+    """Tracks cumulative sampling resource usage against limits."""
+
+    limits: SamplingLimits
+    accumulated_frames: int = 0
+    accumulated_bytes: int = 0
+    start_time: float = field(default_factory=time.monotonic)
+
+    def check_deadline(self) -> float:
+        """Return the timeout for the next subprocess, bounded by the shared deadline.
+
+        The returned value is the time still available, not a fresh per-clip
+        timeout. A non-positive remainder fails before the subprocess starts.
+        """
+        elapsed = time.monotonic() - self.start_time
+        remaining_total = self.limits.max_total_time - elapsed
+        if remaining_total <= 0:
+            raise SamplingError(
+                f"Sampling exceeded task total time budget ({self.limits.max_total_time}s)"
+            )
+        return min(self.limits.timeout_per_clip, remaining_total)
+
+    def add_frame(self, byte_size: int) -> None:
+        next_frames = self.accumulated_frames + 1
+        next_bytes = self.accumulated_bytes + byte_size
+        if next_frames > self.limits.max_total_frames:
+            raise SamplingError(f"Sampling exceeded task total frames budget ({self.limits.max_total_frames})")
+        if next_bytes > self.limits.max_total_bytes:
+            raise SamplingError(f"Sampling exceeded task total bytes budget ({self.limits.max_total_bytes} bytes)")
+        self.accumulated_frames = next_frames
+        self.accumulated_bytes = next_bytes
 
 
 def calculate_sample_timestamps(
@@ -91,6 +131,24 @@ def normalize_relative_path(path: str | Path) -> str:
             continue
         safe_parts.append(part)
     return "/".join(safe_parts) if safe_parts else "unknown"
+
+
+def validate_sampling_limits(limits: SamplingLimits) -> None:
+    """Reject a budget that is missing, non-numeric, or non-positive."""
+    integers = {
+        "max_frames_per_clip": limits.max_frames_per_clip,
+        "max_width": limits.max_width,
+        "max_height": limits.max_height,
+        "max_bytes_per_frame": limits.max_bytes_per_frame,
+        "max_total_frames": limits.max_total_frames,
+        "max_total_bytes": limits.max_total_bytes,
+    }
+    for name, value in integers.items():
+        if type(value) is not int or value <= 0:
+            raise SamplingError(f"sampling limit {name} must be a positive integer")
+    for name, value in (("timeout_per_clip", limits.timeout_per_clip), ("max_total_time", limits.max_total_time)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise SamplingError(f"sampling limit {name} must be a positive number")
 
 
 def _probe_frame_dimensions(
@@ -152,6 +210,8 @@ def sample_clip_frames(
     limits: SamplingLimits | None = None,
     ffmpeg_bin: str = "ffmpeg",
     ffprobe_bin: str = "ffprobe",
+    budget_tracker: SamplingBudgetTracker | None = None,
+    max_frames: int | None = None,
 ) -> list[FrameEvidence]:
     """Sample representative frames from a video clip within bounds.
 
@@ -166,6 +226,8 @@ def sample_clip_frames(
         limits: Resource limits configuration.
         ffmpeg_bin: ffmpeg executable name or path.
         ffprobe_bin: ffprobe executable name or path.
+        max_frames: Optional per-clip quota planned by the ingest frame budget;
+            it can only lower ``limits.max_frames_per_clip``.
 
     Returns:
         List of FrameEvidence describing the sampled frames.
@@ -174,8 +236,13 @@ def sample_clip_frames(
         SamplingError: On decoding errors, missing input, timeout, 0-byte output,
             or boundary violations (frames count, resolution, file size).
     """
+    if budget_tracker is not None:
+        limits = budget_tracker.limits
     if limits is None:
         limits = SamplingLimits()
+    validate_sampling_limits(limits)
+    if budget_tracker is None:
+        budget_tracker = SamplingBudgetTracker(limits=limits)
 
     clip_path = Path(clip_path)
     if not clip_path.is_file():
@@ -190,13 +257,16 @@ def sample_clip_frames(
         else normalize_relative_path(clip_path.name)
     )
 
-    timestamps = calculate_sample_timestamps(
-        source_in, source_out, max_frames=limits.max_frames_per_clip
-    )
+    per_clip = limits.max_frames_per_clip
+    if max_frames is not None:
+        if type(max_frames) is not int or max_frames < 1:
+            raise SamplingError("planned frame quota must be a positive integer")
+        per_clip = min(per_clip, max_frames)
+    timestamps = calculate_sample_timestamps(source_in, source_out, max_frames=per_clip)
 
-    if len(timestamps) > limits.max_frames_per_clip:
+    if len(timestamps) > per_clip:
         raise SamplingError(
-            f"Requested frame count {len(timestamps)} exceeds limit {limits.max_frames_per_clip}"
+            f"Requested frame count {len(timestamps)} exceeds limit {per_clip}"
         )
 
     scale_filter = (
@@ -205,84 +275,99 @@ def sample_clip_frames(
     )
 
     evidence_list: list[FrameEvidence] = []
+    created: list[Path] = []
+    try:
+        for idx, ts in enumerate(timestamps):
+            out_filename = f"{clip_prefix}_frame_{idx}_{ts:.3f}.jpg"
+            out_path = dest_dir / out_filename
 
-    for idx, ts in enumerate(timestamps):
-        out_filename = f"{clip_prefix}_frame_{idx}_{ts:.3f}.jpg"
-        out_path = dest_dir / out_filename
+            timeout_sec = budget_tracker.check_deadline()
 
-        cmd = [
-            ffmpeg_bin,
-            "-y",
-            "-ss",
-            f"{ts:.3f}",
-            "-i",
-            str(clip_path),
-            "-vf",
-            scale_filter,
-            "-vframes",
-            "1",
-            str(out_path),
-        ]
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-ss",
+                f"{ts:.3f}",
+                "-i",
+                str(clip_path),
+                "-vf",
+                scale_filter,
+                "-vframes",
+                "1",
+                str(out_path),
+            ]
 
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=limits.timeout_per_clip,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_sec,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except FileNotFoundError as err:
+                raise SamplingError(f"ffmpeg tool not found: {ffmpeg_bin}") from err
+            except subprocess.TimeoutExpired as err:
+                raise SamplingError(
+                    f"Sampling clip {clip_path.name} timed out after {timeout_sec}s"
+                ) from err
+
+            if proc.returncode != 0:
+                raise SamplingError(
+                    f"ffmpeg frame extraction failed (exit {proc.returncode}): {proc.stderr.strip()[-300:]}"
+                )
+
+            if not out_path.is_file():
+                raise SamplingError(f"Frame was not produced by ffmpeg: {out_filename}")
+            created.append(out_path)
+
+            # Check file size BEFORE reading bytes into memory
+            stat_size = out_path.stat().st_size
+            if stat_size == 0:
+                raise SamplingError(f"Extracted frame is 0 bytes: {out_filename}")
+            if stat_size > limits.max_bytes_per_frame:
+                raise SamplingError(
+                    f"Frame size {stat_size} bytes exceeds limit {limits.max_bytes_per_frame} bytes: {out_filename}"
+                )
+
+            file_bytes = out_path.read_bytes()
+            byte_size = len(file_bytes)
+            budget_tracker.add_frame(byte_size)
+
+            probe_timeout = budget_tracker.check_deadline()
+            width, height = _probe_frame_dimensions(
+                out_path, ffprobe_bin=ffprobe_bin, timeout=probe_timeout
             )
-        except FileNotFoundError as err:
-            raise SamplingError(f"ffmpeg tool not found: {ffmpeg_bin}") from err
-        except subprocess.TimeoutExpired as err:
-            raise SamplingError(
-                f"Sampling clip {clip_path.name} timed out after {limits.timeout_per_clip}s"
-            ) from err
 
-        if proc.returncode != 0:
-            raise SamplingError(
-                f"ffmpeg frame extraction failed (exit {proc.returncode}): {proc.stderr.strip()[-300:]}"
+            if width > limits.max_width or height > limits.max_height:
+                raise SamplingError(
+                    f"Frame dimensions ({width}x{height}) exceed maximum allowed ({limits.max_width}x{limits.max_height})"
+                )
+
+            hasher = hashlib.sha256()
+            hasher.update(file_bytes)
+            sha256_hex = hasher.hexdigest()
+
+            rel_frame_path = normalize_relative_path(out_filename)
+
+            evidence_list.append(
+                FrameEvidence(
+                    frame_index=idx,
+                    source_path=rel_source,
+                    timestamp=ts,
+                    width=width,
+                    height=height,
+                    sha256=sha256_hex,
+                    path=rel_frame_path,
+                )
             )
-
-        if not out_path.is_file():
-            raise SamplingError(f"Frame was not produced by ffmpeg: {out_filename}")
-
-        file_bytes = out_path.read_bytes()
-        byte_size = len(file_bytes)
-        if byte_size == 0:
-            raise SamplingError(f"Extracted frame is 0 bytes: {out_filename}")
-
-        if byte_size > limits.max_bytes_per_frame:
-            raise SamplingError(
-                f"Frame size {byte_size} bytes exceeds limit {limits.max_bytes_per_frame} bytes: {out_filename}"
-            )
-
-        width, height = _probe_frame_dimensions(
-            out_path, ffprobe_bin=ffprobe_bin, timeout=limits.timeout_per_clip
-        )
-
-        if width > limits.max_width or height > limits.max_height:
-            raise SamplingError(
-                f"Frame dimensions ({width}x{height}) exceed maximum allowed ({limits.max_width}x{limits.max_height})"
-            )
-
-        hasher = hashlib.sha256()
-        hasher.update(file_bytes)
-        sha256_hex = hasher.hexdigest()
-
-        rel_frame_path = normalize_relative_path(out_filename)
-
-        evidence_list.append(
-            FrameEvidence(
-                frame_index=idx,
-                source_path=rel_source,
-                timestamp=ts,
-                width=width,
-                height=height,
-                sha256=sha256_hex,
-                path=rel_frame_path,
-            )
-        )
+    except Exception:
+        for path in created:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
     return evidence_list
 

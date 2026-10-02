@@ -94,8 +94,15 @@ export function useEvents(
   const refreshRef = useRef<() => void>(() => {});
 
   const refreshSnapshot = useCallback(() => {
+    void queryClient.invalidateQueries({queryKey:['processing-profiles']});
+    void queryClient.invalidateQueries({queryKey:['prepared']});
+    void queryClient.invalidateQueries({ queryKey: ['workflows'] });
+    void queryClient.invalidateQueries({ queryKey: ['review'] });
+    void queryClient.invalidateQueries({ queryKey: ['acceptance'] });
+    void queryClient.invalidateQueries({ queryKey: ['workflow'] });
     void queryClient.invalidateQueries({ queryKey: ['assets'] });
     void queryClient.invalidateQueries({ queryKey: ['audit'] });
+    void queryClient.invalidateQueries({ queryKey: ['ingest'] });
     if (watchedTaskId) void queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] });
   }, [queryClient, watchedTaskId]);
 
@@ -193,6 +200,23 @@ export function useEvents(
       source.addEventListener(name, () => {
         if (watchedTaskId) void queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] });
         void queryClient.invalidateQueries({ queryKey: ['audit'] });
+        void queryClient.invalidateQueries({ queryKey: ['ingest', 'run'] });
+      });
+    }
+    for (const name of ['ingest.changed', 'capability.changed']) {
+      source.addEventListener(name, () => {
+        void queryClient.invalidateQueries({ queryKey: ['ingest'] });
+        void queryClient.invalidateQueries({ queryKey: ['assets'] });
+      });
+    }
+    for (const name of ['workflow.changed', 'review.changed', 'acceptance.changed', 'profile.changed','capability.changed']) {
+      source.addEventListener(name, () => {
+        void queryClient.invalidateQueries({ queryKey: ['workflows'] });
+        void queryClient.invalidateQueries({queryKey:['processing-profiles']});
+        void queryClient.invalidateQueries({queryKey:['prepared']});
+        void queryClient.invalidateQueries({ queryKey: ['workflow'] });
+        void queryClient.invalidateQueries({ queryKey: ['review'] });
+        void queryClient.invalidateQueries({ queryKey: ['acceptance'] });
       });
     }
 

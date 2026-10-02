@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import io
 import json
 import os
@@ -11,7 +13,8 @@ from unittest import mock
 
 from vac_worker.content import (ClipEvidence, ContentError, NarrationContentProvider, NarrationDecision,
                                 SceneDecision, VisionContentProvider, make_content_provider,
-                                validate_narration, validate_scenes)
+                                narration_draft_hash, validate_narration, validate_scenes)
+from vac_worker.sampling import FrameEvidence
 from vac_worker.stages import STAGES, StageContext, StageFailure, Tools
 
 
@@ -95,23 +98,34 @@ class ContentBoundaryTest(unittest.TestCase):
             self.assertNotIn("private provider detail", str(error.exception))
             self.assertFalse((output / "delivery-manifest.json").exists())
 
+    def test_draft_hash_matches_control_plane_vector(self):
+        self.assertEqual(
+            narration_draft_hash("已审批解说", 0.2, 1.0, "Boss"),
+            "3c72592ba78722843b6d43d428e54940e47d7e82b3006344bf0b415c31a7a8e3",
+        )
+
 
 class TestVisionContentProvider(unittest.TestCase):
     def setUp(self):
-        self.clips = [
-            ClipEvidence(
-                index=0,
-                src="clip1.mp4",
-                media_duration=5.0,
-                source_in=0.0,
-                source_out=5.0,
-                timeline_in=0.0,
-                frames=(
-                    {"index": 0, "pts": 1.0, "path": Path("/tmp/frame0.jpg"), "sha256": "hash0"},
-                    {"index": 1, "pts": 3.0, "path": Path("/tmp/frame1.jpg"), "sha256": "hash1"},
-                )
-            )
-        ]
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        raws = [b"\xff\xd8frame-zero", b"\xff\xd8frame-one"]
+        self.digests = []
+        frames = []
+        for index, raw in enumerate(raws):
+            name = f"frame{index}.jpg"
+            (root / name).write_bytes(raw)
+            digest = hashlib.sha256(raw).hexdigest()
+            self.digests.append(digest)
+            frames.append(FrameEvidence(index, "clip1.mp4", float(index + 1), 8, 8, digest, name))
+        self.clips = [ClipEvidence(
+            index=0, src="clip1.mp4", media_duration=5.0, source_in=0.0, source_out=5.0,
+            timeline_in=0.0, frames=tuple(frames), evidence_root=str(root),
+        )]
+        self.root = root
+
+    def tearDown(self):
+        self.tmp.cleanup()
 
     def test_disabled_by_default(self):
         provider = VisionContentProvider(endpoint="http://example.com/api")
@@ -228,7 +242,7 @@ class TestVisionContentProvider(unittest.TestCase):
                     "clip_index": 0,
                     "label": "Boss Fight",
                     "confidence": 0.95,
-                    "evidence_frames": ["hash0", "hash1"],
+                    "evidence_frames": self.digests,
                     "sequence_rank": 1,
                 }
             ]
@@ -252,7 +266,7 @@ class TestVisionContentProvider(unittest.TestCase):
             self.assertEqual(d.label, "Boss Fight")
             self.assertEqual(d.method, "vision")
             self.assertEqual(d.confidence, 0.95)
-            self.assertEqual(d.evidence_frames, ("hash0", "hash1"))
+            self.assertEqual(d.evidence_frames, tuple(self.digests))
             self.assertEqual(d.sequence_rank, 1)
 
             # verify Authorization header and payload
@@ -260,8 +274,42 @@ class TestVisionContentProvider(unittest.TestCase):
             self.assertEqual(req.get_header("Authorization"), "Bearer secret-token")
             payload = json.loads(req.data.decode("utf-8"))
             self.assertEqual(len(payload["clips"]), 1)
-            self.assertEqual(len(payload["clips"][0]["frames"]), 2)
-            self.assertEqual(payload["clips"][0]["frames"][0]["sha256"], "hash0")
+            frame = payload["clips"][0]["frames"][0]
+            self.assertEqual(frame["sha256"], self.digests[0])
+            decoded = base64.b64decode(frame["image_base64"])
+            self.assertEqual(hashlib.sha256(decoded).hexdigest(), self.digests[0])
+            self.assertEqual(frame["path"], "frame0.jpg")
+            self.assertNotIn("evidence_root", payload["clips"][0])
+        finally:
+            os.environ.pop(env_var, None)
+
+    def test_missing_frame_does_not_send_metadata(self):
+        (self.root / "frame0.jpg").unlink()
+        env_var = "TEST_VAC_TOKEN"
+        os.environ[env_var] = "secret-token"
+        try:
+            provider = VisionContentProvider(
+                endpoint="http://example.com/api", allow_external=True, token_env=env_var,
+                opener=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("request was sent")),
+            )
+            with self.assertRaisesRegex(ContentError, "sampled frame file is missing"):
+                provider.recognize(self.clips)
+        finally:
+            os.environ.pop(env_var, None)
+
+    def test_hash_mismatch_and_path_escape_are_refused(self):
+        bad = dict(self.clips[0].frames[0].to_dict())
+        bad["sha256"] = "0" * 64
+        mismatched = ClipEvidence(0, "clip1.mp4", 5, 0, 5, 0, frames=(bad,), evidence_root=str(self.root))
+        escaped = ClipEvidence(0, "clip1.mp4", 5, 0, 5, 0, frames=({"path": "../secret.jpg", "sha256": "ab" * 32},), evidence_root=str(self.root))
+        env_var = "TEST_VAC_TOKEN"
+        os.environ[env_var] = "secret-token"
+        try:
+            provider = VisionContentProvider(endpoint="http://example.com/api", allow_external=True, token_env=env_var)
+            with self.assertRaisesRegex(ContentError, "hash does not match"):
+                provider.recognize([mismatched])
+            with self.assertRaisesRegex(ContentError, "escapes the evidence root"):
+                provider.recognize([escaped])
         finally:
             os.environ.pop(env_var, None)
 
@@ -273,14 +321,33 @@ class TestVisionContentProvider(unittest.TestCase):
 
 class NarrationContentProviderTest(unittest.TestCase):
     def setUp(self):
+        fe = FrameEvidence(
+            frame_index=0,
+            source_path="clip.mp4",
+            timestamp=1.0,
+            width=1920,
+            height=1080,
+            sha256="hash0",
+            path="frames/f0.jpg"
+        )
+        fe1 = FrameEvidence(
+            frame_index=1,
+            source_path="clip.mp4",
+            timestamp=2.0,
+            width=1920,
+            height=1080,
+            sha256="hash1",
+            path="frames/f1.jpg"
+        )
         self.clips = [
             ClipEvidence(
                 index=0,
-                src="clip0.mp4",
-                media_duration=5.0,
+                src="clip.mp4",
+                media_duration=10.0,
                 source_in=0.0,
-                source_out=5.0,
+                source_out=10.0,
                 timeline_in=0.0,
+                frames=(fe, fe1),
             )
         ]
         self.scenes = [
@@ -430,6 +497,24 @@ class NarrationContentProviderTest(unittest.TestCase):
             payload = json.loads(req.data.decode("utf-8"))
             self.assertEqual(len(payload["clips"]), 1)
             self.assertEqual(payload["clips"][0]["scene_label"], "Boss Fight")
+        finally:
+            os.environ.pop(env_var, None)
+
+    @mock.patch("urllib.request.urlopen")
+    def test_model_cannot_clear_needs_review(self, mock_urlopen):
+        api_response = {"narrations": [{
+            "clip_index": 0, "text": "模型自称免审", "start": 0.5, "end": 3.5, "needs_review": False,
+        }]}
+        mock_resp = mock.MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = json.dumps(api_response).encode("utf-8")
+        mock_urlopen.return_value = mock_resp
+        env_var = "TEST_NARRATION_TOKEN"
+        os.environ[env_var] = "secret-token"
+        try:
+            provider = NarrationContentProvider(endpoint="http://example.com/api", allow_external=True, token_env=env_var)
+            decision = provider.narrate(self.clips, self.scenes)[0]
+            self.assertTrue(decision.needs_review)
         finally:
             os.environ.pop(env_var, None)
 

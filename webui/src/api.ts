@@ -1,13 +1,19 @@
 import type {
+  AcceptanceRecord,
   Asset,
   AssetTaskSummary,
   AuditLog,
   CreateTask,
   GovernancePatch,
-	DeliveryFile,
+  DeliveryFile,
+  ReviewView,
   Task,
-  TaskFetchReport
+  TaskFetchReport,
+  WorkflowRun,
+  WorkflowSnapshot
 } from './types';
+import type { ProcessingProfile, ProcessingProvider, ProviderDiagnostic, PreparationReport } from './preparation';
+import type { IngestRoots, IngestRun, IngestRunView, RecordingSource, SegmentPage, Segmentation, SelectedSegment } from './ingest';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -40,6 +46,16 @@ function json(method: 'POST' | 'PATCH', body: object): RequestInit {
 }
 
 export const api = {
+  diagnoseProvider: (provider: ProcessingProvider, operation: 'test' | 'models', apiKey: string, signal?: AbortSignal) =>
+    request<ProviderDiagnostic>(`/api/providers/${operation}`, { ...json('POST', { provider, ...(apiKey ? { api_key: apiKey } : {}) }), signal }),
+  listProfiles: () => request<ProcessingProfile[]>('/api/processing-profiles?limit=50'),
+  getProfile: (id:string, revision:number) => request<{profile:ProcessingProfile;profile_sha256:string}>(`/api/processing-profiles/${encodeURIComponent(id)}/revisions/${revision}`),
+  saveProfile: (profile:ProcessingProfile, expected:number) => request<ProcessingProfile>('/api/processing-profiles',json('POST',{profile,expected_revision:expected,idempotency_key:crypto.randomUUID()})),
+  profileConsent: (id:string,revision:number,granted:boolean) => request<{granted:boolean}>(`/api/processing-profiles/${encodeURIComponent(id)}/revisions/${revision}/external-consent`,{method:granted?'POST':'DELETE'}),
+  preparedPreflight: (asset:string,id:string,revision:number) => request<PreparationReport>(`/api/assets/${encodeURIComponent(asset)}/prepared-preflight`,json('POST',{profile_id:id,revision})),
+  startPrepared: (asset:string,id:string,revision:number,version:string) => request<WorkflowRun>(`/api/assets/${encodeURIComponent(asset)}/prepared-workflows`,json('POST',{profile_id:id,revision,expected_asset_version:version,idempotency_key:crypto.randomUUID()})),
+  preflightWorkflow: (assetId: string, profile: ProcessingProfile) =>
+    request<PreparationReport>(`/api/assets/${encodeURIComponent(assetId)}/workflow-preflight`, json('POST', profile)),
   listAssets: () => request<Asset[]>('/api/assets'),
   getAsset: (id: string) => request<Asset>(`/api/assets/${encodeURIComponent(id)}`),
   patchAsset: (id: string, patch: GovernancePatch) =>
@@ -50,8 +66,58 @@ export const api = {
   importDelivery: (assetId: string, packageDir: string) =>
     request<Asset>('/api/deliveries/import', json('POST', { asset_id: assetId, package_dir: packageDir })),
   listDeliveryFiles: (id: string) => request<DeliveryFile[]>(`/api/assets/${encodeURIComponent(id)}/files`),
-  reopenAsset: (id: string) => request<Asset>(`/api/assets/${encodeURIComponent(id)}/reopen`, { method: 'POST' })
+  reopenAsset: (id: string) => request<Asset>(`/api/assets/${encodeURIComponent(id)}/reopen`, { method: 'POST' }),
+  listWorkflows: (id: string, offset = 0) => request<WorkflowRun[]>(`/api/assets/${encodeURIComponent(id)}/workflows?limit=20&offset=${offset}`),
+  startWorkflow: (id: string, idempotencyKey: string, contentMode: 'builtin' | 'configured') =>
+    request<WorkflowRun>(`/api/assets/${encodeURIComponent(id)}/workflows`, json('POST', {
+      idempotency_key: idempotencyKey, content_mode: contentMode
+    })),
+  getWorkflow: (runId: string) => request<WorkflowSnapshot>(`/api/workflows/${encodeURIComponent(runId)}`),
+  reviewWorkflow: (runId: string) => request<ReviewView>(`/api/workflows/${encodeURIComponent(runId)}/review`),
+  confirmScene: (runId: string, body: { expected_version: number; revision_id: string; scene_id: string; decision: 'confirmed' | 'rejected'; note?: string }) =>
+    request<WorkflowRun>(`/api/workflows/${encodeURIComponent(runId)}/scene-reviews`, json('POST', body)),
+  approveNarration: (runId: string, body: { expected_version: number; revision_id: string; narration_id: string }) =>
+    request<WorkflowRun>(`/api/workflows/${encodeURIComponent(runId)}/narration-reviews`, json('POST', body)),
+  editWorkflow: (runId: string, body: Record<string, unknown>) =>
+    request<WorkflowRun>(`/api/workflows/${encodeURIComponent(runId)}/revisions`, json('POST', body)),
+  cancelWorkflow: (runId: string, expectedVersion: number, reason: string) =>
+    request<WorkflowRun>(`/api/workflows/${encodeURIComponent(runId)}/cancel`, json('POST', { expected_version: expectedVersion, reason })),
+  listAcceptance: (runId: string) => request<AcceptanceRecord[]>(`/api/workflows/${encodeURIComponent(runId)}/acceptance`),
+  retryWorkflow: (runId: string, version: number, stage: string, key: string) => request<WorkflowRun>(`/api/workflows/${encodeURIComponent(runId)}/retry`, json('POST', { expected_version: version, failed_stage: stage, idempotency_key: key })),
+  revokeWorkflowNarration: (runId: string, narrationId: string, version: number) => request<WorkflowRun>(`/api/workflows/${encodeURIComponent(runId)}/narration-reviews/${encodeURIComponent(narrationId)}?expected_version=${version}`, { method: 'DELETE' }),
+  recordAcceptance: (runId: string, body: { expected_version: number; check_item: string; result: 'passed' | 'failed'; note?: string }) =>
+    request<AcceptanceRecord>(`/api/workflows/${encodeURIComponent(runId)}/acceptance`, json('POST', body))
 };
+
+const runPath = (run: string) => `/api/ingest-runs/${encodeURIComponent(run)}`;
+const key = () => crypto.randomUUID();
+
+/** 七阶段原始录像导入。只提交根 ID + 相对路径，绝对路径从不经过浏览器。 */
+export const ingestApi = {
+  roots: () => request<IngestRoots>('/api/ingest-roots'),
+  register: (assetId: string, rootId: string, relativePath: string) =>
+    request<{ source: RecordingSource; source_version: string; asset: Asset }>('/api/recordings',
+      json('POST', { asset_id: assetId, root_id: rootId, relative_path: relativePath, idempotency_key: key() })),
+  sources: (assetId: string) => request<RecordingSource[]>(`/api/assets/${encodeURIComponent(assetId)}/recordings`),
+  start: (assetId: string, source: RecordingSource) =>
+    request<{ run: IngestRun; task: Task }>(`/api/assets/${encodeURIComponent(assetId)}/ingest-runs`,
+      json('POST', { source_id: source.source_id, expected_source_version: source.source_version, idempotency_key: key() })),
+  runs: (assetId: string, offset = 0) => request<IngestRun[]>(`/api/assets/${encodeURIComponent(assetId)}/ingest-runs?limit=20&offset=${offset}`),
+  run: (run: string) => request<IngestRunView>(runPath(run)),
+  segments: (run: string, offset: number, limit = 50) => request<SegmentPage>(`${runPath(run)}/segments?limit=${limit}&offset=${offset}`),
+  analysis: (run: string, body: { expected_version: number; video_stream_index: number; game_audio_stream_index: number | null; source_range_us: [number, number]; segmentation: Segmentation }) =>
+    request<{ run: IngestRun }>(`${runPath(run)}/analysis-plans`, json('POST', { ...body, idempotency_key: key() })),
+  selection: (run: string, body: { expected_version: number; base_plan_revision: number; selected_segments: SelectedSegment[]; output: { fps: 30 | 60; sample_rate: 48000 } }) =>
+    request<IngestRun>(`${runPath(run)}/selection-revisions`, json('POST', { ...body, idempotency_key: key() })),
+  prepare: (run: string, body: { expected_version: number; plan_revision: number; profile_id: string; profile_revision: number }) =>
+    request<{ run: IngestRun }>(`${runPath(run)}/prepare`, json('POST', { ...body, idempotency_key: key() })),
+  cancel: (run: string, expectedVersion: number, reason: string) =>
+    request<IngestRun>(`${runPath(run)}/cancel`, json('POST', { expected_version: expectedVersion, reason })),
+  retry: (run: string, expectedVersion: number, stage: string) =>
+    request<{ run: IngestRun }>(`${runPath(run)}/retry`, json('POST', { expected_version: expectedVersion, stage, idempotency_key: key() }))
+};
+
+export const ingestFileURL = (run: string, fileKey: string) => `${runPath(run)}/files/${encodeURIComponent(fileKey)}`;
 
 export const deliveryFileURL = (id: string, key: string, download = false) =>
   `/api/assets/${encodeURIComponent(id)}/files/${encodeURIComponent(key)}${download ? '?download=1' : ''}`;

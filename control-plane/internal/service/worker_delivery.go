@@ -53,6 +53,9 @@ func (s *Service) SubmitDelivery(ctx context.Context, agentID, taskID, packageDi
 		if tk.Status == model.TaskStatusSucceeded {
 			return nil
 		}
+		if err := s.WorkflowBlocks(ctx, tx, tk.TaskID); err != nil {
+			return err
+		}
 		nextStatus, ok := packageStatus[tk.Type]
 		if !ok {
 			return fmt.Errorf("service: submit delivery on task %s: type %q does not produce a package: %w",
@@ -101,13 +104,20 @@ func (s *Service) SubmitDelivery(ctx context.Context, agentID, taskID, packageDi
 		if savedAsset, err = tx.GetAsset(ctx, tk.AssetID); err != nil {
 			return err
 		}
+		if err := s.NoteWorkflowSuccess(ctx, tx, tk, packageDir); err != nil {
+			return err
+		}
 		changed = true
 		return nil
 	})
 	if err != nil {
+		if s.WorkflowBlocks(ctx, s.st, taskID) != nil {
+			s.audit(ctx, "agent:"+agentID, "stale_delivery.reject", taskID, err.Error())
+		}
 		return err
 	}
 	if changed {
+		s.publishTaskWorkflow(ctx, taskID)
 		s.publish("task_updated", cloneTask(savedTask))
 		s.publish("asset_updated", cloneAsset(savedAsset))
 		s.audit(ctx, "agent:"+agentID, "task.submit", taskID, "delivery:"+filepath.ToSlash(packageDir))

@@ -6,15 +6,136 @@ they must be selected explicitly rather than silently replacing the built-in.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import math
 import os
+import re
 import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, Sequence
+
+
+MAX_HTTP_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MB limit
+MAX_FRAME_BYTES = 10 * 1024 * 1024
+MAX_REQUEST_IMAGE_BYTES = 32 * 1024 * 1024
+
+
+def narration_draft_hash(text: str, start: float, end: float, source: str) -> str:
+    """Fingerprint a narration draft so a later edit cannot reuse an old approval.
+
+    The canonical bytes are UTF-8 of ``text``, start, end and source, separated
+    by newlines. Times use six decimal places. The same spelling is implemented
+    by the control-plane service that records the human approval.
+    """
+    if not isinstance(text, str) or not isinstance(source, str):
+        raise ContentError("narration draft hash requires text and source strings")
+    if isinstance(start, bool) or isinstance(end, bool) or not all(isinstance(v, (int, float)) for v in (start, end)):
+        raise ContentError("narration draft timestamps must be numbers")
+    if not math.isfinite(float(start)) or not math.isfinite(float(end)):
+        raise ContentError("narration draft timestamps must be finite")
+    canonical = f"{text}\n{float(start):.6f}\n{float(end):.6f}\n{source}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def resolve_evidence_file(root: str, relative_path: str) -> Path:
+    """Resolve one sampled frame strictly inside the worker-controlled root."""
+    if not isinstance(root, str) or not root.strip():
+        raise ContentError("sampled frame has no controlled evidence root")
+    if not isinstance(relative_path, str) or not relative_path.strip():
+        raise ContentError("sampled frame path is missing")
+    raw = relative_path.replace("\\", "/")
+    if raw.startswith("/") or ":" in raw or raw.startswith("../") or "/../" in f"/{raw}/" or raw.endswith("/.."):
+        raise ContentError("frame path escapes the evidence root")
+    parts = [part for part in raw.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        raise ContentError("frame path escapes the evidence root")
+    root_path = Path(root).resolve()
+    if not root_path.is_dir():
+        raise ContentError("evidence root is not a directory")
+    candidate = root_path.joinpath(*parts).resolve()
+    if candidate != root_path and root_path not in candidate.parents:
+        raise ContentError("frame path escapes the evidence root")
+    return candidate
+
+
+def load_frame_image(clip: ClipEvidence, frame: Any) -> dict[str, Any]:
+    """Read one sampled frame, check its hash, and return a payload with image bytes.
+
+    The absolute path stays on the worker. The outbound object carries a
+    relative name, the measured metadata, and base64 image bytes.
+    """
+    if hasattr(frame, "to_dict"):
+        meta = frame.to_dict()
+    elif isinstance(frame, dict):
+        meta = dict(frame)
+    else:
+        raise ContentError("sampled frame is missing metadata")
+    relative = meta.get("path")
+    if isinstance(relative, Path):
+        relative = relative.name
+    if not isinstance(relative, str):
+        raise ContentError("sampled frame path is missing")
+    expected = meta.get("sha256")
+    if not isinstance(expected, str) or len(expected) != 64 or any(ch not in "0123456789abcdef" for ch in expected):
+        raise ContentError("sampled frame is missing a sha256 digest")
+    frame_file = resolve_evidence_file(clip.evidence_root, relative)
+    if not frame_file.is_file():
+        raise ContentError(f"sampled frame file is missing: {Path(relative).name}")
+    size = frame_file.stat().st_size
+    if size <= 0 or size > MAX_FRAME_BYTES:
+        raise ContentError("sampled frame size is outside the allowed limit")
+    raw = frame_file.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != expected:
+        raise ContentError("sampled frame hash does not match the evidence record")
+    payload = {
+        "frame_index": meta.get("frame_index", meta.get("index")),
+        "timestamp": meta.get("timestamp", meta.get("pts")),
+        "width": meta.get("width"),
+        "height": meta.get("height"),
+        "sha256": digest,
+        "path": "/".join(part for part in relative.replace("\\", "/").split("/") if part not in ("", ".")),
+        "image_base64": base64.b64encode(raw).decode("ascii"),
+    }
+    return payload
+
+
+def _read_limited_response(resp: Any, max_bytes: int = MAX_HTTP_RESPONSE_BYTES) -> bytes:
+    if not hasattr(resp, "read"):
+        return b""
+    try:
+        data = resp.read(max_bytes + 1)
+    except TypeError:
+        # If mock object or custom stream does not accept size argument
+        data = resp.read()
+
+    if isinstance(data, (bytes, bytearray)):
+        if len(data) > max_bytes:
+            raise ContentError(f"external service response exceeded maximum size limit ({max_bytes} bytes)")
+        return bytes(data)
+    elif isinstance(data, str):
+        encoded = data.encode("utf-8")
+        if len(encoded) > max_bytes:
+            raise ContentError(f"external service response exceeded maximum size limit ({max_bytes} bytes)")
+        return encoded
+    return b""
+
+
+def _redact_sensitive_text(text: str, token: str | None = None) -> str:
+    if not text:
+        return text
+    res = text
+    if token and token in res:
+        res = res.replace(token, "[REDACTED]")
+    res = re.sub(r'://([^:]+):([^@]+)@', r'://\1:[REDACTED]@', res)
+    res = re.sub(r'(Bearer\s+)[A-Za-z0-9_\-\.]+', r'\1[REDACTED]', res, flags=re.IGNORECASE)
+    res = re.sub(r'((?:token|api_key|key|secret|password)=)[^&\s]+', r'\1[REDACTED]', res, flags=re.IGNORECASE)
+    return res
 
 
 class ContentError(ValueError):
@@ -30,6 +151,8 @@ class ClipEvidence:
     source_out: float
     timeline_in: float
     frames: tuple[Any, ...] = ()
+    # Directory the worker owns. The vision adapter may read frames only here.
+    evidence_root: str = ""
 
 
 @dataclass(frozen=True)
@@ -104,9 +227,11 @@ class VisionContentProvider:
         model: str = "default",
         opener: Any = None,
     ) -> None:
+        if not isinstance(allow_external, bool):
+            raise TypeError(f"allow_external must be a bool, got {type(allow_external).__name__}")
         self.endpoint = endpoint
         self.token_env = token_env or "VAC_VISION_TOKEN"
-        self.allow_external = bool(allow_external)
+        self.allow_external = allow_external
         self.timeout_seconds = float(timeout_seconds)
         self.model = model
         self._opener = opener or urllib.request.urlopen
@@ -126,25 +251,23 @@ class VisionContentProvider:
 
         clip_by_idx = {c.index: c for c in clips}
         clip_payloads = []
+        image_bytes = 0
         for c in clips:
+            if not c.frames:
+                raise ContentError(f"clip {c.index} has no sampled frames for visual recognition")
             frames_data = []
             for f in c.frames:
-                if hasattr(f, "to_dict"):
-                    fd = f.to_dict()
-                elif isinstance(f, dict):
-                    fd = dict(f)
-                else:
-                    fd = {"reference": str(f)}
-                clean_fd = {}
-                for k, v in fd.items():
-                    if isinstance(v, Path):
-                        clean_fd[k] = str(v)
-                    else:
-                        clean_fd[k] = v
+                clean_fd = load_frame_image(c, f)
+                if "image_base64" not in clean_fd:
+                    raise ContentError(f"clip {c.index} frame has no image bytes")
+                image_bytes += len(base64.b64decode(clean_fd["image_base64"]))
+                if image_bytes > MAX_REQUEST_IMAGE_BYTES:
+                    raise ContentError("visual request exceeds the image byte budget")
                 frames_data.append(clean_fd)
+            src = c.src if isinstance(c.src, str) and not os.path.isabs(c.src) and "\\" not in c.src and ":" not in c.src else ""
             clip_payloads.append({
                 "clip_index": c.index,
-                "src": c.src,
+                "src": src,
                 "media_duration": c.media_duration,
                 "source_in": c.source_in,
                 "source_out": c.source_out,
@@ -165,13 +288,11 @@ class VisionContentProvider:
         req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
 
         def _redact(text: str) -> str:
-            if token and token in text:
-                return text.replace(token, "[REDACTED]")
-            return text
+            return _redact_sensitive_text(text, token)
 
         try:
             with self._opener(req, timeout=self.timeout_seconds) as resp:
-                raw_bytes = resp.read()
+                raw_bytes = _read_limited_response(resp)
         except urllib.error.HTTPError as err:
             reason = _redact(str(err.reason) if getattr(err, "reason", None) else str(err.code))
             raise ContentError(f"vision endpoint HTTP error {err.code}: {reason}") from None
@@ -269,9 +390,11 @@ class NarrationContentProvider:
         model: str = "default",
         opener: Any = None,
     ) -> None:
+        if not isinstance(allow_external, bool):
+            raise TypeError(f"allow_external must be a bool, got {type(allow_external).__name__}")
         self.endpoint = endpoint
         self.token_env = token_env or "VAC_NARRATION_TOKEN"
-        self.allow_external = bool(allow_external)
+        self.allow_external = allow_external
         self.timeout_seconds = float(timeout_seconds)
         self.model = model
         self._opener = opener or urllib.request.urlopen
@@ -323,22 +446,38 @@ class NarrationContentProvider:
             method="POST",
         )
 
+        def _redact(text: str) -> str:
+            return _redact_sensitive_text(text, token)
+
         try:
             resp = self._opener(req, timeout=self.timeout_seconds)
-            status = getattr(resp, "status", None) or getattr(resp, "code", 200)
-            if status >= 400:
-                raise ContentError(f"external narration service returned HTTP {status}")
-            raw_data = resp.read()
+            try:
+                status = getattr(resp, "status", None) or getattr(resp, "code", 200)
+                if status >= 400:
+                    raise ContentError(f"external narration service returned HTTP {status}")
+                raw_data = _read_limited_response(resp)
+            finally:
+                if hasattr(resp, "close"):
+                    resp.close()
         except ContentError:
             raise
         except urllib.error.HTTPError as err:
-            raise ContentError(f"external narration service HTTP error: {err.code}") from err
+            reason = _redact(str(err.reason) if getattr(err, "reason", None) else str(err.code))
+            raise ContentError(f"external narration service HTTP error: {err.code} {reason}") from None
+        except (TimeoutError, socket.timeout) as err:
+            raise ContentError(f"external narration service timed out: {_redact(str(err))}") from None
         except urllib.error.URLError as err:
-            raise ContentError(f"external narration service network error: {err.reason}") from err
-        except TimeoutError as err:
-            raise ContentError("external narration service timed out") from err
+            err_reason = _redact(str(err.reason))
+            if isinstance(err.reason, (TimeoutError, socket.timeout)) or "timed out" in err_reason.lower():
+                raise ContentError(f"external narration service timed out: {err_reason}") from None
+            raise ContentError(f"external narration service network error: {err_reason}") from None
+        except OSError as err:
+            err_str = _redact(str(err))
+            if "timed out" in err_str.lower():
+                raise ContentError(f"external narration service timed out: {err_str}") from None
+            raise ContentError(f"external narration service network error: {err_str}") from None
         except Exception as err:
-            raise ContentError(f"external narration service request failed ({type(err).__name__})") from err
+            raise ContentError(f"external narration service request failed: {_redact(str(err))}") from None
 
         try:
             parsed = json.loads(raw_data.decode("utf-8"))
@@ -385,7 +524,9 @@ class NarrationContentProvider:
 
             scene_item = scene_map.get(clip_idx)
             src_label = str(item.get("source_scene_label") or (scene_item.label if scene_item else ""))
-            needs_review = bool(item.get("needs_review", True))
+            # The model cannot grant itself an exemption. Review is a human
+            # or operator-config decision applied later by the TTS gate.
+            needs_review = True
             item_model = str(item.get("model_version") or model_version)
 
             decisions.append(
@@ -408,6 +549,13 @@ ExternalNarrationProvider = NarrationContentProvider
 
 
 def make_content_provider(name: str, **kwargs: Any) -> ContentProvider:
+    api_format = kwargs.pop('api_format', '')
+    if api_format:
+        from .provider_http import StandardGateway
+        if name not in ('vision', 'narration'):
+            raise ContentError('standard API formats require vision or narration adapter')
+        kwargs['opener'] = StandardGateway(api_format, kwargs.get('endpoint', ''), name,
+                                           kwargs.pop('opener', None)).open
     if name == "builtin":
         return BuiltinContentProvider()
     if name in ("vision", "external_vision", "vision_adapter"):
@@ -436,9 +584,25 @@ def validate_scenes(clips: Sequence[ClipEvidence], decisions: Sequence[SceneDeci
                 raise ContentError("recognition sequence_rank must be a non-negative integer or None")
         if not isinstance(item.evidence_frames, (list, tuple)):
             raise ContentError("recognition evidence_frames must be a sequence")
+        clip = next((c for c in clips if c.index == item.clip_index), None)
+        valid_clip_frame_keys = set()
+        if clip and getattr(clip, "frames", None):
+            for cf in clip.frames:
+                if hasattr(cf, "sha256"):
+                    valid_clip_frame_keys.add(cf.sha256)
+                if hasattr(cf, "path"):
+                    valid_clip_frame_keys.add(cf.path)
+                if hasattr(cf, "frame_index"):
+                    valid_clip_frame_keys.add(str(cf.frame_index))
+                if isinstance(cf, dict):
+                    if "sha256" in cf: valid_clip_frame_keys.add(cf["sha256"])
+                    if "path" in cf: valid_clip_frame_keys.add(cf["path"])
+                    if "frame_index" in cf: valid_clip_frame_keys.add(str(cf["frame_index"]))
         for f in item.evidence_frames:
             if not isinstance(f, str) or not f.strip() or not f.isprintable() or len(f) > 256:
                 raise ContentError("recognition evidence_frame must be a non-empty printable string under 256 chars")
+            if valid_clip_frame_keys and f not in valid_clip_frame_keys:
+                raise ContentError(f"recognition evidence_frame {f!r} does not belong to sampled frame evidence for clip {item.clip_index}")
         by_index[item.clip_index] = item
     if set(by_index) != {clip.index for clip in clips}:
         raise ContentError("recognition clip indices differ from the input")

@@ -25,9 +25,17 @@ def main(argv=None) -> int:
         signal.signal(sig, lambda *_: (log("signal received; stopping after current step"), stop.set()))
     try:
         cfg = load_config(args.config)
-        client = Client(cfg.mcp_url, cfg.token)
-        result = run_loop(client, cfg, log, stop, once=args.once)
-    except Exception as err:  # startup/transport failure
+        timeout = 3.0 if cfg.role == "ingester" else 15.0
+        client = Client(cfg.mcp_url, cfg.token, timeout=timeout)
+        if cfg.role == "ingester":
+            from .ingest import run_ingest_loop
+            result = run_ingest_loop(client, cfg, log, stop, once=args.once)
+        else:
+            result = run_loop(client, cfg, log, stop, once=args.once)
+    except ValueError as err:
+        log(f"fatal: {err}")
+        return 3 if str(err).startswith("config:") else 2
+    except Exception as err:  # startup failure; task transport errors stay inside the ingester loop
         log(f"fatal: {err}")
         return 2
     log(f"exit: {result['outcome']}")

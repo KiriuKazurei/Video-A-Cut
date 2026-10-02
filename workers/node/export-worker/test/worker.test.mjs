@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ToolError, createClient } from '../src/mcp.mjs';
-import { loadConfig, processTask, resolveUnderRoot, WorkerFailure } from '../src/worker.mjs';
+import { loadConfig, processTask, runLoop, resolveUnderRoot, WorkerFailure } from '../src/worker.mjs';
 
 async function root() {
   const dir = await realpath(await mkdtemp(join(process.env.TMPDIR || tmpdir(), 'vac-worker-')));
@@ -31,6 +31,38 @@ const baseCfg = (deliveryRoot) => ({
   nodePath: 'node', cliPath: '/cli.mjs', adaptersPath: '/a.mjs'
 });
 const task = { task_id: 't1', asset_id: 'clip', type: 'export' };
+
+test('prepared export rejects mismatched Worker before CLI or submission', async () => {
+  const dir=await root();
+  const client=fakeClient({get_task_input:()=>({processing_profile:{export_target:'premiere'},profile_sha256:'a'.repeat(64)})});
+  const result=await processTask({client,cfg:{...baseCfg(dir),profileSHA256:'b'.repeat(64)},task,runCliImpl:async()=>assert.fail('wrong Worker executed')});
+  assert.equal(result.outcome,'failed');
+  assert.match(result.reason,/fingerprint/);
+  assert.ok(!client.calls.some(([name])=>name==='submit_delivery'));
+});
+
+test('prepared recovery restores provenance and does not duplicate manifest entry', async () => {
+  const dir=await root();const output=join(dir,'deliveries','clip','t1');await mkdir(output,{recursive:true});
+  const sha='a'.repeat(64);const profile={profile_id:'fixed',revision:1,export_target:'premiere'};
+  await writeFile(join(output,'worker-receipt.json'),JSON.stringify({task_id:'t1',revision_id:'rev1',content_mode:'configured',profile_sha256:sha}));
+  await writeFile(join(output,'delivery-manifest.json'),JSON.stringify({artifacts:[]}));
+  const client=fakeClient({get_task_input:()=>({versioned:true,revision_id:'rev1',content_mode:'configured',edl_path:'src/edl.json',processing_profile:profile,profile_sha256:sha})});
+  for(let i=0;i<2;i++){
+    const result=await processTask({client,cfg:{...baseCfg(dir),profileSHA256:sha},task,runCliImpl:async()=>assert.fail('published CLI reran')});
+    assert.equal(result.recovered,true);
+  }
+  assert.deepEqual(JSON.parse(await readFile(join(output,'processing-profile.json'),'utf8')),{profile,profile_sha256:sha});
+  const manifest=JSON.parse(await readFile(join(output,'delivery-manifest.json'),'utf8'));
+  assert.equal(manifest.artifacts.filter(a=>a.kind==='processing_profile').length,1);
+});
+
+test('versioned output receipt recovers publish-before-register crash', async () => {
+  const dir=await root();const output=join(dir,'deliveries','clip','t1');await mkdir(output,{recursive:true});
+  await writeFile(join(output,'worker-receipt.json'),JSON.stringify({task_id:'t1',revision_id:'rev1',content_mode:'configured'}));
+  const client=fakeClient({get_task_input:()=>({versioned:true,revision_id:'rev1',content_mode:'configured',edl_path:'src/edl.json'})});
+  const result=await processTask({client,cfg:baseCfg(dir),task,runCliImpl:async()=>assert.fail('published CLI reran')});
+  assert.equal(result.recovered,true);assert.ok(client.calls.some(([name])=>name==='submit_delivery'));
+});
 
 test('success path reports progress and submits delivery', async () => {
   const dir = await root();
@@ -128,4 +160,15 @@ test('mcp client maps isError to ToolError code', async () => {
   const c = createClient({ url: 'http://x/mcp', token: 't'.repeat(40), fetchImpl });
   await assert.rejects(c.call('get_task_status', { task_id: 'x' }), (e) => e instanceof ToolError && e.code === 'not_found');
   assert.throws(() => createClient({ url: 'http://x', token: 'short' }), /token/);
+});
+
+
+test('idle capability heartbeat retries a transient disconnect', async () => {
+  const original=Date.now;let clock=0,beats=0,claims=0;
+  const client={listTools:async()=>['claim_task','heartbeat','report_progress','get_asset','get_task_input','submit_delivery','fail_task'],call:async(name)=>{if(name==='heartbeat'){if(++beats===2)throw Error('temporary disconnect');return {}}claims++;return {claimed:false}}};
+  try{
+    Date.now=()=>{clock+=6000;return clock};
+    const result=await runLoop({client,cfg:{...baseCfg(await root()),profileSHA256:'a'.repeat(64),token:'test',pollIntervalMs:1},signal:new AbortController().signal,log:()=>{},once:true});
+    assert.equal(result.outcome,'idle');assert.equal(beats,3);assert.equal(claims,1);
+  }finally{Date.now=original}
 });

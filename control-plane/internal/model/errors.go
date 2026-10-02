@@ -22,4 +22,18 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	// ErrArgument means the caller supplied an invalid argument.
 	ErrArgument = errors.New("invalid argument")
+	// ErrStaleExecution means the caller presented a missing, old, or
+	// mismatched ingest execution scope.
+	ErrStaleExecution = errors.New("stale execution")
+	// ErrResourceBusy means a live execution holds a resource and the
+	// caller did not ask to replace it.
+	ErrResourceBusy = errors.New("resource busy")
+	// ErrObsolete means a replayed request no longer matches a live execution.
+	ErrObsolete = errors.New("obsolete")
+	// ErrInstanceConflict means another runtime instance of the same agent
+	// still holds a live execution.
+	ErrInstanceConflict = errors.New("instance conflict")
+	// ErrProtocolUpgrade means the worker cannot take tasks that require the
+	// current execution protocol.
+	ErrProtocolUpgrade = errors.New("execution protocol upgrade required")
 )

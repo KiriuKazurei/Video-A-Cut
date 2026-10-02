@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/ingest"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
@@ -41,6 +43,9 @@ func (s *Service) CreateTask(ctx context.Context, tk model.Task) error {
 	// stays here so every future transport shares the same rule.
 	if tk.Type == "" {
 		return fmt.Errorf("service: create task %s: type is required: %w", tk.TaskID, model.ErrArgument)
+	}
+	if ingest.IsTaskType(tk.Type) || tk.AgentRole == ingest.RoleIngester {
+		return fmt.Errorf("service: create task %s: ingest tasks are created only by ingest runs: %w", tk.TaskID, model.ErrArgument)
 	}
 
 	// A task starts as a clean queue entry regardless of fields a direct
@@ -119,20 +124,66 @@ func (s *Service) GetTask(ctx context.Context, id string) (model.Task, error) {
 //
 // When nothing is queued the caller gets model.ErrNotFound, so a handler can
 // tell "the queue is empty" (poll again later) apart from a real error.
+// ClaimTask claims ordinary work, or an ingest task when the caller has no
+// instance identity. Ingest tasks then fail closed inside the transaction
+// rather than being handed out without a scope.
 func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease time.Time) (model.Task, error) {
+	out, err := s.ClaimForExecution(ctx, agentID, role, lease, ClaimOptions{})
+	if err != nil {
+		return model.Task{}, err
+	}
+	if out.Obsolete {
+		return model.Task{}, fmt.Errorf("claim request is obsolete: %w", model.ErrObsolete)
+	}
+	return out.Task, nil
+}
+
+// ClaimForExecution claims a task and, for ingest work, allocates an execution
+// scope. Replaying request_id returns the original scope or obsolete.
+func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, lease time.Time, opt ClaimOptions) (ClaimOutcome, error) {
 	if agentID == "" {
-		return model.Task{}, fmt.Errorf("service: claim task: agent_id is required: %w", model.ErrArgument)
+		return ClaimOutcome{}, fmt.Errorf("service: claim task: agent_id is required: %w", model.ErrArgument)
 	}
 	if role == "" {
-		return model.Task{}, fmt.Errorf("service: claim task: agent_role is required: %w", model.ErrArgument)
+		return ClaimOutcome{}, fmt.Errorf("service: claim task: agent_role is required: %w", model.ErrArgument)
 	}
 
-	var claimed model.Task
+	var outcome ClaimOutcome
 	changed := false
+	var wake []string
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		now := time.Now().UTC()
 		if !validLeaseUntil(lease, now) {
 			return fmt.Errorf("service: claim task: lease expiry must be in the future: %w", model.ErrArgument)
+		}
+		if opt.RequestID != "" || opt.RuntimeInstanceID != "" {
+			if !idemKeyPattern.MatchString(opt.RuntimeInstanceID) || !idemKeyPattern.MatchString(opt.RequestID) {
+				return fmt.Errorf("runtime_instance_id and request_id are required together: %w", model.ErrArgument)
+			}
+			req, err := tx.GetExecutionRequest(ctx, opt.RuntimeInstanceID, opt.RequestID, opClaim)
+			if err == nil {
+				ex, err := tx.GetIngestExecution(ctx, req.ExecutionID)
+				if err != nil {
+					return err
+				}
+				tk, err := tx.GetTask(ctx, ex.TaskID)
+				if err != nil {
+					return err
+				}
+				ctrl, err := tx.GetExecutionControl(ctx, ex.ExecutionID)
+				version := 0
+				if err == nil {
+					version = ctrl.ControlVersion
+				} else if !errors.Is(err, model.ErrNotFound) {
+					return err
+				}
+				b, berr := tx.GetIngestBinding(ctx, ex.TaskID)
+				live := berr == nil && b.ExecutionID == ex.ExecutionID && executionCurrent(ex.Status)
+				outcome = outcomeFromExecution(ex, tk, version, !live)
+				return nil
+			} else if !errors.Is(err, model.ErrNotFound) {
+				return err
+			}
 		}
 		active, err := activeTasksForAgent(ctx, tx, agentID)
 		if err != nil {
@@ -157,7 +208,39 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 				return fmt.Errorf("service: claim task %s: asset is not visible to role %q: %w",
 					tk.TaskID, role, model.ErrForbidden)
 			}
-			claimed = cloneTask(tk)
+			if b, err := tx.GetIngestBinding(ctx, tk.TaskID); err == nil {
+				if b.ExecutionID == "" {
+					return fmt.Errorf("held ingest task has no execution: %w", model.ErrConflict)
+				}
+				ex, err := tx.GetIngestExecution(ctx, b.ExecutionID)
+				if err != nil {
+					return err
+				}
+				if opt.RuntimeInstanceID == "" || ex.RuntimeInstanceID != opt.RuntimeInstanceID {
+					return fmt.Errorf("another runtime instance holds this execution: %w", model.ErrInstanceConflict)
+				}
+				if opt.RequestID != "" {
+					if _, err := tx.GetExecutionRequest(ctx, opt.RuntimeInstanceID, opt.RequestID, opClaim); errors.Is(err, model.ErrNotFound) {
+						if err := tx.InsertExecutionRequest(ctx, model.ExecutionRequest{
+							RuntimeInstanceID: opt.RuntimeInstanceID, RequestID: opt.RequestID, Operation: opClaim,
+							AgentID: agentID, ExecutionID: ex.ExecutionID, CreatedAt: now,
+						}); err != nil {
+							return err
+						}
+					} else if err != nil {
+						return err
+					}
+				}
+				ctrl, _ := tx.GetExecutionControl(ctx, ex.ExecutionID)
+				outcome = outcomeFromExecution(ex, cloneTask(tk), ctrl.ControlVersion, false)
+				return nil
+			} else if !errors.Is(err, model.ErrNotFound) {
+				return err
+			}
+			outcome = ClaimOutcome{Claimed: true, Task: cloneTask(tk), LeaseExpiresAt: tk.LeaseUntil}
+			if tk.LeaseUntil != nil {
+				outcome.LeaseRemaining = tk.LeaseUntil.Sub(now)
+			}
 			return nil
 		}
 
@@ -166,6 +249,29 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 			return fmt.Errorf("service: claim task for role %s: %w", role, err)
 		}
 		for _, candidate := range candidates {
+			if err := s.WorkflowBlocks(ctx, tx, candidate.TaskID); err != nil {
+				continue
+			}
+			if ok, err := s.ingestClaimable(ctx, tx, agentID, candidate); err != nil {
+				return err
+			} else if !ok {
+				continue
+			}
+			if stage, e := tx.StageByTask(ctx, candidate.TaskID); e == nil {
+				if binding, e := tx.ProfileBinding(ctx, stage.RunID); e == nil {
+					ok, e := tx.HasCapability(ctx, agentID, binding.SHA256)
+					if e != nil {
+						return e
+					}
+					if !ok {
+						continue
+					}
+				} else if !errors.Is(e, model.ErrNotFound) {
+					return e
+				}
+			} else if !errors.Is(e, model.ErrNotFound) {
+				return e
+			}
 			asset, err := tx.GetAsset(ctx, candidate.AssetID)
 			if err != nil {
 				return fmt.Errorf("service: claim task %s asset: %w", candidate.TaskID, err)
@@ -191,9 +297,27 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 			if err := tx.UpdateTask(ctx, candidate); err != nil {
 				return fmt.Errorf("service: claim task %s: %w", candidate.TaskID, err)
 			}
-			claimed, err = tx.GetTask(ctx, candidate.TaskID)
-			if err != nil {
-				return fmt.Errorf("service: read claimed task %s: %w", candidate.TaskID, err)
+			if _, err := tx.GetIngestBinding(ctx, candidate.TaskID); err == nil {
+				ex, err := s.allocateIngestExecution(ctx, tx, agentID, role, opt, candidate, lease, &wake)
+				if err != nil {
+					return fmt.Errorf("service: claim task %s: %w", candidate.TaskID, err)
+				}
+				saved, err := tx.GetTask(ctx, candidate.TaskID)
+				if err != nil {
+					return err
+				}
+				outcome = outcomeFromExecution(ex, saved, 1, false)
+			} else if !errors.Is(err, model.ErrNotFound) {
+				return err
+			} else {
+				saved, err := tx.GetTask(ctx, candidate.TaskID)
+				if err != nil {
+					return fmt.Errorf("service: read claimed task %s: %w", candidate.TaskID, err)
+				}
+				outcome = ClaimOutcome{Claimed: true, Task: saved, LeaseExpiresAt: saved.LeaseUntil}
+				if saved.LeaseUntil != nil {
+					outcome.LeaseRemaining = saved.LeaseUntil.Sub(now)
+				}
 			}
 			changed = true
 			return nil
@@ -201,13 +325,15 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 		return fmt.Errorf("service: claim task for role %s: nothing visible queued: %w", role, model.ErrNotFound)
 	})
 	if err != nil {
-		return model.Task{}, err
+		return ClaimOutcome{}, err
 	}
+	s.finishControl(wake)
 	if changed {
-		s.publish("task_updated", cloneTask(claimed))
-		s.audit(ctx, "agent:"+agentID, "task.claim", claimed.TaskID, "")
+		s.publish("task_updated", cloneTask(outcome.Task))
+		s.audit(ctx, "agent:"+agentID, "task.claim", outcome.Task.TaskID, "")
 	}
-	return cloneTask(claimed), nil
+	outcome.Task = cloneTask(outcome.Task)
+	return outcome, nil
 }
 
 // ReportProgress records an agent's progress on a task it owns.
@@ -226,33 +352,45 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 // audit row per heartbeat would bury the governance events that actually
 // matter.
 func (s *Service) ReportProgress(ctx context.Context, agentID, taskID string, progress float64, message string) error {
+	return s.ReportProgressScoped(ctx, ExecutionScope{AgentID: agentID, TaskID: taskID}, progress, message)
+}
+
+// ReportProgressScoped records progress for a historical task, or for the
+// current begun ingest execution identified by scope.
+func (s *Service) ReportProgressScoped(ctx context.Context, scope ExecutionScope, progress float64, message string) error {
 	if math.IsNaN(progress) || math.IsInf(progress, 0) {
-		return fmt.Errorf("service: report progress on task %s: progress must be finite: %w", taskID, model.ErrArgument)
+		return fmt.Errorf("service: report progress on task %s: progress must be finite: %w", scope.TaskID, model.ErrArgument)
 	}
 	var saved model.Task
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
-		tk, err := guardTaskMutation(ctx, tx, agentID, taskID)
+		tk, err := guardTaskMutation(ctx, tx, scope.AgentID, scope.TaskID)
 		if err != nil {
 			return err
 		}
+		if _, err := authorizeExecution(ctx, tx, scope, opProgress); err != nil {
+			return err
+		}
 		if leaseExpired(tk) {
-			return fmt.Errorf("service: report progress on task %s: %w", taskID, model.ErrLeaseExpired)
+			return fmt.Errorf("service: report progress on task %s: %w", scope.TaskID, model.ErrLeaseExpired)
+		}
+		if err := s.WorkflowBlocks(ctx, tx, scope.TaskID); err != nil {
+			return err
 		}
 		if tk.Status != model.TaskStatusClaimed && tk.Status != model.TaskStatusRunning {
 			return fmt.Errorf("service: report progress on task %s: status %q is not active: %w",
-				taskID, tk.Status, model.ErrInvalidState)
+				scope.TaskID, tk.Status, model.ErrInvalidState)
 		}
 		if tk.Status == model.TaskStatusClaimed {
 			tk.Status = model.TaskStatusRunning
 		}
-		tk.Progress = clampProgress(progress)
+		tk.Progress = ingestProgress(ctx, tx, tk, clampProgress(progress))
 		if message != "" {
 			tk.Message = message
 		}
 		if err := tx.UpdateTask(ctx, tk); err != nil {
-			return fmt.Errorf("service: report progress on task %s: %w", taskID, err)
+			return fmt.Errorf("service: report progress on task %s: %w", scope.TaskID, err)
 		}
-		saved, err = tx.GetTask(ctx, taskID)
+		saved, err = tx.GetTask(ctx, scope.TaskID)
 		return err
 	})
 	if err != nil {
@@ -279,6 +417,12 @@ func (s *Service) SubmitResult(ctx context.Context, agentID, taskID string, arti
 		tk, err := guardTaskMutation(ctx, tx, agentID, taskID)
 		if err != nil {
 			return err
+		}
+		if _, err := tx.StageByTask(ctx, taskID); err == nil {
+			return fmt.Errorf("workflow tasks require submit_delivery: %w", model.ErrInvalidState)
+		}
+		if _, err := tx.GetIngestBinding(ctx, taskID); err == nil {
+			return fmt.Errorf("ingest tasks require submit_ingest_result: %w", model.ErrInvalidState)
 		}
 		if tk.Status == model.TaskStatusSucceeded {
 			return nil
@@ -324,10 +468,20 @@ func (s *Service) SubmitResult(ctx context.Context, agentID, taskID string, arti
 // would discard output that downstream steps depend on. Failing an already
 // failed task is accepted and simply rewrites the reason.
 func (s *Service) FailTask(ctx context.Context, agentID, taskID, reason string) error {
+	return s.FailTaskScoped(ctx, ExecutionScope{AgentID: agentID, TaskID: taskID}, reason)
+}
+
+// FailTaskScoped closes the current execution. A revoked execution cannot
+// fail the task that replaced it.
+func (s *Service) FailTaskScoped(ctx context.Context, scope ExecutionScope, reason string) error {
 	var saved model.Task
 	changed := false
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
-		tk, err := guardTaskMutation(ctx, tx, agentID, taskID)
+		tk, err := guardTaskMutation(ctx, tx, scope.AgentID, scope.TaskID)
+		if err != nil {
+			return err
+		}
+		auth, err := authorizeExecution(ctx, tx, scope, opFail)
 		if err != nil {
 			return err
 		}
@@ -339,19 +493,38 @@ func (s *Service) FailTask(ctx context.Context, agentID, taskID, reason string) 
 		}
 		if tk.Status != model.TaskStatusClaimed && tk.Status != model.TaskStatusRunning {
 			return fmt.Errorf("service: fail task %s: status %q cannot fail: %w",
-				taskID, tk.Status, model.ErrInvalidState)
+				scope.TaskID, tk.Status, model.ErrInvalidState)
 		}
 		if leaseExpired(tk) {
-			return fmt.Errorf("service: fail task %s: %w", taskID, model.ErrLeaseExpired)
+			return fmt.Errorf("service: fail task %s: %w", scope.TaskID, model.ErrLeaseExpired)
+		}
+		if err := s.WorkflowBlocks(ctx, tx, scope.TaskID); err != nil {
+			return err
 		}
 
 		tk.Status = model.TaskStatusFailed
 		tk.Message = reason
 		tk.LeaseUntil = nil
 		if err := tx.UpdateTask(ctx, tk); err != nil {
-			return fmt.Errorf("service: fail task %s: %w", taskID, err)
+			return fmt.Errorf("service: fail task %s: %w", scope.TaskID, err)
 		}
-		saved, err = tx.GetTask(ctx, taskID)
+		if !auth.Historical {
+			auth.Execution.Status = model.ExecFailed
+			auth.Execution.StopReason = sanitizeReason(reason)
+			if err := tx.UpdateIngestExecution(ctx, auth.Execution); err != nil {
+				return err
+			}
+			if err := s.releaseResourceIfOwner(ctx, tx, auth.Run, auth.Execution.ExecutionID); err != nil {
+				return err
+			}
+		}
+		if err := s.NoteWorkflowFailure(ctx, tx, tk, reason); err != nil {
+			return err
+		}
+		if err := s.NoteIngestFailure(ctx, tx, tk, reason); err != nil {
+			return err
+		}
+		saved, err = tx.GetTask(ctx, scope.TaskID)
 		changed = true
 		return err
 	})
@@ -359,9 +532,11 @@ func (s *Service) FailTask(ctx context.Context, agentID, taskID, reason string) 
 		return err
 	}
 	if changed {
+		s.publishTaskWorkflow(ctx, scope.TaskID)
+		s.publishTaskIngest(ctx, scope.TaskID)
 		s.publish("task_updated", cloneTask(saved))
-		s.audit(ctx, "agent:"+agentID, "task.fail", taskID, reason)
-		s.cascadeFailure(ctx, taskID)
+		s.audit(ctx, "agent:"+scope.AgentID, "task.fail", scope.TaskID, reason)
+		s.cascadeFailure(ctx, scope.TaskID)
 	}
 	return nil
 }

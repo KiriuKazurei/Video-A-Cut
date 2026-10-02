@@ -65,6 +65,8 @@ const (
 	codeInvalidState         = "invalid_state"
 	codeLeaseExpired         = "lease_expired"
 	codeLeaseHeld            = "lease_held"
+	codeResourceBusy         = "resource_busy"
+	codeStaleExecution       = "stale_execution"
 	codeBodyTooLarge         = "payload_too_large"
 	codeInternal             = "internal_error"
 	codeMethodNotAllowed     = "method_not_allowed"
@@ -85,9 +87,48 @@ const (
 // server sees one error shape from day one and a later task only replaces the
 // response behind the status.
 func (s *Server) routes() {
+	s.mux.HandleFunc("POST /api/providers/{operation}", s.diagnoseProvider)
+	s.mux.HandleFunc("GET /api/processing-profiles", s.listProfiles)
+	s.mux.HandleFunc("POST /api/processing-profiles", s.saveProfile)
+	s.mux.HandleFunc("GET /api/processing-profiles/{id}/revisions/{revision}", s.getProfile)
+	s.mux.HandleFunc("POST /api/processing-profiles/{id}/revisions", s.saveProfile)
+	s.mux.HandleFunc("POST /api/processing-profiles/{id}/revisions/{revision}/external-consent", s.profileConsent)
+	s.mux.HandleFunc("DELETE /api/processing-profiles/{id}/revisions/{revision}/external-consent", s.profileConsent)
+	s.mux.HandleFunc("POST /api/assets/{id}/prepared-preflight", s.preparedPreflight)
+	s.mux.HandleFunc("POST /api/assets/{id}/prepared-workflows", s.startPrepared)
+	s.mux.HandleFunc("POST /api/assets/{id}/workflow-preflight", s.preflightWorkflow)
+	s.mux.HandleFunc("GET /api/workflows/{run}/evidence/{key}", s.workflowEvidence)
+	s.mux.HandleFunc("GET /api/workflows/{run}/delivery.zip", s.workflowZIP)
+	s.mux.HandleFunc("GET /api/ingest-roots", s.listIngestRoots)
+	s.mux.HandleFunc("POST /api/recordings", s.registerRecording)
+	s.mux.HandleFunc("GET /api/assets/{id}/recordings", s.listRecordings)
+	s.mux.HandleFunc("POST /api/assets/{id}/ingest-runs", s.startIngest)
+	s.mux.HandleFunc("GET /api/assets/{id}/ingest-runs", s.listIngestRuns)
+	s.mux.HandleFunc("GET /api/ingest-runs/{run}", s.getIngestRun)
+	s.mux.HandleFunc("GET /api/ingest-runs/{run}/segments", s.listIngestSegments)
+	s.mux.HandleFunc("POST /api/ingest-runs/{run}/analysis-plans", s.postAnalysisPlan)
+	s.mux.HandleFunc("POST /api/ingest-runs/{run}/selection-revisions", s.postSelection)
+	s.mux.HandleFunc("POST /api/ingest-runs/{run}/prepare", s.postPrepare)
+	s.mux.HandleFunc("POST /api/ingest-runs/{run}/cancel", s.cancelIngest)
+	s.mux.HandleFunc("POST /api/ingest-runs/{run}/retry", s.retryIngest)
+	s.mux.HandleFunc("GET /api/ingest-runs/{run}/files/{key}", s.getIngestFile)
 	s.mux.HandleFunc("GET /api/assets", s.listAssets)
 	s.mux.HandleFunc("GET /api/assets/{id}", s.getAsset)
 	s.mux.HandleFunc("PATCH /api/assets/{id}", s.patchAsset)
+	s.mux.HandleFunc("POST /api/assets/{id}/narration-reviews", s.approveNarration)
+	s.mux.HandleFunc("DELETE /api/assets/{id}/narration-reviews/{hash}", s.revokeNarration)
+	s.mux.HandleFunc("POST /api/assets/{id}/workflows", s.startWorkflow)
+	s.mux.HandleFunc("GET /api/assets/{id}/workflows", s.listWorkflows)
+	s.mux.HandleFunc("GET /api/workflows/{run}", s.getWorkflow)
+	s.mux.HandleFunc("POST /api/workflows/{run}/cancel", s.cancelWorkflow)
+	s.mux.HandleFunc("POST /api/workflows/{run}/retry", s.retryWorkflow)
+	s.mux.HandleFunc("GET /api/workflows/{run}/review", s.reviewWorkflow)
+	s.mux.HandleFunc("POST /api/workflows/{run}/revisions", s.editWorkflow)
+	s.mux.HandleFunc("POST /api/workflows/{run}/scene-reviews", s.reviewScene)
+	s.mux.HandleFunc("POST /api/workflows/{run}/narration-reviews", s.reviewNarration)
+	s.mux.HandleFunc("DELETE /api/workflows/{run}/narration-reviews/{narration}", s.revokeWorkflowNarration)
+	s.mux.HandleFunc("GET /api/workflows/{run}/acceptance", s.getAcceptance)
+	s.mux.HandleFunc("POST /api/workflows/{run}/acceptance", s.postAcceptance)
 	s.mux.HandleFunc("POST /api/tasks", s.createTask)
 	s.mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	s.mux.HandleFunc("GET /api/events", s.streamEvents)

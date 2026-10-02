@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from vac_worker.sampling import (
     FrameEvidence,
+    SamplingBudgetTracker,
     SamplingError,
     SamplingLimits,
     _probe_frame_dimensions,
@@ -232,6 +233,38 @@ class TestSampling(unittest.TestCase):
         self.assertEqual(ev1[0].source_path, ev2[0].source_path)
         self.assertEqual(ev1[0].width, ev2[0].width)
         self.assertEqual(ev1[0].height, ev2[0].height)
+
+    def test_defaults_are_finite_and_shared_across_clips(self):
+        limits = SamplingLimits()
+        self.assertGreater(limits.max_total_frames, 0)
+        self.assertGreater(limits.max_total_bytes, 0)
+        self.assertGreater(limits.max_total_time, 0)
+        tight = SamplingLimits(max_total_frames=1, max_total_time=60)
+        tracker = SamplingBudgetTracker(limits=tight)
+        sample_clip_frames(
+            clip_path=self.synthetic_clip, source_in=0.0, source_out=2.0,
+            dest_dir=self.scratch_dir / "first", budget_tracker=tracker,
+        )
+        second = self.scratch_dir / "second"
+        with self.assertRaisesRegex(SamplingError, "total frames"):
+            sample_clip_frames(
+                clip_path=self.synthetic_clip, source_in=0.0, source_out=2.0,
+                dest_dir=second, budget_tracker=tracker,
+            )
+        self.assertEqual(list(second.glob("*.jpg")), [])
+
+    def test_ffprobe_timeout_uses_the_shared_deadline(self):
+        limits = SamplingLimits(timeout_per_clip=30, max_total_time=12)
+        tracker = SamplingBudgetTracker(limits=limits)
+        tracker.start_time -= 10
+        with patch("vac_worker.sampling._probe_frame_dimensions", return_value=(320, 240)) as probe:
+            sample_clip_frames(
+                clip_path=self.synthetic_clip, source_in=0.0, source_out=2.0,
+                dest_dir=self.scratch_dir / "deadline", budget_tracker=tracker,
+            )
+        timeout = probe.call_args.kwargs["timeout"]
+        self.assertLess(timeout, 5)
+        self.assertGreater(timeout, 0)
 
 
 if __name__ == "__main__":

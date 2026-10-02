@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "profile_id": "local_models",
+  "revision": 1,
+  "name": "本地模型配置示例（未探测）",
+  "content_mode": "configured",
+  "vision": { "adapter": "vision", "endpoint": "http://127.0.0.1:18081/vision", "model": "replace-with-installed-vision-model", "token_env": "VAC_VISION_TOKEN" },
+  "narration": { "adapter": "narration", "endpoint": "http://127.0.0.1:18082/narration", "model": "replace-with-installed-narration-model", "token_env": "VAC_NARRATION_TOKEN" },
+  "sampling": { "max_frames": 12, "max_bytes": 12582912, "timeout_seconds": 60 },
+  "tts_voice": "Microsoft Huihui Desktop",
+  "export_target": "premiere"
+}

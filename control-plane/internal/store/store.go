@@ -186,7 +186,7 @@ func scanAsset(row scanner) (model.Asset, error) {
 	)
 
 	scanErr := row.Scan(&a.AssetID, &a.Status, &agentVis, &humanAppr, &locked,
-		&agentsJSON, &artsJSON, &a.CreatedAt, &a.UpdatedAt)
+		&agentsJSON, &artsJSON, &a.InputKind, &a.IngestRunID, &a.CreatedAt, &a.UpdatedAt)
 	if scanErr != nil {
 		if errors.Is(scanErr, sql.ErrNoRows) {
 			return model.Asset{}, fmt.Errorf("store: asset: %w", model.ErrNotFound)
@@ -246,10 +246,10 @@ func (s *Store) CreateAsset(ctx context.Context, a model.Asset) error {
 
 	now := time.Now().UTC()
 	_, err := s.q.ExecContext(ctx, `INSERT INTO assets
-  (asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  (asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, input_kind, ingest_run_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.AssetID, a.Status, boolToInt(a.AgentVisible), boolToInt(a.HumanApproved), boolToInt(a.Locked),
-		marshalStringSlice(a.AllowedAgents), marshalStringMap(a.Artifacts), now, now)
+		marshalStringSlice(a.AllowedAgents), marshalStringMap(a.Artifacts), a.InputKind, a.IngestRunID, now, now)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique constraint") {
 			return fmt.Errorf("store: create asset %s: %w", a.AssetID, model.ErrConflict)
@@ -262,7 +262,7 @@ func (s *Store) CreateAsset(ctx context.Context, a model.Asset) error {
 // GetAsset returns the asset with the given id, or an error wrapping
 // model.ErrNotFound.
 func (s *Store) GetAsset(ctx context.Context, id string) (model.Asset, error) {
-	row := s.q.QueryRowContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
+	row := s.q.QueryRowContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, input_kind, ingest_run_id, created_at, updated_at
   FROM assets WHERE asset_id = ?`, id)
 
 	a, err := scanAsset(row)
@@ -274,7 +274,7 @@ func (s *Store) GetAsset(ctx context.Context, id string) (model.Asset, error) {
 
 // ListAssets returns every asset ordered by asset_id.
 func (s *Store) ListAssets(ctx context.Context) ([]model.Asset, error) {
-	rows, err := s.q.QueryContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, created_at, updated_at
+	rows, err := s.q.QueryContext(ctx, `SELECT asset_id, status, agent_visible, human_approved, locked, allowed_agents, artifacts, input_kind, ingest_run_id, created_at, updated_at
   FROM assets ORDER BY asset_id`)
 	if err != nil {
 		return nil, fmt.Errorf("store: list assets: %w", err)
@@ -304,10 +304,10 @@ func (s *Store) UpdateAsset(ctx context.Context, a model.Asset) error {
 
 	res, err := s.q.ExecContext(ctx, `UPDATE assets SET
   status = ?, agent_visible = ?, human_approved = ?, locked = ?,
-  allowed_agents = ?, artifacts = ?, updated_at = ?
+  allowed_agents = ?, artifacts = ?, input_kind = ?, ingest_run_id = ?, updated_at = ?
   WHERE asset_id = ?`,
 		a.Status, boolToInt(a.AgentVisible), boolToInt(a.HumanApproved), boolToInt(a.Locked),
-		marshalStringSlice(a.AllowedAgents), marshalStringMap(a.Artifacts), time.Now().UTC(), a.AssetID)
+		marshalStringSlice(a.AllowedAgents), marshalStringMap(a.Artifacts), a.InputKind, a.IngestRunID, time.Now().UTC(), a.AssetID)
 	if err != nil {
 		return fmt.Errorf("store: update asset %s: %w", a.AssetID, err)
 	}

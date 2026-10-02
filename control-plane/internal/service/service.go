@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -24,12 +25,22 @@ type Service struct {
 	deliveryRoot string
 	// maxAttempts caps lease recoveries per task; see SetMaxAttempts.
 	maxAttempts int
+	// ingest is configured once at startup by ConfigureIngest.
+	ingest ingestConfig
 
 	// bus is the optional fan-out sink for state-change events. It is nil
 	// until SetBus is called, which keeps the service usable (and testable)
 	// before the Phase 2 SSE handler exists. Every publish path checks it.
 	bus   *events.Bus
 	busMu sync.RWMutex
+
+	// ctrl tracks at most one in-flight execution control poll per execution.
+	// The wait itself happens outside any SQLite transaction.
+	ctrlMu         sync.Mutex
+	ctrl           map[string]*controlSlot
+	controlWait    time.Duration
+	controlWaitSet bool
+	controlHook    func()
 }
 
 // New returns a Service backed by st with no bus attached. SetBus attaches

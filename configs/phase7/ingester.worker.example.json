@@ -1,0 +1,11 @@
+{
+  "role": "ingester",
+  "mcp_url": "http://127.0.0.1:8806/mcp",
+  "delivery_root": "E:\\VAC\\delivery",
+  "token_env": "VAC_INGESTER_TOKEN",
+  "ffmpeg": "ffmpeg",
+  "ffprobe": "ffprobe",
+  "ingest_roots": [
+    { "root_id": "obs", "name": "OBS 录像", "path": "D:\\Video Files\\OBS" }
+  ]
+}

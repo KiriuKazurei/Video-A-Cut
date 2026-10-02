@@ -152,7 +152,9 @@ func statusFor(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, model.ErrForbidden):
 		return http.StatusForbidden
-	case errors.Is(err, model.ErrConflict),
+	case errors.Is(err, model.ErrResourceBusy),
+		errors.Is(err, model.ErrStaleExecution),
+		errors.Is(err, model.ErrConflict),
 		errors.Is(err, model.ErrInvalidState),
 		errors.Is(err, model.ErrLeaseExpired),
 		errors.Is(err, model.ErrLeaseHeld):
@@ -173,6 +175,10 @@ func codeFor(err error) string {
 		return codeArgument
 	case errors.Is(err, model.ErrForbidden):
 		return codeForbidden
+	case errors.Is(err, model.ErrResourceBusy):
+		return codeResourceBusy
+	case errors.Is(err, model.ErrStaleExecution):
+		return codeStaleExecution
 	case errors.Is(err, model.ErrConflict):
 		return codeConflict
 	case errors.Is(err, model.ErrInvalidState):

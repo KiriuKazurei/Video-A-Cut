@@ -9,6 +9,7 @@ can never silently stand in for speech in a production delivery.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -20,8 +21,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .content import (ClipEvidence, ContentError, ContentProvider, SceneDecision,
-                      make_content_provider, validate_narration, validate_scenes)
-from .sampling import SamplingError, sample_clip_frames
+                      make_content_provider, narration_draft_hash, validate_narration, validate_scenes)
+from .sampling import SamplingBudgetTracker, SamplingError, SamplingLimits, sample_clip_frames
+
+SAMPLING_CONFIG_VERSION = "sampling-v1"
+_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 class StageFailure(Exception):
@@ -37,6 +41,13 @@ class StageContext:
     progress: callable = field(default=lambda p, m: None)
     content_provider: ContentProvider | None = None
     work_dir: Path | None = None
+    sampling_limits: SamplingLimits | None = None
+    budget_tracker: SamplingBudgetTracker | None = None
+    # Operator config only. A true value is not read from the task EDL.
+    tts_auto_approve: bool = False
+    # Draft hashes recorded by the control-plane governance API.
+    narration_approvals: tuple[str, ...] = ()
+    tts_voice: str = ""
 
 
 @dataclass
@@ -82,6 +93,242 @@ def _resolve_src(ctx: StageContext, src: str) -> Path:
     return path
 
 
+def _sampling_config_record(limits: SamplingLimits) -> dict:
+    return {
+        "version": SAMPLING_CONFIG_VERSION,
+        "max_frames_per_clip": limits.max_frames_per_clip,
+        "max_width": limits.max_width,
+        "max_height": limits.max_height,
+        "max_bytes_per_frame": limits.max_bytes_per_frame,
+        "timeout_per_clip": limits.timeout_per_clip,
+        "max_total_frames": limits.max_total_frames,
+        "max_total_bytes": limits.max_total_bytes,
+        "max_total_time": limits.max_total_time,
+    }
+
+
+def _model_version(provider: ContentProvider | None) -> str:
+    if provider is None:
+        return "builtin"
+    model = getattr(provider, "model", None)
+    if isinstance(model, str) and model.strip():
+        return model.strip()
+    return "builtin"
+
+
+def _write_evidence_manifest(ctx: StageContext, clips: list[ClipEvidence], model_version: str, limits: SamplingLimits) -> None:
+    """Copy sampled frames into the package and write the trace manifest."""
+    frames = []
+    samples = ctx.out_dir / "samples"
+    for clip in clips:
+        if not clip.frames:
+            continue
+        for frame in clip.frames:
+            name = getattr(frame, "path", None)
+            digest = getattr(frame, "sha256", None)
+            if not isinstance(name, str) or not isinstance(digest, str):
+                raise StageFailure("sampled frame is missing a path or hash")
+            src = (Path(clip.evidence_root) / name).resolve()
+            root = Path(clip.evidence_root).resolve()
+            if root not in src.parents or not src.is_file():
+                raise StageFailure(f"sampled frame is missing: {name}")
+            if src.stat().st_size <= 0 or src.stat().st_size > limits.max_bytes_per_frame:
+                raise StageFailure(f"sampled frame size is outside the budget: {name}")
+            raw = src.read_bytes()
+            if hashlib_sha256(raw) != digest:
+                raise StageFailure(f"sampled frame hash mismatch: {name}")
+            samples.mkdir(parents=True, exist_ok=True)
+            rel = f"samples/clip_{clip.index}_{Path(name).name}"
+            dest = ctx.out_dir / rel
+            if dest.resolve().parent != samples.resolve():
+                raise StageFailure("evidence path escapes the package")
+            shutil.copy2(src, dest)
+            frames.append({
+                "clip_index": clip.index,
+                "frame_index": getattr(frame, "frame_index", None),
+                "sha256": digest,
+                "timestamp": getattr(frame, "timestamp", None),
+                "width": getattr(frame, "width", None),
+                "height": getattr(frame, "height", None),
+                "source_path": getattr(frame, "source_path", ""),
+                "source_name": Path(name).name,
+                "path": rel,
+            })
+    if not frames:
+        return
+    manifest = {
+        "schema_version": 1,
+        "model_version": model_version,
+        "sampling_config_version": SAMPLING_CONFIG_VERSION,
+        "sampling_config": _sampling_config_record(limits),
+        "frames": frames,
+    }
+    (samples / "evidence-manifest.json").write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def hashlib_sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _scene_id(src: str, start: float, end: float, existing: str = "") -> str:
+    if isinstance(existing, str) and existing.strip():
+        return existing.strip()
+    raw = f"{src}|{start:.6f}|{end:.6f}".encode("utf-8")
+    return "scn_" + hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _manifest_keys(frame: dict) -> set[str]:
+    keys = set()
+    for field_name in ("sha256", "path", "source_name"):
+        value = frame.get(field_name)
+        if isinstance(value, str) and value:
+            keys.add(value)
+    path = frame.get("path")
+    if isinstance(path, str) and path:
+        keys.add(Path(path).name)
+    return keys
+
+
+def _load_evidence_manifest(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        raise StageFailure("evidence manifest is unreadable") from err
+    if isinstance(data, list):
+        data = {"schema_version": 1, "frames": data}
+    if not isinstance(data, dict) or not isinstance(data.get("frames"), list):
+        raise StageFailure("evidence manifest has no frames list")
+    return data
+
+
+def _copy_evidence_tree(source: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    for file in source.rglob("*"):
+        if not file.is_file():
+            continue
+        rel = file.relative_to(source)
+        if any(part == ".." for part in rel.parts):
+            raise StageFailure("evidence path escapes the package")
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(file, target)
+
+
+def _verify_evidence(package_dir: Path, manifest: dict, edl: dict) -> None:
+    frames = manifest["frames"]
+    known: set[str] = set()
+    limit = manifest.get("sampling_config", {}).get("max_bytes_per_frame", 10 * 1024 * 1024)
+    if type(limit) is not int or limit <= 0:
+        limit = 10 * 1024 * 1024
+    for frame in frames:
+        if not isinstance(frame, dict):
+            raise StageFailure("evidence frame entry is not an object")
+        rel = frame.get("path")
+        digest = frame.get("sha256")
+        if not isinstance(rel, str) or not rel.startswith("samples/") or "\\" in rel or ".." in Path(rel).parts:
+            raise StageFailure("evidence frame path is not inside samples/")
+        if not isinstance(digest, str) or not _HASH.match(digest):
+            raise StageFailure("evidence frame hash is missing")
+        file = (package_dir / rel).resolve()
+        root = package_dir.resolve()
+        if root not in file.parents or not file.is_file():
+            raise StageFailure(f"evidence frame is missing from the package: {rel}")
+        size = file.stat().st_size
+        if size <= 0 or size > limit:
+            raise StageFailure(f"evidence frame size is outside the budget: {rel}")
+        if hashlib_sha256(file.read_bytes()) != digest:
+            raise StageFailure(f"evidence frame hash mismatch: {rel}")
+        known.update(_manifest_keys(frame))
+    for scene in edl.get("scenes") or []:
+        if not isinstance(scene, dict):
+            continue
+        for ref in scene.get("evidence_frames") or []:
+            if not isinstance(ref, str) or ref not in known:
+                raise StageFailure(f"scene evidence {ref!r} is not in the package evidence manifest")
+
+
+def _ensure_evidence(ctx: StageContext, edl: dict, artifacts: list[dict]) -> None:
+    """Keep the recognize evidence bundle inside every later package."""
+    dest_manifest = ctx.out_dir / "samples" / "evidence-manifest.json"
+    source_samples = ctx.source_dir / "samples"
+    source_manifest = source_samples / "evidence-manifest.json"
+    if not dest_manifest.is_file() and source_manifest.is_file():
+        _copy_evidence_tree(source_samples, ctx.out_dir / "samples")
+    if not dest_manifest.is_file():
+        for scene in edl.get("scenes") or []:
+            if isinstance(scene, dict) and scene.get("evidence_frames"):
+                raise StageFailure("scene evidence has no evidence manifest in the package")
+        return
+    manifest = _load_evidence_manifest(dest_manifest)
+    _verify_evidence(ctx.out_dir, manifest, edl)
+    present = {item.get("path") for item in artifacts}
+    for frame in manifest["frames"]:
+        rel = frame.get("path")
+        if rel not in present:
+            artifacts.append({"kind": "sample", "path": rel})
+            present.add(rel)
+    manifest_rel = "samples/evidence-manifest.json"
+    if manifest_rel not in present:
+        artifacts.append({"kind": "evidence_manifest", "path": manifest_rel})
+
+
+INGEST_FILES = (("source_map", "source-map.json"), ("ingest_provenance", "ingest-provenance.json"))
+
+
+def _frame_quota(clip: dict) -> int | None:
+    """Per-clip evidence quota planned at media_prepare; None for older inputs."""
+    meta = clip.get("ingest")
+    if not isinstance(meta, dict):
+        return None
+    quota = meta.get("frame_quota")
+    if type(quota) is not int or not 1 <= quota <= 5:
+        raise StageFailure("ingest frame_quota must be an integer within 1..5")
+    return quota
+
+
+def _carry_ingest(ctx: StageContext, edl: dict, artifacts: list[dict]) -> None:
+    """Keep source-map/provenance in every package and re-map the current
+    timeline to recording ranges by segment_id, never by array position."""
+    tagged = [v for v in edl.get("video", []) if isinstance(v.get("ingest"), dict)]
+    src_map = ctx.source_dir / "source-map.json"
+    if not src_map.is_file():
+        if tagged:
+            raise StageFailure("video clips carry ingest metadata but the package has no source-map.json")
+        return
+    if not (ctx.source_dir / "ingest-provenance.json").is_file():
+        raise StageFailure("package has a source-map but no ingest-provenance.json")
+    try:
+        smap = json.loads(src_map.read_text(encoding="utf-8"))
+        segments = {s["segment_id"]: s for s in smap["segments"]}
+    except (OSError, ValueError, KeyError, TypeError) as err:
+        raise StageFailure("source-map.json is unreadable") from err
+    if len(segments) != len(smap["segments"]):
+        raise StageFailure("source-map.json has duplicate segment ids")
+    if len(tagged) != len(edl.get("video", [])):
+        raise StageFailure("every video clip of an ingested package needs its ingest segment_id")
+    for kind, name in INGEST_FILES:
+        dest = ctx.out_dir / name
+        if not dest.exists():
+            shutil.copy2(ctx.source_dir / name, dest)
+        if not any(a.get("path") == name for a in artifacts):
+            artifacts.append({"kind": kind, "path": name})
+    rows = []
+    for clip in edl["video"]:
+        seg = segments.get(clip["ingest"].get("segment_id"))
+        if seg is None:
+            raise StageFailure(f"segment {clip['ingest'].get('segment_id')!r} is not in source-map.json")
+        rows.append({"segment_id": seg["segment_id"], "src": clip["src"],
+                     "timeline_in": clip["timeline_in"], "timeline_out": round(clip["timeline_in"] + clip["out"] - clip["in"], 6),
+                     "source_start_us": seg["source_start_us"] + round(clip["in"] * 1_000_000),
+                     "source_end_us": seg["source_start_us"] + round(clip["out"] * 1_000_000)})
+    timeline = {"schema_version": 1, "source_id": smap.get("source_id"), "source_sha256": smap.get("source_sha256"),
+                "fps": edl["timeline"]["fps"], "segments": rows}
+    (ctx.out_dir / "ingest-timeline.json").write_text(json.dumps(timeline, indent=2) + "\n", encoding="utf-8")
+    if not any(a.get("path") == "ingest-timeline.json" for a in artifacts):
+        artifacts.append({"kind": "ingest_timeline", "path": "ingest-timeline.json"})
+
+
 def package(ctx: StageContext, edl: dict, generated: dict[str, Path], extra: list[tuple[str, str]] = ()) -> list[dict]:
     """Write edl.json + manifest into ctx.out_dir.
 
@@ -117,6 +364,8 @@ def package(ctx: StageContext, edl: dict, generated: dict[str, Path], extra: lis
             scene["src"] = copied[scene["src"]]
     for kind, rel in extra:
         artifacts.append({"kind": kind, "path": rel})
+    _ensure_evidence(ctx, out, artifacts)
+    _carry_ingest(ctx, out, artifacts)
     # Kinds must be unique per path only; the control plane numbers repeats.
     (ctx.out_dir / "edl.json").write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     manifest = {"schema_version": 1, "source_edl": "edl.json", "artifacts": artifacts}
@@ -157,6 +406,9 @@ def recognize(ctx: StageContext) -> dict:
     """
     edl = ctx.edl
     _require_edl(edl)
+    provider = ctx.content_provider or make_content_provider("builtin")
+    limits = ctx.sampling_limits or SamplingLimits()
+    tracker = ctx.budget_tracker or SamplingBudgetTracker(limits=limits)
     durations = []
     clips_evidence: list[ClipEvidence] = []
     for i, clip in enumerate(edl["video"]):
@@ -167,6 +419,7 @@ def recognize(ctx: StageContext) -> dict:
         durations.append(dur)
 
         frames = ()
+        evidence_root = ""
         if ctx.work_dir is not None and path.is_file():
             dest_dir = ctx.work_dir / "samples" / f"clip_{i}"
             try:
@@ -177,14 +430,20 @@ def recognize(ctx: StageContext) -> dict:
                     dest_dir=dest_dir,
                     relative_source_path=clip["src"],
                     clip_prefix=f"clip_{i}",
+                    limits=tracker.limits,
+                    budget_tracker=tracker,
                     ffmpeg_bin=ctx.tools.ffmpeg,
                     ffprobe_bin=ctx.tools.ffprobe,
+                    max_frames=_frame_quota(clip),
                 )
                 frames = tuple(sampled)
+                evidence_root = str(dest_dir)
             except SamplingError as err:
                 raise StageFailure(f"sampling failed: {err}") from err
             except Exception as err:
                 raise StageFailure(f"frame sampling failed: {err}") from err
+            if not frames:
+                raise StageFailure(f"video[{i}] produced no sample frames")
 
         clips_evidence.append(
             ClipEvidence(
@@ -195,36 +454,51 @@ def recognize(ctx: StageContext) -> dict:
                 source_out=clip["out"],
                 timeline_in=clip["timeline_in"],
                 frames=frames,
+                evidence_root=evidence_root,
             )
         )
         ctx.progress(0.2 + 0.6 * (i + 1) / len(edl["video"]), f"recognized {i + 1}/{len(edl['video'])}")
 
     try:
-        decisions = validate_scenes(
-            clips_evidence,
-            (ctx.content_provider or make_content_provider("builtin")).recognize(clips_evidence),
-        )
+        decisions = validate_scenes(clips_evidence, provider.recognize(clips_evidence))
     except ContentError as err:
         raise StageFailure(str(err)) from err
     except Exception as err:
         raise StageFailure(f"content provider recognize failed ({type(err).__name__})") from err
 
-    scenes = [
-        {
+    model_version = _model_version(provider)
+    by_clip = {clip.index: clip for clip in clips_evidence}
+    scenes = []
+    for item in decisions:
+        evidence = list(item.evidence_frames)
+        sampled = by_clip[item.clip_index].frames
+        if not evidence and sampled:
+            evidence = [frame.sha256 for frame in sampled]
+        clip = edl["video"][item.clip_index]
+        prior = ""
+        for old in edl.get("scenes") or []:
+            if isinstance(old, dict) and old.get("src") == clip["src"] and old.get("span") == [clip["in"], clip["out"]]:
+                prior = str(old.get("scene_id") or "")
+        scenes.append({
             "index": item.clip_index,
-            "src": edl["video"][item.clip_index]["src"],
+            "scene_id": _scene_id(clip["src"], clip["in"], clip["out"], prior),
+            "src": clip["src"],
             "media_duration": round(durations[item.clip_index], 3),
             "span": [edl["video"][item.clip_index]["in"], edl["video"][item.clip_index]["out"]],
             "label": item.label,
             "method": item.method,
             "confidence": item.confidence,
-            "evidence_frames": list(item.evidence_frames),
+            "evidence_frames": evidence,
             "sequence_rank": item.sequence_rank,
-        }
-        for item in decisions
-    ]
+            "model_version": model_version,
+            "sampling_config_version": SAMPLING_CONFIG_VERSION if sampled else "",
+        })
     out = dict(edl)
     out["scenes"] = scenes
+    try:
+        _write_evidence_manifest(ctx, clips_evidence, model_version, tracker.limits)
+    except SamplingError as err:
+        raise StageFailure(f"sampling failed: {err}") from err
     package(ctx, out, {})
     return {"scenes": len(scenes)}
 
@@ -347,9 +621,12 @@ def narrate(ctx: StageContext) -> dict:
     except Exception as err:
         raise StageFailure(f"content provider narrate failed ({type(err).__name__})") from err
     lines = []
+    scene_ids = {scene.get("index"): scene.get("scene_id") for scene in edl.get("scenes") or [] if isinstance(scene, dict)}
     for i, item in enumerate(decisions):
+        scene_id = scene_ids.get(item.clip_index) or f"scn_{item.clip_index:03d}"
         lines.append({
-            "id": f"nar_{i + 1:03d}",
+            "id": f"nar_{scene_id}",
+            "source_scene_id": scene_id,
             "text": item.text,
             "start": round(item.start, 6),
             "end": round(item.end, 6),
@@ -365,11 +642,12 @@ def narrate(ctx: StageContext) -> dict:
     return {"lines": len(lines)}
 
 
-def _sapi_script(text: str, out: Path) -> str:
+def _sapi_script(text: str, out: Path, voice_name: str = "") -> str:
     # Text and path are passed as base64 to avoid any quoting into the script.
     import base64
     t = base64.b64encode(text.encode("utf-8")).decode()
     p = base64.b64encode(str(out).encode("utf-8")).decode()
+    v = base64.b64encode(voice_name.encode('utf-8')).decode()
     return (
         "$ErrorActionPreference='Stop';"
         f"$t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{t}'));"
@@ -378,11 +656,59 @@ def _sapi_script(text: str, out: Path) -> str:
         "$voices=$s.GetVoices('Language=804','');"
         "if($voices.Count -lt 1){throw 'Chinese SAPI voice unavailable'};"
         "$s.Voice=$voices.Item(0);"
+        f"$wanted=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{v}'));"
+        "if($wanted){$found=$false;foreach($v in $s.GetVoices()){if($v.GetAttribute('Name') -eq $wanted){$s.Voice=$v;$found=$true;break}};if(!$found){throw 'Selected SAPI voice unavailable'}};"
         "$s.Rate=5;"
         "$stream=New-Object -ComObject SAPI.SpFileStream;"
+        "$fmt=New-Object -ComObject SAPI.SpAudioFormat;"
+        "$fmt.Type=22;"
+        "$stream.Format=$fmt;"
         "try{$stream.Open($p,3,$false);$s.AudioOutputStream=$stream;[void]$s.Speak($t)}"
-        "finally{$stream.Close()}"
+        "finally{if($stream){$stream.Close()}}"
     )
+
+
+def _narration_source(line: dict) -> str:
+    label = line.get("source_scene_label")
+    if isinstance(label, str) and label:
+        return label
+    source = line.get("source_scene")
+    return source if isinstance(source, str) else ""
+
+
+def _authorize_tts(ctx: StageContext, lines: list[dict], edl: dict) -> None:
+    """Apply the review gate and record where the authorization came from.
+
+    Fields inside the input EDL, including ``tts_auto_approve_policy`` and
+    ``approvals``, are ignored. They travel with the task and can be written
+    by an earlier stage or a model.
+    """
+    edl.pop("tts_auto_approve_policy", None)
+    edl.pop("approvals", None)
+    edl.pop("review_authorization", None)
+    if type(ctx.tts_auto_approve) is not bool:
+        raise StageFailure("tts auto-approve policy must be a boolean from operator config")
+    if ctx.tts_auto_approve:
+        edl["review_authorization"] = {"source": "operator_config", "policy": "tts_auto_approve"}
+        return
+    approved = set(ctx.narration_approvals)
+    if any(not isinstance(item, str) or not _HASH.match(item) for item in approved):
+        raise StageFailure("narration approvals from the control plane are malformed")
+    used = []
+    for line in lines:
+        line_id = line.get("id", "")
+        try:
+            digest = narration_draft_hash(
+                str(line.get("text", "")), float(line["start"]), float(line["end"]), _narration_source(line))
+        except (ContentError, KeyError, TypeError, ValueError) as err:
+            raise StageFailure(f"unreviewed narration cannot proceed to tts: {line_id}") from err
+        if digest not in approved:
+            raise StageFailure(
+                f"unreviewed narration cannot proceed to tts: {line_id} "
+                "(no operator policy and no matching governance approval)"
+            )
+        used.append(digest)
+    edl["review_authorization"] = {"source": "service_governance", "draft_hashes": used}
 
 
 def tts(ctx: StageContext) -> dict:
@@ -390,12 +716,18 @@ def tts(ctx: StageContext) -> dict:
 
     Narration windows are upper bounds. Overlong speech fails instead of being
     truncated; test tones require explicit opt-in.
+
+    Review gate: the task EDL cannot authorize synthesis. A line proceeds only
+    when the operator config sets ``tts_auto_approve`` or the control plane
+    has recorded an approval whose hash covers the text, time window and
+    source. ``needs_review=false`` from a model is not an approval.
     """
     edl = json.loads(json.dumps(ctx.edl))
     _require_edl(edl)
     lines = edl.get("narration") or []
     if not lines:
         raise StageFailure("edl has no narration; run narrate first")
+    _authorize_tts(ctx, lines, edl)
     rate = edl["timeline"]["sample_rate"]
     voice_dir = ctx.out_dir / "voice"
     voice_dir.mkdir()
@@ -409,7 +741,7 @@ def tts(ctx: StageContext) -> dict:
             try:
                 if os.name != "nt":
                     raise StageFailure("sapi unavailable")
-                ctx.tools.run([ctx.tools.powershell, "-NoProfile", "-NonInteractive", "-Command", _sapi_script(line["text"], raw)])
+                ctx.tools.run([ctx.tools.powershell, "-NoProfile", "-NonInteractive", "-Command", _sapi_script(line["text"], raw, ctx.tts_voice)])
                 src_args = ["-i", str(raw)]
                 duration = ctx.tools.duration(raw)
             except StageFailure:

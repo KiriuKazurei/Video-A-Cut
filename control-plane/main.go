@@ -144,6 +144,14 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 		_ = st.Close()
 		return nil, fmt.Errorf("control plane: delivery root: %w", err)
 	}
+	if err := svc.RecoverRevisionFiles(context.Background()); err != nil {
+		st.Close()
+		return nil, err
+	}
+	if err := svc.ConfigureIngest(cfg.Roots(), cfg.IngestPolicy); err != nil {
+		_ = st.Close()
+		return nil, fmt.Errorf("control plane: ingest: %w", err)
+	}
 	svc.SetBus(bus)
 	svc.SetMaxAttempts(cfg.MaxAttempts)
 	a := &app{

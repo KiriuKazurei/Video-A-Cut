@@ -11,9 +11,19 @@ type Asset struct {
 	Locked        bool              `json:"locked"`
 	AllowedAgents []string          `json:"allowed_agents"`
 	Artifacts     map[string]string `json:"artifacts"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	// InputKind is empty for assets created before phase 7; readers treat
+	// empty as edl_package.
+	InputKind   string    `json:"input_kind,omitempty"`
+	IngestRunID string    `json:"ingest_run_id,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// Asset input kinds. A raw recording has no runnable EDL yet.
+const (
+	InputKindEDLPackage   = "edl_package"
+	InputKindRawRecording = "raw_recording"
+)
 
 // Asset status values from docs/项目开发文档.md §7.1.
 const (

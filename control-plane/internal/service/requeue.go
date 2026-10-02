@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -53,6 +54,7 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) (int, error) {
 	}
 
 	requeued := 0
+	var wake []string
 	for _, candidate := range tasks {
 		var saved model.Task
 		changed, exhausted := false, false
@@ -72,7 +74,21 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) (int, error) {
 			tk.Attempts++
 			tk.LeaseUntil = nil
 			tk.Artifacts = map[string]string{}
-			if tk.Attempts >= s.attemptCap() {
+			if b, e := tx.GetIngestBinding(ctx, tk.TaskID); e == nil && b.ExecutionID != "" {
+				if ex, e := tx.GetIngestExecution(ctx, b.ExecutionID); e == nil && (executionCurrent(ex.Status) || ex.Status == model.ExecSuspended) {
+					if e := s.revokeExecution(ctx, tx, ex, "lease_expired", &wake); e != nil {
+						return e
+					}
+				} else if e != nil && !errors.Is(e, model.ErrNotFound) {
+					return e
+				}
+			} else if e != nil && !errors.Is(e, model.ErrNotFound) {
+				return e
+			}
+			if err := s.WorkflowBlocks(ctx, tx, tk.TaskID); err != nil {
+				tk.Status = model.TaskStatusCancelled
+				tk.Message = "workflow invalidated this task"
+			} else if tk.Attempts >= s.attemptCap() {
 				// Give up: keep the last holder for the audit trail and
 				// state the reason instead of handing the task out again.
 				tk.Status = model.TaskStatusFailed
@@ -87,6 +103,14 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) (int, error) {
 			if err := tx.UpdateTask(ctx, tk); err != nil {
 				return fmt.Errorf("service: requeue task %s: %w", tk.TaskID, err)
 			}
+			if tk.Status == model.TaskStatusFailed {
+				if err := s.NoteWorkflowFailure(ctx, tx, tk, tk.Message); err != nil {
+					return err
+				}
+				if err := s.NoteIngestFailure(ctx, tx, tk, tk.Message); err != nil {
+					return err
+				}
+			}
 			saved, err = tx.GetTask(ctx, tk.TaskID)
 			changed = true
 			return err
@@ -94,11 +118,18 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) (int, error) {
 		if err != nil {
 			return requeued, fmt.Errorf("service: requeue task %s: %w", candidate.TaskID, err)
 		}
+		s.finishControl(wake)
+		wake = nil
 		if !changed {
 			continue
 		}
 
 		s.publish("task_updated", cloneTask(saved))
+		s.publishTaskWorkflow(ctx, saved.TaskID)
+		s.publishTaskIngest(ctx, saved.TaskID)
+		if saved.Status == model.TaskStatusCancelled {
+			continue
+		}
 		if exhausted {
 			s.audit(ctx, "queue", "task.fail", saved.TaskID, saved.Message)
 			s.cascadeFailure(ctx, saved.TaskID)

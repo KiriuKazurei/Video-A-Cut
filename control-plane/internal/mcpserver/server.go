@@ -131,6 +131,10 @@ type assetsResult struct {
 }
 type assetResult struct {
 	Asset model.Asset `json:"asset"`
+	// NarrationApprovals lists draft hashes a human recorded through REST.
+	// The worker uses them as the TTS review gate. This tool cannot create
+	// or revoke those records.
+	NarrationApprovals []string `json:"narration_approvals"`
 }
 type submitResult struct {
 	Submitted bool `json:"submitted"`
@@ -150,7 +154,11 @@ func registerTools(server *mcp.Server, svc *service.Service) {
 		}
 		for _, asset := range assets {
 			if asset.AssetID == args.AssetID {
-				return nil, assetResult{Asset: asset}, nil
+				hashes, err := svc.ListNarrationApprovals(ctx, asset.AssetID)
+				if err != nil {
+					return nil, assetResult{}, err
+				}
+				return nil, assetResult{Asset: asset, NarrationApprovals: hashes}, nil
 			}
 		}
 		return nil, assetResult{}, model.ErrNotFound

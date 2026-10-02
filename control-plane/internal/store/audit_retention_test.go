@@ -66,7 +66,7 @@ func ageArchivedRow(t *testing.T, s *store.Store, id int64, daysInPast int) {
 func TestOpenAppliesAuditArchiveMigration(t *testing.T) {
 	s := mustOpen(t)
 
-	for _, table := range []string{"assets", "tasks", "agents", "audit_logs", "audit_logs_archive"} {
+	for _, table := range []string{"assets", "tasks", "agents", "audit_logs", "audit_logs_archive", "narration_reviews", "profile_external_consents", "workflow_profile_bindings", "worker_capabilities"} {
 		var name string
 		err := s.DB().QueryRow(`select name from sqlite_master where type='table' and name=?`, table).Scan(&name)
 		if err != nil {
@@ -81,8 +81,8 @@ func TestOpenAppliesAuditArchiveMigration(t *testing.T) {
 	if err := s.DB().QueryRow(`select count(*) from schema_migrations`).Scan(&versions); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if versions != 4 {
-		t.Fatalf("schema_migrations rows = %d, want 4", versions)
+	if versions != 10 {
+		t.Fatalf("schema_migrations rows = %d, want 10", versions)
 	}
 
 	// Reopen the same file: both versions are already recorded, so the ledger

@@ -1,3 +1,4 @@
+import hashlib
 import os
 import sys
 import json
@@ -7,8 +8,9 @@ import shutil
 from pathlib import Path
 
 # Add project paths
-repo_root = Path(__file__).resolve().parent.parent.parent
+repo_root = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(repo_root / "workers" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vac_worker.sampling import (
     sample_clip_frames,
@@ -68,7 +70,12 @@ def make_synthetic_source(root: Path) -> dict:
     return edl
 
 def run_integration_pipeline_verification():
-    print("=== 开始第四阶段 5 个功能模块集成级整体验证 ===")
+    """Synthetic stage check.
+
+    This run uses the built-in provider and local media. It does not call a
+    vision or narration model, and it is not the Premiere content acceptance.
+    """
+    print("=== 第四阶段合成媒体阶段检查（builtin，不是模型或 Premiere 验收）===")
     
     # ----------------------------------------------------
     # 模块 1: 有界取样 (Bounded Frame Sampling)
@@ -144,7 +151,7 @@ def run_integration_pipeline_verification():
         out_sort.mkdir()
         ctx = StageContext(edl=edl_sample, source_dir=dir_path, out_dir=out_sort, tools=tools)
         res = sort(ctx)
-        sorted_edl = json.loads((out_sort / "edl.json").read_text())
+        sorted_edl = json.loads((out_sort / "edl.json").read_text(encoding="utf-8"))
         assert sorted_edl["video"][0]["src"].endswith("a.mp4")
         assert sorted_edl["video"][0]["timeline_in"] == 0.0
         assert sorted_edl["video"][1]["src"].endswith("b.mp4")
@@ -222,7 +229,7 @@ def run_integration_pipeline_verification():
         ctx1 = StageContext(edl=pipeline_edl, source_dir=source_dir, out_dir=out_dir_1, tools=tools,
                             content_provider=BuiltinContentProvider(), work_dir=out_dir_1)
         recognize(ctx1)
-        out1_edl = json.loads((out_dir_1 / "edl.json").read_text())
+        out1_edl = json.loads((out_dir_1 / "edl.json").read_text(encoding="utf-8"))
         assert len(out1_edl["scenes"]) == 2
         assert "evidence_frames" in out1_edl["scenes"][0]
         
@@ -232,7 +239,7 @@ def run_integration_pipeline_verification():
         ctx2 = StageContext(edl=out1_edl, source_dir=out_dir_1, out_dir=out_dir_2, tools=tools,
                             content_provider=BuiltinContentProvider(), work_dir=out_dir_2)
         sort(ctx2)
-        out2_edl = json.loads((out_dir_2 / "edl.json").read_text())
+        out2_edl = json.loads((out_dir_2 / "edl.json").read_text(encoding="utf-8"))
         
         # 3. narrate
         out_dir_3 = dir_path / "03_narrate"
@@ -240,17 +247,18 @@ def run_integration_pipeline_verification():
         ctx3 = StageContext(edl=out2_edl, source_dir=out_dir_2, out_dir=out_dir_3, tools=tools,
                             content_provider=BuiltinContentProvider(), work_dir=out_dir_3)
         narrate(ctx3)
-        out3_edl = json.loads((out_dir_3 / "edl.json").read_text())
+        out3_edl = json.loads((out_dir_3 / "edl.json").read_text(encoding="utf-8"))
         assert len(out3_edl["narration"]) == 2
         assert out3_edl["narration"][0]["model_version"] == "builtin"
         assert out3_edl["narration"][0]["needs_review"] is True
         
-        # 4. tts
+        # 4. tts. The operator flag is test configuration, not an EDL field.
         out_dir_4 = dir_path / "04_tts"
         out_dir_4.mkdir()
-        ctx4 = StageContext(edl=out3_edl, source_dir=out_dir_3, out_dir=out_dir_4, tools=tools, work_dir=out_dir_4)
+        ctx4 = StageContext(edl=out3_edl, source_dir=out_dir_3, out_dir=out_dir_4, tools=tools,
+                            work_dir=out_dir_4, tts_auto_approve=True)
         tts(ctx4)
-        out4_edl = json.loads((out_dir_4 / "edl.json").read_text())
+        out4_edl = json.loads((out_dir_4 / "edl.json").read_text(encoding="utf-8"))
         assert len(out4_edl["voice"]) == 2
         
         # 5. subtitle
@@ -258,7 +266,7 @@ def run_integration_pipeline_verification():
         out_dir_5.mkdir()
         ctx5 = StageContext(edl=out4_edl, source_dir=out_dir_4, out_dir=out_dir_5, tools=tools, work_dir=out_dir_5)
         subtitle(ctx5)
-        out5_edl = json.loads((out_dir_5 / "edl.json").read_text())
+        out5_edl = json.loads((out_dir_5 / "edl.json").read_text(encoding="utf-8"))
         assert len(out5_edl["subtitle"]) == 2
         
         # 6. mix
@@ -266,13 +274,24 @@ def run_integration_pipeline_verification():
         out_dir_6.mkdir()
         ctx6 = StageContext(edl=out5_edl, source_dir=out_dir_5, out_dir=out_dir_6, tools=tools, work_dir=out_dir_6)
         mix_res = mix(ctx6)
-        out6_edl = json.loads((out_dir_6 / "edl.json").read_text())
+        out6_edl = json.loads((out_dir_6 / "edl.json").read_text(encoding="utf-8"))
         assert len(out6_edl["music"]) == 1
         assert out6_edl["music"][0]["duck"] is True
         assert mix_res["duck"] is True
-        
-    print(" -> 模块 5 端到端流水线 (recognize->sort->narrate->tts->subtitle->mix) 级联完整验证通过")
-    print("=== 全量 5 个模块整体性验证圆满成功 ===")
+        evidence_path = out_dir_6 / "samples" / "evidence-manifest.json"
+        assert evidence_path.is_file(), "mix package dropped the evidence manifest"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert evidence["model_version"] == "builtin"
+        assert evidence["sampling_config_version"] == "sampling-v1"
+        by_hash = {frame["sha256"]: frame for frame in evidence["frames"]}
+        for scene in out6_edl["scenes"]:
+            assert scene["evidence_frames"], "scene has no frame evidence"
+            for ref in scene["evidence_frames"]:
+                frame = by_hash[ref]
+                raw = (out_dir_6 / frame["path"]).read_bytes()
+                assert hashlib.sha256(raw).hexdigest() == ref
+
+    print(" -> 合成媒体阶段检查通过。这不代表真实模型、正式任务链或 Premiere 人工验收。")
 
 if __name__ == "__main__":
     run_integration_pipeline_verification()

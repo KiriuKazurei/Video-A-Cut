@@ -397,3 +397,13 @@ func TestLoadRejectsHTTPAddrWrongType(t *testing.T) {
 		})
 	}
 }
+
+func TestPhase7ControlExampleLoads(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "..", "configs", "phase7", "control.example.json"))
+	if err != nil {
+		t.Fatalf("phase7 control example: %v", err)
+	}
+	if len(cfg.Roots()) != 1 || cfg.IngestPolicy == nil || cfg.IngestPolicy.MaxSourceBytes != 32<<30 {
+		t.Fatalf("phase7 example did not load roots and policy: %+v", cfg)
+	}
+}

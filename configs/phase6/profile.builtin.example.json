@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "profile_id": "local_regression",
+  "revision": 1,
+  "name": "本地模板工程回归",
+  "content_mode": "builtin",
+  "vision": { "adapter": "builtin" },
+  "narration": { "adapter": "builtin" },
+  "sampling": { "max_frames": 12, "max_bytes": 12582912, "timeout_seconds": 60 },
+  "tts_voice": "Microsoft Huihui Desktop",
+  "export_target": "premiere"
+}

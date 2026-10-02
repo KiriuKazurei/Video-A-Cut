@@ -8,6 +8,9 @@ export interface Asset {
   artifacts: Record<string, string>;
   created_at: string;
   updated_at: string;
+  /** 七阶段：raw_recording 需先导入切分；空值等同 edl_package。 */
+  input_kind?: 'edl_package' | 'raw_recording';
+  ingest_run_id?: string;
 }
 
 export interface Task {
@@ -27,6 +30,45 @@ export interface Task {
   depends_on?: string[];
   /** 租约到期被回收的次数；达到上限后服务端判定失败。 */
   attempts?: number;
+}
+
+export interface WorkflowRun {
+  run_id: string;
+  asset_id: string;
+  base_revision_id: string;
+  current_revision_id: string;
+  status: string;
+  stage: string;
+  version: number;
+  content_mode: string;
+  blocked_reason?: string;
+  error_code?: string;
+}
+
+export interface WorkflowSnapshot {
+  profile_binding?: {profile_id:string;revision:number;profile_sha256:string}|null;
+  run: WorkflowRun;
+  tasks?: Task[];
+  stages: { task_id: string; stage: string; input_revision_id: string; output_revision_id?: string; invalidated: boolean }[];
+}
+
+export interface ReviewView {
+  run: WorkflowRun;
+  revision: { revision_id: string; package_ref: string; edl_sha256: string };
+  scenes: { scene_id?: string; label?: string; sequence_rank?: number; decision?: string; evidence_frames?: string[]; confidence?: number; model_version?: string; method?: string }[];
+  narration: { id?: string; text?: string; start?: number; end?: number; approved_hash?: string; source_scene_id?: string }[];
+  evidence_files: { scene_id: string; sha256: string; key: string; timestamp: string }[];
+}
+
+export interface AcceptanceRecord {
+  id: number;
+	 export_revision_id: string;
+	 created_at: string;
+  check_item: string;
+  result: string;
+  note?: string;
+  manifest_sha256: string;
+  actor: string;
 }
 
 export interface AuditLog {

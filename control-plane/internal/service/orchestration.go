@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/ingest"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
@@ -89,13 +90,21 @@ func dependenciesReady(ctx context.Context, tx *store.Store, tk model.Task) (boo
 // the source package. Keeping the task queued (instead of letting a worker
 // claim and fail it) keeps the reason visible as a waiting state.
 //
-// Other stages are not gated here: a worker may produce an edl from nothing
-// (recognition on raw footage), and SubmitDelivery already refuses a package
-// without one. Exported assets are frozen for every stage, though — the edl
-// now belongs to the handover package and a human re-import starts the next
-// round.
+// Exported assets stay frozen for ordinary content tasks. An explicitly
+// created ingest run fixes its original recording in an independent binding
+// and is allowed to prepare new input without changing historical delivery.
 func typeReady(tk model.Task, asset model.Asset) bool {
+	// A validated ingest binding fixes its source independently of the asset's
+	// last exported EDL. ClaimForExecution checks that binding before this gate.
+	if ingest.IsTaskType(tk.Type) && tk.AgentRole == ingest.RoleIngester {
+		return true
+	}
 	if asset.Status == model.AssetStatusExported {
+		return false
+	}
+	// A raw recording only feeds ingest tasks until media_prepare publishes
+	// its EDL package.
+	if asset.InputKind == model.InputKindRawRecording && tk.AgentRole != "ingester" {
 		return false
 	}
 	if tk.Type == model.TaskTypeExport {

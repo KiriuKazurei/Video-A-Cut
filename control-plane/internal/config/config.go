@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/ingest"
 )
 
 // Sentinels. Callers must identify them with errors.Is.
@@ -92,6 +94,12 @@ type Config struct {
 	// MaxAttempts is how many lease recoveries a task survives before the
 	// sweep fails it. Default 3.
 	MaxAttempts int
+	// IngestRoots maps stable root ids to directories recordings may be
+	// imported from. Nil disables the raw-recording entry. It is a pointer
+	// so Config stays comparable.
+	IngestRoots *[]ingest.Root
+	// IngestPolicy optionally lowers the default media-ingest budget.
+	IngestPolicy *ingest.Policy
 }
 
 // Default returns the configuration the process runs with when no file is
@@ -177,6 +185,17 @@ func (c Config) Validate() error {
 	}
 	if c.MCPAgentsFile != "" && (!filepath.IsAbs(c.MCPAgentsFile) || c.HttpAddr == "") {
 		return fmt.Errorf("config: mcp_agents_file needs an absolute path and enabled http_addr: %w", ErrInvalid)
+	}
+	if len(c.Roots()) > 0 && c.DeliveryRoot == "" {
+		return fmt.Errorf("config: ingest_roots need delivery_root for owned snapshots: %w", ErrInvalid)
+	}
+	if err := ingest.ValidateRoots(c.Roots()); err != nil {
+		return fmt.Errorf("config: ingest_roots: %v: %w", err, ErrInvalid)
+	}
+	if c.IngestPolicy != nil {
+		if err := c.IngestPolicy.Validate(); err != nil {
+			return fmt.Errorf("config: ingest_policy: %v: %w", err, ErrInvalid)
+		}
 	}
 	return nil
 }
@@ -275,7 +294,58 @@ func apply(cfg *Config, raw map[string]any) error {
 		}
 		cfg.MCPAgentsFile = s
 	}
+	if v, ok := raw["ingest_roots"]; ok {
+		roots, err := decodeRoots(v)
+		if err != nil {
+			return fmt.Errorf("ingest_roots: %w", err)
+		}
+		cfg.IngestRoots = &roots
+	}
+	if v, ok := raw["ingest_policy"]; ok {
+		body, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("ingest_policy: %w", ErrInvalid)
+		}
+		p := ingest.DefaultPolicy()
+		dec := json.NewDecoder(strings.NewReader(string(body)))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&p); err != nil {
+			return fmt.Errorf("ingest_policy: expected a policy object with known fields: %w", ErrInvalid)
+		}
+		cfg.IngestPolicy = &p
+	}
 	return nil
+}
+
+// Roots returns the configured ingest roots, or nil.
+func (c Config) Roots() []ingest.Root {
+	if c.IngestRoots == nil {
+		return nil
+	}
+	return *c.IngestRoots
+}
+
+// decodeRoots reads [{"root_id","name","path"}]. Paths stay in memory only.
+func decodeRoots(v any) ([]ingest.Root, error) {
+	list, ok := v.([]any)
+	if !ok || len(list) > 32 {
+		return nil, fmt.Errorf("expected a list of at most 32 roots: %w", ErrInvalid)
+	}
+	out := make([]ingest.Root, 0, len(list))
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok || len(m) != 3 {
+			return nil, fmt.Errorf("each root needs exactly root_id, name and path: %w", ErrInvalid)
+		}
+		id, ok1 := m["root_id"].(string)
+		name, ok2 := m["name"].(string)
+		path, ok3 := m["path"].(string)
+		if !ok1 || !ok2 || !ok3 {
+			return nil, fmt.Errorf("root_id, name and path must be strings: %w", ErrInvalid)
+		}
+		out = append(out, ingest.Root{ID: id, Name: name, Path: path})
+	}
+	return out, nil
 }
 
 // decodeAddr turns a JSON-decoded value into a listen address. Only a string

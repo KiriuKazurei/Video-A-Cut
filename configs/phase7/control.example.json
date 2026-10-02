@@ -1,0 +1,31 @@
+{
+  "http_addr": "127.0.0.1:8806",
+  "delivery_root": "E:\\VAC\\delivery",
+  "web_root": "E:\\AI\\Video Auto Cut\\webui\\dist",
+  "mcp_agents_file": "E:\\VAC\\agents.json",
+  "lease_seconds": 60,
+  "ingest_roots": [
+    { "root_id": "obs", "name": "OBS 录像", "path": "D:\\Video Files\\OBS" }
+  ],
+  "ingest_policy": {
+    "schema_version": 1,
+    "policy_id": "media-ingest-local",
+    "max_source_bytes": 34359738368,
+    "max_source_duration_us": 14400000000,
+    "copy_chunk_bytes": 67108864,
+    "min_free_bytes": 1073741824,
+    "chunk_us": 60000000,
+    "overlap_us": 1000000,
+    "analysis_max_edge": 640,
+    "chunk_timeout_seconds": 120,
+    "scan_timeout_seconds": 7200,
+    "max_candidates": 2048,
+    "max_thumbnails": 128,
+    "max_selected": 48,
+    "max_output_us": 900000000,
+    "max_detection_json_bytes": 16777216,
+    "prepare_timeout_seconds": 1800,
+    "frame_quota_version": "quota-1",
+    "max_frames_per_segment": 5
+  }
+}

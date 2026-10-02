@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "profile_id": "openai_provider",
+  "revision": 1,
+  "name": "OpenAI 格式服务商",
+  "content_mode": "configured",
+  "vision": { "adapter": "vision", "api_format": "openai", "endpoint": "https://api.openai.com/v1", "model": "replace-with-vision-model", "token_env": "VAC_VISION_TOKEN" },
+  "narration": { "adapter": "narration", "api_format": "openai", "endpoint": "https://api.openai.com/v1", "model": "replace-with-narration-model", "token_env": "VAC_NARRATION_TOKEN" },
+  "sampling": { "max_frames": 12, "max_bytes": 12582912, "timeout_seconds": 60 },
+  "tts_voice": "Microsoft Huihui Desktop",
+  "export_target": "premiere"
+}

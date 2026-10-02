@@ -221,7 +221,7 @@ func TestTaskLoopIsolation(t *testing.T) {
 	for _, tl := range list.Result.Tools {
 		names = append(names, tl.Name)
 	}
-	want := "claim_task,fail_task,get_asset,get_asset_edl,get_task_status,heartbeat,list_assets,report_progress,submit_delivery,submit_result"
+	want := "ack_execution_stopped,begin_execution,claim_task,fail_task,get_asset,get_asset_edl,get_execution_control,get_execution_result_status,get_task_input,get_task_status,heartbeat,list_assets,list_recovery_candidates,reconcile_execution_drain,report_progress,save_ingest_checkpoint,submit_delivery,submit_ingest_result,submit_result"
 	sortStrings(names)
 	if strings.Join(names, ",") != want {
 		t.Fatalf("tools = %v", names)

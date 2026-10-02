@@ -1,6 +1,7 @@
 # Build artifacts
 /build/
-.run-data/
+# All local runtime state, test evidence, caches, credentials and media
+/.run-data/
 *.exe
 *.test
 *.out
@@ -15,6 +16,12 @@ node_modules/
 dist/
 .venv/
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.tsbuildinfo
+coverage/
 
 # Env & secrets
 .env
@@ -45,4 +52,29 @@ docs/*
 !docs/二阶段验收记录-2026-09-29.md
 !docs/三阶段开发文档.md
 !docs/四阶段开发文档.md
+!docs/四阶段验收记录-2026-09-30.md
+!docs/五阶段开发文档.md
+!docs/六阶段开发文档.md
+!docs/六阶段实施报告.md
+!docs/六阶段验收记录-2026-10-01.md
+!docs/五阶段实施报告.md
+!docs/五阶段验收记录-2026-10-01.md
+!docs/四五阶段联合人工校验.md
+!docs/四五阶段修复报告-2026-10-01.md
 视频剪辑流程方案.txt
+
+!docs/全项目进度-2026-10-01.md
+!docs/全项目统一人工验收计划.md
+!docs/七阶段开发文档.md
+!docs/七阶段实施报告.md
+!docs/七阶段验收记录-2026-10-01.md
+!docs/七阶段执行隔离与断点恢复修复方案.md
+!docs/七阶段复核记录-2026-10-02.md
+!docs/七阶段执行隔离与断点恢复修复报告.md
+!docs/全项目进度-2026-10-02.md
+!docs/服务商通用接入开发报告.md
+!docs/前端接口清单与重构交接.md
+!docs/frontend-api-inventory.json
+!docs/验收缺陷修复与复检-2026-10-02.md
+!docs/全盘人工验收交接-2026-10-02.md
+!docs/仓库保存与测试数据清理-2026-10-03.md

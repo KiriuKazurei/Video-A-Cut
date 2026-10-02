@@ -46,11 +46,21 @@ import (
 // for the same reason ReportProgress is not: an audit row per heartbeat would
 // bury the governance events that actually matter.
 func (s *Service) Heartbeat(ctx context.Context, agentID, role, taskID string, lease time.Time) error {
+	return s.HeartbeatScoped(ctx, agentID, role, taskID, lease, ExecutionScope{})
+}
+
+// HeartbeatScoped renews a lease. An ingest task requires the current scope;
+// a revoked execution is not renewed. An empty task id only records liveness.
+func (s *Service) HeartbeatScoped(ctx context.Context, agentID, role, taskID string, lease time.Time, scope ExecutionScope) error {
 	if agentID == "" {
 		return fmt.Errorf("service: heartbeat: agent_id is required: %w", model.ErrArgument)
 	}
 	if role == "" {
 		return fmt.Errorf("service: heartbeat: agent_role is required: %w", model.ErrArgument)
+	}
+	scope.AgentID, scope.Role = agentID, role
+	if taskID != "" {
+		scope.TaskID = taskID
 	}
 
 	var saved model.Task
@@ -59,10 +69,20 @@ func (s *Service) Heartbeat(ctx context.Context, agentID, role, taskID string, l
 		currentTask := ""
 		var tk model.Task
 		if taskID != "" {
-			var err error
-			tk, err = tx.GetTask(ctx, taskID)
+			auth, err := authorizeExecution(ctx, tx, scope, opHeartbeat)
 			if err != nil {
-				return fmt.Errorf("service: heartbeat on task %s: %w", taskID, err)
+				return err
+			}
+			var err2 error
+			tk, err2 = tx.GetTask(ctx, taskID)
+			if err2 != nil {
+				return fmt.Errorf("service: heartbeat on task %s: %w", taskID, err2)
+			}
+			if !auth.Historical {
+				auth.Execution.LeaseUntil = &lease
+				if err := tx.UpdateIngestExecution(ctx, auth.Execution); err != nil {
+					return err
+				}
 			}
 			if tk.AgentID != agentID {
 				return fmt.Errorf("service: heartbeat on task %s: agent %q is not the holder: %w",
@@ -71,6 +91,9 @@ func (s *Service) Heartbeat(ctx context.Context, agentID, role, taskID string, l
 			if tk.AgentRole != role {
 				return fmt.Errorf("service: heartbeat on task %s: role %q does not match task role %q: %w",
 					taskID, role, tk.AgentRole, model.ErrForbidden)
+			}
+			if err := s.WorkflowBlocks(ctx, tx, taskID); err != nil {
+				return err
 			}
 			active, err := activeTasksForAgent(ctx, tx, agentID)
 			if err != nil {

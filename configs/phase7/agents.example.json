@@ -1,0 +1,5 @@
+{
+  "agents": [
+    { "agent_id": "ingester", "role": "ingester", "token_sha256": "<sha256 of the token stored in VAC_INGESTER_TOKEN; never the token itself>" }
+  ]
+}

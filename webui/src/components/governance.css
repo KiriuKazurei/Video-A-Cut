@@ -181,6 +181,10 @@ dd small {
 
 .action-count-list li {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   align-items: baseline;
   gap: .35rem;
   padding: .3rem .55rem;
@@ -191,8 +195,11 @@ dd small {
 }
 
 .action-count-list li span {
+  min-width: 0;
   color: var(--muted);
 }
+
+.action-count-list li code { min-width: 0; }
 
 .action-count-list li strong {
   color: var(--accent);

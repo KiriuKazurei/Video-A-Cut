@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ToolError } from './mcp.mjs';
 
@@ -11,6 +11,7 @@ import { ToolError } from './mcp.mjs';
 export async function loadConfig(path, env = process.env) {
   const raw = JSON.parse(await readFile(path, 'utf8'));
   const cfg = {
+    profileSHA256: raw.profile_sha256 ?? '',
     mcpUrl: raw.mcp_url,
     tokenEnv: raw.token_env ?? 'VAC_WORKER_TOKEN',
     deliveryRoot: raw.delivery_root,
@@ -115,12 +116,16 @@ const sleep = (ms, signal) => new Promise((r) => {
 export async function processTask({ client, cfg, task, log, signal, runCliImpl = runCli }) {
   const id = task.task_id;
   let leaseLost = false;
+  const taskAbort=new AbortController();
+  const abort=()=>taskAbort.abort();
+  if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   const beat = setInterval(async () => {
     try {
       await client.call('heartbeat', { task_id: id });
     } catch (err) {
-      if (err instanceof ToolError && ['lease_expired', 'not_found', 'invalid_state'].includes(err.code)) {
+      if (err instanceof ToolError && ['lease_expired', 'not_found', 'invalid_state', 'conflict'].includes(err.code)) {
         leaseLost = true;
+        taskAbort.abort();
         log(`task ${id}: heartbeat lost lease (${err.code})`);
       } else {
         log(`task ${id}: heartbeat transport error: ${err.message}`);
@@ -144,23 +149,56 @@ export async function processTask({ client, cfg, task, log, signal, runCliImpl =
       throw new WorkerFailure('asset_id or task_id contains characters unsafe for a directory name');
     }
     await client.call('report_progress', { task_id: id, progress: 0.05, message: 'resolving edl' });
-    const { asset } = await client.call('get_asset', { asset_id: task.asset_id });
-    // The control plane holds exports on exported assets (typeReady); this
-    // is a fallback if a claim ever races a governance change.
-    if (asset.status === 'exported') {
-      throw new WorkerFailure('asset already exported; reopen it in the WebUI before exporting again');
+    const taskInput = await client.call('get_task_input', { task_id: id });
+    if(taskInput?.processing_profile && (taskInput.profile_sha256 !== cfg.profileSHA256 || taskInput.processing_profile.export_target !== 'premiere')) throw new WorkerFailure('Worker configuration fingerprint does not match task profile');
+    let edlRel;
+    if (taskInput?.versioned === true) {
+      if (taskInput.cancelled === true) throw new WorkerFailure('workflow cancelled this task');
+      edlRel = taskInput.edl_path;
+    } else {
+      const { asset } = await client.call('get_asset', { asset_id: task.asset_id });
+      // The control plane holds exports on exported assets (typeReady); this
+      // is a fallback if a claim ever races a governance change.
+      if (asset.status === 'exported') {
+        throw new WorkerFailure('asset already exported; reopen it in the WebUI before exporting again');
+      }
+      edlRel = asset.artifacts?.edl;
     }
-    const edlPath = await resolveUnderRoot(cfg.deliveryRoot, asset.artifacts?.edl);
+    const edlPath = await resolveUnderRoot(cfg.deliveryRoot, edlRel);
     // One package per task id: the CLI refuses to overwrite, so a retried
     // task on a fresh claim must not collide with a leftover directory.
     const packageRel = `${cfg.outputPrefix}/${task.asset_id}/${id}`;
     const outputDir = resolve(cfg.deliveryRoot, ...packageRel.split('/'));
+    const receipt = { task_id: id, revision_id: taskInput?.revision_id, content_mode: taskInput?.content_mode };
+    if(taskInput?.profile_sha256) receipt.profile_sha256=taskInput.profile_sha256;
+    const attachProfileMetadata = async () => {
+      if (!taskInput?.processing_profile) return;
+      await writeFile(join(outputDir, 'processing-profile.json'), JSON.stringify({profile:taskInput.processing_profile, profile_sha256:taskInput.profile_sha256}, null, 2));
+      const manifestPath = join(outputDir, 'delivery-manifest.json');
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+      manifest.artifacts = manifest.artifacts.filter(a => a.kind !== 'processing_profile');
+      manifest.artifacts.push({kind:'processing_profile', path:'processing-profile.json'});
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+    };
+    if (taskInput?.versioned === true) {
+      let prior;
+      try { prior = JSON.parse(await readFile(join(outputDir, 'worker-receipt.json'), 'utf8')); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (prior) {
+        if (JSON.stringify(prior) !== JSON.stringify(receipt)) throw new WorkerFailure('existing delivery belongs to a different task input');
+        await attachProfileMetadata();
+        await client.call('submit_delivery', { task_id: id, package_dir: packageRel });
+        return { outcome: 'succeeded', package: packageRel, recovered: true };
+      }
+    }
     await client.call('report_progress', { task_id: id, progress: 0.2, message: 'running timeline cli' });
     await runCliImpl({
       nodePath: cfg.nodePath, cliPath: cfg.cliPath, edlPath, outputDir,
-      adaptersPath: cfg.adaptersPath, timeoutMs: cfg.taskTimeoutMs, signal
+      adaptersPath: cfg.adaptersPath, timeoutMs: cfg.taskTimeoutMs, signal:taskAbort.signal
     });
     if (leaseLost) return { outcome: 'abandoned', reason: 'lease lost during build' };
+    if (taskInput?.versioned === true) await writeFile(join(outputDir, 'worker-receipt.json'), JSON.stringify(receipt));
+    await attachProfileMetadata();
     await client.call('report_progress', { task_id: id, progress: 0.9, message: 'registering delivery' });
     await client.call('submit_delivery', { task_id: id, package_dir: packageRel });
     return { outcome: 'succeeded', package: packageRel };
@@ -171,18 +209,27 @@ export async function processTask({ client, cfg, task, log, signal, runCliImpl =
     return fail(err.message);
   } finally {
     clearInterval(beat);
+    signal?.removeEventListener('abort',abort);
   }
 }
 
 /** Poll-claim-process loop until signal aborts. */
 export async function runLoop({ client, cfg, log, signal, once = false }) {
   const tools = await client.listTools();
-  for (const needed of ['claim_task', 'heartbeat', 'report_progress', 'get_asset', 'submit_delivery', 'fail_task']) {
+  for (const needed of ['claim_task', 'heartbeat', 'report_progress', 'get_asset', 'get_task_input', 'submit_delivery', 'fail_task']) {
     if (!tools.includes(needed)) throw new Error(`control plane does not expose ${needed}`);
   }
-  await client.call('heartbeat', {});
+  const capability=cfg.profileSHA256 ? {profile_sha256:cfg.profileSHA256,tools_ready:await exporterToolsReady(cfg),credentials_ready:Boolean(cfg.token),tts_voices:[]} : null;
+  await client.call('heartbeat',capability ? {capability}:{});
+  let lastHeartbeat=Date.now();
   log('worker registered; polling');
   while (!signal.aborted) {
+    if(capability && Date.now()-lastHeartbeat>=5000){
+      capability.tools_ready=await exporterToolsReady(cfg);
+      try { await client.call('heartbeat',{capability}); }
+      catch(err){log(`capability heartbeat error: ${err.message}`);await sleep(cfg.pollIntervalMs,signal);continue;}
+      lastHeartbeat=Date.now();
+    }
     let claim;
     try {
       claim = await client.call('claim_task', {});
@@ -202,4 +249,8 @@ export async function runLoop({ client, cfg, log, signal, once = false }) {
     if (once) return result;
   }
   return { outcome: 'stopped' };
+}
+
+async function exporterToolsReady(cfg){
+  try{await stat(cfg.cliPath);await stat(cfg.adaptersPath);return await new Promise(resolve=>{const child=spawn(cfg.nodePath,['--version'],{windowsHide:true,stdio:'ignore'});const timer=setTimeout(()=>{child.kill();resolve(false)},3000);child.on('error',()=>{clearTimeout(timer);resolve(false)});child.on('close',code=>{clearTimeout(timer);resolve(code===0)})})}catch{return false}
 }

@@ -22,7 +22,35 @@ class ToolError(Exception):
 
 
 class TransportError(Exception):
-    """HTTP or JSON-RPC level failure; not a task outcome."""
+    """HTTP or JSON-RPC level failure; not a task outcome.
+
+    ``kind`` is ``transient`` (retry within the local budget), ``auth``
+    (401/403, stop and back off), or ``protocol`` (incompatible response).
+    """
+
+    kind = "transient"
+
+
+class TransientTransportError(TransportError):
+    kind = "transient"
+
+
+class AuthTransportError(TransportError):
+    kind = "auth"
+
+
+class ProtocolTransportError(TransportError):
+    kind = "protocol"
+
+
+# Ingest control calls stay at or below this. Media tools are not MCP calls.
+INGEST_REQUEST_TIMEOUT = 3.0
+
+_TRANSIENT_HTTP = {408, 429, 500, 502, 503, 504}
+
+
+def transport_kind(err: BaseException) -> str:
+    return getattr(err, "kind", "transient") if isinstance(err, TransportError) else ""
 
 
 class Client:
@@ -64,12 +92,30 @@ class Client:
             with self._open(req, timeout=self._timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as err:
-            raise TransportError(f"mcp http {err.code}: {err.read()[:200]!r}") from None
+            body = err.read()[:200]
+            if err.code in (401, 403):
+                raise AuthTransportError(f"mcp http {err.code}: {body!r}") from None
+            if err.code in _TRANSIENT_HTTP:
+                raise TransientTransportError(f"mcp http {err.code}: {body!r}") from None
+            raise ProtocolTransportError(f"mcp http {err.code}: {body!r}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as err:
-            raise TransportError(f"mcp transport: {err}") from None
-        msg = json.loads(raw)
+            raise TransientTransportError(f"mcp transport: {err}") from None
+        try:
+            msg = json.loads(raw)
+        except json.JSONDecodeError as err:
+            raise ProtocolTransportError(f"mcp protocol: invalid json ({err})") from None
+        if not isinstance(msg, dict) or "result" not in msg and "error" not in msg:
+            raise ProtocolTransportError("mcp protocol: response envelope is not a JSON-RPC object")
         if "error" in msg:
-            raise TransportError(f"mcp rpc error {msg['error'].get('code')}: {msg['error'].get('message')}")
+            error = msg["error"] if isinstance(msg["error"], dict) else {}
+            code = error.get("code")
+            message = str(error.get("message") or "")
+            text = f"mcp rpc error {code}: {message}"
+            if code in (-32600, -32601, -32602) or "schema" in message.lower() or "incompatible" in message.lower():
+                raise ProtocolTransportError(text)
+            if code in (-32000,) and any(word in message.lower() for word in ("timeout", "unavailable", "temporarily")):
+                raise TransientTransportError(text)
+            raise ProtocolTransportError(text)
         return msg["result"]
 
     def call(self, tool: str, args: dict | None = None) -> dict:
