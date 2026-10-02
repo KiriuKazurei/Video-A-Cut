@@ -1,13 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { Alert, Avatar, Badge, Button, Card, Empty, Input, List, Tag, Typography } from 'antd';
+import { FileTextOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import type { Asset } from '../types';
-import { ApiError } from '../api';
-import { Icon } from './Icon';
-
-function message(error: unknown): string {
-  if (error instanceof ApiError) return `${error.message}（${error.code}）`;
-  return error instanceof Error ? error.message : '发生未知错误';
-}
+import { errorText } from './ui';
 
 export const kindLabel = (asset: Asset) => asset.input_kind === 'raw_recording' ? '原始录像' : 'EDL 包';
 
@@ -17,31 +13,33 @@ export function MediaBin({ assets, selectedId, onSelect }: { assets: UseQueryRes
   const visible = useMemo(() => (assets.data ?? []).filter((item) =>
     item.asset_id.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [assets.data, search]);
   return (
-    <section className="bin-panel" aria-labelledby="assets-title">
-      <div className="dock-heading"><h2 id="assets-title">项目 · 资产</h2><span className="count">{assets.data?.length ?? '—'} 项</span></div>
-      <div className="bin-search">
-        <Icon name="search" />
-        <label className="sr-only" htmlFor="asset-search">按资产 ID 筛选</label>
-        <input id="asset-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="按资产 ID 筛选" />
-      </div>
-      {assets.isPending && <p className="state">正在读取资产…</p>}
-      {assets.isError && <div className="state state-error" role="alert">资产读取失败：{message(assets.error)}
-        <button type="button" onClick={() => void assets.refetch()}>重试</button></div>}
-      {assets.isSuccess && assets.data.length === 0 && <p className="state">暂无资产。在「导入」页登记录像或导入交付包后会出现在这里。</p>}
-      {assets.isSuccess && assets.data.length > 0 && visible.length === 0 && <p className="state">没有匹配的资产。</p>}
-      <div className="asset-list">
-        {visible.map((item) => <button key={item.asset_id} type="button"
-          className={`asset-row ${selectedId === item.asset_id ? 'is-selected' : ''}`}
-          aria-pressed={selectedId === item.asset_id}
-          onClick={() => onSelect(item.asset_id)}>
-          <span className={`asset-thumb kind-${item.input_kind ?? 'edl_package'}`}><Icon name={item.input_kind === 'raw_recording' ? 'film' : 'edit'} size={18} /></span>
-          <span className="asset-text">
-            <span className="asset-name">{item.asset_id}</span>
-            <small>{kindLabel(item)} · {item.locked ? '已锁定' : item.agent_visible ? 'Agent 可见' : 'Agent 不可见'}</small>
-          </span>
-          <span className="asset-status">{item.status}</span>
-        </button>)}
-      </div>
-    </section>
+    <Card size="small" variant="borderless" className="dock-card" aria-labelledby="assets-title"
+      title={<span id="assets-title">项目 · 资产</span>} extra={<Badge count={assets.data?.length ?? 0} showZero color="blue" />}>
+      <Input.Search id="bin-search" allowClear value={search} onChange={(event) => setSearch(event.target.value)}
+        placeholder="按资产 ID 筛选" aria-label="按资产 ID 筛选" style={{ marginBottom: 8 }} />
+      {assets.isError && <Alert type="error" showIcon message={`资产读取失败：${errorText(assets.error)}`}
+        action={<Button size="small" onClick={() => void assets.refetch()}>重试</Button>} />}
+      <List className="asset-list" size="small" loading={assets.isPending} dataSource={visible}
+        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={assets.isSuccess && assets.data.length > 0 ? '没有匹配的资产' : '暂无资产。在「导入」页登记录像或导入交付包后会出现在这里。'} /> }}
+        renderItem={(item) => {
+          const selected = selectedId === item.asset_id;
+          return <List.Item key={item.asset_id} data-asset-id={item.asset_id} role="button" tabIndex={0} aria-pressed={selected}
+            className={`asset-row${selected ? ' is-selected' : ''}`}
+            onClick={() => onSelect(item.asset_id)}
+            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(item.asset_id); } }}
+>
+            <List.Item.Meta
+              avatar={<Avatar shape="square" size="small" className={item.input_kind === 'raw_recording' ? 'kind-raw' : 'kind-edl'}
+                icon={item.input_kind === 'raw_recording' ? <VideoCameraOutlined /> : <FileTextOutlined />} />}
+              title={<Typography.Text strong ellipsis={{ tooltip: item.asset_id }}>{item.asset_id}</Typography.Text>}
+              description={<>
+                <Typography.Text type="secondary" ellipsis style={{ fontSize: 12, display: 'block' }}>
+                  {kindLabel(item)} · {item.locked ? '已锁定' : item.agent_visible ? 'Agent 可见' : 'Agent 不可见'}</Typography.Text>
+                <Tag bordered={false} color={item.status === 'exported' ? 'success' : 'default'} style={{ marginTop: 4 }}>{item.status}</Tag>
+              </>} />
+          </List.Item>;
+        }} />
+    </Card>
   );
 }

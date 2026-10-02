@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Card, Col, Flex, Form, Input, Row, Space, Typography } from 'antd';
 import { api } from '../api';
+import { ValueSelect } from './ui';
 import type { ProcessingProvider, ProviderDiagnostic, ProviderFormat } from '../preparation';
 
 const defaults: Record<ProviderFormat, string> = {
@@ -55,41 +57,50 @@ export function ProviderEditor({ role, provider, disabled, onChange }: {
       onChange({ ...provider, api_format: format as ProviderFormat, endpoint: defaults[format as ProviderFormat], model: '' });
     }
   };
-  return <fieldset className="provider-editor" data-provider-role={role}>
-    <legend>{role === 'vision' ? '画面识别' : '中文解说'}</legend>
-    <div className="action-row">
-      <label className="field-label">API 格式<select disabled={disabled} value={provider.api_format || ''} onChange={e => changeFormat(e.target.value)}>
-        <option value="openai">OpenAI · Chat Completions</option>
-        <option value="anthropic">Anthropic · Messages</option>
-        <option value="gemini">Google · Gemini</option>
-        <option value="">原有自定义接口</option>
-      </select></label>
-      <label className="field-label">{provider.api_format ? 'API 基础地址' : '服务地址'}<input required type="url" disabled={disabled} value={provider.endpoint || ''} onChange={e => onChange({ ...provider, endpoint: e.target.value })} /></label>
-      <label className="field-label">模型 ID<input required disabled={disabled} value={provider.model || ''} onChange={e => onChange({ ...provider, model: e.target.value })} /></label>
-      <label className="field-label">运行凭证环境变量名<input required disabled={disabled} value={provider.token_env || ''} onChange={e => onChange({ ...provider, token_env: e.target.value })} /></label>
-    </div>
-    {provider.api_format && <>
-      <p className="hint">可替换为服务商兼容地址，保留其 API 路径前缀。连接测试使用固定文字{role === 'vision' ? '和合成图片' : ''}，可能产生少量费用。</p>
-      <div className="action-row">
-        <label className="field-label">本次测试用 API key<input type="password" autoComplete="off" disabled={disabled} value={key} onChange={e => setKey(e.target.value)} placeholder="留空则使用启动环境中的凭证变量" /></label>
-        <button type="button" disabled={disabled || !!busy || !provider.endpoint || !provider.token_env} onClick={() => void run('models')}>{busy === 'models' ? '发现中…' : '发现模型'}</button>
-        <button type="button" disabled={disabled || !!busy || !provider.endpoint || !provider.model || !provider.token_env} onClick={() => void run('test')}>{busy === 'test' ? '测试中…' : '测试连接'}</button>
-        {busy && <button type="button" className="secondary-button" onClick={() => { controller.current?.abort(); setBusy(null); }}>取消请求</button>}
-        {key && <button type="button" className="secondary-button" onClick={() => setKey('')}>清除测试 key</button>}
-      </div>
-      <p className="hint">测试 key 仅用于当前请求。保存的预设使用环境变量名，正式 Worker 运行需要在启动环境中设置该变量。修改地址、格式、模型或凭证后请重新测试。</p>
-      {busy && <p role="status">{busy === 'models' ? '正在读取模型列表…' : '正在请求所选模型…'}</p>}
-      {error && <p role="alert" className="inline-error">{error}</p>}
+  const modelValue = available?.ok && provider.model ? provider.model : undefined;
+  return <Card size="small" className="provider-editor" data-provider-role={role} title={role === 'vision' ? '画面识别' : '中文解说'}>
+    <Row gutter={12}>
+      <Col xs={24} md={12}><Form.Item label="API 格式">
+        <ValueSelect<string> disabled={disabled} value={provider.api_format || ''} onChange={changeFormat} options={[
+          { value: 'openai', label: 'OpenAI · Chat Completions' }, { value: 'anthropic', label: 'Anthropic · Messages' },
+          { value: 'gemini', label: 'Google · Gemini' }, { value: '', label: '原有自定义接口' }]} />
+      </Form.Item></Col>
+      <Col xs={24} md={12}><Form.Item label={provider.api_format ? 'API 基础地址' : '服务地址'}>
+        <Input required type="url" disabled={disabled} value={provider.endpoint || ''} onChange={e => onChange({ ...provider, endpoint: e.target.value })} />
+      </Form.Item></Col>
+      <Col xs={24} md={12}><Form.Item label="模型 ID">
+        <Input required disabled={disabled} value={provider.model || ''} onChange={e => onChange({ ...provider, model: e.target.value })} />
+      </Form.Item></Col>
+      <Col xs={24} md={12}><Form.Item label="运行凭证环境变量名">
+        <Input required disabled={disabled} value={provider.token_env || ''} onChange={e => onChange({ ...provider, token_env: e.target.value })} />
+      </Form.Item></Col>
+    </Row>
+    {provider.api_format && <Flex vertical gap={8}>
+      <Typography.Text type="secondary">可替换为服务商兼容地址，保留其 API 路径前缀。连接测试使用固定文字{role === 'vision' ? '和合成图片' : ''}，可能产生少量费用。</Typography.Text>
+      <Row gutter={12} align="bottom">
+        <Col xs={24} md={12}><Form.Item label="本次测试用 API key" style={{ marginBottom: 8 }}>
+          <Input.Password autoComplete="off" disabled={disabled} value={key} onChange={e => setKey(e.target.value)} placeholder="留空则使用启动环境中的凭证变量" />
+        </Form.Item></Col>
+        <Col flex="auto"><Space wrap style={{ marginBottom: 8 }}>
+          <Button disabled={disabled || !!busy || !provider.endpoint || !provider.token_env} loading={busy === 'models'} onClick={() => void run('models')}>{busy === 'models' ? '发现中…' : '发现模型'}</Button>
+          <Button disabled={disabled || !!busy || !provider.endpoint || !provider.model || !provider.token_env} loading={busy === 'test'} onClick={() => void run('test')}>{busy === 'test' ? '测试中…' : '测试连接'}</Button>
+          {busy && <Button onClick={() => { controller.current?.abort(); setBusy(null); }}>取消请求</Button>}
+          {key && <Button type="text" onClick={() => setKey('')}>清除测试 key</Button>}
+        </Space></Col>
+      </Row>
+      <Typography.Text type="secondary">测试 key 仅用于当前请求。保存的预设使用环境变量名，正式 Worker 运行需要在启动环境中设置该变量。修改地址、格式、模型或凭证后请重新测试。</Typography.Text>
+      {busy && <Typography.Text type="secondary" role="status">{busy === 'models' ? '正在读取模型列表…' : '正在请求所选模型…'}</Typography.Text>}
+      {error && <Alert type="error" showIcon role="alert" message={error} />}
       {available && <div className="provider-models">
-        <p role={available.ok ? 'status' : 'alert'} className={available.ok ? '' : 'inline-error'}>{available.message}（{available.latency_ms} ms）</p>
-        {available.ok && !!available.models?.length && <label className="field-label">已发现模型（{available.models.length}{available.truncated ? '，部分结果' : ''}）<select disabled={disabled} value={provider.model || ''} onChange={e => { if (e.target.value) onChange({ ...provider, model: e.target.value }); }}>
-          <option value="">选择模型，或在上方手动填写</option>
-          {provider.model && !available.models.some(m => m.id === provider.model) && <option value={provider.model}>{provider.model}（手动填写）</option>}
-          {available.models.map(m => <option key={m.id} value={m.id}>{m.name === m.id ? m.id : `${m.name} · ${m.id}`}</option>)}
-        </select></label>}
-        {available.ok && !available.models?.length && <p className="hint">该凭证未发现可用模型，可手动填写模型 ID 后测试。</p>}
+        <Alert type={available.ok ? 'success' : 'error'} showIcon role={available.ok ? 'status' : 'alert'} message={`${available.message}（${available.latency_ms} ms）`} />
+        {available.ok && !!available.models?.length && <Form.Item label={`已发现模型（${available.models.length}${available.truncated ? '，部分结果' : ''}）`} style={{ margin: '8px 0 0' }}>
+          <ValueSelect<string> disabled={disabled} value={modelValue} placeholder="选择模型，或在上方手动填写" onChange={v => { if (v) onChange({ ...provider, model: v }); }} options={[
+            ...(provider.model && !available.models.some(m => m.id === provider.model) ? [{ value: provider.model, label: `${provider.model}（手动填写）` }] : []),
+            ...available.models.map(m => ({ value: m.id, label: m.name === m.id ? m.id : `${m.name} · ${m.id}` }))]} />
+        </Form.Item>}
+        {available.ok && !available.models?.length && <Typography.Text type="secondary">该凭证未发现可用模型，可手动填写模型 ID 后测试。</Typography.Text>}
       </div>}
-      {tested && <p role={tested.ok ? 'status' : 'alert'} className={tested.ok ? '' : 'inline-error'}>{tested.message}（{tested.latency_ms} ms）</p>}
-    </>}
-  </fieldset>;
+      {tested && <Alert type={tested.ok ? 'success' : 'error'} showIcon role={tested.ok ? 'status' : 'alert'} message={`${tested.message}（${tested.latency_ms} ms）`} />}
+    </Flex>}
+  </Card>;
 }

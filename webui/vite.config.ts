@@ -1,6 +1,19 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  build: {
+    // Ant Design 5 及其 rc-* 依赖单独成块：应用代码改动时浏览器可继续复用组件库缓存。
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|@tanstack)[\\/]/.test(id)) return 'vendor-react';
+          return 'vendor-antd';
+        }
+      }
+    }
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,
