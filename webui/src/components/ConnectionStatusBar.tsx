@@ -1,3 +1,4 @@
+import { Badge, Button, Space, Tag, Typography } from 'antd';
 import type { ConnectionStatus } from '../types';
 
 /** 连接状态指示器：展示 SSE 状态、重连次数，断开时提供立即重连。 */
@@ -18,13 +19,13 @@ export interface ConnectionStatusBarProps {
   onDisconnect?: () => void;
 }
 
-/** 状态文案与色彩令牌。文本优先，颜色只是补充（不靠颜色单独传达状态）。 */
-const STATUS_TEXT: Record<ConnectionStatus, { label: string; hint: string }> = {
-  connecting: { label: '正在连接', hint: '首次连接事件流…' },
-  connected: { label: '已连接', hint: '事件流实时推送中' },
-  reconnecting: { label: '重连中', hint: '连接断开，按指数退避自动重试' },
-  disconnected: { label: '已断开', hint: '已停止连接，可手动重连' },
-  error: { label: '连接失败', hint: '重试次数已用尽，请手动重连' }
+/** 状态文案与徽标状态。文本优先，颜色只是补充（不靠颜色单独传达状态）。 */
+const STATUS_TEXT: Record<ConnectionStatus, { label: string; hint: string; badge: 'success' | 'processing' | 'warning' | 'default' | 'error' }> = {
+  connecting: { label: '正在连接', hint: '首次连接事件流…', badge: 'processing' },
+  connected: { label: '已连接', hint: '事件流实时推送中', badge: 'success' },
+  reconnecting: { label: '重连中', hint: '连接断开，按指数退避自动重试', badge: 'warning' },
+  disconnected: { label: '已断开', hint: '已停止连接，可手动重连', badge: 'default' },
+  error: { label: '连接失败', hint: '重试次数已用尽，请手动重连', badge: 'error' }
 };
 
 export function ConnectionStatusBar({
@@ -43,23 +44,16 @@ export function ConnectionStatusBar({
   const waiting = status === 'reconnecting' && nextRetryLabel !== null;
 
   return (
-    <div className={`connection-status-bar status-${status}`} role="status" aria-live="polite">
-      <span className="connection-dot" aria-hidden="true" />
-      <span className="connection-status-text">
-        <strong>{text.label}</strong>
-        <small>{text.hint}</small>
-      </span>
-      <span className="connection-retry" data-testid="connection-retry">{retryText}</span>
-      {waiting && <span className="connection-next">下次重连：{nextRetryLabel}</span>}
-      {retryExhausted && <span className="connection-warning">已达重试上限</span>}
+    <Space className="connection-status-bar" role="status" aria-live="polite" wrap size={[12, 4]}>
+      <Badge status={text.badge} text={<Typography.Text strong>{text.label}</Typography.Text>} />
+      <Typography.Text type="secondary">{text.hint}</Typography.Text>
+      <Tag data-testid="connection-retry" bordered={false}>{retryText}</Tag>
+      {waiting && <Typography.Text type="secondary">下次重连：{nextRetryLabel}</Typography.Text>}
+      {retryExhausted && <Tag color="error">已达重试上限</Tag>}
       {/* 断开/重连按钮在已连接时也可点：断开是主动操作，不应藏在错误态。 */}
-      <button type="button" className="secondary-button"
-        disabled={status === 'connecting' || status === 'reconnecting'}
-        onClick={onReconnect}>立即重连</button>
-      {onDisconnect && <button type="button" className="secondary-button"
-        disabled={status === 'disconnected'}
-        onClick={onDisconnect}>断开</button>}
-    </div>
+      <Button size="small" disabled={status === 'connecting' || status === 'reconnecting'} onClick={onReconnect}>立即重连</Button>
+      {onDisconnect && <Button size="small" disabled={status === 'disconnected'} onClick={onDisconnect}>断开</Button>}
+    </Space>
   );
 }
 

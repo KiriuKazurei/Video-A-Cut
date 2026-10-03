@@ -1,23 +1,32 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge, Button, Layout, Menu, Typography, theme } from 'antd';
+import {
+  AuditOutlined, CloudUploadOutlined, ExportOutlined, PlaySquareOutlined, ReloadOutlined, ScissorOutlined, SettingOutlined, VideoCameraOutlined
+} from '@ant-design/icons';
 import { api } from './api';
-import type { Asset, CreateTask, GovernancePatch } from './types';
+import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
 import { useEvents } from './useEvents';
 import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { MediaBin } from './components/MediaBin';
 import { Inspector } from './components/Inspector';
-import { Icon } from './components/Icon';
 import type { RunSelection } from './components/WorkflowPanel';
 import { PAGES, useHashPage, type PageId } from './navigation';
 import { AssemblyPage, EditPage, ExportPage, ImportPage, MonitorPage, PreparePage } from './pages/Pages';
 
+const PAGE_ICONS: Record<PageId, React.ReactNode> = {
+  import: <CloudUploadOutlined />, assembly: <ScissorOutlined />, prepare: <SettingOutlined />,
+  edit: <PlaySquareOutlined />, export: <ExportOutlined />, monitor: <AuditOutlined />
+};
+
 /**
- * 工作区外壳（Premiere 式）：顶部工作区标签按流程顺序切换页面，左侧项目面板、
+ * 工作区外壳（Premiere 式）：顶部菜单按流程顺序切换页面，左侧项目面板、
  * 右侧属性面板常驻，中间是当前页（含监视器与时间线）。所有页面保持挂载、仅隐藏，
  * 因此跨页切换不会丢失未保存的选段或表单草稿；数据仍以 Go 控制面响应为准。
  */
 export default function App() {
   const queryClient = useQueryClient();
+  const { token } = theme.useToken();
   const [page, navigate] = useHashPage();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watchedTaskId, setWatchedTaskId] = useState<string | null>(null);
@@ -64,42 +73,49 @@ export default function App() {
   }, [runState, assetId]);
   const current = PAGES.find((item) => item.id === page)!;
   const pageDef = (id: PageId) => PAGES.find((item) => item.id === id)!;
+  // 准备页启动固定预设流程后：选中新流程并切到编辑页审查。
+  const onPreparedStarted = (run: WorkflowRun) => {
+    setRunState({ assetId, runId: run.run_id, offset: 0 });
+    navigate('edit');
+  };
+  const connectionText = connection === 'connected' ? '事件流已连接'
+    : connection === 'connecting' ? '正在连接事件流'
+    : connection === 'disconnected' ? '事件流已断开 · 显示最近快照'
+    : connection === 'error' ? '事件流连接失败 · 显示最近快照'
+    : `事件流重连中（${events.retryCount}/${events.maxRetries}）· 显示最近快照`;
 
   return (
-    <div className="app-shell">
+    <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark" aria-hidden="true"><Icon name="film" size={16} /></span>
-          <div><strong>Video Auto Cut</strong><span>剪辑预处理工作区</span></div>
+      <div className="ambient" aria-hidden="true" />
+      <Layout.Header className="app-header">
+        <div className="app-brand">
+          <VideoCameraOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
+          <div className="app-brand-text">
+            <Typography.Text strong>Video Auto Cut</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>剪辑预处理工作区</Typography.Text>
+          </div>
         </div>
-        <nav className="workspace-tabs" aria-label="工作区">
-          {PAGES.map((item) => <button key={item.id} type="button" data-page={item.id}
-            className={`workspace-tab${page === item.id ? ' is-active' : ''}`}
-            aria-current={page === item.id ? 'page' : undefined}
-            title={item.description}
-            onClick={() => navigate(item.id)}>
-            <Icon name={item.id} /><span className="tab-step">{item.step}</span><span className="tab-label">{item.label}</span>
-          </button>)}
-        </nav>
-        <div className="topbar-right">
-          <span className={`connection connection-${connection}`} role="status" aria-live="polite">
-            <span className="connection-dot" aria-hidden="true" />
-            {connection === 'connected' ? '事件流已连接'
-              : connection === 'connecting' ? '正在连接事件流'
-              : connection === 'disconnected' ? '事件流已断开 · 显示最近快照'
-              : connection === 'error' ? '事件流连接失败 · 显示最近快照'
-              : `事件流重连中（${events.retryCount}/${events.maxRetries}）· 显示最近快照`}
-          </span>
-          <button className="secondary-button icon-button" type="button" onClick={() => {
+        <Menu className="app-nav" mode="horizontal" aria-label="工作区" selectedKeys={[page]} triggerSubMenuAction="click"
+          onClick={({ key }) => navigate(key as PageId)}
+          items={PAGES.map((item) => ({
+            key: item.id, icon: PAGE_ICONS[item.id], title: item.description,
+            label: <span data-page={item.id} aria-current={page === item.id ? 'page' : undefined}>{item.step} {item.label}</span>
+          }))} />
+        <div className="app-header-right">
+          <Badge className="app-connection" role="status" aria-live="polite"
+            status={connection === 'connected' ? 'success' : connection === 'connecting' || connection === 'reconnecting' ? 'processing' : 'error'}
+            text={connectionText} />
+          <Button icon={<ReloadOutlined />} onClick={() => {
             void queryClient.invalidateQueries({ queryKey: ['assets'] });
             void queryClient.invalidateQueries({ queryKey: ['audit'] });
             if (watchedTaskId) void queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] });
-          }}><Icon name="refresh" />刷新快照</button>
+          }}>刷新快照</Button>
         </div>
-      </header>
+      </Layout.Header>
 
       <div className={`workspace workspace-${page}`}>
-        <aside className="dock dock-left" aria-label="项目面板">
+        <aside className="dock dock-left glass glass-frame" aria-label="项目面板">
           <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
         </aside>
         <main id="main" className="stage-main" aria-label={`${current.label}页`}>
@@ -110,7 +126,7 @@ export default function App() {
             <AssemblyPage page={pageDef('assembly')} asset={selected} />
           </div>
           <div className="page" data-page-view="prepare" hidden={page !== 'prepare'}>
-            <PreparePage page={pageDef('prepare')} asset={selected} />
+            <PreparePage page={pageDef('prepare')} asset={selected} onStarted={onPreparedStarted} />
           </div>
           <div className="page" data-page-view="edit" hidden={page !== 'edit'}>
             <EditPage page={pageDef('edit')} asset={selected} selection={selection} onGoExport={() => navigate('export')} />
@@ -123,12 +139,12 @@ export default function App() {
               watchedTaskId={watchedTaskId} createTask={createTask} />
           </div>
         </main>
-        <aside className="dock dock-right" aria-label="属性面板">
+        <aside className="dock dock-right glass glass-panel" aria-label="属性面板">
           <Inspector asset={selected} patch={patch} onNavigate={navigate} />
         </aside>
       </div>
 
-      <footer className="statusbar">
+      <Layout.Footer className="app-footer">
         <ConnectionStatusBar
           status={connection}
           retryCount={events.retryCount}
@@ -138,8 +154,8 @@ export default function App() {
           onReconnect={events.reconnect}
           onDisconnect={events.disconnect}
         />
-        <span className="statusbar-meta">{selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · {current.step} {current.label}</span>
-      </footer>
-    </div>
+        <Typography.Text type="secondary" className="app-footer-meta">{selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · {current.step} {current.label}</Typography.Text>
+      </Layout.Footer>
+    </Layout>
   );
 }

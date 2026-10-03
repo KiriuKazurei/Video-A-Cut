@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, deliveryFileURL, deliveryZipURL, ApiError } from '../api';
 import type { Asset, DeliveryFile } from '../types';
 import { usePreview } from './Monitor';
-import { Icon } from './Icon';
+import { Alert, Button, Card, Empty, Flex, Form, Input, List, Space, Tag, Typography } from 'antd';
+import { AudioOutlined, DownloadOutlined, FileImageOutlined, FileOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { ValueSelect } from './ui';
 
 function errorText(value: unknown): string {
   if (value instanceof ApiError) return `${value.message}（${value.code}）`;
@@ -42,31 +44,20 @@ export function DeliveryImport({ onImported }: { onImported: (assetId: string) =
       onImported(created.asset_id);
     }
   });
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (assetID.trim() && packageDir.trim()) imported.mutate();
-  }
   return (
-    <section className="panel delivery-import" aria-labelledby="delivery-import-title">
-      <div className="panel-heading"><div><p className="eyebrow">PACKAGE</p><h2 id="delivery-import-title">导入交付包</h2></div></div>
-      <p className="hint">从控制面配置的交付根目录导入 CLI 产物。这里只输入相对目录，文件由 Go 校验 delivery-manifest.json 后登记为新资产。</p>
-      <form className="delivery-import-form" onSubmit={submit}>
-        <div className="delivery-import-field">
-          <label className="field-label" htmlFor="delivery-asset-id">新资产 ID</label>
-          <input id="delivery-asset-id" required value={assetID}
-            onChange={(event) => setAssetID(event.target.value)} placeholder="例如：clip_001" />
-        </div>
-        <div className="delivery-import-field">
-          <label className="field-label" htmlFor="delivery-package-dir">交付包相对目录</label>
-          <input id="delivery-package-dir" required value={packageDir}
-            onChange={(event) => setPackageDir(event.target.value)} placeholder="例如：delivery-final" />
-        </div>
-        <button type="submit" disabled={imported.isPending}>
-          {imported.isPending ? '正在校验并导入…' : '导入交付包'}
-        </button>
-      </form>
-      {imported.isError && <p className="inline-error" role="alert">导入失败：{errorText(imported.error)}</p>}
-    </section>
+    <Card size="small" className="delivery-import" aria-labelledby="delivery-import-title" title={<span id="delivery-import-title">导入交付包</span>}>
+      <Typography.Paragraph type="secondary">从控制面配置的交付根目录导入 CLI 产物。这里只输入相对目录，文件由 Go 校验 delivery-manifest.json 后登记为新资产。</Typography.Paragraph>
+      <Form layout="vertical" className="delivery-import-form" onFinish={() => { if (assetID.trim() && packageDir.trim()) imported.mutate(); }}>
+        <Form.Item label="新资产 ID" htmlFor="delivery-asset-id">
+          <Input id="delivery-asset-id" required value={assetID} onChange={(event) => setAssetID(event.target.value)} placeholder="例如：clip_001" />
+        </Form.Item>
+        <Form.Item label="交付包相对目录" htmlFor="delivery-package-dir">
+          <Input id="delivery-package-dir" required value={packageDir} onChange={(event) => setPackageDir(event.target.value)} placeholder="例如：delivery-final" />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={imported.isPending}>{imported.isPending ? '正在校验并导入…' : '导入交付包'}</Button>
+      </Form>
+      {imported.isError && <Alert style={{ marginTop: 12 }} type="error" showIcon role="alert" message={`导入失败：${errorText(imported.error)}`} />}
+    </Card>
   );
 }
 
@@ -94,41 +85,38 @@ export function DeliveryPanel({ asset }: { asset: Asset | undefined }) {
     preview(asset && selected ? filePreview(asset.asset_id, selected) : null);
   }, [asset?.asset_id, selected?.key]);
 
+  const icon = (mime: string) => mime.startsWith('video/') ? <VideoCameraOutlined /> : mime.startsWith('audio/') ? <AudioOutlined /> : mime.startsWith('image/') ? <FileImageOutlined /> : <FileOutlined />;
   return (
-    <section className="panel delivery-panel" aria-labelledby="delivery-title">
-      <div className="panel-heading"><div><p className="eyebrow">DELIVERY</p>
-        <h2 id="delivery-title">交付文件</h2></div>
-        {files.isSuccess && <span className="count">{files.data.length} 个文件</span>}</div>
-      {!asset && <p className="state">选择资产后可查看已登记的媒体和交付文件。</p>}
-      {asset && <div className="delivery-files">
-        {files.isPending && <p className="state">正在读取产物…</p>}
-        {files.isError && <p className="inline-error" role="alert">产物读取失败：{errorText(files.error)}</p>}
-        {files.isSuccess && files.data.length === 0 && <p className="state">此资产尚无已登记产物。完成内容流程或在「导入」页导入交付包后会出现在这里。</p>}
+    <Card size="small" className="delivery-panel" aria-labelledby="delivery-title" title={<span id="delivery-title">交付文件</span>}
+      extra={files.isSuccess && <Tag>{files.data.length} 个文件</Tag>}>
+      {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择资产后可查看已登记的媒体和交付文件。" />}
+      {asset && <Flex vertical gap={12} className="delivery-files">
+        {files.isPending && <Typography.Text type="secondary">正在读取产物…</Typography.Text>}
+        {files.isError && <Alert type="error" showIcon role="alert" message={`产物读取失败：${errorText(files.error)}`} />}
+        {files.isSuccess && files.data.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此资产尚无已登记产物。完成内容流程或在「导入」页导入交付包后会出现在这里。" />}
         {files.isSuccess && files.data.length > 0 && <>
-          <div className="delivery-actions">
-            <a className="button-link" href={deliveryZipURL(asset.asset_id)}><Icon name="export" /> 下载资产交付 ZIP</a>
-            {asset.status === 'exported' && <button type="button" className="secondary-button"
-              disabled={reopened.isPending} aria-describedby="reopen-hint"
-              onClick={() => reopened.mutate(asset.asset_id)}>
-              {reopened.isPending ? '正在重开…' : '重开为新一轮素材'}</button>}
-          </div>
-          {asset.status === 'exported' && <p className="hint" id="reopen-hint">
-            重开会以当前导出包作为新的源素材，把资产状态改回“已入库”，治理设置保持不变；资产上有进行中的任务时服务端会拒绝。</p>}
-          {reopened.isError && <p className="inline-error" role="alert">重开失败：{errorText(reopened.error)}</p>}
-          {playable.length > 0 && <label className="field-label" htmlFor="delivery-preview-file">节目监视器中的文件
-            <select id="delivery-preview-file" value={selected?.key ?? ''}
-              onChange={(event) => setSelectedKey(event.target.value)}>
-              {playable.map((file) => <option key={file.key} value={file.key}>{file.name}</option>)}
-            </select></label>}
-          <ul className="delivery-file-list">{files.data.map((file) => <li key={file.key} className={selected?.key === file.key ? 'is-selected' : undefined}>
-            <Icon name={file.mime.startsWith('video/') ? 'film' : file.mime.startsWith('audio/') ? 'audio' : file.mime.startsWith('image/') ? 'image' : 'export'} />
-            <span><strong>{file.name}</strong><small>{file.key} · {sizeText(file.size)}</small></span>
-            {file.playable && <button type="button" className="secondary-button compact" onClick={() => setSelectedKey(file.key)}>预览</button>}
-            <a href={deliveryFileURL(asset.asset_id, file.key, true)} download>下载</a>
-          </li>)}</ul>
-          <p className="hint">ZIP 保留原目录结构。若解压到新位置后 Premiere 提示媒体离线，请用“链接媒体”定位解压目录中的文件；包内附有操作说明。</p>
+          <Space wrap className="delivery-actions">
+            <Button type="primary" icon={<DownloadOutlined />} href={deliveryZipURL(asset.asset_id)}>下载资产交付 ZIP</Button>
+            {asset.status === 'exported' && <Button disabled={reopened.isPending} aria-describedby="reopen-hint" onClick={() => reopened.mutate(asset.asset_id)}>
+              {reopened.isPending ? '正在重开…' : '重开为新一轮素材'}</Button>}
+          </Space>
+          {asset.status === 'exported' && <Typography.Text type="secondary" id="reopen-hint">
+            重开会以当前导出包作为新的源素材，把资产状态改回“已入库”，治理设置保持不变；资产上有进行中的任务时服务端会拒绝。</Typography.Text>}
+          {reopened.isError && <Alert type="error" showIcon role="alert" message={`重开失败：${errorText(reopened.error)}`} />}
+          {playable.length > 0 && <Form.Item label="节目监视器中的文件" layout="vertical" style={{ marginBottom: 0 }}>
+            <ValueSelect<string> id="delivery-preview-file" className="select-delivery-preview" value={selected?.key} onChange={setSelectedKey}
+              options={playable.map((file) => ({ value: file.key, label: file.name }))} />
+          </Form.Item>}
+          <List size="small" bordered className="delivery-file-list" dataSource={files.data} renderItem={(file) => <List.Item key={file.key}
+            className={selected?.key === file.key ? 'is-selected' : undefined}
+            actions={[
+              ...(file.playable ? [<Button key="preview" size="small" type={selected?.key === file.key ? 'primary' : 'default'} onClick={() => setSelectedKey(file.key)}>预览</Button>] : []),
+              <Typography.Link key="download" href={deliveryFileURL(asset.asset_id, file.key, true)} download>下载</Typography.Link>]}>
+            <List.Item.Meta avatar={icon(file.mime)} title={file.name} description={<span style={{ overflowWrap: 'anywhere' }}>{file.key} · {sizeText(file.size)}</span>} />
+          </List.Item>} />
+          <Typography.Text type="secondary">ZIP 保留原目录结构。若解压到新位置后 Premiere 提示媒体离线，请用“链接媒体”定位解压目录中的文件；包内附有操作说明。</Typography.Text>
         </>}
-      </div>}
-    </section>
+      </Flex>}
+    </Card>
   );
 }

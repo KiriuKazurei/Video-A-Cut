@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, fetchTasksByIds } from '../api';
 import type {
@@ -32,7 +32,8 @@ import {
   type AuditActionCount,
   type DraftInput
 } from './governanceModel';
-import './governance.css';
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Progress, Row, Space, Table, Tag, Typography } from 'antd';
+import { ValueSelect } from './ui';
 
 /* ------------------------------------------------------------------ *
  * 资产治理面板
@@ -178,8 +179,7 @@ export default function AssetManager({ onSelect }: AssetManagerProps) {
   }, [selected?.asset.asset_id]);
 
   /* --- 补充导入 --- */
-  const submitDraft = useCallback((event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitDraft = useCallback(() => {
     const result = buildDraft(draftInput, takenIds, 'manual');
     if (!result.ok) {
       setDraftErrors([result.error]);
@@ -211,214 +211,104 @@ export default function AssetManager({ onSelect }: AssetManagerProps) {
 
   const patchError = patch.isError ? describeError(patch.error) : null;
 
+  const { Text } = Typography;
   return (
-    <section className="panel asset-manager" aria-labelledby="asset-manager-title">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">ASSET GOVERNANCE</p>
-          <h2 id="asset-manager-title">资产治理面板</h2>
-        </div>
-        <span className="count">
-          {assetsQuery.isPending ? '读取中' : `${rows.length} 项`}
-        </span>
-      </div>
+    <Card size="small" className="asset-manager" aria-labelledby="asset-manager-title" title={<span id="asset-manager-title">资产治理面板</span>}
+      extra={<Tag>{assetsQuery.isPending ? '读取中' : `${rows.length} 项`}</Tag>}>
+      <Flex vertical gap={12}>
+        <Row gutter={12} className="asset-toolbar">
+          <Col xs={24} md={14}><Form.Item label="按资产 ID 筛选" htmlFor="asset-search" layout="vertical" style={{ marginBottom: 0 }}>
+            <Input.Search id="asset-search" allowClear value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入资产 ID" />
+          </Form.Item></Col>
+          <Col xs={24} md={10}><Form.Item label="素材类型" htmlFor="asset-category" layout="vertical" style={{ marginBottom: 0 }}>
+            <ValueSelect<AssetCategory | 'all'> id="asset-category" value={categoryFilter} onChange={setCategoryFilter}
+              options={[{ value: 'all', label: '全部类型' }, ...CATEGORY_FILTERS.map((value) => ({ value, label: ASSET_CATEGORY_LABELS[value] }))]} />
+          </Form.Item></Col>
+        </Row>
+        <Text type="secondary">服务端资产的类型由 <Text code>artifacts</Text> 键名推断（键即文件名），<Text strong>不是</Text>服务端字段；每条推断依据都在「产物记录」表格里逐行列明，可自行核对。</Text>
 
-      <div className="asset-toolbar">
-        <div>
-          <label className="field-label" htmlFor="asset-search">按资产 ID 筛选</label>
-          <input id="asset-search" type="search" value={search}
-            onChange={(event) => setSearch(event.target.value)} placeholder="输入资产 ID" />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="asset-category">素材类型</label>
-          <select id="asset-category" value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value as AssetCategory | 'all')}>
-            <option value="all">全部类型</option>
-            {CATEGORY_FILTERS.map((value) => (
-              <option key={value} value={value}>{ASSET_CATEGORY_LABELS[value]}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+        {assetsQuery.isPending && <Text type="secondary">正在读取资产…</Text>}
+        {assetsQuery.isError && <Alert type="error" showIcon role="alert" message={`资产读取失败：${describeError(assetsQuery.error)}`}
+          action={<Button size="small" onClick={() => void assetsQuery.refetch()}>重试</Button>} />}
+        {assetsQuery.isSuccess && rows.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无资产。素材入库后会出现在这里。" />}
+        {assetsQuery.isSuccess && rows.length > 0 && visibleRows.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的素材。可清空搜索词或把类型改回「全部类型」。" />}
 
-      <p className="hint">
-        服务端资产的类型由 <code>artifacts</code> 键名推断（键即文件名），<strong>不是</strong>服务端字段；
-        每条推断依据都在「产物记录」表格里逐行列明，可自行核对。
-      </p>
+        {visibleRows.length > 0 && <Table<AssetRow> size="small" className="asset-manager-list" rowKey={(row) => row.asset.asset_id} dataSource={visibleRows}
+          pagination={{ pageSize: 8, hideOnSinglePage: true, showSizeChanger: false }}
+          rowClassName={(row) => selected?.asset.asset_id === row.asset.asset_id ? 'ant-table-row-selected' : ''}
+          onRow={(row) => ({ onClick: () => setSelectedId(row.asset.asset_id), style: { cursor: 'pointer' } })}
+          columns={[
+            { key: 'id', title: '资产 ID', render: (_, row) => <Button type="link" size="small" style={{ padding: 0 }} aria-pressed={selected?.asset.asset_id === row.asset.asset_id}
+              onClick={(event) => { event.stopPropagation(); setSelectedId(row.asset.asset_id); }}>{row.asset.asset_id}</Button> },
+            { key: 'status', title: '状态', render: (_, row) => <Space size={4}>{row.statusLabel}{row.draft && <Tag color="warning">草稿</Tag>}</Space> },
+            { key: 'kind', title: '类型', render: (_, row) => <Text type="secondary">{categoryText(row.categories)}
+              {row.duration !== null ? ` · ${durationText(row.duration)}` : ''}{row.resolution !== null ? ` · ${row.resolution}` : ''}
+              {!row.draft && row.classification.categories.length === 0 ? ' · 无产物记录' : ''}</Text> }
+          ]} />}
 
-      {assetsQuery.isPending && <p className="state">正在读取资产…</p>}
-      {assetsQuery.isError && (
-        <div className="state state-error" role="alert">
-          资产读取失败：{describeError(assetsQuery.error)}
-          <button type="button" onClick={() => void assetsQuery.refetch()}>重试</button>
-        </div>
-      )}
-      {assetsQuery.isSuccess && rows.length === 0 && <p className="state">暂无资产。素材入库后会出现在这里。</p>}
-      {assetsQuery.isSuccess && rows.length > 0 && visibleRows.length === 0 && (
-        <p className="state">没有匹配的素材。可清空搜索词或把类型改回「全部类型」。</p>
-      )}
+        {selected && <AssetDetail row={selected} taskReport={tasksQuery.data} tasksLoading={tasksQuery.isPending}
+          tasksError={tasksQuery.isError ? describeError(tasksQuery.error) : null} actionCounts={actionCounts}
+          onPatch={runPatch} patchPending={patch.isPending} patchError={patchError} onRemoveDraft={() => removeDraft(selected.asset.asset_id)} />}
 
-      {visibleRows.length > 0 && (
-        <ul className="asset-manager-list">
-          {visibleRows.map((row) => {
-            const isSelected = selected?.asset.asset_id === row.asset.asset_id;
-            return (
-              <li key={row.asset.asset_id}>
-                <button type="button"
-                  className={`asset-row ${isSelected ? 'is-selected' : ''}`}
-                  aria-pressed={isSelected}
-                  onClick={() => setSelectedId(row.asset.asset_id)}>
-                  <span className="asset-name">
-                    {row.asset.asset_id}
-                    {row.draft && <span className="pill pill-draft">草稿</span>}
-                  </span>
-                  <span className="asset-status">{row.statusLabel}</span>
-                  <small>
-                    {categoryText(row.categories)}
-                    {row.duration !== null ? ` · ${durationText(row.duration)}` : ''}
-                    {row.resolution !== null ? ` · ${row.resolution}` : ''}
-                    {!row.draft && row.classification.categories.length === 0 ? ' · 无产物记录' : ''}
-                  </small>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {selected && <AssetDetail
-        row={selected}
-        taskReport={tasksQuery.data}
-        tasksLoading={tasksQuery.isPending}
-        tasksError={tasksQuery.isError ? describeError(tasksQuery.error) : null}
-        actionCounts={actionCounts}
-        onPatch={runPatch}
-        patchPending={patch.isPending}
-        patchError={patchError}
-        onRemoveDraft={() => removeDraft(selected.asset.asset_id)}
-      />}
-
-      <div className="draft-section">
-        <h3>手动补充导入</h3>
-        <p className="hint">
-          <strong>控制面尚未提供资产创建或删除路由</strong>——routes() 只注册了 GET/PATCH /api/assets
-          （control-plane/internal/api/api.go）。因此这里补充的素材是<strong>本地草稿</strong>：
-          用于把尚未入库的素材先登记到面板，不覆盖服务端快照、不参与治理 PATCH，
-          也不会发送到 Go。服务端补上写入口后，同一份数据即可改为真实导入。
-        </p>
-
-        <form className="draft-form" onSubmit={submitDraft}>
-          <div>
-            <label className="field-label" htmlFor="draft-asset-id">资产 ID</label>
-            <input id="draft-asset-id" value={draftInput.asset_id} required
-              onChange={(event) => setDraftInput((prev) => ({ ...prev, asset_id: event.target.value }))}
-              placeholder="clip_099" />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="draft-status">状态</label>
-            <select id="draft-status" value={draftInput.status}
-              onChange={(event) => setDraftInput((prev) => ({ ...prev, status: event.target.value }))}>
-              {ASSET_STATUS_ORDER.map((value) => (
-                <option key={value} value={value}>{ASSET_STATUS_LABELS[value] ?? value}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="field-label" htmlFor="draft-duration">时长（秒）</label>
-            <input id="draft-duration" type="number" min="0" step="0.1"
-              value={draftInput.duration}
-              onChange={(event) => setDraftInput((prev) => ({ ...prev, duration: event.target.value }))}
-              placeholder="35" />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="draft-resolution">分辨率</label>
-            <input id="draft-resolution" value={draftInput.resolution}
-              onChange={(event) => setDraftInput((prev) => ({ ...prev, resolution: event.target.value }))}
-              placeholder="1920x1080" />
-          </div>
-          <fieldset className="draft-categories">
-            <legend className="field-label">素材类型</legend>
-            <div className="checkbox-row">
-              {CATEGORY_FILTERS.map((category) => (
-                <label key={category} className="checkbox-item">
-                  <input type="checkbox" checked={draftInput.categories.includes(category)}
-                    onChange={(event) => setDraftInput((prev) => ({
-                      ...prev,
-                      categories: event.target.checked
-                        ? [...prev.categories, category]
-                        : prev.categories.filter((item) => item !== category)
-                    }))} />
-                  <span>{ASSET_CATEGORY_LABELS[category]}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <div>
-            <label className="field-label" htmlFor="draft-note">备注</label>
-            <input id="draft-note" value={draftInput.note}
-              onChange={(event) => setDraftInput((prev) => ({ ...prev, note: event.target.value }))}
-              placeholder="素材来源、待办说明" />
-          </div>
-          <div className="draft-form-actions">
-            <button type="submit">加入草稿</button>
-            <button className="secondary-button" type="button"
-              onClick={() => setShowImport((value) => !value)}
-              aria-expanded={showImport} aria-controls="draft-import-box">
-              {showImport ? '收起批量导入' : '批量导入 JSON'}
-            </button>
-            {drafts.length > 0 && (
-              <button className="secondary-button" type="button" onClick={() => setDrafts([])}>清空草稿</button>
-            )}
-          </div>
-        </form>
-
-        {draftErrors.length > 0 && (
-          <div className="state state-error" role="alert">
-            <strong>未导入，请先修正：</strong>
-            <ul>{draftErrors.map((message, index) => <li key={index}>{message}</li>)}</ul>
-          </div>
-        )}
-
-        {showImport && (
-          <div className="import-box" id="draft-import-box">
-            <label className="field-label" htmlFor="draft-import">
-              粘贴 JSON 数组，字段与表单一致：asset_id、status、duration_seconds、resolution、categories、note
-            </label>
-            <textarea id="draft-import" rows={6} value={importText}
-              onChange={(event) => setImportText(event.target.value)}
-              placeholder={'[{"asset_id":"clip_002","categories":["video","audio"],"duration_seconds":42}]'} />
-            <div className="draft-form-actions">
-              <button type="button" onClick={submitImport} disabled={importText.trim() === ''}>导入</button>
-            </div>
-          </div>
-        )}
-
-        {drafts.length > 0 && (
-          <>
-            <p className="hint">草稿 {drafts.length} 条，保存在本机浏览器，刷新后仍在。</p>
-            <ul className="draft-list">
-              {drafts.map((draft) => (
-                <li key={draft.asset_id}>
-                  <div>
-                    <strong>{draft.asset_id}</strong>
-                    <span className="pill pill-draft">草稿</span>
-                    <small>
-                      {categoryText(draft.categories)} · {ASSET_STATUS_LABELS[draft.status] ?? draft.status}
-                      {draft.duration_seconds !== null ? ` · ${durationText(draft.duration_seconds)}` : ''}
-                      {draft.resolution !== null ? ` · ${draft.resolution}` : ''}
-                      {` · 登记于 ${stamp(draft.imported_at)}`}
-                    </small>
-                    {draft.note && <span className="draft-note">{draft.note}</span>}
-                  </div>
-                  <button className="secondary-button" type="button"
-                    onClick={() => removeDraft(draft.asset_id)}>删除</button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
-    </section>
+        <Card size="small" type="inner" className="draft-section" title="手动补充导入">
+          <Typography.Paragraph type="secondary">
+            <Text strong>控制面尚未提供资产创建或删除路由</Text>——routes() 只注册了 GET/PATCH /api/assets（control-plane/internal/api/api.go）。
+            因此这里补充的素材是<Text strong>本地草稿</Text>：用于把尚未入库的素材先登记到面板，不覆盖服务端快照、不参与治理 PATCH，
+            也不会发送到 Go。服务端补上写入口后，同一份数据即可改为真实导入。
+          </Typography.Paragraph>
+          <Form layout="vertical" className="draft-form" onFinish={submitDraft}>
+            <Row gutter={12}>
+              <Col xs={24} md={8}><Form.Item label="资产 ID" htmlFor="draft-asset-id">
+                <Input id="draft-asset-id" required value={draftInput.asset_id} onChange={(event) => setDraftInput((prev) => ({ ...prev, asset_id: event.target.value }))} placeholder="clip_099" />
+              </Form.Item></Col>
+              <Col xs={24} md={8}><Form.Item label="状态" htmlFor="draft-status">
+                <ValueSelect<string> id="draft-status" value={draftInput.status} onChange={(status) => setDraftInput((prev) => ({ ...prev, status }))}
+                  options={ASSET_STATUS_ORDER.map((value) => ({ value, label: ASSET_STATUS_LABELS[value] ?? value }))} />
+              </Form.Item></Col>
+              <Col xs={12} md={4}><Form.Item label="时长（秒）" htmlFor="draft-duration">
+                <InputNumber id="draft-duration" style={{ width: '100%' }} min={0} step={0.1} placeholder="35"
+                  value={draftInput.duration === '' ? null : Number(draftInput.duration)} onChange={(value) => setDraftInput((prev) => ({ ...prev, duration: value === null ? '' : String(value) }))} />
+              </Form.Item></Col>
+              <Col xs={12} md={4}><Form.Item label="分辨率" htmlFor="draft-resolution">
+                <Input id="draft-resolution" value={draftInput.resolution} onChange={(event) => setDraftInput((prev) => ({ ...prev, resolution: event.target.value }))} placeholder="1920x1080" />
+              </Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item label="素材类型">
+                <Checkbox.Group value={draftInput.categories} onChange={(values) => setDraftInput((prev) => ({ ...prev, categories: values as AssetCategory[] }))}
+                  options={CATEGORY_FILTERS.map((category) => ({ value: category, label: ASSET_CATEGORY_LABELS[category] }))} />
+              </Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item label="备注" htmlFor="draft-note">
+                <Input id="draft-note" value={draftInput.note} onChange={(event) => setDraftInput((prev) => ({ ...prev, note: event.target.value }))} placeholder="素材来源、待办说明" />
+              </Form.Item></Col>
+            </Row>
+            <Space wrap>
+              <Button type="primary" htmlType="submit">加入草稿</Button>
+              <Button onClick={() => setShowImport((value) => !value)} aria-expanded={showImport} aria-controls="draft-import-box">{showImport ? '收起批量导入' : '批量导入 JSON'}</Button>
+              {drafts.length > 0 && <Button danger onClick={() => setDrafts([])}>清空草稿</Button>}
+            </Space>
+          </Form>
+          {draftErrors.length > 0 && <Alert style={{ marginTop: 12 }} type="error" showIcon role="alert" message="未导入，请先修正："
+            description={<ul style={{ margin: 0, paddingLeft: 18 }}>{draftErrors.map((message, index) => <li key={index}>{message}</li>)}</ul>} />}
+          {showImport && <Form layout="vertical" id="draft-import-box" style={{ marginTop: 12 }}>
+            <Form.Item label="粘贴 JSON 数组，字段与表单一致：asset_id、status、duration_seconds、resolution、categories、note" htmlFor="draft-import">
+              <Input.TextArea id="draft-import" rows={6} value={importText} onChange={(event) => setImportText(event.target.value)}
+                placeholder={'[{"asset_id":"clip_002","categories":["video","audio"],"duration_seconds":42}]'} />
+            </Form.Item>
+            <Button type="primary" onClick={submitImport} disabled={importText.trim() === ''}>导入</Button>
+          </Form>}
+          {drafts.length > 0 && <>
+            <Typography.Paragraph type="secondary" style={{ margin: '12px 0 4px' }}>草稿 {drafts.length} 条，保存在本机浏览器，刷新后仍在。</Typography.Paragraph>
+            <List size="small" className="draft-list" dataSource={drafts} renderItem={(draft) => <List.Item key={draft.asset_id}
+              actions={[<Button key="remove" size="small" onClick={() => removeDraft(draft.asset_id)}>删除</Button>]}>
+              <List.Item.Meta title={<Space size={6}>{draft.asset_id}<Tag color="warning">草稿</Tag></Space>}
+                description={<>{categoryText(draft.categories)} · {ASSET_STATUS_LABELS[draft.status] ?? draft.status}
+                  {draft.duration_seconds !== null ? ` · ${durationText(draft.duration_seconds)}` : ''}
+                  {draft.resolution !== null ? ` · ${draft.resolution}` : ''}{` · 登记于 ${stamp(draft.imported_at)}`}
+                  {draft.note && <><br />{draft.note}</>}</>} />
+            </List.Item>} />
+          </>}
+        </Card>
+      </Flex>
+    </Card>
   );
 }
 
@@ -446,142 +336,81 @@ function AssetDetail({
   const tasks = taskReport?.tasks ?? [];
   const failures = taskReport?.failed ?? [];
   const isDraft = draft !== null;
+  const { Text } = Typography;
+  const yes = (value: boolean) => value ? '是' : '否';
 
   return (
-    <div className="asset-detail">
-      <div className="detail-title">
-        <strong>{asset.asset_id}</strong>
-        <span className="pill">{row.statusLabel}</span>
-        {isDraft && <span className="pill pill-draft">本地草稿 · 未写入控制面</span>}
-      </div>
+    <Card size="small" type="inner" className="asset-detail" title={<Space size={6} wrap>{asset.asset_id}<Tag>{row.statusLabel}</Tag>
+      {isDraft && <Tag color="warning">本地草稿 · 未写入控制面</Tag>}</Space>}>
+      {isDraft ? <Flex vertical gap={12}>
+        <Descriptions size="small" column={{ xs: 1, md: 2 }} items={[
+          { key: 'kind', label: '素材类型', children: categoryText(draft.categories) },
+          { key: 'duration', label: '时长', children: durationText(draft.duration_seconds) },
+          { key: 'resolution', label: '分辨率', children: draft.resolution ?? '未填写' },
+          { key: 'status', label: '状态', children: ASSET_STATUS_LABELS[draft.status] ?? draft.status },
+          { key: 'at', label: '登记时间', children: stamp(draft.imported_at) },
+          { key: 'source', label: '来源', children: draft.source === 'manual' ? '逐条表单' : 'JSON 批量' },
+          { key: 'note', label: '备注', children: draft.note || '—' }
+        ]} />
+        <Space><Button onClick={onRemoveDraft}>删除草稿</Button></Space>
+        <Text type="secondary">草稿只存在于浏览器，治理与任务能力以服务端资产为准。</Text>
+      </Flex> : <Flex vertical gap={16}>
+        <Descriptions size="small" column={{ xs: 1, md: 2 }} items={[
+          { key: 'kind', label: '素材类型（推断）', children: categoryText(classification.categories) },
+          { key: 'status', label: '服务端状态', children: `${assetStatusLabel(asset.status)}（${asset.status}）` },
+          { key: 'visible', label: 'Agent 可见', children: yes(asset.agent_visible) },
+          { key: 'locked', label: '锁定', children: yes(asset.locked) },
+          { key: 'approved', label: '人工批准', children: yes(asset.human_approved) },
+          { key: 'agents', label: '允许的角色', children: asset.allowed_agents?.join('、') || '未指定' },
+          { key: 'created', label: '创建时间', children: stamp(asset.created_at) },
+          { key: 'updated', label: '更新时间', children: stamp(asset.updated_at) }
+        ]} />
 
-      {isDraft ? (
-        <>
-          <dl className="detail-grid">
-            <div><dt>素材类型</dt><dd>{categoryText(draft.categories)}</dd></div>
-            <div><dt>时长</dt><dd>{durationText(draft.duration_seconds)}</dd></div>
-            <div><dt>分辨率</dt><dd>{draft.resolution ?? '未填写'}</dd></div>
-            <div><dt>状态</dt><dd>{ASSET_STATUS_LABELS[draft.status] ?? draft.status}</dd></div>
-            <div><dt>登记时间</dt><dd>{stamp(draft.imported_at)}</dd></div>
-            <div><dt>来源</dt><dd>{draft.source === 'manual' ? '逐条表单' : 'JSON 批量'}</dd></div>
-            <div><dt>备注</dt><dd>{draft.note || '—'}</dd></div>
-          </dl>
-          <div className="action-row">
-            <button className="secondary-button" type="button" onClick={onRemoveDraft}>删除草稿</button>
-          </div>
-          <p className="hint">草稿只存在于浏览器，治理与任务能力以服务端资产为准。</p>
-        </>
-      ) : (
-        <>
-          <dl className="detail-grid">
-            <div><dt>素材类型（推断）</dt><dd>{categoryText(classification.categories)}</dd></div>
-            <div><dt>服务端状态</dt><dd>{assetStatusLabel(asset.status)}（{asset.status}）</dd></div>
-            <div><dt>Agent 可见</dt><dd>{asset.agent_visible ? '是' : '否'}</dd></div>
-            <div><dt>锁定</dt><dd>{asset.locked ? '是' : '否'}</dd></div>
-            <div><dt>人工批准</dt><dd>{asset.human_approved ? '是' : '否'}</dd></div>
-            <div><dt>允许的角色</dt><dd>{asset.allowed_agents?.join('、') || '未指定'}</dd></div>
-            <div><dt>创建时间</dt><dd>{stamp(asset.created_at)}</dd></div>
-            <div><dt>更新时间</dt><dd>{stamp(asset.updated_at)}</dd></div>
-          </dl>
+        <div>
+          <Typography.Title level={5}>产物记录（artifacts）</Typography.Title>
+          {Object.keys(asset.artifacts ?? {}).length === 0 ? <Text type="secondary">该资产没有产物记录。</Text>
+            : <Table size="small" className="artifact-table" pagination={false} rowKey="key" scroll={{ x: 520 }}
+              dataSource={Object.entries(asset.artifacts ?? {}).map(([key, value]) => ({ key, value }))}
+              columns={[
+                { key: 'k', title: '键', render: (_, item) => <Text code>{item.key}</Text> },
+                { key: 'v', title: '值', render: (_, item) => <Text type="secondary" style={{ overflowWrap: 'anywhere' }} title={item.value}>{item.value}</Text> },
+                { key: 'c', title: '推断类别', width: 96, render: (_, item) => categoryOfArtifact(item.key, classification) }
+              ]} />}
+          <Text type="secondary">产物值是服务端记录的本机路径，不是可下载 URL。下载需要服务端提供受控文件接口，浏览器不得直接读取服务端文件系统（docs/二阶段开发文档.md）。</Text>
+        </div>
 
-          <div className="detail-block">
-            <h4>产物记录（artifacts）</h4>
-            {Object.keys(asset.artifacts ?? {}).length === 0 ? (
-              <p className="state">该资产没有产物记录。</p>
-            ) : (
-              <table className="artifact-table">
-                <thead>
-                  <tr><th scope="col">键</th><th scope="col">值</th><th scope="col">推断类别</th></tr>
-                </thead>
-                <tbody>
-                  {Object.entries(asset.artifacts ?? {}).map(([key, value]) => (
-                    <tr key={key}>
-                      <td><code>{key}</code></td>
-                      <td><span className="artifact-path" title={value}>{value}</span></td>
-                      <td>{categoryOfArtifact(key, classification)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <p className="hint">
-              产物值是服务端记录的本机路径，不是可下载 URL。下载需要服务端提供受控文件接口，
-              浏览器不得直接读取服务端文件系统（docs/二阶段开发文档.md）。
-            </p>
-          </div>
+        <div>
+          <Typography.Title level={5}>治理操作</Typography.Title>
+          <Space wrap>
+            <Button type="primary" disabled={patchPending} onClick={() => onPatch(asset, { agent_visible: !asset.agent_visible })}>{asset.agent_visible ? '设为 Agent 不可见' : '设为 Agent 可见'}</Button>
+            <Button disabled={patchPending} onClick={() => onPatch(asset, { locked: !asset.locked })}>{asset.locked ? '解锁' : '锁定'}</Button>
+            <Button disabled={patchPending} onClick={() => onPatch(asset, { human_approved: !asset.human_approved })}>{asset.human_approved ? '撤销批准' : '人工批准'}</Button>
+          </Space>
+          {patchError && <Alert style={{ marginTop: 8 }} type="error" showIcon role="alert" message={`更新失败：${patchError}`} />}
+          <div><Text type="secondary">PATCH 只发送上述治理字段；服务端返回的完整资产会替换本地面板缓存。</Text></div>
+        </div>
 
-          <div className="detail-block">
-            <h4>治理操作</h4>
-            <div className="action-row">
-              <button type="button" disabled={patchPending}
-                onClick={() => onPatch(asset, { agent_visible: !asset.agent_visible })}>
-                {asset.agent_visible ? '设为 Agent 不可见' : '设为 Agent 可见'}
-              </button>
-              <button className="secondary-button" type="button" disabled={patchPending}
-                onClick={() => onPatch(asset, { locked: !asset.locked })}>
-                {asset.locked ? '解锁' : '锁定'}
-              </button>
-              <button className="secondary-button" type="button" disabled={patchPending}
-                onClick={() => onPatch(asset, { human_approved: !asset.human_approved })}>
-                {asset.human_approved ? '撤销批准' : '人工批准'}
-              </button>
-            </div>
-            {patchError && <p className="inline-error" role="alert">更新失败：{patchError}</p>}
-            <p className="hint">PATCH 只发送上述治理字段；服务端返回的完整资产会替换本地面板缓存。</p>
-          </div>
+        <div>
+          <Typography.Title level={5}>关联任务</Typography.Title>
+          {tasksLoading && <Text type="secondary">正在按审计记录推导关联任务…</Text>}
+          {tasksError && <Alert type="error" showIcon role="alert" message={`关联任务读取失败：${tasksError}`} />}
+          {!tasksLoading && !tasksError && tasks.length === 0 && <Text type="secondary">没有关联任务。控制面暂不提供「按资产列任务」接口，此列表由审计中的 task.create 加 GET /api/tasks/{'{'}id{'}'} 推导。</Text>}
+          {tasks.length > 0 && <List size="small" className="asset-task-list" dataSource={tasks} renderItem={(task) => <List.Item key={task.task_id}>
+            <Flex vertical gap={4} style={{ width: '100%' }}>
+              <Flex justify="space-between" gap={8} wrap><Text code>{task.task_id}</Text><Text>{taskStatusLabel(task.status)}（{task.status}）</Text></Flex>
+              <Text type="secondary">{task.type} · {task.agent_role} · 进度 {percent(task.progress)}{` · 更新于 ${stamp(task.updated_at)}`}</Text>
+              <Progress size="small" percent={Math.round(safeProgress(task.progress) * 100)} showInfo={false} aria-label={`任务 ${task.task_id} 进度`} />
+            </Flex>
+          </List.Item>} />}
+          {failures.length > 0 && <Text type="secondary">{failures.length} 个任务查询失败（可能已被审计保留策略清理）：{failures.slice(0, 5).map((item) => ` ${item.task_id}`).join('')}{failures.length > 5 ? ' …' : ''}</Text>}
+        </div>
 
-          <div className="detail-block">
-            <h4>关联任务</h4>
-            {tasksLoading && <p className="state">正在按审计记录推导关联任务…</p>}
-            {tasksError && <p className="inline-error" role="alert">关联任务读取失败：{tasksError}</p>}
-            {!tasksLoading && !tasksError && tasks.length === 0 && (
-              <p className="state">
-                没有关联任务。控制面暂不提供「按资产列任务」接口，此列表由审计中的
-                task.create 加 GET /api/tasks/{'{'}id{'}'} 推导。
-              </p>
-            )}
-            {tasks.length > 0 && (
-              <ul className="asset-task-list">
-                {tasks.map((task) => (
-                  <li key={task.task_id}>
-                    <div className="tracked-top">
-                      <code>{task.task_id}</code>
-                      <span>{taskStatusLabel(task.status)}（{task.status}）</span>
-                    </div>
-                    <small>
-                      {task.type} · {task.agent_role} · 进度 {percent(task.progress)}
-                      {` · 更新于 ${stamp(task.updated_at)}`}
-                    </small>
-                    <progress max="1" value={safeProgress(task.progress)}
-                      aria-label={`任务 ${task.task_id} 进度`} />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {failures.length > 0 && (
-              <p className="hint">
-                {failures.length} 个任务查询失败（可能已被审计保留策略清理）：
-                {failures.slice(0, 5).map((item) => ` ${item.task_id}`).join('')}
-                {failures.length > 5 ? ' …' : ''}
-              </p>
-            )}
-          </div>
-
-          {actionCounts.length > 0 && (
-            <div className="detail-block">
-              <h4>审计动作分布（当前页）</h4>
-              <ul className="action-count-list">
-                {actionCounts.slice(0, 5).map((item) => (
-                  <li key={item.value}>
-                    <code>{item.value}</code><span>{item.label}</span><strong>{item.count}</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+        {actionCounts.length > 0 && <div>
+          <Typography.Title level={5}>审计动作分布（当前页）</Typography.Title>
+          <Flex wrap gap={6} className="action-count-list">{actionCounts.slice(0, 5).map((item) => <Tag key={item.value} title={item.value}>{item.label} <Text strong>{item.count}</Text></Tag>)}</Flex>
+        </div>}
+      </Flex>}
+    </Card>
   );
 }
 

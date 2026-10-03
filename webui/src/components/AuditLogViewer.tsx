@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Alert, Button, Card, Checkbox, Col, DatePicker, Descriptions, Empty, Flex, Form, Input, Row, Space, Table, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
+import { ValueSelect } from './ui';
 import { auditEndpointInUse, fetchAuditLogs } from '../api';
 import type { AuditFilters, AuditLog } from '../types';
 import {
@@ -19,7 +22,7 @@ import {
   stamp,
   type AuditActionCount
 } from './governanceModel';
-import './governance.css';
+
 
 /* ------------------------------------------------------------------ *
  * 审计日志面板
@@ -70,18 +73,6 @@ export default function AuditLogViewer() {
 
   const endpoint = auditEndpointInUse();
 
-  const toggleAlias = useCallback((alias: string) => {
-    setAliases((previous) => previous.includes(alias)
-      ? previous.filter((item) => item !== alias)
-      : [...previous, alias]);
-  }, []);
-
-  const toggleActorKind = useCallback((kind: AuditFilters['actorKinds'][number]) => {
-    setActorKinds((previous) => previous.includes(kind)
-      ? previous.filter((item) => item !== kind)
-      : [...previous, kind]);
-  }, []);
-
   const resetFilters = useCallback(() => {
     setAliases([...DEFAULT_ACTION_ALIASES]);
     setActorKinds([]);
@@ -95,168 +86,92 @@ export default function AuditLogViewer() {
     if (expandedId !== null && !visible.some((row) => row.id === expandedId)) setExpandedId(null);
   }, [visible, expandedId]);
 
+  const toDate = (value: string) => value ? dayjs(value) : null;
+  const fromDate = (value: dayjs.Dayjs | null) => value ? value.format('YYYY-MM-DDTHH:mm') : '';
+
   return (
-    <section className="panel audit-viewer" aria-labelledby="audit-viewer-title">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">AUDIT STREAM</p>
-          <h2 id="audit-viewer-title">审计日志面板</h2>
-        </div>
-        <span className="count">
-          {auditQuery.isPending ? '读取中' : `已加载 ${logs.length} 条 · 命中 ${visible.length} 条`}
-        </span>
-      </div>
+    <Card size="small" className="audit-viewer" aria-labelledby="audit-viewer-title" title={<span id="audit-viewer-title">审计日志面板</span>}
+      extra={<Tag>{auditQuery.isPending ? '读取中' : `已加载 ${logs.length} 条 · 命中 ${visible.length} 条`}</Tag>}>
+      <Flex vertical gap={12}>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          服务端 <Typography.Text code>GET /api/audit</Typography.Text> 只支持 <Typography.Text code>limit</Typography.Text> 分页，newest first，
+          不提供时间范围或操作类型过滤（control-plane/internal/api/audit.go）。
+          <Typography.Text strong>下面的过滤只作用于本页已加载的 {logs.length} 条，不是全表筛选</Typography.Text>；
+          要看更早的记录请把单页条数调大。当前读取的端点：<Typography.Text code>{endpoint ?? '探测中'}</Typography.Text>
+        </Typography.Paragraph>
 
-      <p className="hint">
-        服务端 <code>GET /api/audit</code> 只支持 <code>limit</code> 分页， newest first，
-        不提供时间范围或操作类型过滤（control-plane/internal/api/audit.go）。
-        <strong>下面的过滤只作用于本页已加载的 {logs.length} 条，不是全表筛选</strong>；
-        要看更早的记录请把单页条数调大。当前读取的端点：
-        <code>{endpoint ?? '探测中'}</code>
-      </p>
+        <Form layout="vertical" className="audit-filters">
+          <Row gutter={12}>
+            <Col xs={12} md={4}><Form.Item label="单页加载条数" htmlFor="audit-limit" style={{ marginBottom: 8 }}>
+              <ValueSelect<number> id="audit-limit" value={limit} onChange={setLimit} options={AUDIT_PAGE_LIMITS.map((value) => ({ value, label: String(value) }))} />
+            </Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="起始时间" htmlFor="audit-from" style={{ marginBottom: 8 }}>
+              <DatePicker id="audit-from" showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} value={toDate(from)} onChange={(value) => setFrom(fromDate(value))} />
+            </Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="结束时间" htmlFor="audit-to" style={{ marginBottom: 8 }}>
+              <DatePicker id="audit-to" showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} value={toDate(to)} onChange={(value) => setTo(fromDate(value))} />
+            </Form.Item></Col>
+            <Col xs={12} md={8}><Form.Item label="关键字" htmlFor="audit-keyword" style={{ marginBottom: 8 }}>
+              <Input id="audit-keyword" type="search" allowClear value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="actor / action / target / detail / id" />
+            </Form.Item></Col>
+          </Row>
+          <Form.Item label="操作类型" style={{ marginBottom: 8 }} extra={<>复选框显示的是别名的意图，箭头后是服务端实际写出的 action 值。当前生效的 action 过滤：<Typography.Text code>{activeActions.length > 0 ? activeActions.join('、') : '不限'}</Typography.Text></>}>
+            <Checkbox.Group value={aliases} onChange={(values) => setAliases(values as string[])}
+              options={Object.entries(AUDIT_ACTION_ALIASES).map(([alias, mapped]) => ({ value: alias, label: <>{alias}<Typography.Text type="secondary"> → {mapped.join(' / ')}</Typography.Text></> }))} />
+          </Form.Item>
+          <Form.Item label="操作来源（actor 前缀）" style={{ marginBottom: 8 }}>
+            <Checkbox.Group value={actorKinds} onChange={(values) => setActorKinds(values as AuditFilters['actorKinds'])}
+              options={AUDIT_ACTOR_KINDS.map((kind) => ({ value: kind, label: <>{AUDIT_ACTOR_KIND_LABELS[kind]}<Typography.Text type="secondary"> {actorCounts[kind] ?? 0} 条</Typography.Text></> }))} />
+          </Form.Item>
+          <Space wrap>
+            <Button onClick={resetFilters}>重置过滤</Button>
+            <Button onClick={() => void auditQuery.refetch()}>重新读取</Button>
+          </Space>
+        </Form>
 
-      <div className="audit-filters">
-        <div>
-          <label className="field-label" htmlFor="audit-limit">单页加载条数</label>
-          <select id="audit-limit" value={limit}
-            onChange={(event) => setLimit(Number(event.target.value))}>
-            {AUDIT_PAGE_LIMITS.map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="field-label" htmlFor="audit-from">起始时间</label>
-          <input id="audit-from" type="datetime-local" value={from}
-            onChange={(event) => setFrom(event.target.value)} />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="audit-to">结束时间</label>
-          <input id="audit-to" type="datetime-local" value={to}
-            onChange={(event) => setTo(event.target.value)} />
-        </div>
-        <div>
-          <label className="field-label" htmlFor="audit-keyword">关键字</label>
-          <input id="audit-keyword" type="search" value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="actor / action / target / detail / id" />
-        </div>
-      </div>
+        {auditQuery.isPending && <Typography.Text type="secondary">正在读取审计记录…</Typography.Text>}
+        {auditQuery.isError && <Alert type="error" showIcon role="alert" message={`审计读取失败：${describeError(auditQuery.error)}`}
+          action={<Button size="small" onClick={() => void auditQuery.refetch()}>重试</Button>} />}
+        {auditQuery.isSuccess && logs.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无审计记录。资产入库、治理变更和任务创建都会记录在这里。" />}
+        {auditQuery.isSuccess && logs.length > 0 && visible.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`已加载 ${logs.length} 条，但没有命中当前过滤。可尝试重置过滤，或调大单页条数。`} />}
 
-      <fieldset className="audit-filter-group">
-        <legend className="field-label">操作类型</legend>
-        <div className="checkbox-row">
-          {Object.entries(AUDIT_ACTION_ALIASES).map(([alias, mapped]) => (
-            <label key={alias} className="checkbox-item">
-              <input type="checkbox" checked={aliases.includes(alias)}
-                onChange={() => toggleAlias(alias)} />
-              <span>
-                {alias}
-                <small> → {mapped.join(' / ')}</small>
-              </span>
-            </label>
-          ))}
-        </div>
-        <p className="hint">
-          复选框显示的是别名的意图，箭头后是服务端实际写出的 action 值。
-          当前生效的 action 过滤：
-          <code>{activeActions.length > 0 ? activeActions.join('、') : '不限'}</code>
-        </p>
-      </fieldset>
-
-      <fieldset className="audit-filter-group">
-        <legend className="field-label">操作来源（actor 前缀）</legend>
-        <div className="checkbox-row">
-          {AUDIT_ACTOR_KINDS.map((kind) => (
-            <label key={kind} className="checkbox-item">
-              <input type="checkbox" checked={actorKinds.includes(kind)}
-                onChange={() => toggleActorKind(kind)} />
-              <span>
-                {AUDIT_ACTOR_KIND_LABELS[kind]}
-                <small> {actorCounts[kind] ?? 0} 条</small>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <div className="draft-form-actions">
-        <button className="secondary-button" type="button" onClick={resetFilters}>重置过滤</button>
-        <button className="secondary-button" type="button"
-          onClick={() => void auditQuery.refetch()}>重新读取</button>
-      </div>
-
-      {auditQuery.isPending && <p className="state">正在读取审计记录…</p>}
-      {auditQuery.isError && (
-        <div className="state state-error" role="alert">
-          审计读取失败：{describeError(auditQuery.error)}
-          <button type="button" onClick={() => void auditQuery.refetch()}>重试</button>
-        </div>
-      )}
-      {auditQuery.isSuccess && logs.length === 0 && (
-        <p className="state">暂无审计记录。资产入库、治理变更和任务创建都会记录在这里。</p>
-      )}
-      {auditQuery.isSuccess && logs.length > 0 && visible.length === 0 && (
-        <p className="state">
-          已加载 {logs.length} 条，但没有命中当前过滤。可尝试重置过滤，或调大单页条数。
-        </p>
-      )}
-
-      {visible.length > 0 && (
-        <>
-          {actionCounts.length > 0 && (
-            <div className="detail-block">
-              <h4>动作分布（当前页）</h4>
-              <ul className="action-count-list">
-                {actionCounts.map((item) => (
-                  <li key={item.value}>
-                    <code>{item.value}</code><span>{item.label}</span><strong>{item.count}</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <ol className="audit-list audit-detail-list">
-            {visible.map((row) => {
-              const kind = auditActorKind(row.actor);
-              const isOpen = expandedId === row.id;
-              return (
-                <li key={row.id} className={isOpen ? 'is-open' : undefined}>
-                  <button type="button" className="audit-summary"
-                    aria-expanded={isOpen}
-                    aria-controls={`audit-detail-${row.id}`}
-                    onClick={() => setExpandedId(isOpen ? null : row.id)}>
-                    <time dateTime={row.created_at}>{stamp(row.created_at)}</time>
-                    <strong>{auditActionLabel(row.action)}</strong>
-                    <span className="audit-action-value">{row.action}</span>
-                    <span className="audit-actor">{row.actor}</span>
-                    <span className="audit-kind">{AUDIT_ACTOR_KIND_LABELS[kind]}</span>
-                  </button>
-                  <div className="audit-row-target">{row.target}</div>
-                  {isOpen && (
-                    <div className="audit-detail" id={`audit-detail-${row.id}`}>
-                      <dl className="detail-grid">
-                        <div><dt>日志 ID</dt><dd>{row.id}</dd></div>
-                        <div><dt>操作来源</dt><dd>{row.actor}（{AUDIT_ACTOR_KIND_LABELS[kind]}）</dd></div>
-                        <div><dt>操作类型</dt><dd>{auditActionLabel(row.action)}<code>{row.action}</code></dd></div>
-                        <div><dt>目标</dt><dd>{row.target}</dd></div>
-                        <div><dt>落库时间</dt><dd>{stamp(row.created_at)}<small>{row.created_at}</small></dd></div>
-                        <div><dt>说明</dt><dd>{auditTargetHint(row.action)}</dd></div>
-                      </dl>
-                      <div className="audit-detail-detail">
-                        <span className="field-label">detail 原文</span>
-                        <pre>{row.detail && row.detail.trim() !== '' ? row.detail : '（服务端未记录 detail）'}</pre>
-                      </div>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </>
-      )}
-    </section>
+        {visible.length > 0 && <>
+          {actionCounts.length > 0 && <div>
+            <Typography.Text type="secondary">动作分布（当前页）</Typography.Text>
+            <Flex wrap gap={6} className="action-count-list" style={{ marginTop: 6 }}>
+              {actionCounts.map((item) => <Tag key={item.value} title={item.value}>{item.label} <Typography.Text strong>{item.count}</Typography.Text></Tag>)}
+            </Flex>
+          </div>}
+          <Table<AuditLog> size="small" className="audit-detail-list" rowKey="id" dataSource={visible} scroll={{ x: 760 }}
+            pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
+            expandable={{
+              expandedRowKeys: expandedId === null ? [] : [expandedId],
+              onExpand: (open, row) => setExpandedId(open ? row.id : null),
+              expandedRowRender: (row) => {
+                const kind = auditActorKind(row.actor);
+                return <div className="audit-detail" id={`audit-detail-${row.id}`}>
+                  <Descriptions size="small" column={{ xs: 1, md: 2 }} items={[
+                    { key: 'id', label: '日志 ID', children: row.id },
+                    { key: 'actor', label: '操作来源', children: `${row.actor}（${AUDIT_ACTOR_KIND_LABELS[kind]}）` },
+                    { key: 'action', label: '操作类型', children: <>{auditActionLabel(row.action)} <Typography.Text code>{row.action}</Typography.Text></> },
+                    { key: 'target', label: '目标', children: <span style={{ overflowWrap: 'anywhere' }}>{row.target}</span> },
+                    { key: 'time', label: '落库时间', children: <>{stamp(row.created_at)} <Typography.Text type="secondary">{row.created_at}</Typography.Text></> },
+                    { key: 'hint', label: '说明', children: auditTargetHint(row.action) }
+                  ]} />
+                  <Typography.Text type="secondary">detail 原文</Typography.Text>
+                  <pre className="code-block">{row.detail && row.detail.trim() !== '' ? row.detail : '（服务端未记录 detail）'}</pre>
+                </div>;
+              }
+            }}
+            columns={[
+              { key: 'time', title: '时间', width: 170, render: (_, row) => <time dateTime={row.created_at}>{stamp(row.created_at)}</time> },
+              { key: 'action', title: '操作', render: (_, row) => <><Typography.Text strong>{auditActionLabel(row.action)}</Typography.Text><br /><Typography.Text type="secondary" code>{row.action}</Typography.Text></> },
+              { key: 'actor', title: '来源', render: (_, row) => <><span>{row.actor}</span><br /><Tag bordered={false}>{AUDIT_ACTOR_KIND_LABELS[auditActorKind(row.actor)]}</Tag></> },
+              { key: 'target', title: '目标', render: (_, row) => <span style={{ overflowWrap: 'anywhere' }}>{row.target}</span> }
+            ]} />
+        </>}
+      </Flex>
+    </Card>
   );
 }
 

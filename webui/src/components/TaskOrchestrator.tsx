@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Card, Descriptions, Empty, Flex, Progress, Tag, Typography } from 'antd';
 import { api, ApiError } from '../api';
 import type { Task } from '../types';
 import { isTaskActiveStatus, isTaskTerminalStatus, taskProgressPercent } from '../types';
@@ -102,74 +103,50 @@ export function TaskOrchestrator({
     };
   }, [targetPercent]);
 
+  const title = <span id="orchestrator-title">任务编排控制台</span>;
   if (!taskId) {
-    return (
-      <section className="panel" aria-labelledby="orchestrator-title">
-        <div className="panel-heading"><div><p className="eyebrow">ORCHESTRATION</p>
-          <h2 id="orchestrator-title">任务编排控制台</h2></div></div>
-        <p className="state">尚未派发任务。创建任务后可在此观察状态、进度与失败原因，并手动刷新任务状态。</p>
-      </section>
-    );
+    return <Card size="small" aria-labelledby="orchestrator-title" title={title}>
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未派发任务。创建任务后可在此观察状态、进度与失败原因，并手动刷新任务状态。" />
+    </Card>;
   }
 
   const status = resolved?.status ?? '';
   const active = status !== '' && isTaskActiveStatus(status);
   const terminal = status !== '' && isTaskTerminalStatus(status);
   const failed = status === 'failed';
+  const percent = Math.round(shownPercent);
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: ['task', taskId] }); };
 
   return (
-    <section className="panel" aria-labelledby="orchestrator-title">
-      <div className="panel-heading"><div><p className="eyebrow">ORCHESTRATION</p>
-        <h2 id="orchestrator-title">任务编排控制台</h2></div>
-        <span className="pill">{status || '读取中'}</span>
-      </div>
-
-      <div className="tracked-top"><strong>{taskId}</strong>
-        <span>{resolved?.type ?? '—'}</span></div>
-
-      {loading && <p className="state">正在读取任务状态…</p>}
-      {!loading && failedLoad && <p className="inline-error" role="alert">
-        状态读取失败：{failMessage(loadError)}
-        <button type="button" className="secondary-button"
-          onClick={() => {
-            void queryClient.invalidateQueries({ queryKey: ['task', taskId] });
-          }}>重试读取</button>
-      </p>}
-
-      {!loading && !failedLoad && <>
-        <div className="progress-block">
-          <div className="progress-meta">
-            <span>进度</span><span>{shownPercent}%</span>
-          </div>
+    <Card size="small" aria-labelledby="orchestrator-title" title={title}
+      extra={<Tag color={failed ? 'error' : terminal ? 'success' : active ? 'processing' : 'default'}>{status || '读取中'}</Tag>}>
+      <Flex vertical gap={12}>
+        <Flex justify="space-between" gap={8} wrap><Typography.Text strong code>{taskId}</Typography.Text><Typography.Text type="secondary">{resolved?.type ?? '—'}</Typography.Text></Flex>
+        {loading && <Typography.Text type="secondary">正在读取任务状态…</Typography.Text>}
+        {!loading && failedLoad && <Alert type="error" showIcon role="alert" message={`状态读取失败：${failMessage(loadError)}`}
+          action={<Button size="small" onClick={refresh}>重试读取</Button>} />}
+        {!loading && !failedLoad && <>
           {/* 进度同时用文本与 aria 值表达：不只靠颜色和长度传达状态。 */}
-          <div className="progress-track" role="progressbar" aria-valuenow={shownPercent}
-            aria-valuemin={0} aria-valuemax={100} aria-label="任务进度">
-            <div className="progress-fill" style={{ width: `${shownPercent}%` }}
-              data-state={terminal ? 'terminal' : active ? 'active' : 'idle'} />
+          <div role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="任务进度">
+            <Progress percent={percent} status={failed ? 'exception' : active ? 'active' : terminal && status === 'succeeded' ? 'success' : 'normal'} />
           </div>
-          <p className="hint">{phaseDetail(status, shownPercent, (resolved?.depends_on?.length ?? 0) > 0)}</p>
-          {resolved?.message && <p className="progress-message">{resolved.message}</p>}
-        </div>
-
-        <dl className="detail-grid">
-          <div><dt>Agent 角色</dt><dd>{resolved?.agent_role ?? '—'}</dd></div>
-          <div><dt>执行 Agent</dt><dd>{resolved?.agent_id ?? '未认领'}</dd></div>
-          <div><dt>租约到期</dt><dd>{resolved?.lease_expires_at ?? '—'}</dd></div>
-          <div><dt>最近更新</dt><dd>{resolved?.updated_at ?? '—'}</dd></div>
-          <div><dt>前置任务</dt><dd>{resolved?.depends_on?.length ? resolved.depends_on.join('、') : '无'}</dd></div>
-          <div><dt>回收次数</dt><dd>{resolved?.attempts ?? 0}</dd></div>
-        </dl>
-
-        <div className="action-row" aria-live="polite">
-          <span className="hint">
-            状态机由服务端接管，客户端仅做观察：租约到期会自动重排，达到回收上限或前置任务失败时服务端判定失败，原因见上方消息与审计日志。
-          </span>
-          <button type="button" className="secondary-button" onClick={() => {
-            void queryClient.invalidateQueries({ queryKey: ['task', taskId] });
-          }}>刷新任务状态</button>
-        </div>
-      </>}
-    </section>
+          <Typography.Text type="secondary">{phaseDetail(status, percent, (resolved?.depends_on?.length ?? 0) > 0)}</Typography.Text>
+          {resolved?.message && <Alert type={failed ? 'error' : 'info'} message={resolved.message} />}
+          <Descriptions size="small" bordered column={{ xs: 1, sm: 2 }} items={[
+            { key: 'role', label: 'Agent 角色', children: resolved?.agent_role ?? '—' },
+            { key: 'agent', label: '执行 Agent', children: resolved?.agent_id ?? '未认领' },
+            { key: 'lease', label: '租约到期', children: resolved?.lease_expires_at ?? '—' },
+            { key: 'updated', label: '最近更新', children: resolved?.updated_at ?? '—' },
+            { key: 'deps', label: '前置任务', children: resolved?.depends_on?.length ? resolved.depends_on.join('、') : '无' },
+            { key: 'attempts', label: '回收次数', children: resolved?.attempts ?? 0 }
+          ]} />
+          <Flex gap={12} align="center" wrap aria-live="polite">
+            <Typography.Text type="secondary" style={{ flex: '1 1 260px' }}>状态机由服务端接管，客户端仅做观察：租约到期会自动重排，达到回收上限或前置任务失败时服务端判定失败，原因见上方消息与审计日志。</Typography.Text>
+            <Button onClick={refresh}>刷新任务状态</Button>
+          </Flex>
+        </>}
+      </Flex>
+    </Card>
   );
 }
 
