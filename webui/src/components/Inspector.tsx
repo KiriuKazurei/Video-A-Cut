@@ -8,21 +8,21 @@ import { errorText, stamp } from './ui';
 
 type Patch = UseMutationResult<Asset, Error, { id: string; values: GovernancePatch }>;
 
-/** 属性面板（Premiere Properties）：当前资产的治理状态与 PATCH 操作（API-03）。 */
+/** 属性面板（Premiere Properties）：当前资产的治理状态与 PATCH 操作（API-03）。全部为 antd 默认暗色组件。 */
 export function Inspector({ asset, patch, onNavigate }: { asset?: Asset; patch: Patch; onNavigate: (page: PageId) => void }) {
   const next: { page: PageId; text: string } | null = !asset ? null
     : asset.input_kind === 'raw_recording' ? { page: 'assembly', text: '原始录像：到「粗剪」导入、切分并生成短片' }
     : asset.status === 'exported' ? { page: 'export', text: '已导出：到「导出」预览、下载与验收' }
     : { page: 'prepare', text: 'EDL 包：到「准备」预检并启动内容流程' };
   return (
-    <Card size="small" variant="borderless" className="dock-card" aria-labelledby="detail-title" title={<span id="detail-title">属性 · 资产治理</span>}>
+    <Card size="small" variant="borderless" aria-labelledby="detail-title" title={<span id="detail-title">属性 · 资产治理</span>}>
       {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="在项目面板选择一项资产以查看状态和治理操作。" />}
       {asset && <Flex vertical gap={12}>
         <Flex align="center" gap={8} wrap>
           <Typography.Title level={5} style={{ margin: 0, overflowWrap: 'anywhere' }}>{asset.asset_id}</Typography.Title>
           <Tag color={asset.status === 'exported' ? 'success' : 'default'}>{asset.status}</Tag>
         </Flex>
-        <Descriptions size="small" column={1} bordered styles={{ label: { width: 104, whiteSpace: 'nowrap' } }} items={[
+        <Descriptions size="small" column={1} bordered styles={{ label: { whiteSpace: 'nowrap' } }} items={[
           { key: 'kind', label: '输入类型', children: kindLabel(asset) },
           { key: 'visible', label: 'Agent 可见', children: asset.agent_visible ? '是' : '否' },
           { key: 'locked', label: '锁定', children: asset.locked ? '是' : '否' },

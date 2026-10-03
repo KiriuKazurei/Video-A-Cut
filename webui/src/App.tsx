@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Grid, Layout, Menu, Typography, theme } from 'antd';
+import { Badge, Button, ConfigProvider, Grid, Layout, Menu, Typography, theme } from 'antd';
 import {
   AuditOutlined, CloudUploadOutlined, ExportOutlined, PlaySquareOutlined, ReloadOutlined, ScissorOutlined, SettingOutlined, VideoCameraOutlined
 } from '@ant-design/icons';
@@ -12,6 +12,7 @@ import { MediaBin } from './components/MediaBin';
 import { Inspector } from './components/Inspector';
 import type { RunSelection } from './components/WorkflowPanel';
 import { PAGES, useHashPage, type PageId } from './navigation';
+import { siderTheme } from './theme';
 import { AssemblyPage, EditPage, ExportPage, ImportPage, MonitorPage, PreparePage } from './pages/Pages';
 
 const PAGE_ICONS: Record<PageId, React.ReactNode> = {
@@ -27,7 +28,8 @@ const PAGE_ICONS: Record<PageId, React.ReactNode> = {
 export default function App() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
-  // 侧栏宽度跟随 antd 栅格断点：≥1600（xxl）280/320，其余 240/280；窄屏布局见 styles.css。
+  // 侧栏：antd Layout.Sider，纯色底（lightSiderBg = colorBgContainer）、直角、antd 分隔线；
+  // 宽度跟随 antd 栅格断点：≥1600（xxl）280/320，其余 240/280；窄屏布局见 styles.css。
   const screens = Grid.useBreakpoint();
   const siderWidths = screens.xxl ? [280, 320] : [240, 280];
   const siderBorder = `1px solid ${token.colorBorderSecondary}`;
@@ -91,7 +93,6 @@ export default function App() {
   return (
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
-      <div className="ambient" aria-hidden="true" />
       <Layout.Header className="app-header">
         <div className="app-brand">
           <VideoCameraOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
@@ -122,9 +123,11 @@ export default function App() {
         </div>
       </Layout.Header>
 
-      <Layout hasSider className={`workspace workspace-${page}`}>
+      <Layout hasSider className={`workspace workspace-${page}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
         <Layout.Sider theme="light" width={siderWidths[0]} className="dock dock-left" aria-label="项目面板" style={{ borderInlineEnd: siderBorder }}>
-          <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
+          <ConfigProvider theme={siderTheme}>
+            <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
+          </ConfigProvider>
         </Layout.Sider>
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}页`}>
           <div className="page" data-page-view="import" hidden={page !== 'import'}>
@@ -148,7 +151,9 @@ export default function App() {
           </div>
         </Layout.Content>
         <Layout.Sider theme="light" width={siderWidths[1]} className="dock dock-right" aria-label="属性面板" style={{ borderInlineStart: siderBorder }}>
-          <Inspector asset={selected} patch={patch} onNavigate={navigate} />
+          <ConfigProvider theme={siderTheme}>
+            <Inspector asset={selected} patch={patch} onNavigate={navigate} />
+          </ConfigProvider>
         </Layout.Sider>
       </Layout>
 
