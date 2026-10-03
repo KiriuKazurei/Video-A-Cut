@@ -19,7 +19,7 @@ const queryClient = new QueryClient({
  * Ant Design 5 暗色算法：Premiere 式统一底色——布局、容器、页头页脚取同一色值，
  * 中间工作区不再用色块区分面板；操作控件保持 antd 默认外观（主色、圆角、尺寸不改）。
  * 次要/三级文字略提亮，保证在玻璃面板上也满足 4.5:1 对比度。
- * 液态玻璃（Spatial UI / visionOS）只作用于展示窗口与侧栏，见 styles.css。
+ * 液态玻璃（Spatial UI / visionOS）只作用于顶部页签与监视器/预览窗口，侧栏保持 antd 标准外观，见 styles.css。
  */
 const UNIFIED_BG = '#1c1d21';
 const appTheme: ThemeConfig = {
@@ -33,8 +33,9 @@ const appTheme: ThemeConfig = {
     colorTextDescription: 'rgba(255, 255, 255, 0.6)'
   },
   components: {
-    Layout: { headerBg: 'transparent', bodyBg: 'transparent', footerBg: 'transparent', headerHeight: 56, headerPadding: '0 16px', footerPadding: '6px 16px' },
-    Menu: { itemBg: 'transparent', horizontalLineHeight: '54px' },
+    Layout: { headerBg: 'transparent', bodyBg: 'transparent', footerBg: 'transparent', siderBg: UNIFIED_BG, lightSiderBg: UNIFIED_BG, headerHeight: 56, headerPadding: '0 16px', footerPadding: '6px 16px' },
+    // 页签胶囊：当前页白字落在蓝色玻璃高亮上（对比度 > 7:1）；去掉水平菜单的下划线指示。
+    Menu: { itemBg: 'transparent', horizontalLineHeight: '34px', horizontalItemSelectedColor: '#ffffff', horizontalItemHoverColor: '#ffffff', itemHoverColor: '#ffffff', activeBarHeight: 0, horizontalItemBorderRadius: 999, itemPaddingInline: 14 },
     Card: { colorBgContainer: 'transparent', headerBg: 'transparent' },
     Table: { colorBgContainer: 'transparent', headerBg: 'rgba(255, 255, 255, 0.04)', rowHoverBg: 'rgba(255, 255, 255, 0.05)' },
     Descriptions: { labelBg: 'rgba(255, 255, 255, 0.04)' },

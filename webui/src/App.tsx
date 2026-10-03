@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Layout, Menu, Typography, theme } from 'antd';
+import { Badge, Button, Grid, Layout, Menu, Typography, theme } from 'antd';
 import {
   AuditOutlined, CloudUploadOutlined, ExportOutlined, PlaySquareOutlined, ReloadOutlined, ScissorOutlined, SettingOutlined, VideoCameraOutlined
 } from '@ant-design/icons';
@@ -27,6 +27,10 @@ const PAGE_ICONS: Record<PageId, React.ReactNode> = {
 export default function App() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
+  // 侧栏宽度跟随 antd 栅格断点：≥1600（xxl）280/320，其余 240/280；窄屏布局见 styles.css。
+  const screens = Grid.useBreakpoint();
+  const siderWidths = screens.xxl ? [280, 320] : [240, 280];
+  const siderBorder = `1px solid ${token.colorBorderSecondary}`;
   const [page, navigate] = useHashPage();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watchedTaskId, setWatchedTaskId] = useState<string | null>(null);
@@ -96,12 +100,16 @@ export default function App() {
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>剪辑预处理工作区</Typography.Text>
           </div>
         </div>
-        <Menu className="app-nav" mode="horizontal" aria-label="工作区" selectedKeys={[page]} triggerSubMenuAction="click"
-          onClick={({ key }) => navigate(key as PageId)}
-          items={PAGES.map((item) => ({
-            key: item.id, icon: PAGE_ICONS[item.id], title: item.description,
-            label: <span data-page={item.id} aria-current={page === item.id ? 'page' : undefined}>{item.step} {item.label}</span>
-          }))} />
+        {/* 页签：antd Menu 外包一层液态玻璃胶囊，当前页为玻璃高亮；窄屏时多余页签折叠进同样材质的「…」弹层。 */}
+        <div className="app-nav-wrap">
+          <Menu className="app-nav glass-nav" mode="horizontal" aria-label="工作区" selectedKeys={[page]} triggerSubMenuAction="click"
+            overflowedIndicatorPopupClassName="app-nav-popup"
+            onClick={({ key }) => navigate(key as PageId)}
+            items={PAGES.map((item) => ({
+              key: item.id, icon: PAGE_ICONS[item.id], title: item.description,
+              label: <span data-page={item.id} aria-current={page === item.id ? 'page' : undefined}>{item.step} {item.label}</span>
+            }))} />
+        </div>
         <div className="app-header-right">
           <Badge className="app-connection" role="status" aria-live="polite"
             status={connection === 'connected' ? 'success' : connection === 'connecting' || connection === 'reconnecting' ? 'processing' : 'error'}
@@ -114,11 +122,11 @@ export default function App() {
         </div>
       </Layout.Header>
 
-      <div className={`workspace workspace-${page}`}>
-        <aside className="dock dock-left glass glass-frame" aria-label="项目面板">
+      <Layout hasSider className={`workspace workspace-${page}`}>
+        <Layout.Sider theme="light" width={siderWidths[0]} className="dock dock-left" aria-label="项目面板" style={{ borderInlineEnd: siderBorder }}>
           <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
-        </aside>
-        <main id="main" className="stage-main" aria-label={`${current.label}页`}>
+        </Layout.Sider>
+        <Layout.Content id="main" className="stage-main" aria-label={`${current.label}页`}>
           <div className="page" data-page-view="import" hidden={page !== 'import'}>
             <ImportPage page={pageDef('import')} asset={selected} onSelect={setSelectedId} />
           </div>
@@ -138,11 +146,11 @@ export default function App() {
             <MonitorPage page={pageDef('monitor')} asset={selected} audit={audit} task={task}
               watchedTaskId={watchedTaskId} createTask={createTask} />
           </div>
-        </main>
-        <aside className="dock dock-right glass glass-panel" aria-label="属性面板">
+        </Layout.Content>
+        <Layout.Sider theme="light" width={siderWidths[1]} className="dock dock-right" aria-label="属性面板" style={{ borderInlineStart: siderBorder }}>
           <Inspector asset={selected} patch={patch} onNavigate={navigate} />
-        </aside>
-      </div>
+        </Layout.Sider>
+      </Layout>
 
       <Layout.Footer className="app-footer">
         <ConnectionStatusBar

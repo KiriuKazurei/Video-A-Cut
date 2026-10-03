@@ -37,12 +37,14 @@ const openPage=async page=>{
 };
 // 记录视口内任何越过右边缘的可见元素（被祖先 overflow 裁掉的不算）；任何一条都判失败。
 const PAGE_OVERFLOW=`(()=>{const cw=document.documentElement.clientWidth;const clipped=e=>{for(let p=e.parentElement;p&&p!==document.body;p=p.parentElement){const s=getComputedStyle(p);if(s.overflowX!=='visible'&&p.getBoundingClientRect().right<=cw+1)return true;}return false;};return [...document.querySelectorAll('body *')].filter(e=>{const b=e.getBoundingClientRect();return b.width>0&&b.height>0&&b.right>cw+1&&e.checkVisibility({opacityProperty:true,visibilityProperty:true})&&!clipped(e)}).slice(0,12).map(e=>({tag:e.tagName,class:String(e.className).slice(0,80),right:Math.round(e.getBoundingClientRect().right),text:e.textContent.slice(0,60)}))})()`;
+// 改变视口后等布局稳定再测：antd Menu 在 ResizeObserver 回调后约 100ms 内把放不下的页签折叠进「…」，测的是稳定状态而非拖拽过程中的瞬时帧。
+const settle=async()=>{await new Promise(r=>setTimeout(r,400));await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');};
 const report={mode,human_acceptance:'pending',driver:'real Chromium CDP; DOM interaction restricted to visible elements of the active page',layout:[],pages:[],actions:[]};
 // 窄屏到宽屏逐页检查：经由顶部菜单（含折叠子菜单）进入每一页，任何越界都判失败。
 const pageSweep=async()=>{
  for(const width of [375,1280]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
-  await new Promise(r=>setTimeout(r,150));
+  await settle();
   for(const page of ['import','assembly','prepare','edit','export','monitor']){
    await openPage(page);await new Promise(r=>setTimeout(r,250));
    const row=await evaluate(`({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,pageOverflow:${PAGE_OVERFLOW}})`);
@@ -54,7 +56,7 @@ const pageSweep=async()=>{
 const layouts=async(stage)=>{
  for(const width of [375,520,900,1280]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
-  await new Promise(r=>setTimeout(r,100));
+  await settle();
   const row=await evaluate(`(()=>{const p=[...document.querySelectorAll('.ingest-panel')].find(${VIS}),r=p.getBoundingClientRect();return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow:[...p.querySelectorAll('button,input,select,video,img')].filter(e=>{const b=e.getBoundingClientRect();return b.width>0&&(b.right>r.right+1||b.left<r.left-1)}).map(e=>e.tagName+':'+e.textContent.slice(0,40)),pageOverflow:${PAGE_OVERFLOW}}})()`);
   row.stage=stage;row.pass=row.scrollWidth<=width&&row.overflow.length===0&&row.pageOverflow.length===0;report.layout.push(row);
   await evaluate(`[...document.querySelectorAll(${JSON.stringify(stage==='selected-boundaries'?'.selected-editor':stage==='prepare-form'?'.ingest-prepare':'.ingest-panel')})].find(${VIS}).scrollIntoView()`);

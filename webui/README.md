@@ -33,7 +33,7 @@ npm run dev
 
 固定区域：左侧「项目 · 资产」面板（API-01），右侧「属性 · 资产治理」面板（API-03），底部状态栏显示 SSE 连接（API-50）。监视器只播放受控文件键或证据地址，不把 artifacts 当下载地址。界面组件：`src/navigation.ts`（页面定义）、`src/pages/Pages.tsx`、`src/components/{Monitor,Timeline,MediaBin,Inspector}.tsx`。
 
-视觉：全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`，主色、圆角、控件尺寸保持默认）。整体模仿 Premiere：布局、容器、页头页脚共用同一底色 `#1c1d21`（`src/main.tsx` 里的 `colorBgBase/colorBgLayout/colorBgContainer`），中间工作区不用色块分隔，只留细线。展示窗口和侧栏使用液态玻璃（ui-ux-pro-max「Spatial UI (VisionOS)」：半透明填充、`backdrop-filter: blur(40px) saturate(180%)`、内侧高光描边、深度阴影）：右侧属性面板整块玻璃，左侧项目面板玻璃外框，监视器与短片预览窗口玻璃边框；系统开启「减少透明度」或浏览器不支持 `backdrop-filter` 时退化为不透明面板。`src/styles.css` 只保留布局、媒体尺寸、时间线轨道和玻璃材质。
+视觉：全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`，主色、圆角、控件尺寸保持默认）。整体模仿 Premiere：布局、容器、页头页脚共用同一底色 `#1c1d21`（`src/main.tsx` 里的 `colorBgBase/colorBgLayout/colorBgContainer`），中间工作区不用色块分隔，只留细线。顶部页签和展示窗口使用液态玻璃（ui-ux-pro-max「Spatial UI (VisionOS)」：半透明填充、`backdrop-filter: blur(40px) saturate(180%)`、内侧高光描边、深度阴影）：六个页签放在玻璃胶囊里，当前页是蓝色调玻璃高亮（白字），窄屏的「…」折叠弹层同样材质；监视器与短片预览窗口是玻璃边框。左右侧栏是 antd `Layout.Sider` 标准外观（直角、统一底色、antd 分隔线），不加玻璃。系统开启「减少透明度」或浏览器不支持 `backdrop-filter` 时退化为不透明面板，「减少动态效果」时关闭过渡。`src/styles.css` 只保留布局、媒体尺寸、时间线轨道和玻璃材质。
 
 浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）经由顶部菜单进入页面（窄屏时先展开折叠子菜单），并断言只有目标页可见；点击、输入和下拉选择都只作用于可见元素，隐藏页里的同名控件不会被点到。任意宽度下只要有可见元素越过视口右边缘（`pageOverflow`）即判失败。
 
