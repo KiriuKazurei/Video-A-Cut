@@ -6,7 +6,9 @@
  *  - 统一底色 #1c1d21（与 ConfigProvider 的 colorBgBase 相同），中间工作区无色块分界；
  *  - 玻璃 = 半透明填充 + backdrop-filter blur(40px) saturate(180%) + 内侧高光描边 + 深度阴影；
  *  - 只用于：顶部页签（玻璃胶囊 + 玻璃高亮、「…」折叠弹层）与监视器/预览窗口外框；
- *  - 左右侧栏是 antd Layout.Sider 标准外观（直角、统一底色、antd 分隔线），不加玻璃；
+ *  - 左右侧栏是 antd Layout.Sider 标准外观：纯色底（colorBgContainer）、直角、antd 分隔线；
+ *    侧栏内组件用独立 ConfigProvider（theme.ts 的 siderTheme），本文件不对侧栏内部写任何外观覆写；
+ *  - 不设全页环境光层；唯一的光晕在页头中央（玻璃页签背后），限定在页头内、离两侧侧栏有距离；
  *  - prefers-reduced-transparency 或不支持 backdrop-filter 时退化为不透明面板。
  */
 
@@ -28,21 +30,11 @@ body { background: var(--vac-bg); }
 
 /* ---------- 外壳 ---------- */
 .app-shell { position: relative; height: 100vh; display: flex; flex-direction: column; overflow: hidden; isolation: isolate; }
-/* 环境光层：让玻璃的模糊与饱和度可见；低饱和、低透明度，整体仍读作同一底色。 */
-.ambient {
-  position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background:
-    radial-gradient(28vw 120px at 50% 0, rgba(22, 119, 255, 0.22), transparent 75%),
-    radial-gradient(42vw 38vh at 92% 18%, rgba(22, 119, 255, 0.14), transparent 70%),
-    radial-gradient(36vw 40vh at 4% 82%, rgba(114, 46, 209, 0.13), transparent 70%),
-    radial-gradient(30vw 30vh at 55% 105%, rgba(19, 194, 194, 0.08), transparent 70%),
-    var(--vac-bg);
-}
 .skip-link { position: absolute; left: 12px; top: -48px; z-index: 1000; padding: 8px 12px; border-radius: 6px; background: #1677ff; color: #fff; }
 .skip-link:focus { top: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.app-header { display: flex; align-items: center; gap: 16px; height: auto; min-height: 56px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
+.app-header { display: flex; background: radial-gradient(240px 56px at 50% 0, rgba(22, 119, 255, 0.2), transparent) var(--vac-bg); align-items: center; gap: 16px; height: auto; min-height: 56px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
 .app-nav-wrap { flex: 1; min-width: 0; display: flex; justify-content: center; }
@@ -53,7 +45,7 @@ body { background: var(--vac-bg); }
 .app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--vac-hairline); }
 .app-footer-meta { font-size: 12px; }
 
-/* ---------- 工作区：左右侧栏浮在统一底色上，中间无分界 ---------- */
+/* ---------- 工作区：左右侧栏为 antd Layout.Sider（纯色底），中间无分界 ---------- */
 .workspace { flex: 1; min-height: 0; }
 .dock > .ant-layout-sider-children { overflow-y: auto; }
 .stage-main { min-height: 0; min-width: 0; overflow-y: auto; padding: 0 16px; scrollbar-gutter: stable; }
@@ -131,7 +123,7 @@ body { background: var(--vac-bg); }
   .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ambient { background: var(--vac-bg); }
+  .app-header { background: var(--vac-bg); }
   .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .app-nav.glass-nav > .ant-menu-item-selected, .app-nav-popup .ant-menu-item-selected { background: #1668dc !important; }
 }
@@ -139,15 +131,9 @@ body { background: var(--vac-bg); }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
-/* ---------- 项目面板 ---------- */
-.dock-card .ant-card-body { padding: 10px; }
-.asset-list .asset-row { cursor: pointer; padding: 8px !important; border-radius: 8px; border-block-end: 0 !important; transition: background 0.15s; }
-.asset-list .asset-row:hover { background: rgba(255, 255, 255, 0.06); }
-.asset-list .asset-row.is-selected { background: rgba(22, 119, 255, 0.2); box-shadow: inset 2px 0 0 #1677ff; }
-.asset-list .asset-row:focus-visible { outline: 2px solid #1677ff; outline-offset: -2px; }
+/* ---------- 项目面板：只保留省略号布局约束，以及被 antd List 置空后补回的键盘焦点框（antd 焦点线宽 + colorPrimary）---------- */
 .asset-list .ant-list-item-meta { min-width: 0; }
-.kind-raw { background: #d46b08 !important; }
-.kind-edl { background: #1668dc !important; }
+.asset-list [data-asset-id]:focus-visible { outline: var(--vac-focus-outline); outline-offset: -3px; }
 
 /* ---------- 监视器 ---------- */
 .monitor .ant-card-head-title { min-width: 0; }
@@ -215,7 +201,7 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 @media (max-width: 1199px) {
   .workspace { display: grid !important; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 30vh; }
   .workspace > .stage-main { width: auto !important; } /* antd 给 has-sider 下的 Content 设了 width: 0 */
-  .dock-right { grid-column: 1 / -1; width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline-start: 0 !important; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+  .dock-right { grid-column: 1 / -1; width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline-start: 0 !important; border-top: var(--vac-sider-border); }
 }
 @media (max-width: 960px) {
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }
@@ -224,8 +210,8 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   .app-header-right { margin-left: auto; }
   .app-connection .ant-badge-status-text { display: none; }
   .workspace { display: flex !important; flex-direction: column !important; }
-  .dock { width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline: 0 !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
-  .dock-right { border-top: 1px solid rgba(255, 255, 255, 0.12); }
+  .dock { width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline: 0 !important; border-bottom: var(--vac-sider-border); }
+  .dock-right { border-top: var(--vac-sider-border); }
   .stage-main { overflow: visible; padding: 8px; }
   .dock-left > .ant-layout-sider-children { max-height: 320px; }
   .dock-right > .ant-layout-sider-children { overflow: visible; }
