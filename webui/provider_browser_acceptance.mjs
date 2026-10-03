@@ -91,7 +91,8 @@ try {
   await click('测试连接', narrator); await wait(`document.querySelector(${JSON.stringify(narrator)}).textContent.includes('连接测试通过')`);
   for (const width of [375, 520, 900, 1280]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 1100, deviceScaleFactor: 1, mobile: false });
-    await new Promise(r => setTimeout(r, 100));
+    // 等布局稳定：antd Menu 在视口变化后约 100ms 内折叠放不下的页签。
+    await new Promise(r => setTimeout(r, 400)); await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
     const row = await evaluate(`(()=>{const p=document.querySelector('.preparation-panel'),r=p.getBoundingClientRect(),clientWidth=document.documentElement.clientWidth;return {width:innerWidth,clientWidth,scrollWidth:document.documentElement.scrollWidth,pageOverflow:${PAGE_OVERFLOW},overflow:[...p.querySelectorAll('input,button,.ant-select')].filter(e=>{const b=e.getBoundingClientRect();return b.width>0&&b.height>0&&(b.right>r.right+1||b.left<r.left-1)}).map(e=>e.tagName+'.'+String(e.className).split(' ')[0])}})()`);
     row.pass = row.scrollWidth <= row.clientWidth && !row.overflow.length && !row.pageOverflow.length; report.layout.push(row);
     await evaluate(`document.querySelector(${JSON.stringify(vision)}).scrollIntoView()`);

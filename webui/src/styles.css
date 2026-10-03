@@ -5,7 +5,8 @@
  * 材质规则（ui-ux-pro-max「Spatial UI (VisionOS)」）：
  *  - 统一底色 #1c1d21（与 ConfigProvider 的 colorBgBase 相同），中间工作区无色块分界；
  *  - 玻璃 = 半透明填充 + backdrop-filter blur(40px) saturate(180%) + 内侧高光描边 + 深度阴影；
- *  - 只用于：右侧属性面板（整块玻璃）、左侧项目面板外框、监视器/预览窗口外框；
+ *  - 只用于：顶部页签（玻璃胶囊 + 玻璃高亮、「…」折叠弹层）与监视器/预览窗口外框；
+ *  - 左右侧栏是 antd Layout.Sider 标准外观（直角、统一底色、antd 分隔线），不加玻璃；
  *  - prefers-reduced-transparency 或不支持 backdrop-filter 时退化为不透明面板。
  */
 
@@ -13,12 +14,10 @@
   --vac-bg: #1c1d21;
   --vac-hairline: rgba(255, 255, 255, 0.07);
   --vac-glass-fill: rgba(255, 255, 255, 0.07);
-  --vac-glass-fill-strong: rgba(40, 42, 50, 0.55);
   --vac-glass-edge: rgba(255, 255, 255, 0.16);
   --vac-glass-highlight: rgba(255, 255, 255, 0.22);
   --vac-glass-blur: blur(40px) saturate(180%);
   --vac-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.38);
-  --vac-radius-panel: 20px;
   --vac-radius-window: 16px;
   color-scheme: dark;
 }
@@ -33,7 +32,8 @@ body { background: var(--vac-bg); }
 .ambient {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(42vw 38vh at 92% 18%, rgba(22, 119, 255, 0.16), transparent 70%),
+    radial-gradient(28vw 120px at 50% 0, rgba(22, 119, 255, 0.22), transparent 75%),
+    radial-gradient(42vw 38vh at 92% 18%, rgba(22, 119, 255, 0.14), transparent 70%),
     radial-gradient(36vw 40vh at 4% 82%, rgba(114, 46, 209, 0.13), transparent 70%),
     radial-gradient(30vw 30vh at 55% 105%, rgba(19, 194, 194, 0.08), transparent 70%),
     var(--vac-bg);
@@ -45,16 +45,19 @@ body { background: var(--vac-bg); }
 .app-header { display: flex; align-items: center; gap: 16px; height: auto; min-height: 56px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.app-nav { flex: 1; min-width: 0; border-bottom: 0 !important; }
+.app-nav-wrap { flex: 1; min-width: 0; display: flex; justify-content: center; }
+/* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳六个页签，空间不足时收缩并由 antd 折叠进「…」。
+   若用 auto 宽度，折叠后内容变窄又会触发重新测量，窄屏下会停在未折叠状态而越界。 */
+.app-nav { flex: 0 1 618px; min-width: 0; justify-content: center; border-bottom: 0 !important; }
 .app-header-right { display: flex; align-items: center; gap: 12px; flex: none; }
 .app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--vac-hairline); }
 .app-footer-meta { font-size: 12px; }
 
 /* ---------- 工作区：左右侧栏浮在统一底色上，中间无分界 ---------- */
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px; gap: 12px; padding: 12px; }
-.dock, .stage-main { min-height: 0; overflow-y: auto; }
-.stage-main { padding: 0 4px; scrollbar-gutter: stable; }
-.page-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 4px 0 24px; min-width: 0; }
+.workspace { flex: 1; min-height: 0; }
+.dock > .ant-layout-sider-children { overflow-y: auto; }
+.stage-main { min-height: 0; min-width: 0; overflow-y: auto; padding: 0 16px; scrollbar-gutter: stable; }
+.page-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 12px 0 24px; min-width: 0; }
 .page-body > *, .edit-stage > * { min-width: 0; }
 .page-header h4 { margin: 0 !important; }
 .sticky-monitor { position: sticky; top: 0; z-index: 5; padding-bottom: 8px; background: var(--vac-bg); }
@@ -78,27 +81,59 @@ body { background: var(--vac-bg); }
   backdrop-filter: var(--vac-glass-blur);
   box-shadow: inset 0 1px 0 var(--vac-glass-highlight), inset 0 0 0 1px rgba(255, 255, 255, 0.02), var(--vac-glass-shadow);
 }
-/* 右侧属性面板：整块玻璃 */
-.glass-panel { border-radius: var(--vac-radius-panel); background: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04)) !important; }
-/* 左侧项目面板：玻璃外框，内容区保持统一底色 */
-.glass-frame { border-radius: var(--vac-radius-panel); padding: 6px; background: rgba(255, 255, 255, 0.05) !important; }
-.glass-frame > .ant-card { background: rgba(28, 29, 33, 0.72); border-radius: calc(var(--vac-radius-panel) - 6px); height: 100%; }
 /* 展示窗口：监视器与短片预览的玻璃边框 */
 .glass-window { border-radius: var(--vac-radius-window) !important; overflow: hidden; }
 .glass-window > .ant-card-head { border-bottom-color: rgba(255, 255, 255, 0.08) !important; }
-.dock .ant-card-head { border-bottom-color: rgba(255, 255, 255, 0.1); }
-.dock-right .ant-descriptions-bordered .ant-descriptions-view { border-color: rgba(255, 255, 255, 0.12); }
-.dock-right .ant-descriptions-bordered .ant-descriptions-row,
-.dock-right .ant-descriptions-bordered .ant-descriptions-item-label { border-color: rgba(255, 255, 255, 0.12); }
-.dock-right .ant-alert-info { background: rgba(22, 119, 255, 0.12); border-color: rgba(22, 119, 255, 0.35); }
+
+/* 顶部页签：玻璃胶囊容器 */
+.app-nav.glass-nav {
+  padding: 3px;
+  border: 1px solid var(--vac-glass-edge);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04));
+  -webkit-backdrop-filter: var(--vac-glass-blur);
+  backdrop-filter: var(--vac-glass-blur);
+  box-shadow: inset 0 1px 0 var(--vac-glass-highlight), 0 6px 24px rgba(0, 0, 0, 0.32);
+  line-height: 34px;
+}
+.app-nav.glass-nav > .ant-menu-item,
+.app-nav.glass-nav > .ant-menu-submenu { top: 0; margin: 0 1px; border-radius: 999px; transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s; }
+.app-nav.glass-nav > .ant-menu-item::after,
+.app-nav.glass-nav > .ant-menu-submenu::after { display: none; }
+.app-nav.glass-nav > .ant-menu-item:hover,
+.app-nav.glass-nav > .ant-menu-submenu:hover { background: rgba(255, 255, 255, 0.08); }
+/* 当前页：玻璃高亮（蓝色调半透明 + 内侧高光 + 轻微浮起） */
+.app-nav.glass-nav > .ant-menu-item-selected,
+.app-nav.glass-nav > .ant-menu-submenu-selected {
+  background: linear-gradient(180deg, rgba(64, 150, 255, 0.55), rgba(22, 119, 255, 0.38)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 2px 10px rgba(22, 119, 255, 0.35);
+  color: #fff !important;
+}
+.app-nav.glass-nav > .ant-menu-item-selected .anticon,
+.app-nav.glass-nav > .ant-menu-submenu-selected .anticon { color: #fff; }
+.app-nav.glass-nav > .ant-menu-item:focus-visible,
+.app-nav.glass-nav > .ant-menu-submenu:focus-visible,
+.app-nav.glass-nav .ant-menu-submenu-title:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
+.app-nav.glass-nav:focus-visible { outline: 2px solid #69b1ff; outline-offset: 3px; }
+/* 「…」折叠弹层 */
+.app-nav-popup > .ant-menu {
+  border: 1px solid var(--vac-glass-edge);
+  border-radius: 14px !important;
+  background: rgba(36, 38, 46, 0.62) !important;
+  -webkit-backdrop-filter: var(--vac-glass-blur);
+  backdrop-filter: var(--vac-glass-blur);
+  box-shadow: inset 0 1px 0 var(--vac-glass-highlight), var(--vac-glass-shadow) !important;
+}
+.app-nav-popup .ant-menu-item { border-radius: 10px; }
+.app-nav-popup .ant-menu-item-selected { background: linear-gradient(180deg, rgba(64, 150, 255, 0.55), rgba(22, 119, 255, 0.38)) !important; color: #fff !important; }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass, .glass-panel, .glass-frame { background: #2a2c33 !important; }
+  .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .ambient { background: var(--vac-bg); }
-  .glass, .glass-panel, .glass-frame { background: #2a2c33 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .glass-frame > .ant-card { background: var(--vac-bg); }
+  .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .app-nav.glass-nav > .ant-menu-item-selected, .app-nav-popup .ant-menu-item-selected { background: #1668dc !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
@@ -174,23 +209,26 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 1439px) {
-  .workspace { grid-template-columns: 240px minmax(0, 1fr) 280px; }
   .edit-stage { grid-template-columns: minmax(0, 1fr); }
 }
+/* <1200：属性面板移到下方整行（覆盖 Sider 的行内宽度），分隔线改到顶部 */
 @media (max-width: 1199px) {
-  .workspace { grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  .dock-right { grid-column: 1 / -1; max-height: 30vh; }
+  .workspace { display: grid !important; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 30vh; }
+  .workspace > .stage-main { width: auto !important; } /* antd 给 has-sider 下的 Content 设了 width: 0 */
+  .dock-right { grid-column: 1 / -1; width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline-start: 0 !important; border-top: 1px solid rgba(255, 255, 255, 0.12); }
 }
 @media (max-width: 960px) {
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }
   .app-header { flex-wrap: wrap; padding: 8px 12px !important; row-gap: 4px; }
-  .app-nav { order: 3; flex: 1 0 100%; width: 100%; }
+  .app-nav-wrap { order: 3; flex: 1 0 100%; width: 100%; }
   .app-header-right { margin-left: auto; }
   .app-connection .ant-badge-status-text { display: none; }
-  .workspace { display: flex; flex-direction: column; padding: 8px; }
-  .dock, .stage-main { overflow: visible; max-height: none; }
-  .dock-left { max-height: 320px; overflow-y: auto; }
-  .stage-main { padding: 0; }
+  .workspace { display: flex !important; flex-direction: column !important; }
+  .dock { width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline: 0 !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+  .dock-right { border-top: 1px solid rgba(255, 255, 255, 0.12); }
+  .stage-main { overflow: visible; padding: 8px; }
+  .dock-left > .ant-layout-sider-children { max-height: 320px; }
+  .dock-right > .ant-layout-sider-children { overflow: visible; }
   .sticky-monitor { position: static; }
   .timeline-ruler, .timeline-track { grid-template-columns: 64px minmax(0, 1fr); }
   .monitor .ant-card-extra { display: none; }
