@@ -16,6 +16,23 @@ npm run dev
 
 当前 UI 可读取资产/审计、修改治理字段、创建并跟踪任务，SSE 连接或重连时重新取 REST 快照。配置 Go 的 `delivery_root` 后，可输入该目录内 CLI 交付包的相对目录，导入 `delivery-manifest.json`，预览视频、试听音频、下载单个产物或保留原目录结构的交付 ZIP。任务列表与取消/重试接口尚未提供，UI 不承诺这些能力。
 
+## 界面结构（剪辑工作区）
+
+界面按类似 Premiere 的工作流分成六个页面，顶部页签切换，地址栏用 hash 深链（如 `#/edit`）。所有页面常驻挂载、只用 `hidden` 切换，切页不会丢失未保存的表单与选段。
+
+| 页面 | 内容 | 接口（见接口清单编号） |
+| --- | --- | --- |
+| 01 导入 `#/import` | 源监视器、素材概览、登记原始录像、导入交付包、资产治理面板 | API-01~06、42，预览用 44/45 |
+| 02 粗剪 `#/assembly` | 吸顶源监视器、导入运行、探测与切分参数、源时间线（候选 C / 已选 V1）、候选分页、拆分合并、生成短片 | API-07~16、19 |
+| 03 准备 `#/prepare` | 处理预设版本、服务商发现/诊断、运行条件预检、外发授权 | API-17~21、23~26 |
+| 04 编辑 `#/edit` | 节目监视器 + 场景证据/解说草稿审查面板 + 序列时间线（V1 场景 / A1 解说）、流程状态与阶段 | API-28~38 |
+| 05 导出 `#/export` | 节目监视器预览/试听交付文件、交付文件列表与 ZIP、流程交付 ZIP 与人工验收 | API-39~41、43~46 |
+| 06 监控 `#/monitor` | 任务派发与编排控制台、最近审计、审计日志面板 | API-47~49 |
+
+固定区域：左侧「项目 · 资产」面板（API-01），右侧「属性 · 资产治理」面板（API-03），底部状态栏显示 SSE 连接（API-50）。监视器只播放受控文件键或证据地址，不把 artifacts 当下载地址。界面组件：`src/navigation.ts`（页面定义）、`src/pages/Pages.tsx`、`src/components/{Monitor,Timeline,MediaBin,Inspector}.tsx`；样式令牌集中在 `src/styles.css`（深色专业剪辑主题，参考 ui-ux-pro-max 的 Short Video Editor 配色）。
+
+浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）会先点击对应页签再操作。
+
 `control-plane/control.json` 示例（路径须换成本机绝对路径）：
 
 ```json

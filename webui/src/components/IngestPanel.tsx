@@ -6,6 +6,8 @@ import {
   ACTIVE_STATES, clockToUs, displayProgress, executionBanner, selectionProblem, usToClock, splitSelection, mergeSelection,
   type IngestRunView, type IngestPolicy, type SegmentItem, type SelectedSegment
 } from '../ingest';
+import { usePreview } from './Monitor';
+import { Timeline, type TimelineClip } from './Timeline';
 
 const PAGE = 50;
 const stateText: Record<string, string> = {
@@ -28,12 +30,70 @@ function message(error: unknown): string {
 const allowsIngester = (asset: Asset) =>
   asset.agent_visible && !asset.locked && (asset.allowed_agents ?? []).includes('ingester');
 
-export function IngestPanel({ asset, onSelect }: { asset?: Asset; onSelect: (id: string) => void }) {
+/** 粗剪时间线的标尺刻度：整数微秒 → 简短时钟文本（仅显示，不回写）。 */
+const tickClock = (us: number) => usToClock(Math.round(us / 1e6) * 1e6).replace(/\.$/, '').replace(/\.0*$/, '');
+
+/** 导入页：受控根目录内录像登记（API-04、API-05）。只提交 root_id + 相对路径。 */
+export function IngestRegister({ onSelect }: { onSelect: (id: string) => void }) {
   const client = useQueryClient();
   const roots = useQuery({ queryKey: ['ingest', 'roots'], queryFn: ingestApi.roots });
   const [rootId, setRootId] = useState('');
   const [relative, setRelative] = useState('');
   const [assetId, setAssetId] = useState(() => `rec_${Date.now()}`);
+  const [error, setError] = useState('');
+  const refresh = () => Promise.all([['ingest'], ['assets'], ['audit']].map((queryKey) => client.invalidateQueries({ queryKey })));
+  const action = useMutation({
+    mutationFn: (fn: () => Promise<unknown>) => fn(),
+    onSuccess: async () => { setError(''); await refresh(); },
+    onError: (e) => { setError(message(e)); void refresh(); }
+  });
+  const busy = action.isPending;
+
+  function register(event: FormEvent) {
+    event.preventDefault();
+    action.mutate(async () => {
+      const out = await ingestApi.register(assetId.trim(), rootId || roots.data!.roots[0].root_id, relative.trim());
+      setRelative('');
+      setAssetId(`rec_${Date.now()}`);
+      onSelect(out.asset.asset_id);
+    });
+  }
+
+  return (
+    <section className="panel ingest-register" aria-labelledby="ingest-register-title">
+      <div className="panel-heading"><div><p className="eyebrow">RECORDING</p><h2 id="ingest-register-title">登记原始录像</h2></div>
+        {roots.data?.configured && <span className={`pill ${roots.data.ingesters.length > 0 ? 'pill-ok' : 'pill-warn'}`}>
+          导入 Worker {roots.data.ingesters.length > 0 ? `${roots.data.ingesters.length} 个在线` : '未在线'}</span>}</div>
+      <p className="hint">只能从管理员配置的录像根目录选择文件；原始文件不会被修改，系统先复制快照再处理。登记后到「粗剪」页开始导入与切分。</p>
+      {roots.isPending && <p className="state">正在读取导入配置…</p>}
+      {roots.isError && <p role="alert" className="inline-error">读取导入配置失败：{message(roots.error)}</p>}
+      {roots.data && !roots.data.configured && <p className="state">控制面未配置 ingest_roots，导入功能不可用。</p>}
+      {roots.data?.configured && <>
+        <p role="status" className="sr-only">本机导入 Worker：{roots.data.ingesters.length > 0 ? `${roots.data.ingesters.length} 个在线` : '未在线（导入任务会排队等待）'}</p>
+        <form className="ingest-form" onSubmit={register}>
+          <label className="field-label">录像根目录
+            <select value={rootId || roots.data.roots[0]?.root_id} onChange={(e) => setRootId(e.target.value)} disabled={busy}>
+              {roots.data.roots.map((r) => <option key={r.root_id} value={r.root_id}>{r.name}</option>)}
+            </select></label>
+          <label className="field-label">根目录内相对路径
+            <input required maxLength={1024} value={relative} placeholder="例如 2026-06/session.mkv" disabled={busy}
+              onChange={(e) => setRelative(e.target.value)} /></label>
+          <label className="field-label">资产 ID
+            <input required maxLength={128} pattern="[A-Za-z0-9._-]+" value={assetId} disabled={busy}
+              onChange={(e) => setAssetId(e.target.value)} /></label>
+          <button disabled={busy || roots.data.roots.length === 0}>登记录像</button>
+        </form>
+      </>}
+      {error && <p role="alert" className="inline-error">{error}</p>}
+      {busy && <p role="status">正在处理…</p>}
+    </section>
+  );
+}
+
+/** 粗剪页：导入运行、探测、分析计划、候选选段、选择版本与生成短片（API-06~16、19）。 */
+export function IngestPanel({ asset }: { asset?: Asset }) {
+  const client = useQueryClient();
+  const roots = useQuery({ queryKey: ['ingest', 'roots'], queryFn: ingestApi.roots });
   const [error, setError] = useState('');
   const refresh = () => Promise.all([['ingest'], ['assets'], ['audit']].map((queryKey) => client.invalidateQueries({ queryKey })));
   const action = useMutation({
@@ -51,16 +111,6 @@ export function IngestPanel({ asset, onSelect }: { asset?: Asset; onSelect: (id:
   const [cleanupBlocked, setCleanupBlocked] = useState(false);
   const busy = action.isPending;
 
-  function register(event: FormEvent) {
-    event.preventDefault();
-    action.mutate(async () => {
-      const out = await ingestApi.register(assetId.trim(), rootId || roots.data!.roots[0].root_id, relative.trim());
-      setRelative('');
-      setAssetId(`rec_${Date.now()}`);
-      onSelect(out.asset.asset_id);
-    });
-  }
-
   function allow(a: Asset) {
     const agents = [...new Set([...(a.allowed_agents ?? []), 'ingester'])];
     action.mutate(() => api.patchAsset(a.asset_id, { agent_visible: true, locked: false, allowed_agents: agents }));
@@ -68,29 +118,14 @@ export function IngestPanel({ asset, onSelect }: { asset?: Asset; onSelect: (id:
 
   return (
     <section className="panel ingest-panel" aria-labelledby="ingest-title">
-      <p className="eyebrow">INGEST</p>
-      <h2 id="ingest-title">原始录像导入与自动切分</h2>
-      <p className="hint">只能从管理员配置的录像根目录选择文件；原始文件不会被修改，系统先复制快照再处理。切分建议需要人工审查后才会生成短片。</p>
-      {roots.isError && <p role="alert" className="inline-error">读取导入配置失败：{message(roots.error)}</p>}
-      {roots.data && !roots.data.configured && <p className="state">控制面未配置 ingest_roots，导入功能不可用。</p>}
-      {roots.data?.configured && <>
-        <p role="status">本机导入 Worker：{roots.data.ingesters.length > 0 ? `${roots.data.ingesters.length} 个在线` : '未在线（导入任务会排队等待）'}</p>
-        <form className="ingest-form" onSubmit={register}>
-          <label className="field-label">录像根目录
-            <select value={rootId || roots.data.roots[0]?.root_id} onChange={(e) => setRootId(e.target.value)} disabled={busy}>
-              {roots.data.roots.map((r) => <option key={r.root_id} value={r.root_id}>{r.name}</option>)}
-            </select></label>
-          <label className="field-label">根目录内相对路径
-            <input required maxLength={1024} value={relative} placeholder="例如 2026-06/session.mkv" disabled={busy}
-              onChange={(e) => setRelative(e.target.value)} /></label>
-          <label className="field-label">资产 ID
-            <input required maxLength={128} pattern="[A-Za-z0-9._-]+" value={assetId} disabled={busy}
-              onChange={(e) => setAssetId(e.target.value)} /></label>
-          <button disabled={busy || roots.data.roots.length === 0}>登记录像</button>
-        </form>
-      </>}
+      <div className="panel-heading"><div><p className="eyebrow">INGEST · ASSEMBLY</p>
+        <h2 id="ingest-title">原始录像导入与自动切分</h2></div>
+        {current && <span className="pill">{stateText[current.state] ?? current.state} · {stageText[current.stage] ?? current.stage}</span>}</div>
+      <p className="hint">切分建议需要人工审查后才会生成短片；时间均为原录像坐标的整数微秒。</p>
       {error && <p role="alert" className="inline-error">{error}</p>}
       {busy && <p role="status">正在处理…</p>}
+      {!asset && <p className="state">在左侧项目面板选择一项原始录像资产。</p>}
+      {asset && !raw && <p className="state">资产 {asset.asset_id} 是 EDL 包，不需要粗剪切分；可直接到「准备」页检查运行条件。</p>}
 
       {asset && raw && <div className="ingest-asset">
         <h3>资产 {asset.asset_id}</h3>
@@ -266,14 +301,39 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
   });
   const edit = (id: string, field: keyof Draft, value: string) => setPicked((prev) => new Map(prev).set(id, { ...prev.get(id)!, [field]: value }));
   const total = page.data?.total ?? view.segments!.count;
+  const preview = usePreview();
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const show = (it: SegmentItem) => {
+    setFocusId(it.segment_id);
+    if (it.thumbnail_key) preview({ kind: 'image', src: ingestFileURL(run.run_id, it.thumbnail_key), title: it.segment_id,
+      meta: `${usToClock(it.start_us)} – ${usToClock(it.end_us)}`, note: '候选片段缩略图（源素材取样，非成片）' });
+    else preview(null);
+  };
+  const durationUs = view.probe!.duration_us;
+  const candidateClips: TimelineClip[] = (page.data?.items ?? []).map((it) => ({
+    id: it.segment_id, start: it.start_us, end: it.end_us, label: it.segment_id, tone: picked.has(it.segment_id) ? 'selected' : 'candidate',
+    title: `${it.segment_id} · ${usToClock(it.start_us)} – ${usToClock(it.end_us)} · ${reasonText[it.reason]}`,
+    active: focusId === it.segment_id, onSelect: () => show(it)
+  }));
+  const selectedClips: TimelineClip[] = typeof segments === 'string' ? [] : segments.map((it) => ({
+    id: it.segment_id, start: it.start_us, end: it.end_us, label: it.segment_id, tone: 'video',
+    title: `${it.segment_id} · ${usToClock(it.start_us)} – ${usToClock(it.end_us)}`
+  }));
 
   return <div className="ingest-review">
+    <Timeline label="源时间线" duration={durationUs} formatTick={tickClock}
+      caption={`本页候选 ${page.data?.items.length ?? 0} 个 · 已选 ${picked.size} 段 · 点击候选在源监视器查看缩略图`}
+      tracks={[{ id: 'C', name: '候选', hint: '当前页的自动候选片段', clips: candidateClips },
+        { id: 'V1', name: '已选', hint: '将保存为选择版本的完整列表（含跨页与拆分片段）', clips: selectedClips }]}
+      emptyText="当前分析版本暂无候选片段" />
     <h4>候选片段（{total} 个，方法 {view.segments!.method_version}，已选 {picked.size}）</h4>
     {page.isError && <p role="alert" className="inline-error">{message(page.error)}</p>}
     <ol className="segment-list" start={offset + 1}>{page.data?.items.map((it) => {
       const draft = picked.get(it.segment_id);
       return <li key={it.segment_id} className={draft ? 'is-selected' : ''}>
-        {it.thumbnail_key ? <img src={ingestFileURL(run.run_id, it.thumbnail_key)} alt={`${it.segment_id} 缩略图`} loading="lazy" /> : <span className="segment-thumb-missing">无缩略图</span>}
+        <button type="button" className={`segment-thumb${focusId === it.segment_id ? ' is-active' : ''}`} onClick={() => show(it)} aria-label={`在源监视器查看 ${it.segment_id}`}>
+          {it.thumbnail_key ? <img src={ingestFileURL(run.run_id, it.thumbnail_key)} alt={`${it.segment_id} 缩略图`} loading="lazy" /> : <span className="segment-thumb-missing">无缩略图</span>}
+        </button>
         <div className="segment-meta">
           <label><input type="checkbox" checked={Boolean(draft)} disabled={busy} onChange={() => toggle(it)} /> {it.segment_id}</label>
           <small>{usToClock(it.start_us)} – {usToClock(it.end_us)} · {reasonText[it.reason]} · 分数 {it.score.toFixed(2)}</small>
@@ -343,11 +403,15 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
 
 function ReadyFiles({ view }: { view: IngestRunView }) {
   const media = view.files.filter((k) => k.startsWith('media_'));
+  const preview = usePreview();
+  const open = (k: string) => preview({ kind: 'video', src: ingestFileURL(view.run.run_id, k), title: k.slice('media_'.length), meta: `导入运行 ${view.run.run_id}`, note: '已生成短片（EDL 包媒体）' });
+  useEffect(() => { if (media[0]) open(media[0]); }, [view.run.run_id, media[0]]);
   return <div className="ingest-ready">
-    <p>已生成 {media.length} 个短片，资产已切换为 EDL 包，可在下方「处理预设与运行准备」中启动内容流程。内容质量仍需人工验收。</p>
+    <p>已生成 {media.length} 个短片，资产已切换为 EDL 包，可到「准备」页启动内容流程。内容质量仍需人工验收。</p>
     <div className="workflow-evidence">{media.map((k) => <figure key={k}>
       <video controls preload="metadata" src={ingestFileURL(view.run.run_id, k)} />
-      <figcaption>{k.slice('media_'.length)}</figcaption>
+      <figcaption><span>{k.slice('media_'.length)}</span>
+        <button type="button" className="secondary-button compact" onClick={() => open(k)}>送到源监视器</button></figcaption>
     </figure>)}</div>
   </div>;
 }

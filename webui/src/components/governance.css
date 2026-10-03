@@ -61,8 +61,8 @@
 
 /* 草稿标记：底色不同于状态 pill，且带文字标签，不只靠颜色区分。 */
 .pill-draft {
-  background: #4a3a1f;
-  color: #f2d9a0;
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 
 /* ---- 详情块 ---- */
@@ -130,7 +130,7 @@ dd small {
   display: block;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: .78rem;
-  color: #b9cacd;
+  color: var(--muted);
 }
 
 /* ---- 关联任务 ---- */
@@ -190,7 +190,7 @@ dd small {
   padding: .3rem .55rem;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: #16222a;
+  background: var(--surface-sunken);
   font-size: .76rem;
 }
 
@@ -253,7 +253,7 @@ dd small {
   padding: .2rem .55rem;
   border: 1px solid var(--border);
   border-radius: .5rem;
-  background: #0f191e;
+  background: var(--surface-sunken);
   cursor: pointer;
 }
 
@@ -282,10 +282,10 @@ dd small {
 .import-box textarea {
   width: 100%;
   padding: .58rem .72rem;
-  border: 1px solid #52616a;
+  border: 1px solid var(--border-strong);
   border-radius: .5rem;
-  background: #0f191e;
-  color: #f1f5f6;
+  background: var(--surface-sunken);
+  color: var(--text);
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: .8rem;
   resize: vertical;
@@ -305,9 +305,9 @@ dd small {
   justify-content: space-between;
   gap: .6rem;
   padding: .6rem .7rem;
-  border: 1px dashed #6b5a2f;
+  border: 1px dashed var(--warn);
   border-radius: .5rem;
-  background: #1a1c18;
+  background: var(--surface-sunken);
 }
 
 .draft-list li > div {
@@ -359,7 +359,7 @@ dd small {
 }
 
 .audit-detail-list li.is-open {
-  background: #16222a;
+  background: var(--surface-sunken);
   border-radius: .5rem;
   padding: .6rem .7rem;
   margin-top: .2rem;
@@ -400,7 +400,7 @@ dd small {
 .audit-summary .audit-action-value {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: .74rem;
-  color: #9fb6bd;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 
@@ -413,8 +413,8 @@ dd small {
 .audit-summary .audit-kind {
   padding: .12rem .45rem;
   border-radius: 999px;
-  background: #294038;
-  color: #c6f1dc;
+  background: var(--surface-raised);
+  color: var(--muted);
   font-size: .68rem;
   white-space: nowrap;
 }
@@ -422,7 +422,7 @@ dd small {
 .audit-row-target {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: .76rem;
-  color: #b9cacd;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 
@@ -445,8 +445,8 @@ dd small {
   padding: .55rem .65rem;
   border: 1px solid var(--border);
   border-radius: .4rem;
-  background: #0f191e;
-  color: #d5e3e6;
+  background: var(--surface-sunken);
+  color: var(--text);
   font-size: .78rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
