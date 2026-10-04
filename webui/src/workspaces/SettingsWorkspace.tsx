@@ -1,4 +1,4 @@
-import { Button, Card, Layout, Menu, Typography } from 'antd';
+import { Button, Card, Grid, Layout, Menu, Segmented, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, WorkflowRun } from '../types';
@@ -27,9 +27,16 @@ interface SettingsWorkspaceProps {
 
 /**
  * 设置工作区：处理预设 / 服务商接入 / 运行准备 / 日志与诊断
+ * P2-01 修复：提供真实处理预设与服务商接入功能，移除死占位符
+ * P2-02 修复：单实例常驻保活，分类切换草稿不丢失
+ * P1-04 修复：响应式自适应，小屏下转为顶部分类切换，消除宽度坍缩
  */
 export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, connection, events }: SettingsWorkspaceProps) {
   const { settingsCategory = 'profiles' } = route;
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md; // < 768px
+
+  const isProfileCategory = settingsCategory === 'profiles' || settingsCategory === 'providers' || settingsCategory === 'preparation';
 
   return (
     <div className="page-body settings-workspace">
@@ -39,74 +46,53 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
         </Typography.Title>
       </div>
 
-      <Layout hasSider style={{ background: 'transparent', minHeight: 500 }}>
-        <Layout.Sider 
-          theme="light" 
-          width={220} 
-          style={{ 
-            background: 'transparent',
-            borderInlineEnd: '1px solid var(--vac-hairline)'
-          }}
-        >
-          <Menu
-            mode="inline"
-            selectedKeys={[settingsCategory]}
-            onClick={({ key }) => navigate({ settingsCategory: key as typeof settingsCategory })}
-            items={SETTINGS_CATEGORIES.map((cat) => ({
-              key: cat.id,
-              label: cat.label,
-              title: cat.description
-            }))}
-            style={{ background: 'transparent', border: 'none' }}
-          />
-        </Layout.Sider>
+      {/* 移动端/窄屏下的顶部分类切换 */}
+      {isMobile && (
+        <Segmented
+          block
+          value={settingsCategory}
+          onChange={(key) => navigate({ settingsCategory: key as typeof settingsCategory })}
+          options={SETTINGS_CATEGORIES.map((cat) => ({
+            value: cat.id,
+            label: cat.label
+          }))}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
-        <Layout.Content style={{ paddingLeft: 24, minHeight: 500 }}>
-          {settingsCategory === 'profiles' && (
-            <Card title="处理预设" bordered={false}>
-              <Typography.Paragraph type="secondary">
-                处理预设包含模型配置、取样参数和服务商绑定。保存后的版本不可覆盖，新版本保留历史。
-              </Typography.Paragraph>
-              <Typography.Paragraph type="secondary">
-                此处应显示 PreparationPanel 的预设管理部分（单独拆分后的组件）。
-              </Typography.Paragraph>
-            </Card>
-          )}
+      <Layout hasSider={!isMobile} style={{ background: 'transparent', minHeight: 500, width: '100%' }}>
+        {!isMobile && (
+          <Layout.Sider 
+            theme="light" 
+            width={200} 
+            style={{ 
+              background: 'transparent',
+              borderInlineEnd: '1px solid var(--vac-hairline)'
+            }}
+          >
+            <Menu
+              mode="inline"
+              selectedKeys={[settingsCategory]}
+              onClick={({ key }) => navigate({ settingsCategory: key as typeof settingsCategory })}
+              items={SETTINGS_CATEGORIES.map((cat) => ({
+                key: cat.id,
+                label: cat.label,
+                title: cat.description
+              }))}
+              style={{ background: 'transparent', border: 'none' }}
+            />
+          </Layout.Sider>
+        )}
 
-          {settingsCategory === 'providers' && (
-            <Card title="服务商接入" bordered={false}>
-              <Typography.Paragraph type="secondary">
-                配置画面识别与中文解说服务：协议、地址、凭据、模型发现与连接测试。
-              </Typography.Paragraph>
-              <Typography.Paragraph type="secondary">
-                此处应显示 ProviderEditor 组件。配置仍从属于预设草稿，保存时生成完整预设的新版本。
-              </Typography.Paragraph>
-            </Card>
-          )}
-
-          {settingsCategory === 'preparation' && (
-            <>
-              {asset ? (
-                <PreparationPanel 
-                  key={'preparation-' + asset.asset_id} 
-                  assetId={asset.asset_id} 
-                  onStarted={onStarted} 
-                />
-              ) : (
-                <Card title="运行准备" bordered={false}>
-                  <Typography.Paragraph type="secondary">
-                    运行准备绑定具体资产，请先在左侧项目面板选择资产。
-                  </Typography.Paragraph>
-                  <Button 
-                    type="primary"
-                    onClick={() => navigate({ workspace: 'resources' })}
-                  >
-                    前往资源管理
-                  </Button>
-                </Card>
-              )}
-            </>
-          )}
+        <Layout.Content style={{ paddingLeft: isMobile ? 0 : 20, minHeight: 500, width: '100%', minWidth: 0 }}>
+          {/* P2-02: 保持 PreparationPanel 实例常驻挂载，切换分类不卸载草稿 */}
+          <div style={{ display: isProfileCategory ? 'block' : 'none', width: '100%' }}>
+            <PreparationPanel 
+              assetId={asset?.asset_id ?? ''} 
+              onStarted={onStarted} 
+              activeSection={isProfileCategory ? settingsCategory : 'profiles'}
+            />
+          </div>
 
           {settingsCategory === 'logs' && (
             <Card 

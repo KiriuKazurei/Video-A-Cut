@@ -37,11 +37,13 @@ body { background: var(--vac-bg); }
 .app-header { display: flex; background: radial-gradient(240px 56px at 50% 0, rgba(22, 119, 255, 0.2), transparent) var(--vac-bg); align-items: center; gap: 16px; height: auto; min-height: 56px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.app-nav-wrap { flex: 1; min-width: 0; display: flex; justify-content: center; }
-/* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳六个页签，空间不足时收缩并由 antd 折叠进「…」。
-   若用 auto 宽度，折叠后内容变窄又会触发重新测量，窄屏下会停在未折叠状态而越界。 */
-.app-nav { flex: 0 1 618px; min-width: 0; justify-content: center; border-bottom: 0 !important; }
-.app-header-right { display: flex; align-items: center; gap: 12px; flex: none; }
+.app-nav-wrap { flex: 0 1 auto; min-width: 280px; display: flex; justify-content: center; }
+/* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳四个工作区页签 */
+.app-nav { flex: 0 1 420px; min-width: 260px; justify-content: center; border-bottom: 0 !important; }
+.app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+@media (max-width: 1279px) {
+  .app-connection .ant-badge-status-text { display: none; }
+}
 .app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--vac-hairline); }
 .app-footer-meta { font-size: 12px; }
 
@@ -214,6 +216,23 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   .edit-stage { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* 保证主舞台和页面在任何宽度下不坍缩，并作为折叠按钮的定位基准 (P2-04) */
+.stage-main {
+  position: relative;
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.workspace-page {
+  width: 100%;
+  min-width: 0;
+}
+.page-body {
+  width: 100%;
+  min-width: 0;
+}
+
 /* md 及以下（<960px）：移动端布局，侧栏收起，顶部增加抽屉按钮 */
 @media (max-width: 959px) {
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }
@@ -221,8 +240,10 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   .app-nav-wrap { order: 3; flex: 1 0 100%; width: 100%; }
   .app-header-right { margin-left: auto; }
   .app-connection .ant-badge-status-text { display: none; }
-  .workspace { display: flex !important; flex-direction: column !important; }
-  .stage-main { overflow: visible; padding: 8px; }
+  .workspace { display: flex !important; flex-direction: column !important; width: 100% !important; }
+  .stage-main { overflow: visible; padding: 8px !important; width: 100% !important; box-sizing: border-box !important; }
+  .workspace-page { width: 100% !important; }
+  .page-body { width: 100% !important; box-sizing: border-box !important; }
   .sider-toggles { display: none; }
   .sticky-monitor { position: static; }
   .timeline-ruler, .timeline-track { grid-template-columns: 64px minmax(0, 1fr); }

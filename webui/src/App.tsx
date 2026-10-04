@@ -197,8 +197,8 @@ export default function App() {
           />
         </div>
 
-        {/* Phase 3: 全流程阶段指示器 */}
-        {screens.md && (
+        {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
+        {screens.xl && (
           <PipelineStepper 
             route={route} 
             navigate={navigate} 
@@ -207,43 +207,47 @@ export default function App() {
         )}
         
         <div className="app-header-right">
-          {/* Phase 3: 全局快捷操作栏 (移动端<768px隐藏) */}
+          {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
           {screens.md && (
             <div className="app-quick-actions">
-            <Select
-              size="small"
-              placeholder="选择资产"
-              value={assetId || undefined}
-              onChange={(val) => setSelectedId(val)}
-              options={assets.data?.map((a) => ({
-                value: a.asset_id,
-                label: `${a.asset_id} (${a.input_kind === 'raw_recording' ? '录像' : '素材'})`
-              }))}
-              style={{ width: screens.sm ? 130 : 90 }}
-              aria-label="快速切换资产"
-              popupMatchSelectWidth={false}
-            />
-
-            <Tooltip title={assetId ? `为资产 ${assetId} 打开运行准备` : '打开运行准备'}>
-              <Button
+              <Select
                 size="small"
-                icon={<ThunderboltOutlined />}
-                onClick={() => navigate({ workspace: 'settings', settingsCategory: 'preparation' })}
-              >
-                {screens.sm ? '运行准备' : '准备'}
-              </Button>
-            </Tooltip>
+                placeholder="选择资产"
+                value={assetId || undefined}
+                onChange={(val) => setSelectedId(val)}
+                options={assets.data?.map((a) => ({
+                  value: a.asset_id,
+                  label: `${a.asset_id} (${a.input_kind === 'raw_recording' ? '录像' : '素材'})`
+                }))}
+                style={{ width: screens.sm ? 120 : 90 }}
+                aria-label="快速切换资产"
+                popupMatchSelectWidth={false}
+              />
 
-            <Tooltip title="查看审计与诊断日志">
-              <Button
-                size="small"
-                icon={<FileSearchOutlined />}
-                onClick={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })}
-              >
-                {screens.sm ? '查看日志' : '日志'}
-              </Button>
-            </Tooltip>
-          </div>
+              {screens.xl && (
+                <>
+                  <Tooltip title={assetId ? `为资产 ${assetId} 打开运行准备` : '打开运行准备'}>
+                    <Button
+                      size="small"
+                      icon={<ThunderboltOutlined />}
+                      onClick={() => navigate({ workspace: 'settings', settingsCategory: 'preparation' })}
+                    >
+                      运行准备
+                    </Button>
+                  </Tooltip>
+
+                  <Tooltip title="查看审计与诊断日志">
+                    <Button
+                      size="small"
+                      icon={<FileSearchOutlined />}
+                      onClick={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })}
+                    >
+                      查看日志
+                    </Button>
+                  </Tooltip>
+                </>
+              )}
+            </div>
           )}
 
           {!useSidebar && workspace !== 'settings' && (
@@ -300,7 +304,7 @@ export default function App() {
         </div>
       </Layout.Header>
 
-      <Layout hasSider className={`workspace workspace-${workspace}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
+      <Layout hasSider={Boolean(showLeftSider || showRightSider)} className={`workspace workspace-${workspace}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
         {/* 左侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showLeftSider && (
           <Layout.Sider 
@@ -371,6 +375,7 @@ export default function App() {
               audit={audit}
               task={task}
               watchedTaskId={watchedTaskId}
+              onWatchTask={setWatchedTaskId}
               createTask={createTask}
             />
           </WorkspacePage>

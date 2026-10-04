@@ -28,6 +28,30 @@ export function isTypingContext(target: EventTarget | null): boolean {
 }
 
 /** 
+ * P2-05: 判断当前焦点是否在按钮、滑块、链接、标签页等可交互控件上
+ * 用于保护原生控件的键盘行为（如 Space 激活按钮、左右箭头调节滑块数值等）
+ */
+export function isInteractiveControl(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  if (tag === 'button' || tag === 'a') return true;
+  if (
+    target.closest('button') ||
+    target.closest('a') ||
+    target.closest('.ant-btn') ||
+    target.closest('.ant-slider') ||
+    target.closest('.ant-tabs-tab') ||
+    target.closest('[role="slider"]') ||
+    target.closest('[role="button"]') ||
+    target.closest('[role="tab"]') ||
+    target.closest('[role="combobox"]')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** 
  * 查找当前可见的媒体元素（优先主工作区，其次 Modal/Drawer，最后全局）
  * 支持多种容器，避免硬编码选择器
  */
@@ -113,8 +137,13 @@ export function useKeyboardShortcuts({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 帮助弹框打开时按 Escape 关闭（close 由 Modal 自身处理，此处仅拦截后续快捷键，避免重复响应）
-      if (isHelpOpen && e.key === 'Escape') {
+      // P2-06: 帮助弹窗或覆盖层打开时，完全屏蔽背景工作区切换与媒体控制快捷键
+      if (isHelpOpen || document.querySelector('.ant-modal-root, .ant-drawer-open')) {
+        return;
+      }
+
+      // 如果事件已经被其他原生或组件逻辑阻止，则不重复拦截
+      if (e.defaultPrevented) {
         return;
       }
 
@@ -169,8 +198,12 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // 空格键：播放/暂停
+      // P2-05: 空格键与媒体快捷键保护交互控件原生行为（按钮空格激活、滑块左右箭头等）
       if (e.code === 'Space') {
+        if (isInteractiveControl(e.target)) {
+          // 焦点在按钮、滑块、标签页等控件上时，保留原生空格激活行为，不触发媒体播放
+          return;
+        }
         const handled = toggleMediaPlayback();
         if (handled) {
           e.preventDefault();
@@ -180,28 +213,40 @@ export function useKeyboardShortcuts({
 
       // J / K / L 简易快进退控制
       if (e.key === 'k' || e.key === 'K') {
-        const handled = toggleMediaPlayback();
-        if (handled) e.preventDefault();
+        if (!isInteractiveControl(e.target)) {
+          const handled = toggleMediaPlayback();
+          if (handled) e.preventDefault();
+        }
         return;
       }
       if (e.key === 'j' || e.key === 'J') {
-        const handled = seekMedia(-2);
-        if (handled) e.preventDefault();
+        if (!isInteractiveControl(e.target)) {
+          const handled = seekMedia(-2);
+          if (handled) e.preventDefault();
+        }
         return;
       }
       if (e.key === 'l' || e.key === 'L') {
-        const handled = seekMedia(2);
-        if (handled) e.preventDefault();
+        if (!isInteractiveControl(e.target)) {
+          const handled = seekMedia(2);
+          if (handled) e.preventDefault();
+        }
         return;
       }
 
-      // 方向键快退/快进 (无修饰键且在媒体上下文)
+      // 方向键快退/快进 (P2-05: 仅在非交互控件如滑块/按钮时触发)
       if (e.key === 'ArrowLeft') {
+        if (isInteractiveControl(e.target)) {
+          return;
+        }
         const handled = seekMedia(-2);
         if (handled) e.preventDefault();
         return;
       }
       if (e.key === 'ArrowRight') {
+        if (isInteractiveControl(e.target)) {
+          return;
+        }
         const handled = seekMedia(2);
         if (handled) e.preventDefault();
         return;

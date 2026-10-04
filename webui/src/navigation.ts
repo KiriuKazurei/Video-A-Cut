@@ -94,7 +94,7 @@ function parseHash(): RouteState {
   const raw = window.location.hash.replace(/^#\/?/, '').split('/');
   const [first, second] = raw;
 
-  // 旧路径兼容
+  // 旧路径兼容：仅当没有二级子路径（单段旧 URL，如 #/import、#/export、#/monitor 等）时触发
   const legacyMap: Record<string, RouteState> = {
     'import': { workspace: 'editing', editingSection: 'import' },
     'assembly': { workspace: 'editing', editingSection: 'import' },
@@ -103,7 +103,7 @@ function parseHash(): RouteState {
     'export': { workspace: 'export', exportSection: 'delivery' },
     'monitor': { workspace: 'export', exportSection: 'tasks' }
   };
-  if (legacyMap[first]) return legacyMap[first];
+  if (!second && legacyMap[first]) return legacyMap[first];
 
   // 新路径解析
   const workspace = WORKSPACES.find((w) => w.id === first)?.id ?? DEFAULT_WORKSPACE;
