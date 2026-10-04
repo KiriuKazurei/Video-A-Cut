@@ -113,8 +113,25 @@ export function EditPage({ page, asset, selection, onGoExport }: { page: PageDef
 /* ---------------- 05 导出 ---------------- */
 
 export function ExportPage({ page, asset, selection }: { page: PageDef; asset?: Asset; selection: RunSelection }) {
-  const [preview, setPreview] = usePagePreview(asset?.asset_id);
-  return <PreviewScope onPreview={setPreview}><div className="page-body">
+  const [selectedFileKeyByAsset, setSelectedFileKeyByAsset] = useState<Record<string, string>>({});
+  const files = useDeliveryFiles(asset);
+
+  // 从当前资产文件列表筛选可播放文件
+  const playable = (files.data ?? []).filter((file) => file.playable);
+  const assetId = asset?.asset_id;
+  const selectedKey = assetId ? selectedFileKeyByAsset[assetId] : undefined;
+  const selectedFile = playable.find((file) => file.key === selectedKey) ?? playable[0];
+
+  // 直接从当前数据计算预览，不使用 effect 推送
+  const preview = asset && selectedFile ? filePreview(asset.asset_id, selectedFile) : null;
+
+  const handleSelectFile = (key: string) => {
+    if (assetId) {
+      setSelectedFileKeyByAsset((prev) => ({ ...prev, [assetId]: key }));
+    }
+  };
+
+  return <div className="page-body">
     <PageHeader page={page} />
     <Row gutter={[16, 16]}>
       <Col xs={24} xl={14}>
@@ -124,9 +141,9 @@ export function ExportPage({ page, asset, selection }: { page: PageDef; asset?: 
           {asset && <AcceptancePanel key={asset.asset_id} assetId={asset.asset_id} selection={selection} />}
         </Flex>
       </Col>
-      <Col xs={24} xl={10}><DeliveryPanel asset={asset} /></Col>
+      <Col xs={24} xl={10}><DeliveryPanel asset={asset} files={files} selectedFile={selectedFile} onSelectFile={handleSelectFile} /></Col>
     </Row>
-  </div></PreviewScope>;
+  </div>;
 }
 
 /* ---------------- 06 监控 ---------------- */

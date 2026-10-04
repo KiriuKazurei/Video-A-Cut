@@ -7,9 +7,11 @@ import {
 import { api } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
 import { useEvents } from './useEvents';
+import { refreshSnapshot } from './queryRefresh';
 import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { MediaBin } from './components/MediaBin';
 import { Inspector } from './components/Inspector';
+import { WorkspacePage } from './components/WorkspacePage';
 import type { RunSelection } from './components/WorkflowPanel';
 import { PAGES, useHashPage, type PageId } from './navigation';
 import { siderTheme } from './theme';
@@ -40,7 +42,7 @@ export default function App() {
   const { status: connection, ...events } = useEvents(queryClient, watchedTaskId);
 
   const assets = useQuery({ queryKey: ['assets'], queryFn: api.listAssets });
-  const audit = useQuery({ queryKey: ['audit'], queryFn: () => api.listAudit(100) });
+  const audit = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100) });
   // 任务查询保留在此：编排控制台通过 props 复用它，避免同一任务被两条 15 秒轮询各拉一次。
   const task = useQuery({
     queryKey: ['task', watchedTaskId],
@@ -116,9 +118,7 @@ export default function App() {
             status={connection === 'connected' ? 'success' : connection === 'connecting' || connection === 'reconnecting' ? 'processing' : 'error'}
             text={connectionText} />
           <Button icon={<ReloadOutlined />} onClick={() => {
-            void queryClient.invalidateQueries({ queryKey: ['assets'] });
-            void queryClient.invalidateQueries({ queryKey: ['audit'] });
-            if (watchedTaskId) void queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] });
+            void refreshSnapshot(queryClient, watchedTaskId);
           }}>刷新快照</Button>
         </div>
       </Layout.Header>
@@ -130,25 +130,25 @@ export default function App() {
           </ConfigProvider>
         </Layout.Sider>
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}页`}>
-          <div className="page" data-page-view="import" hidden={page !== 'import'}>
+          <WorkspacePage pageId="import" active={page === 'import'}>
             <ImportPage page={pageDef('import')} asset={selected} onSelect={setSelectedId} />
-          </div>
-          <div className="page" data-page-view="assembly" hidden={page !== 'assembly'}>
+          </WorkspacePage>
+          <WorkspacePage pageId="assembly" active={page === 'assembly'}>
             <AssemblyPage page={pageDef('assembly')} asset={selected} />
-          </div>
-          <div className="page" data-page-view="prepare" hidden={page !== 'prepare'}>
+          </WorkspacePage>
+          <WorkspacePage pageId="prepare" active={page === 'prepare'}>
             <PreparePage page={pageDef('prepare')} asset={selected} onStarted={onPreparedStarted} />
-          </div>
-          <div className="page" data-page-view="edit" hidden={page !== 'edit'}>
+          </WorkspacePage>
+          <WorkspacePage pageId="edit" active={page === 'edit'}>
             <EditPage page={pageDef('edit')} asset={selected} selection={selection} onGoExport={() => navigate('export')} />
-          </div>
-          <div className="page" data-page-view="export" hidden={page !== 'export'}>
+          </WorkspacePage>
+          <WorkspacePage pageId="export" active={page === 'export'}>
             <ExportPage page={pageDef('export')} asset={selected} selection={selection} />
-          </div>
-          <div className="page" data-page-view="monitor" hidden={page !== 'monitor'}>
+          </WorkspacePage>
+          <WorkspacePage pageId="monitor" active={page === 'monitor'}>
             <MonitorPage page={pageDef('monitor')} asset={selected} audit={audit} task={task}
               watchedTaskId={watchedTaskId} createTask={createTask} />
-          </div>
+          </WorkspacePage>
         </Layout.Content>
         <Layout.Sider theme="light" width={siderWidths[1]} className="dock dock-right" aria-label="属性面板" style={{ borderInlineStart: siderBorder }}>
           <ConfigProvider theme={siderTheme}>

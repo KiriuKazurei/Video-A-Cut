@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, deliveryFileURL, deliveryZipURL, ApiError } from '../api';
+import { invalidateDeliveryFiles } from '../queryRefresh';
 import type { Asset, DeliveryFile } from '../types';
-import { usePreview } from './Monitor';
 import { Alert, Button, Card, Empty, Flex, Form, Input, List, Space, Tag, Typography } from 'antd';
 import { AudioOutlined, DownloadOutlined, FileImageOutlined, FileOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { ValueSelect } from './ui';
@@ -41,6 +41,7 @@ export function DeliveryImport({ onImported }: { onImported: (assetId: string) =
       setPackageDir('');
       void queryClient.invalidateQueries({ queryKey: ['assets'] });
       void queryClient.invalidateQueries({ queryKey: ['audit'] });
+      void invalidateDeliveryFiles(queryClient, created.asset_id);
       onImported(created.asset_id);
     }
   });
@@ -62,39 +63,37 @@ export function DeliveryImport({ onImported }: { onImported: (assetId: string) =
 }
 
 /** 导出页：资产产物列表、节目监视器预览、单文件下载、资产 ZIP 与重开（API-43~46）。 */
-export function DeliveryPanel({ asset }: { asset: Asset | undefined }) {
+export function DeliveryPanel({ asset, files, selectedFile, onSelectFile }: {
+  asset: Asset | undefined;
+  files: ReturnType<typeof useDeliveryFiles>;
+  selectedFile: DeliveryFile | undefined;
+  onSelectFile: (key: string) => void;
+}) {
   const queryClient = useQueryClient();
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const preview = usePreview();
-  const files = useDeliveryFiles(asset);
 
   const reopened = useMutation({
     mutationFn: (id: string) => api.reopenAsset(id),
     onSuccess(updated) {
       queryClient.setQueryData<Asset[]>(['assets'], (previous) =>
         previous?.map((item) => item.asset_id === updated.asset_id ? updated : item));
-      void queryClient.invalidateQueries({ queryKey: ['deliveryFiles', updated.asset_id] });
+      void invalidateDeliveryFiles(queryClient, updated.asset_id);
       void queryClient.invalidateQueries({ queryKey: ['audit'] });
     }
   });
 
   const playable = (files.data ?? []).filter((file) => file.playable);
-  const selected = playable.find((file) => file.key === selectedKey) ?? playable[0];
-  // 文件列表以资产 ID 区分：切换资产或文件后重新推送，不把上一资产的媒体留在监视器里。
-  useEffect(() => {
-    preview(asset && selected ? filePreview(asset.asset_id, selected) : null);
-  }, [asset?.asset_id, selected?.key]);
 
   const icon = (mime: string) => mime.startsWith('video/') ? <VideoCameraOutlined /> : mime.startsWith('audio/') ? <AudioOutlined /> : mime.startsWith('image/') ? <FileImageOutlined /> : <FileOutlined />;
   return (
     <Card size="small" className="delivery-panel" aria-labelledby="delivery-title" title={<span id="delivery-title">交付文件</span>}
-      extra={files.isSuccess && <Tag>{files.data.length} 个文件</Tag>}>
+      extra={files.data && <Tag>{files.data.length} 个文件</Tag>}>
       {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择资产后可查看已登记的媒体和交付文件。" />}
       {asset && <Flex vertical gap={12} className="delivery-files">
-        {files.isPending && <Typography.Text type="secondary">正在读取产物…</Typography.Text>}
-        {files.isError && <Alert type="error" showIcon role="alert" message={`产物读取失败：${errorText(files.error)}`} />}
+        {files.isPending && !files.data && <Typography.Text type="secondary">正在读取产物…</Typography.Text>}
+        {files.isError && <Alert type="error" showIcon role="alert" message={`产物读取失败：${errorText(files.error)}`}
+          action={<Button size="small" onClick={() => void files.refetch()}>重试</Button>} />}
         {files.isSuccess && files.data.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此资产尚无已登记产物。完成内容流程或在「导入」页导入交付包后会出现在这里。" />}
-        {files.isSuccess && files.data.length > 0 && <>
+        {files.data && files.data.length > 0 && <>
           <Space wrap className="delivery-actions">
             <Button type="primary" icon={<DownloadOutlined />} href={deliveryZipURL(asset.asset_id)}>下载资产交付 ZIP</Button>
             {asset.status === 'exported' && <Button disabled={reopened.isPending} aria-describedby="reopen-hint" onClick={() => reopened.mutate(asset.asset_id)}>
@@ -104,13 +103,13 @@ export function DeliveryPanel({ asset }: { asset: Asset | undefined }) {
             重开会以当前导出包作为新的源素材，把资产状态改回“已入库”，治理设置保持不变；资产上有进行中的任务时服务端会拒绝。</Typography.Text>}
           {reopened.isError && <Alert type="error" showIcon role="alert" message={`重开失败：${errorText(reopened.error)}`} />}
           {playable.length > 0 && <Form.Item label="节目监视器中的文件" layout="vertical" style={{ marginBottom: 0 }}>
-            <ValueSelect<string> id="delivery-preview-file" className="select-delivery-preview" value={selected?.key} onChange={setSelectedKey}
+            <ValueSelect<string> id="delivery-preview-file" className="select-delivery-preview" value={selectedFile?.key} onChange={onSelectFile}
               options={playable.map((file) => ({ value: file.key, label: file.name }))} />
           </Form.Item>}
           <List size="small" bordered className="delivery-file-list" dataSource={files.data} renderItem={(file) => <List.Item key={file.key}
-            className={selected?.key === file.key ? 'is-selected' : undefined}
+            className={selectedFile?.key === file.key ? 'is-selected' : undefined}
             actions={[
-              ...(file.playable ? [<Button key="preview" size="small" type={selected?.key === file.key ? 'primary' : 'default'} onClick={() => setSelectedKey(file.key)}>预览</Button>] : []),
+              ...(file.playable ? [<Button key="preview" size="small" type={selectedFile?.key === file.key ? 'primary' : 'default'} onClick={() => onSelectFile(file.key)}>预览</Button>] : []),
               <Typography.Link key="download" href={deliveryFileURL(asset.asset_id, file.key, true)} download>下载</Typography.Link>]}>
             <List.Item.Meta avatar={icon(file.mime)} title={file.name} description={<span style={{ overflowWrap: 'anywhere' }}>{file.key} · {sizeText(file.size)}</span>} />
           </List.Item>} />

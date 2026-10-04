@@ -338,6 +338,7 @@ func TestSSESubscribesEveryKnownEventName(t *testing.T) {
 		"asset_updated",
 		"task_created",
 		"task_updated",
+		"audit.changed",
 	}
 
 	srv := newBusServer(t)
@@ -639,4 +640,40 @@ func shrinkHeartbeat(d time.Duration) func() {
 	prev := sseHeartbeatInterval
 	sseHeartbeatInterval = d
 	return func() { sseHeartbeatInterval = prev }
+}
+
+func TestSSEStreamsAuditChanged(t *testing.T) {
+	srv := newBusServer(t)
+	st, _ := connectSSE(t, srv)
+	defer st.stop()
+
+	ctx := context.Background()
+	_, err := srv.svc.UpdateAssetGovernance(ctx, "human:operator", sseAsset.AssetID, model.Asset{
+		AssetID:      sseAsset.AssetID,
+		AgentVisible: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAssetGovernance: %v", err)
+	}
+
+	found := false
+	for i := 0; i < 5; i++ {
+		f, err := st.frame(t)
+		if err != nil {
+			t.Fatalf("frame error: %v", err)
+		}
+		if f.comment {
+			continue
+		}
+		if f.name == "audit.changed" {
+			found = true
+			if f.data != "{}" {
+				t.Fatalf("data payload = %q, want %q", f.data, "{}")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("did not receive audit.changed event on SSE stream")
+	}
 }

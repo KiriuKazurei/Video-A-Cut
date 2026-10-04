@@ -51,7 +51,7 @@ export default function AuditLogViewer() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const auditQuery = useQuery({
-    queryKey: ['audit-panel', limit],
+    queryKey: ['audit', 'panel', limit],
     queryFn: () => fetchAuditLogs(limit),
     staleTime: 15_000
   });

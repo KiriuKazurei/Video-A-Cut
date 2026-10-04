@@ -8,6 +8,11 @@ import {
   computeBackoffDelay,
   formatRetryDelay
 } from './sseBackoff';
+import {
+  handleSSEEvent,
+  refreshSnapshot,
+  SUPPORTED_SSE_EVENTS
+} from './queryRefresh';
 
 export const EVENTS_PATH = '/api/events';
 
@@ -89,26 +94,22 @@ export function useEvents(
   // 断线并重连，disconnect() 就形同虚设。
   const stoppedRef = useRef(false);
   const activeSourceRef = useRef<EventSource | null>(null);
+  const watchedTaskIdRef = useRef<string | null>(watchedTaskId);
+  useEffect(() => {
+    watchedTaskIdRef.current = watchedTaskId;
+  }, [watchedTaskId]);
+
   // 只让 watcher 引用最新的回调，避免 queryClient/watchedTaskId 变化时
   // 重建连接（重建会丢退避进度，并让"断线后仍能刷新"退化成反复连接）。
   const refreshRef = useRef<() => void>(() => {});
 
-  const refreshSnapshot = useCallback(() => {
-    void queryClient.invalidateQueries({queryKey:['processing-profiles']});
-    void queryClient.invalidateQueries({queryKey:['prepared']});
-    void queryClient.invalidateQueries({ queryKey: ['workflows'] });
-    void queryClient.invalidateQueries({ queryKey: ['review'] });
-    void queryClient.invalidateQueries({ queryKey: ['acceptance'] });
-    void queryClient.invalidateQueries({ queryKey: ['workflow'] });
-    void queryClient.invalidateQueries({ queryKey: ['assets'] });
-    void queryClient.invalidateQueries({ queryKey: ['audit'] });
-    void queryClient.invalidateQueries({ queryKey: ['ingest'] });
-    if (watchedTaskId) void queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] });
-  }, [queryClient, watchedTaskId]);
+  const refreshSnapshotCallback = useCallback(() => {
+    void refreshSnapshot(queryClient, watchedTaskIdRef.current);
+  }, [queryClient]);
 
   useEffect(() => {
-    refreshRef.current = refreshSnapshot;
-  }, [refreshSnapshot]);
+    refreshRef.current = refreshSnapshotCallback;
+  }, [refreshSnapshotCallback]);
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current !== null) {
@@ -190,34 +191,12 @@ export function useEvents(
       scheduleRetry();
     };
 
-    for (const name of ['asset_created', 'asset_updated']) {
-      source.addEventListener(name, () => {
-        void queryClient.invalidateQueries({ queryKey: ['assets'] });
-        void queryClient.invalidateQueries({ queryKey: ['audit'] });
-      });
-    }
-    for (const name of ['task_created', 'task_updated']) {
-      source.addEventListener(name, () => {
-        if (watchedTaskId) void queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] });
-        void queryClient.invalidateQueries({ queryKey: ['audit'] });
-        void queryClient.invalidateQueries({ queryKey: ['ingest', 'run'] });
-      });
-    }
-    for (const name of ['ingest.changed', 'capability.changed']) {
-      source.addEventListener(name, () => {
-        void queryClient.invalidateQueries({ queryKey: ['ingest'] });
-        void queryClient.invalidateQueries({ queryKey: ['assets'] });
-      });
-    }
-    for (const name of ['workflow.changed', 'review.changed', 'acceptance.changed', 'profile.changed','capability.changed']) {
-      source.addEventListener(name, () => {
-        void queryClient.invalidateQueries({ queryKey: ['workflows'] });
-        void queryClient.invalidateQueries({queryKey:['processing-profiles']});
-        void queryClient.invalidateQueries({queryKey:['prepared']});
-        void queryClient.invalidateQueries({ queryKey: ['workflow'] });
-        void queryClient.invalidateQueries({ queryKey: ['review'] });
-        void queryClient.invalidateQueries({ queryKey: ['acceptance'] });
-      });
+    const onEvent = (event: MessageEvent) => {
+      void handleSSEEvent(queryClient, event.type, event.data, watchedTaskIdRef.current);
+    };
+
+    for (const name of SUPPORTED_SSE_EVENTS) {
+      source.addEventListener(name, onEvent as EventListener);
     }
 
     return () => {
@@ -226,9 +205,12 @@ export function useEvents(
         activeSourceRef.current = null;
       }
       clearRetryTimer();
+      for (const name of SUPPORTED_SSE_EVENTS) {
+        source.removeEventListener(name, onEvent as EventListener);
+      }
       source.close();
     };
-  }, [queryClient, watchedTaskId, url, baseDelayMs, maxDelayMs, maxRetries, generation, clearRetryTimer]);
+  }, [queryClient, url, baseDelayMs, maxDelayMs, maxRetries, generation, clearRetryTimer]);
 
   return {
     status,

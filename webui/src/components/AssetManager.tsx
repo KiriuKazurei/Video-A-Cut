@@ -85,7 +85,7 @@ export default function AssetManager({ onSelect }: AssetManagerProps) {
   const [showImport, setShowImport] = useState(false);
 
   const assetsQuery = useQuery({ queryKey: ['assets'], queryFn: api.listAssets });
-  const auditQuery = useQuery({ queryKey: ['audit'], queryFn: () => api.listAudit(100) });
+  const auditQuery = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100) });
 
   /* --- 治理 PATCH：只发允许字段，成功后以服务端返回的 Asset 更新缓存 --- */
   const patch = useMutation({

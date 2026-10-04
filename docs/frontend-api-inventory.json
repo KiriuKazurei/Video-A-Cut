@@ -854,7 +854,7 @@
       "frontend_ui": "ConnectionStatusBar 与全站数据刷新",
       "request": "EventSource，无 JSON 请求体",
       "success_response": "200 text/event-stream",
-      "behavior": "10种事件；15秒心跳；无历史回放。每次 open/reconnect 都重新取 REST 快照",
+      "behavior": "11种事件（含 audit.changed）；15秒心跳；无历史回放。每次 open/reconnect 都重新取 REST 快照",
       "usage": "页面已使用",
       "backend_handler": "streamEvents",
       "backend_source": {

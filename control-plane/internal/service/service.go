@@ -95,5 +95,7 @@ func (s *Service) audit(ctx context.Context, actor, action, target, detail strin
 	}); err != nil {
 		slog.Default().Error("audit write failed",
 			"actor", actor, "action", action, "target", target, "err", err)
+		return
 	}
+	s.publish("audit.changed", map[string]any{})
 }
