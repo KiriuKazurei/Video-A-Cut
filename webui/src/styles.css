@@ -235,3 +235,125 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   .segment-row { grid-template-columns: 88px minmax(0, 1fr); }
   .segment-thumb { width: 88px; }
 }
+
+/* ---------- Phase 3: 侧栏可拖拽调整 ---------- */
+.dock-resizable { position: relative; }
+.sider-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 20;
+  transition: background-color 0.15s ease;
+}
+.sider-resizer:hover, .sider-resizer.is-dragging {
+  background-color: rgba(22, 119, 255, 0.5);
+  box-shadow: 0 0 6px rgba(22, 119, 255, 0.4);
+}
+.sider-resizer-left { right: -3px; }
+.sider-resizer-right { left: -3px; }
+
+/* ---------- Phase 3: 时间线可调整高度与最小化 ---------- */
+.timeline-resizable-container {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  margin-top: 12px;
+  border-radius: 8px;
+  transition: height 0.05s linear;
+}
+.timeline-resizer-bar {
+  height: 6px;
+  width: 100%;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 15;
+  transition: background-color 0.15s ease;
+}
+.timeline-resizer-bar::after {
+  content: '';
+  width: 36px;
+  height: 2px;
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.25);
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+.timeline-resizer-bar:hover, .timeline-resizer-bar.is-dragging {
+  background-color: rgba(22, 119, 255, 0.25);
+}
+.timeline-resizer-bar:hover::after, .timeline-resizer-bar.is-dragging::after {
+  width: 56px;
+  background-color: #1677ff;
+}
+.timeline-card-wrapper {
+  overflow-y: auto;
+  flex: 1;
+}
+.timeline-card-wrapper.is-collapsed {
+  display: none;
+}
+
+/* ---------- Phase 3: 顶部全局快捷操作与资产/流程切换 ---------- */
+.app-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quick-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--vac-hairline);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.quick-context-bar .ant-select {
+  font-size: 12px;
+}
+
+/* ---------- Phase 3: 全流程阶段状态指示器 ---------- */
+.pipeline-stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--vac-hairline);
+  border-radius: 20px;
+}
+.pipeline-step-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.55);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.pipeline-step-item:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.pipeline-step-item.is-current {
+  color: #fff;
+  background: rgba(22, 119, 255, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.5);
+  font-weight: 500;
+}
+.pipeline-step-item.is-done {
+  color: rgba(255, 255, 255, 0.85);
+}
+.pipeline-step-arrow {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 10px;
+}
+

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Typography, theme } from 'antd';
+import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
-  ExportOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  PlaySquareOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined
+  ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
+  PlaySquareOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined, VideoCameraOutlined
 } from '@ant-design/icons';
 import { api } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
@@ -16,6 +16,8 @@ import { WorkspacePage } from './components/WorkspacePage';
 import type { RunSelection } from './components/WorkflowPanel';
 import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
 import { siderTheme } from './theme';
+import { useResizable } from './hooks/useResizable';
+import { PipelineStepper } from './components/PipelineStepper';
 import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
 import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
@@ -37,8 +39,36 @@ export default function App() {
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
   
-  // 响应式侧栏宽度：xxl 280/320，xl 240/280，lg 及以下折叠
-  const siderWidths = screens.xxl ? [280, 320] : [240, 280];
+  // Phase 3: 可拖拽侧栏宽度 (200-420px / 220-450px)，双击还原默认并持久化
+  const {
+    size: leftSiderWidth,
+    isDragging: isLeftDragging,
+    startDrag: startLeftDrag,
+    resetToDefault: resetLeftWidth
+  } = useResizable({
+    initial: screens.xxl ? 280 : 250,
+    min: 200,
+    max: 420,
+    direction: 'horizontal',
+    storageKey: 'vac_left_sider_width',
+    defaultSize: 260
+  });
+
+  const {
+    size: rightSiderWidth,
+    isDragging: isRightDragging,
+    startDrag: startRightDrag,
+    resetToDefault: resetRightWidth
+  } = useResizable({
+    initial: screens.xxl ? 320 : 280,
+    min: 220,
+    max: 450,
+    direction: 'horizontal',
+    reverse: true,
+    storageKey: 'vac_right_sider_width',
+    defaultSize: 300
+  });
+
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
@@ -155,8 +185,54 @@ export default function App() {
             }))} 
           />
         </div>
+
+        {/* Phase 3: 全流程阶段指示器 */}
+        {screens.md && (
+          <PipelineStepper 
+            route={route} 
+            navigate={navigate} 
+            asset={selected} 
+          />
+        )}
         
         <div className="app-header-right">
+          {/* Phase 3: 全局快捷操作栏 */}
+          <div className="app-quick-actions">
+            <Select
+              size="small"
+              placeholder="选择资产"
+              value={assetId || undefined}
+              onChange={(val) => setSelectedId(val)}
+              options={assets.data?.map((a) => ({
+                value: a.asset_id,
+                label: `${a.asset_id} (${a.input_kind === 'raw_recording' ? '录像' : '素材'})`
+              }))}
+              style={{ width: screens.sm ? 130 : 90 }}
+              aria-label="快速切换资产"
+              popupMatchSelectWidth={false}
+            />
+
+            <Tooltip title={assetId ? `为资产 ${assetId} 打开运行准备` : '打开运行准备'}>
+              <Button
+                size="small"
+                icon={<ThunderboltOutlined />}
+                onClick={() => navigate({ workspace: 'settings', settingsCategory: 'preparation' })}
+              >
+                {screens.sm ? '运行准备' : '准备'}
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="查看审计与诊断日志">
+              <Button
+                size="small"
+                icon={<FileSearchOutlined />}
+                onClick={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })}
+              >
+                {screens.sm ? '查看日志' : '日志'}
+              </Button>
+            </Tooltip>
+          </div>
+
           {!useSidebar && workspace !== 'settings' && (
             <>
               <Button 
@@ -185,10 +261,11 @@ export default function App() {
           />
           
           <Button 
+            size="small"
             icon={<ReloadOutlined />} 
             onClick={() => void refreshSnapshot(queryClient, watchedTaskId)}
           >
-            刷新快照
+            刷新
           </Button>
           
           <Button
@@ -202,20 +279,28 @@ export default function App() {
       </Layout.Header>
 
       <Layout hasSider className={`workspace workspace-${workspace}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
-        {/* 左侧栏：xl 及以上显示，lg 及以下折叠 */}
+        {/* 左侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showLeftSider && (
           <Layout.Sider 
             theme="light" 
-            width={siderWidths[0]}
+            width={leftSiderWidth}
             collapsedWidth={0}
             collapsed={leftCollapsed}
             collapsible
             trigger={null}
-            className="dock dock-left" 
+            className="dock dock-left dock-resizable" 
             aria-label="项目面板" 
             style={{ borderInlineEnd: siderBorder }}
           >
             {leftSiderContent}
+            <div
+              className={`sider-resizer sider-resizer-left ${isLeftDragging ? 'is-dragging' : ''}`}
+              onMouseDown={startLeftDrag}
+              onDoubleClick={resetLeftWidth}
+              title="左右拖拽调整项目面板宽度，双击重置 (260px)"
+              role="separator"
+              aria-label="左侧栏宽度调整手柄"
+            />
           </Layout.Sider>
         )}
         
@@ -281,19 +366,27 @@ export default function App() {
           </WorkspacePage>
         </Layout.Content>
         
-        {/* 右侧栏：xl 及以上显示，lg 及以下折叠 */}
+        {/* 右侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showRightSider && (
           <Layout.Sider 
             theme="light" 
-            width={siderWidths[1]}
+            width={rightSiderWidth}
             collapsedWidth={0}
             collapsed={rightCollapsed}
             collapsible
             trigger={null}
-            className="dock dock-right" 
+            className="dock dock-right dock-resizable" 
             aria-label="属性面板" 
             style={{ borderInlineStart: siderBorder }}
           >
+            <div
+              className={`sider-resizer sider-resizer-right ${isRightDragging ? 'is-dragging' : ''}`}
+              onMouseDown={startRightDrag}
+              onDoubleClick={resetRightWidth}
+              title="左右拖拽调整属性面板宽度，双击重置 (300px)"
+              role="separator"
+              aria-label="右侧栏宽度调整手柄"
+            />
             {rightSiderContent}
           </Layout.Sider>
         )}
