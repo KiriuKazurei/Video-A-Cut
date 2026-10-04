@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  PlaySquareOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined, VideoCameraOutlined
+  PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined, VideoCameraOutlined
 } from '@ant-design/icons';
 import { api } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
@@ -17,7 +17,9 @@ import type { RunSelection } from './components/WorkflowPanel';
 import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
 import { siderTheme } from './theme';
 import { useResizable } from './hooks/useResizable';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { PipelineStepper } from './components/PipelineStepper';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
 import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
@@ -77,6 +79,15 @@ export default function App() {
   const siderBorder = `1px solid ${token.colorBorderSecondary}`;
   const { route, navigate } = useWorkspaceRoute();
   const { workspace } = route;
+
+  // Phase 4: 全局键盘快捷键与帮助面板
+  const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
+  useKeyboardShortcuts({
+    route,
+    navigate,
+    onOpenHelp: () => setIsShortcutsHelpOpen((prev) => !prev),
+    isHelpOpen: isShortcutsHelpOpen
+  });
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watchedTaskId, setWatchedTaskId] = useState<string | null>(null);
@@ -268,6 +279,15 @@ export default function App() {
             刷新
           </Button>
           
+          <Tooltip title="键盘快捷键速查 (?)">
+            <Button
+              size="small"
+              icon={<QuestionCircleOutlined />}
+              onClick={() => setIsShortcutsHelpOpen(true)}
+              aria-label="键盘快捷键速查"
+            />
+          </Tooltip>
+
           <Button
             type={workspace === 'settings' ? 'primary' : 'default'}
             icon={<SettingOutlined />}
@@ -427,6 +447,12 @@ export default function App() {
           {selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · {current.label}
         </Typography.Text>
       </Layout.Footer>
+
+      {/* Phase 4: 键盘快捷键速查模态框 */}
+      <KeyboardShortcutsModal
+        open={isShortcutsHelpOpen}
+        onClose={() => setIsShortcutsHelpOpen(false)}
+      />
     </Layout>
   );
 }
