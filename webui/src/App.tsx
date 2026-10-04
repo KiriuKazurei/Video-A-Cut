@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, ConfigProvider, Grid, Layout, Menu, Typography, theme } from 'antd';
+import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Typography, theme } from 'antd';
 import {
-  AuditOutlined, CloudUploadOutlined, ExportOutlined, PlaySquareOutlined, ReloadOutlined, ScissorOutlined, SettingOutlined, VideoCameraOutlined
+  ExportOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
+  PlaySquareOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined
 } from '@ant-design/icons';
 import { api } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
@@ -13,29 +14,40 @@ import { MediaBin } from './components/MediaBin';
 import { Inspector } from './components/Inspector';
 import { WorkspacePage } from './components/WorkspacePage';
 import type { RunSelection } from './components/WorkflowPanel';
-import { PAGES, useHashPage, type PageId } from './navigation';
+import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
 import { siderTheme } from './theme';
-import { AssemblyPage, EditPage, ExportPage, ImportPage, MonitorPage, PreparePage } from './pages/Pages';
+import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
+import { EditingWorkspace } from './workspaces/EditingWorkspace';
+import { ExportWorkspace } from './workspaces/ExportWorkspace';
+import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 
-const PAGE_ICONS: Record<PageId, React.ReactNode> = {
-  import: <CloudUploadOutlined />, assembly: <ScissorOutlined />, prepare: <SettingOutlined />,
-  edit: <PlaySquareOutlined />, export: <ExportOutlined />, monitor: <AuditOutlined />
+const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
+  resources: <FolderOpenOutlined />,
+  editing: <PlaySquareOutlined />,
+  export: <ExportOutlined />,
+  settings: <SettingOutlined />
 };
 
 /**
- * 工作区外壳（Premiere 式）：顶部菜单按流程顺序切换页面，左侧项目面板、
- * 右侧属性面板常驻，中间是当前页（含监视器与时间线）。所有页面保持挂载、仅隐藏，
- * 因此跨页切换不会丢失未保存的选段或表单草稿；数据仍以 Go 控制面响应为准。
+ * 四工作区外壳：顶部导航切换主工作区，左右侧栏响应式折叠。
+ * 资源管理、编辑、导出为主流程；设置页独立，从右上角齿轮进入。
  */
 export default function App() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
-  // 侧栏：antd Layout.Sider，纯色底（lightSiderBg = colorBgContainer）、直角、antd 分隔线；
-  // 宽度跟随 antd 栅格断点：≥1600（xxl）280/320，其余 240/280；窄屏布局见 styles.css。
   const screens = Grid.useBreakpoint();
+  
+  // 响应式侧栏宽度：xxl 280/320，xl 240/280，lg 及以下折叠
   const siderWidths = screens.xxl ? [280, 320] : [240, 280];
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
+  
   const siderBorder = `1px solid ${token.colorBorderSecondary}`;
-  const [page, navigate] = useHashPage();
+  const { route, navigate } = useWorkspaceRoute();
+  const { workspace } = route;
+  
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [watchedTaskId, setWatchedTaskId] = useState<string | null>(null);
   const [runState, setRunState] = useState({ assetId: '', runId: '', offset: 0 });
@@ -43,13 +55,13 @@ export default function App() {
 
   const assets = useQuery({ queryKey: ['assets'], queryFn: api.listAssets });
   const audit = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100) });
-  // 任务查询保留在此：编排控制台通过 props 复用它，避免同一任务被两条 15 秒轮询各拉一次。
   const task = useQuery({
     queryKey: ['task', watchedTaskId],
     queryFn: () => api.getTask(watchedTaskId!),
     enabled: Boolean(watchedTaskId),
     refetchInterval: 15_000
   });
+  
   const patch = useMutation({
     mutationFn: ({ id, values }: { id: string; values: GovernancePatch }) => api.patchAsset(id, values),
     onSuccess(updated) {
@@ -58,6 +70,7 @@ export default function App() {
       void queryClient.invalidateQueries({ queryKey: ['audit'] });
     }
   });
+  
   const createTask = useMutation({
     mutationFn: (input: CreateTask) => api.createTask(input),
     onSuccess(created) {
@@ -69,7 +82,8 @@ export default function App() {
 
   const selected = assets.data?.find((item) => item.asset_id === selectedId) ?? assets.data?.[0];
   const assetId = selected?.asset_id ?? '';
-  // 编辑页与导出页共享同一资产下选中的内容流程；换资产即回到最新流程。
+  
+  // 编辑页与导出页共享同一资产下选中的内容流程
   const selection = useMemo<RunSelection>(() => {
     const same = runState.assetId === assetId;
     return {
@@ -79,22 +93,43 @@ export default function App() {
       setOffset: (offset) => setRunState((prev) => ({ assetId, runId: prev.assetId === assetId ? prev.runId : '', offset }))
     };
   }, [runState, assetId]);
-  const current = PAGES.find((item) => item.id === page)!;
-  const pageDef = (id: PageId) => PAGES.find((item) => item.id === id)!;
-  // 准备页启动固定预设流程后：选中新流程并切到编辑页审查。
+  
+  const current = WORKSPACES.find((item) => item.id === workspace)!;
+  
+  // 准备页启动流程后：选中新流程并切到编辑/审查
   const onPreparedStarted = (run: WorkflowRun) => {
     setRunState({ assetId, runId: run.run_id, offset: 0 });
-    navigate('edit');
+    navigate({ workspace: 'editing', editingSection: 'review' });
   };
+  
   const connectionText = connection === 'connected' ? '事件流已连接'
     : connection === 'connecting' ? '正在连接事件流'
     : connection === 'disconnected' ? '事件流已断开 · 显示最近快照'
     : connection === 'error' ? '事件流连接失败 · 显示最近快照'
     : `事件流重连中（${events.retryCount}/${events.maxRetries}）· 显示最近快照`;
 
+  // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
+  const useSidebar = screens.xl;
+  const showLeftSider = useSidebar && workspace !== 'settings';
+  const showRightSider = useSidebar && workspace !== 'settings';
+
+  // 侧栏内容
+  const leftSiderContent = (
+    <ConfigProvider theme={siderTheme}>
+      <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
+    </ConfigProvider>
+  );
+  
+  const rightSiderContent = (
+    <ConfigProvider theme={siderTheme}>
+      <Inspector asset={selected} patch={patch} onNavigate={(ws) => navigate({ workspace: ws as WorkspaceId })} />
+    </ConfigProvider>
+  );
+
   return (
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
+      
       <Layout.Header className="app-header">
         <div className="app-brand">
           <VideoCameraOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
@@ -103,59 +138,187 @@ export default function App() {
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>剪辑预处理工作区</Typography.Text>
           </div>
         </div>
-        {/* 页签：antd Menu 外包一层液态玻璃胶囊，当前页为玻璃高亮；窄屏时多余页签折叠进同样材质的「…」弹层。 */}
+        
+        {/* 工作区导航：三个主工作区 + 右侧设置 */}
         <div className="app-nav-wrap">
-          <Menu className="app-nav glass-nav" mode="horizontal" aria-label="工作区" selectedKeys={[page]} triggerSubMenuAction="click"
-            overflowedIndicatorPopupClassName="app-nav-popup"
-            onClick={({ key }) => navigate(key as PageId)}
-            items={PAGES.map((item) => ({
-              key: item.id, icon: PAGE_ICONS[item.id], title: item.description,
-              label: <span data-page={item.id} aria-current={page === item.id ? 'page' : undefined}>{item.step} {item.label}</span>
-            }))} />
+          <Menu 
+            className="app-nav glass-nav" 
+            mode="horizontal" 
+            aria-label="工作区" 
+            selectedKeys={[workspace]}
+            onClick={({ key }) => navigate({ workspace: key as WorkspaceId })}
+            items={WORKSPACES.filter(w => w.id !== 'settings').map((item) => ({
+              key: item.id, 
+              icon: WORKSPACE_ICONS[item.id], 
+              title: item.description,
+              label: <span data-workspace={item.id} aria-current={workspace === item.id ? 'page' : undefined}>{item.label}</span>
+            }))} 
+          />
         </div>
+        
         <div className="app-header-right">
-          <Badge className="app-connection" role="status" aria-live="polite"
+          {!useSidebar && workspace !== 'settings' && (
+            <>
+              <Button 
+                size="small"
+                icon={<MenuUnfoldOutlined />} 
+                onClick={() => setLeftDrawerOpen(true)}
+              >
+                项目
+              </Button>
+              <Button 
+                size="small"
+                icon={<FileTextOutlined />} 
+                onClick={() => setRightDrawerOpen(true)}
+              >
+                详情
+              </Button>
+            </>
+          )}
+          
+          <Badge 
+            className="app-connection" 
+            role="status" 
+            aria-live="polite"
             status={connection === 'connected' ? 'success' : connection === 'connecting' || connection === 'reconnecting' ? 'processing' : 'error'}
-            text={connectionText} />
-          <Button icon={<ReloadOutlined />} onClick={() => {
-            void refreshSnapshot(queryClient, watchedTaskId);
-          }}>刷新快照</Button>
+            text={connectionText} 
+          />
+          
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={() => void refreshSnapshot(queryClient, watchedTaskId)}
+          >
+            刷新快照
+          </Button>
+          
+          <Button
+            type={workspace === 'settings' ? 'primary' : 'default'}
+            icon={<SettingOutlined />}
+            onClick={() => navigate({ workspace: 'settings' })}
+          >
+            设置
+          </Button>
         </div>
       </Layout.Header>
 
-      <Layout hasSider className={`workspace workspace-${page}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
-        <Layout.Sider theme="light" width={siderWidths[0]} className="dock dock-left" aria-label="项目面板" style={{ borderInlineEnd: siderBorder }}>
-          <ConfigProvider theme={siderTheme}>
-            <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
-          </ConfigProvider>
-        </Layout.Sider>
-        <Layout.Content id="main" className="stage-main" aria-label={`${current.label}页`}>
-          <WorkspacePage pageId="import" active={page === 'import'}>
-            <ImportPage page={pageDef('import')} asset={selected} onSelect={setSelectedId} />
+      <Layout hasSider className={`workspace workspace-${workspace}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
+        {/* 左侧栏：xl 及以上显示，lg 及以下折叠 */}
+        {showLeftSider && (
+          <Layout.Sider 
+            theme="light" 
+            width={siderWidths[0]}
+            collapsedWidth={0}
+            collapsed={leftCollapsed}
+            collapsible
+            trigger={null}
+            className="dock dock-left" 
+            aria-label="项目面板" 
+            style={{ borderInlineEnd: siderBorder }}
+          >
+            {leftSiderContent}
+          </Layout.Sider>
+        )}
+        
+        <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
+          {/* 折叠按钮：仅在 xl 及以上且非设置页显示 */}
+          {useSidebar && workspace !== 'settings' && (
+            <div className="sider-toggles">
+              <Button 
+                type="text" 
+                size="small"
+                icon={leftCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setLeftCollapsed(!leftCollapsed)}
+                title={leftCollapsed ? '展开项目面板' : '收起项目面板'}
+              />
+              <Button 
+                type="text" 
+                size="small"
+                icon={rightCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setRightCollapsed(!rightCollapsed)}
+                title={rightCollapsed ? '展开属性面板' : '收起属性面板'}
+              />
+            </div>
+          )}
+          
+          <WorkspacePage pageId="resources" active={workspace === 'resources'}>
+            <ResourcesWorkspace asset={selected} onSelect={setSelectedId} />
           </WorkspacePage>
-          <WorkspacePage pageId="assembly" active={page === 'assembly'}>
-            <AssemblyPage page={pageDef('assembly')} asset={selected} />
+          
+          <WorkspacePage pageId="editing" active={workspace === 'editing'}>
+            <EditingWorkspace 
+              route={route}
+              navigate={navigate}
+              asset={selected} 
+              selection={selection}
+              onSelect={setSelectedId}
+              onPreparedStarted={onPreparedStarted}
+            />
           </WorkspacePage>
-          <WorkspacePage pageId="prepare" active={page === 'prepare'}>
-            <PreparePage page={pageDef('prepare')} asset={selected} onStarted={onPreparedStarted} />
+          
+          <WorkspacePage pageId="export" active={workspace === 'export'}>
+            <ExportWorkspace 
+              route={route}
+              navigate={navigate}
+              asset={selected} 
+              selection={selection}
+              audit={audit}
+              task={task}
+              watchedTaskId={watchedTaskId}
+              createTask={createTask}
+            />
           </WorkspacePage>
-          <WorkspacePage pageId="edit" active={page === 'edit'}>
-            <EditPage page={pageDef('edit')} asset={selected} selection={selection} onGoExport={() => navigate('export')} />
-          </WorkspacePage>
-          <WorkspacePage pageId="export" active={page === 'export'}>
-            <ExportPage page={pageDef('export')} asset={selected} selection={selection} />
-          </WorkspacePage>
-          <WorkspacePage pageId="monitor" active={page === 'monitor'}>
-            <MonitorPage page={pageDef('monitor')} asset={selected} audit={audit} task={task}
-              watchedTaskId={watchedTaskId} createTask={createTask} />
+          
+          <WorkspacePage pageId="settings" active={workspace === 'settings'}>
+            <SettingsWorkspace 
+              route={route}
+              navigate={navigate}
+              asset={selected}
+              onStarted={onPreparedStarted}
+              audit={audit}
+              connection={connection}
+              events={events}
+            />
           </WorkspacePage>
         </Layout.Content>
-        <Layout.Sider theme="light" width={siderWidths[1]} className="dock dock-right" aria-label="属性面板" style={{ borderInlineStart: siderBorder }}>
-          <ConfigProvider theme={siderTheme}>
-            <Inspector asset={selected} patch={patch} onNavigate={navigate} />
-          </ConfigProvider>
-        </Layout.Sider>
+        
+        {/* 右侧栏：xl 及以上显示，lg 及以下折叠 */}
+        {showRightSider && (
+          <Layout.Sider 
+            theme="light" 
+            width={siderWidths[1]}
+            collapsedWidth={0}
+            collapsed={rightCollapsed}
+            collapsible
+            trigger={null}
+            className="dock dock-right" 
+            aria-label="属性面板" 
+            style={{ borderInlineStart: siderBorder }}
+          >
+            {rightSiderContent}
+          </Layout.Sider>
+        )}
       </Layout>
+
+      {/* 移动端抽屉 */}
+      <Drawer
+        title="项目面板"
+        placement="left"
+        open={leftDrawerOpen}
+        onClose={() => setLeftDrawerOpen(false)}
+        width={280}
+      >
+        {leftSiderContent}
+      </Drawer>
+      
+      <Drawer
+        title="属性面板"
+        placement="right"
+        open={rightDrawerOpen}
+        onClose={() => setRightDrawerOpen(false)}
+        width={320}
+      >
+        {rightSiderContent}
+      </Drawer>
 
       <Layout.Footer className="app-footer">
         <ConnectionStatusBar
@@ -167,7 +330,9 @@ export default function App() {
           onReconnect={events.reconnect}
           onDisconnect={events.disconnect}
         />
-        <Typography.Text type="secondary" className="app-footer-meta">{selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · {current.step} {current.label}</Typography.Text>
+        <Typography.Text type="secondary" className="app-footer-meta">
+          {selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · {current.label}
+        </Typography.Text>
       </Layout.Footer>
     </Layout>
   );

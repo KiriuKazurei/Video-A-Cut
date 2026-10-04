@@ -193,32 +193,43 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .code-block { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.3); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .provider-models { display: grid; gap: 4px; }
 
+/* ---------- 侧栏折叠按钮 ---------- */
+.sider-toggles { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; gap: 8px; }
+.sider-toggles .ant-btn { background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.12); }
+.sider-toggles .ant-btn:hover { background: rgba(0, 0, 0, 0.6); border-color: rgba(255, 255, 255, 0.24); }
+
+/* ---------- Tabs 分区 ---------- */
+.section-content { padding-top: 16px; }
+.settings-workspace .ant-layout-sider { background: transparent !important; }
+.settings-workspace .ant-menu-inline { background: transparent; }
+
 /* ---------- 响应式 ---------- */
-@media (max-width: 1439px) {
+/* xl 及以上（≥1280px）：正常侧栏 */
+@media (min-width: 1280px) {
+  .dock.ant-layout-sider-collapsed { flex: 0 0 0px !important; max-width: 0 !important; min-width: 0 !important; width: 0 !important; }
+}
+
+/* lg 及以下（<1280px）：编辑页双栏改单栏 */
+@media (max-width: 1279px) {
   .edit-stage { grid-template-columns: minmax(0, 1fr); }
 }
-/* <1200：属性面板移到下方整行（覆盖 Sider 的行内宽度），分隔线改到顶部 */
-@media (max-width: 1199px) {
-  .workspace { display: grid !important; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 30vh; }
-  .workspace > .stage-main { width: auto !important; } /* antd 给 has-sider 下的 Content 设了 width: 0 */
-  .dock-right { grid-column: 1 / -1; width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline-start: 0 !important; border-top: var(--vac-sider-border); }
-}
-@media (max-width: 960px) {
+
+/* md 及以下（<960px）：移动端布局，侧栏收起，顶部增加抽屉按钮 */
+@media (max-width: 959px) {
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }
   .app-header { flex-wrap: wrap; padding: 8px 12px !important; row-gap: 4px; }
   .app-nav-wrap { order: 3; flex: 1 0 100%; width: 100%; }
   .app-header-right { margin-left: auto; }
   .app-connection .ant-badge-status-text { display: none; }
   .workspace { display: flex !important; flex-direction: column !important; }
-  .dock { width: auto !important; max-width: none !important; min-width: 0 !important; flex: none !important; border-inline: 0 !important; border-bottom: var(--vac-sider-border); }
-  .dock-right { border-top: var(--vac-sider-border); }
   .stage-main { overflow: visible; padding: 8px; }
-  .dock-left > .ant-layout-sider-children { max-height: 320px; }
-  .dock-right > .ant-layout-sider-children { overflow: visible; }
+  .sider-toggles { display: none; }
   .sticky-monitor { position: static; }
   .timeline-ruler, .timeline-track { grid-template-columns: 64px minmax(0, 1fr); }
   .monitor .ant-card-extra { display: none; }
 }
+
+/* sm 及以下（<480px）：超小屏幕 */
 @media (max-width: 480px) {
   .app-brand-text > :last-child { display: none; }
   .segment-row { grid-template-columns: 88px minmax(0, 1fr); }

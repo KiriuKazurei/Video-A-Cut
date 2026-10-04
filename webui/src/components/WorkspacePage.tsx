@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, type PropsWithChildren } from 'react';
-import type { PageId } from '../navigation';
+// Workspace pages use string pageId for compatibility
 
 interface WorkspacePageProps {
-  pageId: PageId;
+  pageId: string;
   active: boolean;
 }
 

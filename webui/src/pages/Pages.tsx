@@ -13,7 +13,6 @@ import AssetManager from '../components/AssetManager';
 import AuditLogViewer from '../components/AuditLogViewer';
 import { kindLabel } from '../components/MediaBin';
 import { errorText, stamp, ValueSelect } from '../components/ui';
-import type { PageDef } from '../navigation';
 
 /** 每页独立的监视器状态；切换资产时清空，避免把上一资产的媒体留作当前结果。 */
 function usePagePreview(assetId: string | undefined): [PreviewSource, (p: PreviewSource) => void] {
@@ -22,7 +21,7 @@ function usePagePreview(assetId: string | undefined): [PreviewSource, (p: Previe
   return [preview, setPreview];
 }
 
-export function PageHeader({ page, children }: { page: PageDef; children?: ReactNode }) {
+export function PageHeader({ page, children }: { page: any; children?: ReactNode }) {
   return <Flex className="page-header" justify="space-between" align="flex-start" gap={12} wrap>
     <div>
       <Typography.Title level={4} style={{ margin: 0 }}>{page.step} · {page.label}
@@ -39,7 +38,7 @@ function NoAsset({ text }: { text: string }) {
 
 /* ---------------- 01 导入 ---------------- */
 
-export function ImportPage({ page, asset, onSelect }: { page: PageDef; asset?: Asset; onSelect: (id: string) => void }) {
+export function ImportPage({ page, asset, onSelect }: { page: any; asset?: Asset; onSelect: (id: string) => void }) {
   const files = useDeliveryFiles(asset);
   const playable = files.data?.filter((file) => file.playable) ?? [];
   const first = playable.find((file) => file.mime.startsWith('video/')) ?? playable[0];
@@ -76,7 +75,7 @@ export function ImportPage({ page, asset, onSelect }: { page: PageDef; asset?: A
 
 /* ---------------- 02 粗剪 ---------------- */
 
-export function AssemblyPage({ page, asset }: { page: PageDef; asset?: Asset }) {
+export function AssemblyPage({ page, asset }: { page: any; asset?: Asset }) {
   const [preview, setPreview] = usePagePreview(asset?.asset_id);
   return <PreviewScope onPreview={setPreview}><div className="page-body">
     <PageHeader page={page} />
@@ -88,7 +87,7 @@ export function AssemblyPage({ page, asset }: { page: PageDef; asset?: Asset }) 
 
 /* ---------------- 03 准备 ---------------- */
 
-export function PreparePage({ page, asset, onStarted }: { page: PageDef; asset?: Asset; onStarted: (run: WorkflowRun) => void }) {
+export function PreparePage({ page, asset, onStarted }: { page: any; asset?: Asset; onStarted: (run: WorkflowRun) => void }) {
   return <div className="page-body">
     <PageHeader page={page} />
     {asset ? <PreparationPanel key={'preparation-' + asset.asset_id} assetId={asset.asset_id} onStarted={onStarted} />
@@ -98,7 +97,7 @@ export function PreparePage({ page, asset, onStarted }: { page: PageDef; asset?:
 
 /* ---------------- 04 编辑 ---------------- */
 
-export function EditPage({ page, asset, selection, onGoExport }: { page: PageDef; asset?: Asset; selection: RunSelection; onGoExport: () => void }) {
+export function EditPage({ page, asset, selection, onGoExport }: { page: any; asset?: Asset; selection: RunSelection; onGoExport: () => void }) {
   const [preview, setPreview] = usePagePreview(asset?.asset_id);
   useEffect(() => { setPreview(null); }, [selection.runId, setPreview]);
   return <PreviewScope onPreview={setPreview}><div className="page-body">
@@ -112,7 +111,7 @@ export function EditPage({ page, asset, selection, onGoExport }: { page: PageDef
 
 /* ---------------- 05 导出 ---------------- */
 
-export function ExportPage({ page, asset, selection }: { page: PageDef; asset?: Asset; selection: RunSelection }) {
+export function ExportPage({ page, asset, selection }: { page: any; asset?: Asset; selection: RunSelection }) {
   const [selectedFileKeyByAsset, setSelectedFileKeyByAsset] = useState<Record<string, string>>({});
   const files = useDeliveryFiles(asset);
 
@@ -151,7 +150,7 @@ export function ExportPage({ page, asset, selection }: { page: PageDef; asset?: 
 const taskTypes = ['recognize', 'sort', 'narrate', 'tts', 'subtitle', 'mix', 'export', 'preview'];
 
 export function MonitorPage({ page, asset, audit, task, watchedTaskId, createTask }: {
-  page: PageDef;
+  page: any;
   asset?: Asset;
   audit: UseQueryResult<AuditLog[]>;
   task: UseQueryResult<Task>;

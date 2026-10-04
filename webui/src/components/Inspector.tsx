@@ -2,18 +2,18 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import { Alert, Button, Card, Descriptions, Empty, Flex, Space, Tag, Typography } from 'antd';
 import { CheckOutlined, EyeInvisibleOutlined, EyeOutlined, LockOutlined, RightOutlined, UnlockOutlined } from '@ant-design/icons';
 import type { Asset, GovernancePatch } from '../types';
-import type { PageId } from '../navigation';
+import type { WorkspaceId } from '../navigation';
 import { kindLabel } from './MediaBin';
 import { errorText, stamp } from './ui';
 
 type Patch = UseMutationResult<Asset, Error, { id: string; values: GovernancePatch }>;
 
 /** 属性面板（Premiere Properties）：当前资产的治理状态与 PATCH 操作（API-03）。全部为 antd 默认暗色组件。 */
-export function Inspector({ asset, patch, onNavigate }: { asset?: Asset; patch: Patch; onNavigate: (page: PageId) => void }) {
-  const next: { page: PageId; text: string } | null = !asset ? null
-    : asset.input_kind === 'raw_recording' ? { page: 'assembly', text: '原始录像：到「粗剪」导入、切分并生成短片' }
+export function Inspector({ asset, patch, onNavigate }: { asset?: Asset; patch: Patch; onNavigate: (page: WorkspaceId) => void }) {
+  const next: { page: WorkspaceId; text: string } | null = !asset ? null
+    : asset.input_kind === 'raw_recording' ? { page: 'editing', text: '原始录像：到「粗剪」导入、切分并生成短片' }
     : asset.status === 'exported' ? { page: 'export', text: '已导出：到「导出」预览、下载与验收' }
-    : { page: 'prepare', text: 'EDL 包：到「准备」预检并启动内容流程' };
+    : { page: 'settings', text: 'EDL 包：到「准备」预检并启动内容流程' };
   return (
     <Card size="small" variant="borderless" aria-labelledby="detail-title" title={<span id="detail-title">属性 · 资产治理</span>}>
       {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="在项目面板选择一项资产以查看状态和治理操作。" />}
