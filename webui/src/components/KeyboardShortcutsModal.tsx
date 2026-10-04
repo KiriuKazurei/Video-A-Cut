@@ -52,7 +52,7 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
                 borderRadius: 4,
                 background: token.colorFillSecondary,
                 borderColor: token.colorBorderSecondary,
-                color: token.colorTextLightSolid
+                color: token.colorText // 修复：使用主文本色，确保暗色背景下对比度达标（原 colorTextLightSolid 对比度不足）
               }}
             >
               {k}
@@ -100,6 +100,7 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
         pagination={false}
         size="small"
         bordered
+        aria-label="键盘快捷键列表"
       />
 
       <Divider style={{ margin: '16px 0 8px' }} />

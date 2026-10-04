@@ -41,6 +41,7 @@ export function useResizable({
 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ startPos: number; startSize: number } | null>(null);
+  const lastSavedRef = useRef<number | null>(null); // 跟踪上次保存的值，避免重复写入
 
   const startDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -54,6 +55,7 @@ export function useResizable({
     setSize(defaultSize);
     if (storageKey) {
       window.localStorage.setItem(storageKey, String(defaultSize));
+      lastSavedRef.current = defaultSize;
     }
   }, [defaultSize, storageKey]);
 
@@ -87,10 +89,14 @@ export function useResizable({
     };
   }, [isDragging, direction, reverse, min, max]);
 
-  // 大小确定后持久化
+  // 大小确定后持久化（仅在值实际变化时写入，避免重复）
   useEffect(() => {
     if (!isDragging && storageKey && typeof window !== 'undefined') {
-      window.localStorage.setItem(storageKey, String(Math.round(size)));
+      const roundedSize = Math.round(size);
+      if (lastSavedRef.current !== roundedSize) {
+        window.localStorage.setItem(storageKey, String(roundedSize));
+        lastSavedRef.current = roundedSize;
+      }
     }
   }, [size, isDragging, storageKey]);
 

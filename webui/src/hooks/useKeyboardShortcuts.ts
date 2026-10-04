@@ -27,15 +27,37 @@ export function isTypingContext(target: EventTarget | null): boolean {
   return false;
 }
 
+/** 
+ * 查找当前可见的媒体元素（优先主工作区，其次 Modal/Drawer，最后全局）
+ * 支持多种容器，避免硬编码选择器
+ */
+function findVisibleMedia(): HTMLMediaElement | null {
+  const selectors = [
+    '.stage-main video',
+    '.stage-main audio',
+    '.ant-modal-body video',
+    '.ant-modal-body audio',
+    '.ant-drawer-body video',
+    '.ant-drawer-body audio',
+    'video',
+    'audio'
+  ];
+
+  for (const selector of selectors) {
+    const elements = document.querySelectorAll<HTMLMediaElement>(selector);
+    for (const el of elements) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && !el.hidden) {
+        return el;
+      }
+    }
+  }
+  return null;
+}
+
 /** 触发媒体播放或暂停 */
 export function toggleMediaPlayback(): boolean {
-  const mediaElements = Array.from(document.querySelectorAll<HTMLMediaElement>('.stage-main video, .stage-main audio'));
-  const activeMedia = mediaElements.find((el) => {
-    // 优先寻找正在播放或可见的媒体元素
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
-
+  const activeMedia = findVisibleMedia();
   if (!activeMedia) return false;
 
   if (activeMedia.paused) {
@@ -48,12 +70,7 @@ export function toggleMediaPlayback(): boolean {
 
 /** 步进/快进媒体时间 */
 export function seekMedia(deltaSeconds: number): boolean {
-  const mediaElements = Array.from(document.querySelectorAll<HTMLMediaElement>('.stage-main video, .stage-main audio'));
-  const activeMedia = mediaElements.find((el) => {
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
-
+  const activeMedia = findVisibleMedia();
   if (!activeMedia) return false;
 
   const targetTime = Math.max(0, Math.min(activeMedia.duration || 0, activeMedia.currentTime + deltaSeconds));
@@ -96,7 +113,7 @@ export function useKeyboardShortcuts({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 帮助弹框打开时按 Escape 关闭
+      // 帮助弹框打开时按 Escape 关闭（close 由 Modal 自身处理，此处仅拦截后续快捷键，避免重复响应）
       if (isHelpOpen && e.key === 'Escape') {
         return;
       }

@@ -23,14 +23,8 @@ interface StepItem {
 
 const STEPS: StepItem[] = [
   {
-    id: 'import',
-    label: '导入',
-    target: { workspace: 'editing', editingSection: 'import' },
-    isMatch: (r) => r.workspace === 'editing' && r.editingSection === 'import'
-  },
-  {
-    id: 'assembly',
-    label: '粗剪',
+    id: 'import-assembly',
+    label: '导入与粗剪',
     target: { workspace: 'editing', editingSection: 'import' },
     isMatch: (r) => r.workspace === 'editing' && r.editingSection === 'import'
   },
@@ -84,7 +78,7 @@ export function PipelineStepper({ route, navigate, asset, currentRun }: Pipeline
                 }
               }}
             >
-              {step.id === 'import' && hasAsset && !isCurrent && (
+              {step.id === 'import-assembly' && hasAsset && !isCurrent && (
                 <CheckCircleOutlined style={{ fontSize: 11, color: '#52c41a' }} />
               )}
               {step.id === 'generate' && isRunning && (

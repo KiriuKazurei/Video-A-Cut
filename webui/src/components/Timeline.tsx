@@ -232,7 +232,7 @@ export function Timeline({ label, duration, tracks, formatTick, caption, emptyTe
             </div>
           </div>
         ))}
-        {!hasClips && (
+        {!hasClips && !isCollapsed && (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={emptyText ?? '暂无片段'}

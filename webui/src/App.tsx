@@ -207,8 +207,9 @@ export default function App() {
         )}
         
         <div className="app-header-right">
-          {/* Phase 3: 全局快捷操作栏 */}
-          <div className="app-quick-actions">
+          {/* Phase 3: 全局快捷操作栏 (移动端<768px隐藏) */}
+          {screens.md && (
+            <div className="app-quick-actions">
             <Select
               size="small"
               placeholder="选择资产"
@@ -243,6 +244,7 @@ export default function App() {
               </Button>
             </Tooltip>
           </div>
+          )}
 
           {!useSidebar && workspace !== 'settings' && (
             <>
