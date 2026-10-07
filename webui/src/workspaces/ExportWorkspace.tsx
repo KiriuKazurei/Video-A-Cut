@@ -1,14 +1,17 @@
-import { useState } from 'react';
-import { Alert, Button, Card, Col, Flex, Form, Input, Row, Space, Tabs, Tag, Typography } from 'antd';
-import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Card, Col, Flex, Form, Input, Row, Tabs, Tag, Typography } from 'antd';
+import { useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, CreateTask, Task } from '../types';
 import { parseDependsOn } from '../types';
 import type { RouteState } from '../navigation';
 import { EXPORT_SECTIONS } from '../navigation';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { Monitor, type PreviewSource } from '../components/Monitor';
-import { AcceptancePanel } from '../components/WorkflowPanel';
+import { AcceptancePanel, useWorkflowData } from '../components/WorkflowPanel';
 import { DeliveryPanel, filePreview, useDeliveryFiles } from '../components/DeliveryPanel';
+import { PreviewPanel } from '../components/PreviewPanel';
+import { DeliveryVariantPanel } from '../components/DeliveryVariantPanel';
+import { isCurrentMp4, previewApi, previewFileURL, previewQueryKey } from '../previewContracts';
 import { TaskOrchestrator } from '../components/TaskOrchestrator';
 import { errorText, ValueSelect } from '../components/ui';
 
@@ -45,11 +48,49 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
   const assetId = asset?.asset_id;
   const selectedKey = assetId ? selectedFileKeyByAsset[assetId] : undefined;
   const selectedFile = playable.find((file) => file.key === selectedKey) ?? playable[0];
-  const preview: PreviewSource = asset && selectedFile ? filePreview(asset.asset_id, selectedFile) : null;
+  const defaultFilePreview: PreviewSource = asset && selectedFile ? filePreview(asset.asset_id, selectedFile) : null;
+
+  const [activeMp4Preview, setActiveMp4Preview] = useState<PreviewSource | null>(null);
+  const { current } = useWorkflowData(asset?.asset_id ?? '', selection);
+
+  const owner = { assetId: assetId ?? '', runId: current?.run_id ?? '', revisionId: current?.current_revision_id ?? '' };
+  const mp4s = useQuery({
+    queryKey: previewQueryKey(owner.assetId, owner.runId, owner.revisionId),
+    queryFn: () => previewApi.list(owner.runId),
+    enabled: Boolean(owner.assetId && owner.runId && owner.revisionId)
+  });
+  const selectedMp4 = mp4s.data?.previews.find(view => previewFileURL(view.preview_id, 'mp4') === activeMp4Preview?.src);
+  const validMp4 = activeMp4Preview && selectedMp4 && isCurrentMp4(selectedMp4, owner) ? activeMp4Preview : null;
+
+  // 切换资产或切换 revision 时清理过期媒体播放，避免旧版本的成片残留播放
+  const prevAssetRef = useRef<string | undefined>(assetId);
+  const prevRevisionRef = useRef<string | undefined>(current?.current_revision_id);
+  const prevRunRef = useRef<string | undefined>(current?.run_id);
+  useEffect(() => {
+    if (prevAssetRef.current !== assetId || prevRevisionRef.current !== current?.current_revision_id || prevRunRef.current !== current?.run_id) {
+      prevAssetRef.current = assetId;
+      prevRevisionRef.current = current?.current_revision_id;
+      prevRunRef.current = current?.run_id;
+      setActiveMp4Preview(null);
+    }
+  }, [assetId, current?.run_id, current?.current_revision_id]);
+
+  useEffect(() => {
+    if (activeMp4Preview && !validMp4) setActiveMp4Preview(null);
+  }, [activeMp4Preview, validMp4]);
+
+  useEffect(() => {
+    return () => {
+      setActiveMp4Preview(null);
+    };
+  }, []);
+
+  const preview: PreviewSource = validMp4 ?? defaultFilePreview;
 
   const handleSelectFile = (key: string) => {
     if (assetId) {
       setSelectedFileKeyByAsset((prev) => ({ ...prev, [assetId]: key }));
+      setActiveMp4Preview(null);
     }
   };
 
@@ -97,10 +138,17 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                       <Monitor 
                         label="节目" 
                         preview={preview} 
-                        emptyTitle={asset ? '暂无可播放的交付文件' : '未选择资产'}
-                        emptyHint="资产登记交付产物后，在右侧文件列表选择视频或音频进行预览、试听。" 
+                        emptyTitle={asset ? '暂无可播放的交付文件或成片预览' : '未选择资产'}
+                        emptyHint="资产登记交付产物或生成 MP4 预览后，可在监视器中进行成片检查、试听与人工验收。"
+                      />
+                      <PreviewPanel
+                        asset={asset}
+                        selection={selection}
+                        onSelectPreview={setActiveMp4Preview}
+                        activePreviewSrc={activeMp4Preview?.src}
                       />
                       {asset && <AcceptancePanel key={asset.asset_id} assetId={asset.asset_id} selection={selection} />}
+                      <DeliveryVariantPanel asset={asset} selection={selection} />
                     </Flex>
                   </Col>
                   <Col xs={24} xl={10}>
@@ -166,18 +214,28 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                           </Form.Item>
                         </Col>
                       </Row>
-                      <Space>
+                      {taskType === 'preview' && (
+                        <Alert
+                          style={{ marginBottom: 12 }}
+                          type="info"
+                          showIcon
+                          message="合成成片 MP4 预览请使用上方的‘生成 MP4 预览’专用功能"
+                          description="通用任务派发不建议手动分派 preview。合成成片 MP4 预览依赖当前不可变导出版的 EDL、Manifest 及最终三轨音频 stems，请前往「交付」标签页的 MP4 预览面板使用专用入口。"
+                        />
+                      )}
+                      <Flex className="task-actions" wrap gap={8} align="center">
                         <Button 
                           type="primary" 
                           htmlType="submit" 
-                          disabled={!asset} 
+                          disabled={!asset || taskType === 'preview'}
                           loading={createTask.isPending}
                         >
                           创建任务
                         </Button>
                         <Input.Search
+                          className="task-watch-input"
+                          aria-label="按任务 ID 观察已有任务"
                           placeholder="按任务 ID 观察已有任务"
-                          style={{ width: 280 }}
                           value={manualInputTaskId}
                           onChange={(e) => setManualInputTaskId(e.target.value)}
                           onSearch={(val) => {
@@ -185,7 +243,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                           }}
                           enterButton="观察"
                         />
-                      </Space>
+                      </Flex>
                     </Form>
                     <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
                       手动创建单任务，绑定当前选中的资产；前置任务须属于同一资产。服务端按 ID 跟踪观察。

@@ -53,6 +53,11 @@ body { background: var(--vac-bg); }
 .stage-main { min-height: 0; min-width: 0; overflow-y: auto; padding: 0 16px; scrollbar-gutter: stable; }
 .page-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 12px 0 24px; min-width: 0; }
 .page-body > *, .edit-stage > * { min-width: 0; }
+.task-actions { min-width: 0; }
+.task-actions .task-watch-input { width: 280px; max-width: 100%; min-width: 0; }
+@media (max-width: 480px) {
+  .task-actions .task-watch-input { width: 100%; }
+}
 .page-header h4 { margin: 0 !important; }
 .sticky-monitor { position: sticky; top: 0; z-index: 5; padding-bottom: 8px; background: var(--vac-bg); }
 
@@ -144,6 +149,7 @@ body { background: var(--vac-bg); }
 .monitor-screen.is-compact { height: clamp(180px, 30vh, 340px); }
 .monitor-screen.has-media { background: #000; }
 .monitor-media { width: 100%; height: 100%; object-fit: contain; display: block; }
+.monitor-load-error { padding: 24px; color: #fff; text-align: center; }
 .monitor-audio { width: min(420px, 90%); }
 .monitor-audio audio { width: 100%; }
 .monitor-caption { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); max-width: 86%; margin: 0; padding: 4px 12px; border-radius: 4px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 15px; text-align: center; }
@@ -378,3 +384,47 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   font-size: 10px;
 }
 
+/* ---------- Phase D: MP4 预览面板与 375px 窄屏适配 ---------- */
+.preview-panel {
+  width: 100%;
+  box-sizing: border-box;
+}
+.preview-panel .ant-card-head {
+  min-height: 40px;
+  padding: 0 12px;
+}
+.preview-panel .ant-card-body {
+  padding: 12px;
+}
+.preview-panel-content {
+  width: 100%;
+  box-sizing: border-box;
+}
+.preview-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.preview-progress-card,
+.preview-media-card {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.preview-media-card .ant-descriptions-item-content {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .preview-panel .ant-card-extra {
+    font-size: 11px;
+  }
+  .preview-checks .ant-tag {
+    font-size: 11px;
+    padding: 0 4px;
+  }
+  .preview-media-card .ant-btn {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+}

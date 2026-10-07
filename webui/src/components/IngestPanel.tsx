@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, Badge, Button, Card, Checkbox, Col, Collapse, Empty, Flex, Form, Input, InputNumber, List,
@@ -121,6 +121,9 @@ export function IngestPanel({ asset }: { asset?: Asset }) {
   const runs = useQuery({ queryKey: ['ingest', 'runs', asset?.asset_id], queryFn: () => ingestApi.runs(asset!.asset_id), enabled: Boolean(raw) });
   const [runId, setRunId] = useState<string | null>(null);
   const current = runs.data?.find((r) => r.run_id === runId) ?? runs.data?.[0];
+  const preview = usePreview();
+  // Clear the previous run before the browser can paint the new candidate list.
+  useLayoutEffect(() => { preview(null); }, [asset?.asset_id, current?.run_id, preview]);
   const active = runs.data?.some((r) => ACTIVE_STATES.includes(r.state));
   const [cleanupBlocked, setCleanupBlocked] = useState(false);
   const busy = action.isPending;
@@ -174,6 +177,8 @@ function RunDetail({ runId, policy, busy, act, onCleanup }: { runId: string; pol
       return state && ACTIVE_STATES.includes(state) && state !== 'awaiting_review' ? 5000 : false;
     }
   });
+  const preview = usePreview();
+  useLayoutEffect(() => { preview(null); }, [runId, view.data?.run?.analysis_revision, view.data?.run?.selection_revision, preview]);
   const execution = view.data?.execution;
   const blocked = execution?.status === 'cleanup_blocked' || execution?.cleanup === 'blocked' || execution?.cleanup === 'cleanup_blocked';
   useEffect(() => { onCleanup(Boolean(blocked)); }, [blocked, onCleanup]);

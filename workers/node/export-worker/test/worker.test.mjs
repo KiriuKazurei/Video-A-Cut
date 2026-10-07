@@ -162,6 +162,18 @@ test('mcp client maps isError to ToolError code', async () => {
   assert.throws(() => createClient({ url: 'http://x', token: 'short' }), /token/);
 });
 
+test('mcp caller cancellation interrupts an in-flight request with its reason', async () => {
+  const controller = new AbortController();
+  const reason = new Error('task cancelled while fetching input');
+  const client = createClient({ url: 'http://unused/mcp', token: 't'.repeat(40),
+    fetchImpl: async (_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }) });
+  const pending = client.call('get_task_input', {}, { signal: controller.signal });
+  controller.abort(reason);
+  await assert.rejects(pending, error => error === reason);
+});
+
 
 test('idle capability heartbeat retries a transient disconnect', async () => {
   const original=Date.now;let clock=0,beats=0,claims=0;

@@ -22,6 +22,7 @@ import (
 type loopFixture struct {
 	t      *testing.T
 	svc    *service.Service
+	st     *store.Store
 	server *httptest.Server
 	tokens map[string]string
 }
@@ -34,7 +35,7 @@ func newLoopFixture(t *testing.T, lease time.Duration, agents ...Agent) *loopFix
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	svc := service.New(st)
-	f := &loopFixture{t: t, svc: svc, tokens: map[string]string{}}
+	f := &loopFixture{t: t, svc: svc, st: st, tokens: map[string]string{}}
 	for i := range agents {
 		token := strings.Repeat(string(rune('a'+i)), 40)
 		h := sha256.Sum256([]byte(token))
@@ -197,6 +198,10 @@ func TestTaskLoopIsolation(t *testing.T) {
 		t.Fatalf("foreign calls mutated task: %+v", tk)
 	}
 	// Governance tools are never exposed.
+	// MCP intentionally masks forbidden as not_found to preserve task isolation.
+	if _, isErr, raw := f.call("n1", "submit_delivery_variant", map[string]string{"task_id": "t1", "variant_dir": "delivery-variants/foreign"}); !isErr || !strings.Contains(raw, "not_found") {
+		t.Fatalf("non-exporter variant submission: %s", raw)
+	}
 	req, _ := http.NewRequest(http.MethodPost, f.server.URL, strings.NewReader(
 		`{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -221,7 +226,7 @@ func TestTaskLoopIsolation(t *testing.T) {
 	for _, tl := range list.Result.Tools {
 		names = append(names, tl.Name)
 	}
-	want := "ack_execution_stopped,begin_execution,claim_task,fail_task,get_asset,get_asset_edl,get_execution_control,get_execution_result_status,get_task_input,get_task_status,heartbeat,list_assets,list_recovery_candidates,reconcile_execution_drain,report_progress,save_ingest_checkpoint,submit_delivery,submit_ingest_result,submit_result"
+	want := "ack_execution_stopped,begin_execution,claim_task,fail_task,get_asset,get_asset_edl,get_execution_control,get_execution_result_status,get_task_input,get_task_status,heartbeat,list_assets,list_recovery_candidates,reconcile_execution_drain,report_progress,save_ingest_checkpoint,submit_delivery,submit_delivery_variant,submit_ingest_result,submit_preview,submit_result"
 	sortStrings(names)
 	if strings.Join(names, ",") != want {
 		t.Fatalf("tools = %v", names)

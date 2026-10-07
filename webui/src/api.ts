@@ -14,6 +14,9 @@ import type {
 } from './types';
 import type { ProcessingProfile, ProcessingProvider, ProviderDiagnostic, PreparationReport } from './preparation';
 import type { IngestRoots, IngestRun, IngestRunView, RecordingSource, SegmentPage, Segmentation, SelectedSegment } from './ingest';
+import type { PreviewClient, PreviewStartRequest, PreviewView, PreviewList } from './previewContracts.ts';
+import { previewFileURL, previewQueryKey } from './previewContracts.ts';
+import type { VariantStartRequest, VariantView, VariantList } from './deliveryVariantContracts';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -124,6 +127,27 @@ export const deliveryFileURL = (id: string, key: string, download = false) =>
 
 export const deliveryZipURL = (id: string) =>
   `/api/assets/${encodeURIComponent(id)}/delivery.zip`;
+
+export const previewApi: PreviewClient = {
+  start: (runID: string, body: PreviewStartRequest) =>
+    request<PreviewView>(`/api/workflows/${encodeURIComponent(runID)}/previews`, json('POST', body)),
+  list: (runID: string) =>
+    request<PreviewList>(`/api/workflows/${encodeURIComponent(runID)}/previews`),
+  get: (previewID: string) =>
+    request<PreviewView>(`/api/previews/${encodeURIComponent(previewID)}`),
+  cancel: (previewID: string) =>
+    request<PreviewView>(`/api/previews/${encodeURIComponent(previewID)}/cancel`, json('POST', {}))
+};
+
+export { previewFileURL, previewQueryKey };
+
+export const deliveryVariantApi = {
+  start: (run: string, body: VariantStartRequest) => request<VariantView>(
+    `/api/workflows/${encodeURIComponent(run)}/delivery-variants`, json('POST', body)),
+  list: (run: string) => request<VariantList>(`/api/workflows/${encodeURIComponent(run)}/delivery-variants`),
+  get: (id: string) => request<VariantView>(`/api/delivery-variants/${encodeURIComponent(id)}`),
+  cancel: (id: string) => request<VariantView>(`/api/delivery-variants/${encodeURIComponent(id)}/cancel`, json('POST', {}))
+};
 
 /* ------------------------------------------------------------------ *
  * 二阶段「资产治理与审计观测」追加接口。

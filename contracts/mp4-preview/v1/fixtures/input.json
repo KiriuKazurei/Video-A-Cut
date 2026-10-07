@@ -1,0 +1,106 @@
+{
+  "description": "Protocol fixture only: referenced media do not exist and are not acceptance artifacts. Fingerprint generated independently with Python hashlib.",
+  "input": {
+    "schema_version": 1,
+    "preview_id": "preview_fixture",
+    "task_id": "task_fixture",
+    "asset_id": "asset_fixture",
+    "run_id": "run_fixture",
+    "revision_id": "rev_fixture",
+    "package_ref": "exports/fixture",
+    "edl_sha256": "d4b52e017b973664acd19505637bab9ab552507935cd24c420b4cadca4f23ade",
+    "manifest_sha256": "26f02eede4f697c227ae3d23ac6b611ac16391a0357a432baf2bcb96cce611bf",
+    "preset_id": "mp4-720p-v1",
+    "preset_sha256": "37953d50a4618a0462aa5626e637ad12f896fe8c9322328666284f5515a914ef",
+    "preset": {
+      "schema_version": 1,
+      "preset_id": "mp4-720p-v1",
+      "video": {
+        "encoder": "libx264",
+        "pixel_format": "yuv420p",
+        "crf": 23,
+        "speed": "veryfast",
+        "max_width": 1280,
+        "max_height": 720,
+        "upscale": false,
+        "canvas": "export_canvas",
+        "fit": "contain",
+        "gap_color": "black",
+        "fps": "project"
+      },
+      "audio": {
+        "encoder": "aac",
+        "sample_rate": 48000,
+        "channels": 2,
+        "bitrate_kbps": 192,
+        "normalize_mix": false,
+        "limiter": {
+          "limit": 0.891250938,
+          "attack_ms": 5,
+          "release_ms": 50,
+          "auto_level": false,
+          "latency_compensation": true
+        }
+      },
+      "subtitles": {
+        "mode": "burn_if_present",
+        "font_family": "Microsoft YaHei"
+      },
+      "container": {
+        "format": "mp4",
+        "faststart": true
+      }
+    },
+    "files": [
+      {
+        "kind": "source_video",
+        "path": "media/游戏&A.mp4",
+        "sha256": "177149a1d10b81db367fcc314e39bc4d3d1fba8423682b763e31ffc4af4cb358",
+        "size": 1000
+      },
+      {
+        "kind": "music",
+        "path": "audio_a3.wav",
+        "sha256": "7c0461a0683c7fadb382e11e639eaec0d242113b7310dbdcaa56d633dc8759c5",
+        "size": 200
+      },
+      {
+        "kind": "voice",
+        "path": "audio_a2.wav",
+        "sha256": "1b391c8ba283859a8da868a364116d6d3016937724fe3e72d7d6570ca48f15a1",
+        "size": 200
+      },
+      {
+        "kind": "game_audio",
+        "path": "audio_a1.wav",
+        "sha256": "b0b7547815eac2b84602ef855d44aacd53cd87cb38d785fd9036717e80a9700b",
+        "size": 200
+      },
+      {
+        "kind": "srt",
+        "path": "subtitles.srt",
+        "sha256": "2d0691f941fa2b9fb81bd762d05835f607af20c9b4674e4bb4e36cd018452249",
+        "size": 80
+      },
+      {
+        "kind": "edl",
+        "path": "edl.json",
+        "sha256": "d4b52e017b973664acd19505637bab9ab552507935cd24c420b4cadca4f23ade",
+        "size": 100
+      },
+      {
+        "kind": "delivery_manifest",
+        "path": "delivery-manifest.json",
+        "sha256": "26f02eede4f697c227ae3d23ac6b611ac16391a0357a432baf2bcb96cce611bf",
+        "size": 100
+      },
+      {
+        "kind": "packaged_source",
+        "path": "media/解说源.wav",
+        "sha256": "53c7cb369a46bd859b5b7b82aa0c0f478552e72d8e9e0fa9e04116ccff83d9e2",
+        "size": 180
+      }
+    ],
+    "input_sha256": "6c1ef50d8bafca83494ff00e0ab1d7727d500fe93af920ef64e42142569d2271"
+  }
+}

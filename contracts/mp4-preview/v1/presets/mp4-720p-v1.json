@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "preset_id": "mp4-720p-v1",
+  "video": {
+    "encoder": "libx264",
+    "pixel_format": "yuv420p",
+    "crf": 23,
+    "speed": "veryfast",
+    "max_width": 1280,
+    "max_height": 720,
+    "upscale": false,
+    "canvas": "export_canvas",
+    "fit": "contain",
+    "gap_color": "black",
+    "fps": "project"
+  },
+  "audio": {
+    "encoder": "aac",
+    "sample_rate": 48000,
+    "channels": 2,
+    "bitrate_kbps": 192,
+    "normalize_mix": false,
+    "limiter": {
+      "limit": 0.891250938,
+      "attack_ms": 5,
+      "release_ms": 50,
+      "auto_level": false,
+      "latency_compensation": true
+    }
+  },
+  "subtitles": { "mode": "burn_if_present", "font_family": "Microsoft YaHei" },
+  "container": { "format": "mp4", "faststart": true }
+}

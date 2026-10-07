@@ -87,7 +87,7 @@ func TestSubmitDeliveryRejects(t *testing.T) {
 		}
 	})
 	t.Run("wrong type", func(t *testing.T) {
-		svc, root := deliveryFixture(t, model.TaskTypePreview)
+		svc, root := deliveryFixture(t, "review")
 		writePackage(t, root, "p")
 		if err := svc.SubmitDelivery(ctx, "e1", "ex", "p"); !errors.Is(err, model.ErrArgument) {
 			t.Fatalf("got %v", err)

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "generated_at": null,
+  "overall_status": "not_checked",
+  "profile_binding": null,
+  "checks": [
+    { "code": "runtime_dependencies", "status": "not_checked", "message": "尚未执行本地依赖检查" },
+    { "code": "ffmpeg_preview_features", "status": "not_checked", "message": "尚未核验预览所需编码器与滤镜" },
+    { "code": "subtitle_font", "status": "not_checked", "message": "尚未核验所需字体" },
+    { "code": "tts_voice", "status": "not_checked", "message": "尚未核验指定声音" },
+    { "code": "data_directory", "status": "not_checked", "message": "尚未核验数据与日志目录" }
+  ],
+  "capabilities": [
+    { "kind": "profile_execution", "status": "not_checked", "agent_id": null, "profile_sha256": null, "observed_at": null, "expires_at": null },
+    { "kind": "mp4_preview", "status": "not_checked", "agent_id": null, "preset_id": null, "preset_sha256": null, "observed_at": null, "expires_at": null }
+  ],
+  "supported_delivery_variant_specs": []
+}

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert';
 
-console.log('=== 前端新改动验收报告（2026-10-05）缺陷修复全量验证 ===\n');
+console.log('=== 前端验收修复静态回归检查（交互行为另行验证） ===\n');
 
 const projectRoot = 'E:/AI/Video Auto Cut';
 const webuiSrc = path.join(projectRoot, 'webui/src');
@@ -74,9 +74,10 @@ const editingWsContent = fs.readFileSync(editingWsPath, 'utf8');
 assert(editingWsContent.includes('sourcePreview'), '必须拥有独立的 sourcePreview 状态');
 assert(editingWsContent.includes('programPreview'), '必须拥有独立的 programPreview 状态');
 assert(editingWsContent.includes('setSourcePreview(null);'), '必须在资产切换时清空 sourcePreview');
-assert(editingWsContent.includes('setProgramPreview(null);'), '必须在资产/流程切换时清空 programPreview');
-assert(editingWsContent.includes('[assetId, runId]'), 'programPreview 必须监听 [assetId, runId]');
-console.log('✓ P1-02 监视器上下文清理与错图防御验证通过\n');
+assert(editingWsContent.includes('samePreviewContext'), '必须按实际预览归属回收旧节目状态');
+assert(editingWsContent.includes('data={workflowData}'), '审查面板与监视器必须共享实际流程数据');
+assert(editingWsContent.includes('displayWorkflowPreview'), '节目预览必须在渲染时校验流程与修订归属');
+console.log('✓ P1-02 上下文接线静态检查通过；浏览器行为请运行 verify-preview-context.mjs\n');
 
 // --------------------------------------------------------------------------
 // 3. P1-03: 任务派发表单与任务监控入口
@@ -162,5 +163,5 @@ const distIndex = path.join(projectRoot, 'webui/dist/index.html');
 assert(fs.existsSync(distIndex), '生产构建产物必须存在');
 
 console.log('===============================================================');
-console.log('>>> Gate 2: 验收报告全部 10 项缺陷（4 项 P1、6 项 P2）验证通过 <<<');
+console.log('>>> Gate 2: 静态回归检查通过；交互验收另行验证 <<<');
 console.log('===============================================================');

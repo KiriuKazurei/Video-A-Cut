@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "session_id": null,
+  "created_at": null,
+  "candidate": {
+    "head": null,
+    "source_index": { "path": null, "sha256": null },
+    "build_index": { "path": null, "sha256": null }
+  },
+  "source": {
+    "root_id": null,
+    "relative_path": null,
+    "sha256": null,
+    "probe": { "path": null, "sha256": null },
+    "audio_stream_index": null,
+    "selected_ranges_us": []
+  },
+  "profile": {
+    "profile_id": null,
+    "revision": null,
+    "sha256": null,
+    "content_mode": null,
+    "vision_model": null,
+    "narration_model": null,
+    "tts_voice": null,
+    "external_consent_confirmed": false
+  },
+  "workflow": {
+    "asset_id": null,
+    "run_id": null,
+    "export_revision_id": null,
+    "manifest_sha256": null,
+    "zip_sha256": null
+  },
+  "preview": {
+    "preview_id": null,
+    "input_sha256": null,
+    "preset_sha256": null,
+    "mp4_sha256": null,
+    "report": { "path": null, "sha256": null },
+    "receipt": { "path": null, "sha256": null }
+  },
+  "target_application": { "name": null, "version": null },
+  "automated_checks": [],
+  "human_checks": [
+    { "check_item": "content_fidelity", "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] },
+    { "check_item": "evidence_trace", "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] },
+    { "check_item": "browser", "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] },
+    { "check_item": "premiere", "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] },
+    { "check_item": "cuts_fps", "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] },
+    { "check_item": "subtitle_audio_duck", "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] }
+  ],
+  "mp4_human_review": { "status": "pending", "actor": null, "checked_at": null, "note": null, "evidence": [] },
+  "blockers": [],
+  "defects": [],
+  "storage": { "before_bytes": null, "after_bytes": null, "limit_bytes": 524288000 },
+  "process_cleanup": { "status": "not_run", "evidence": [] }
+}

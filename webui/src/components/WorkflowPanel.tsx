@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, Button, Card, Col, Collapse, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Row, Space, Spin, Steps, Tag, Typography
@@ -10,6 +10,7 @@ import type { ReviewView, WorkflowRun } from '../types';
 import { usePreview } from './Monitor';
 import { Timeline, type TimelineClip } from './Timeline';
 import { ValueSelect } from './ui';
+import { createWorkflowPreview, latestWorkflowRun, reviewMatchesCurrent, samePreviewContext, workflowPreviewContext } from '../previewContext';
 
 const checks = [['content_fidelity', '内容忠实度'], ['evidence_trace', '证据追溯'], ['browser', '浏览器操作'], ['premiere', 'Premiere 导入'], ['cuts_fps', '切点与帧率'], ['subtitle_audio_duck', '字幕、音频与压低']] as const;
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请刷新后重试';
@@ -30,13 +31,18 @@ export const evidenceURL = (runId: string, key: string, revisionId: string) =>
   `/api/workflows/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(key)}?revision_id=${encodeURIComponent(revisionId)}`;
 
 /** 同一组查询键供编辑页、导出页复用，React Query 自动去重（API-28、30、31、39）。 */
-function useWorkflowData(assetId: string, selection: RunSelection) {
-  const runs = useQuery({ queryKey: ['workflows', assetId, selection.offset], queryFn: () => api.listWorkflows(assetId, selection.offset) });
+export function useWorkflowData(assetId: string, selection: RunSelection) {
+  const runs = useQuery({ queryKey: ['workflows', assetId, selection.offset], queryFn: () => api.listWorkflows(assetId, selection.offset), enabled: Boolean(assetId) });
   const run = runs.data?.find(r => r.run_id === selection.runId) ?? runs.data?.[0];
   const snapshot = useQuery({ queryKey: ['workflow', run?.run_id], queryFn: () => api.getWorkflow(run!.run_id), enabled: Boolean(run) });
-  const review = useQuery({ queryKey: ['review', run?.run_id], queryFn: () => api.reviewWorkflow(run!.run_id), enabled: Boolean(run) });
+  const reviewQuery = useQuery({ queryKey: ['review', run?.run_id], queryFn: () => api.reviewWorkflow(run!.run_id), enabled: Boolean(run) });
   const acceptance = useQuery({ queryKey: ['acceptance', run?.run_id], queryFn: () => api.listAcceptance(run!.run_id), enabled: Boolean(run) });
-  const current: WorkflowRun | undefined = review.data?.run ?? snapshot.data?.run ?? run;
+  const [known, setKnown] = useState<Record<string, WorkflowRun>>({});
+  const identity = `${assetId}\0${run?.run_id ?? ''}`;
+  const current = latestWorkflowRun(assetId, run?.run_id, [reviewQuery.data?.run, snapshot.data?.run, run, known[identity]]);
+  // Guarded render-time adjustment prevents a stale version being committed to the UI.
+  if (current && current !== known[identity]) setKnown(previous => ({ ...previous, [identity]: current }));
+  const review = { ...reviewQuery, data: reviewMatchesCurrent(reviewQuery.data, current) ? reviewQuery.data : undefined };
   return { runs, run, snapshot, review, acceptance, current };
 }
 
@@ -66,13 +72,28 @@ const stepStatus = (status?: string): StepProps['status'] => status === 'succeed
 const decisionColor = (decision?: string) => decision === 'confirmed' ? 'success' : decision === 'rejected' ? 'error' : 'processing';
 
 /** 编辑页：内容流程、阶段、序列时间线、场景审查与解说改稿（API-28~38）。 */
-export function WorkflowPanel({ assetId, selection, monitor, onGoExport }: { assetId: string; selection: RunSelection; monitor: ReactNode; onGoExport?: () => void }) {
+type WorkflowData = ReturnType<typeof useWorkflowData>;
+interface WorkflowPanelProps { assetId: string; selection: RunSelection; monitor: ReactNode; onGoExport?: () => void }
+
+export function WorkflowPanel({ data, ...props }: WorkflowPanelProps & { data?: WorkflowData }) {
+  return data ? <WorkflowContent {...props} data={data} /> : <QueriedWorkflowPanel {...props} />;
+}
+
+function QueriedWorkflowPanel(props: WorkflowPanelProps) {
+  const data = useWorkflowData(props.assetId, props.selection);
+  return <WorkflowContent {...props} data={data} />;
+}
+
+function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: WorkflowPanelProps & { data: WorkflowData }) {
   const [mode, setMode] = useState<'configured' | 'builtin'>('configured');
   const [note, setNote] = useState('');
-  const [focus, setFocus] = useState<string | null>(null);
+  const [focused, setFocused] = useState<{ key: string; owner: ReturnType<typeof workflowPreviewContext> } | null>(null);
   const [tab, setTab] = useState<'scenes' | 'narration' | null>(null);
   const preview = usePreview();
-  const { runs, run, snapshot, review, current } = useWorkflowData(assetId, selection);
+  const { runs, run, snapshot, review, current } = data;
+  const owner = workflowPreviewContext(current);
+  const focus = review.data && samePreviewContext(focused?.owner, owner) ? focused?.key : null;
+  useEffect(() => { setFocused(null); setTab(null); }, [assetId, current?.run_id, current?.current_revision_id]);
   const { invoke, busy, failure } = useWorkflowAction();
   const sceneGate = current?.stage === 'scene_review' && current.status === 'awaiting_review';
   const draftGate = current?.stage === 'draft_review' && current.status === 'awaiting_review';
@@ -81,21 +102,14 @@ export function WorkflowPanel({ assetId, selection, monitor, onGoExport }: { ass
   const lines = review.data?.narration ?? [];
   const evidence = review.data?.evidence_files ?? [];
   const activeTab = tab ?? (current?.stage === 'draft_review' || (lines.length > 0 && current?.stage !== 'scene_review') ? 'narration' : 'scenes');
-  const firstEvidence = (sceneId?: string) => evidence.find(f => f.scene_id === sceneId);
 
   const showScene = (scene: Scene, key?: string) => {
-    setFocus(`scene:${scene.scene_id}`); setTab('scenes');
-    const file = key ? evidence.find(f => f.key === key) : firstEvidence(scene.scene_id);
-    preview(file && current && review.data ? { kind: 'image', src: evidenceURL(current.run_id, file.key, review.data.revision.revision_id), title: scene.label || scene.scene_id || '场景',
-      meta: `源时间 ${file.timestamp} 秒 · ${scene.decision || '待确认'}`, note: '识别取样证据帧（绑定当前审查修订，非成片）' } : null);
+    setFocused({ key: `scene:${scene.scene_id}`, owner }); setTab('scenes');
+    preview(scene.scene_id ? createWorkflowPreview(review.data, { kind: 'scene', id: scene.scene_id }, key) : null);
   };
   const showLine = (line: Line) => {
-    setFocus(`line:${line.id}`); setTab('narration');
-    const scene = scenes.find(s => s.scene_id === line.source_scene_id);
-    const file = firstEvidence(line.source_scene_id);
-    preview(current && review.data && file ? { kind: 'image', src: evidenceURL(current.run_id, file.key, review.data.revision.revision_id), title: `解说 ${line.id}`,
-      meta: `${line.start ?? '?'}s – ${line.end ?? '?'}s · 来源 ${scene?.label || line.source_scene_id || '未提供'}`, caption: line.text,
-      note: '字幕叠加仅为审查示意，不代表导出成片的字幕样式' } : null);
+    setFocused({ key: `line:${line.id}`, owner }); setTab('narration');
+    preview(line.id ? createWorkflowPreview(review.data, { kind: 'line', id: line.id }) : null);
   };
 
   const ordered = [...scenes].map((scene, index) => ({ scene, index })).sort((a, b) => (a.scene.sequence_rank ?? a.index) - (b.scene.sequence_rank ?? b.index));
@@ -135,7 +149,7 @@ export function WorkflowPanel({ assetId, selection, monitor, onGoExport }: { ass
           <Card size="small" className="review-panel" activeTabKey={activeTab} onTabChange={(key) => setTab(key as 'scenes' | 'narration')}
             tabList={[{ key: 'scenes', label: `场景证据 (${scenes.length})` }, { key: 'narration', label: `解说草稿 (${lines.length})` }]}
             tabBarExtraContent={<Tag bordered={false}>{sceneGate ? '等待场景确认' : draftGate ? '等待解说批准' : current.stage}</Tag>}>
-            <Spin spinning={review.isLoading}>
+            <Spin spinning={review.isLoading || (review.isFetching && !review.data)}>
               <div className="review-scroll" role="tabpanel" id="review-scenes" hidden={activeTab !== 'scenes'}>
                 {!scenes.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="识别完成后显示场景与证据。" />}
                 {review.data?.scenes?.map(scene => <Card size="small" key={scene.scene_id}
@@ -149,7 +163,7 @@ export function WorkflowPanel({ assetId, selection, monitor, onGoExport }: { ass
                     </button>
                     <figcaption><Typography.Text type="secondary" style={{ fontSize: 12 }}>源时间 {f.timestamp} 秒</Typography.Text></figcaption>
                   </figure>)}</div>
-                  <SceneEdit key={`${review.data.revision.revision_id}-${scene.scene_id}`} scene={scene} disabled={busy || !(sceneGate || current.stage === 'acceptance')} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), scene_id: scene.scene_id, ...fields }))} />
+                  <SceneEdit key={`${review.data!.revision.revision_id}-${scene.scene_id}`} scene={scene} disabled={busy || !(sceneGate || current.stage === 'acceptance')} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), scene_id: scene.scene_id, ...fields }))} />
                   <Space wrap>
                     <Button type="primary" disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'confirmed', note }))}>确认此场景</Button>
                     <Button danger disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'rejected', note }))}>退回场景</Button>
@@ -160,7 +174,7 @@ export function WorkflowPanel({ assetId, selection, monitor, onGoExport }: { ass
                 {!lines.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="场景确认、排序后生成草稿。" />}
                 {review.data?.narration?.map(line => <Card size="small" key={line.id}
                   className={`workflow-card narration-card${focus === `line:${line.id}` ? ' is-focused' : ''}`}>
-                  <DraftEdit key={`${review.data.revision.revision_id}-${line.id}`} line={line} scenes={review.data.scenes ?? []} disabled={busy || !['draft_review', 'acceptance'].includes(current.stage)} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), narration_id: line.id, ...fields }))} />
+                  <DraftEdit key={`${review.data!.revision.revision_id}-${line.id}`} line={line} scenes={scenes} disabled={busy || !['draft_review', 'acceptance'].includes(current.stage)} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), narration_id: line.id, ...fields }))} />
                   <Flex align="center" gap={8} wrap style={{ margin: '8px 0' }}>
                     <Tag color={line.approved_hash ? 'success' : 'default'}>{line.approved_hash ? '当前版本已批准' : '当前版本未批准'}</Tag>
                     <Typography.Text type="secondary" style={{ overflowWrap: 'anywhere' }}>来源场景 {line.source_scene_id || '未提供'}</Typography.Text>

@@ -100,6 +100,9 @@ func typeReady(tk model.Task, asset model.Asset) bool {
 		return true
 	}
 	if asset.Status == model.AssetStatusExported {
+		if tk.Type == model.TaskTypePreview || tk.Type == model.TaskTypeDeliveryVariant {
+			return true
+		}
 		return false
 	}
 	// A raw recording only feeds ingest tasks until media_prepare publishes

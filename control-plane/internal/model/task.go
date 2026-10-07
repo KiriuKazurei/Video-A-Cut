@@ -36,12 +36,13 @@ const (
 
 // Task types produced by the pipeline.
 const (
-	TaskTypeRecognize = "recognize"
-	TaskTypeSort      = "sort"
-	TaskTypeNarrate   = "narrate"
-	TaskTypeTTS       = "tts"
-	TaskTypeSubtitle  = "subtitle"
-	TaskTypeMix       = "mix"
-	TaskTypeExport    = "export"
-	TaskTypePreview   = "preview"
+	TaskTypeRecognize       = "recognize"
+	TaskTypeSort            = "sort"
+	TaskTypeNarrate         = "narrate"
+	TaskTypeTTS             = "tts"
+	TaskTypeSubtitle        = "subtitle"
+	TaskTypeMix             = "mix"
+	TaskTypeExport          = "export"
+	TaskTypePreview         = "preview"
+	TaskTypeDeliveryVariant = "delivery_variant"
 )

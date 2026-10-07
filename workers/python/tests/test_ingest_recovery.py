@@ -2,7 +2,10 @@
 import json, os, shutil, subprocess, sys, tempfile, threading, time, unittest
 from pathlib import Path
 from unittest.mock import patch
-from test_f7_02 import RecordingClient, _cfg, _scope, _ingest_input
+if __package__:
+    from .test_f7_02 import RecordingClient, _cfg, _scope, _ingest_input
+else:
+    from test_f7_02 import RecordingClient, _cfg, _scope, _ingest_input
 from vac_worker.ingest.common import Exec, IngestFailure, Runner
 from vac_worker.ingest.supervise import Halt, LocalLease, ProcessRegistry
 from vac_worker.ingest.loop import _ack_stopped, run_ingest_loop

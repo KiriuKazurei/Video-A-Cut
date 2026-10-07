@@ -1,0 +1,62 @@
+{
+  "input": {
+    "schema_version": 1,
+    "variant_id": "dv_fixture",
+    "task_id": "tkdv_fixture",
+    "asset_id": "asset_字幕",
+    "run_id": "run_fixture",
+    "revision_id": "rev_fixture",
+    "parent_package_ref": "exports/中文",
+    "edl_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "parent_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "format": "ass",
+    "spec_id": "ass-basic-v1",
+    "spec_sha256": "42e377821c299c89bfeee176f090f754b173c002aa6cafc7f2c57589f977d1a1",
+    "spec": {
+      "schema_version": 1,
+      "spec_id": "ass-basic-v1",
+      "format": "ass",
+      "script_type": "v4.00+",
+      "play_res_x": 1280,
+      "play_res_y": 720,
+      "wrap_style": 0,
+      "font_family": "Microsoft YaHei",
+      "font_size": 36,
+      "primary_colour": "&H00FFFFFF",
+      "outline_colour": "&H00000000",
+      "outline": 2,
+      "shadow": 1,
+      "alignment": 2,
+      "margin_l": 64,
+      "margin_r": 64,
+      "margin_v": 36,
+      "time_quantization": "nearest_centisecond_half_up",
+      "literal_backslash": "word_joiner_after_backslash",
+      "line_wrap_units": 56,
+      "line_wrap_policy": "scalars2_accents_variation_zwj0_tab4_v1",
+      "max_lines": 8
+    },
+    "source_files": [
+      {
+        "kind": "srt",
+        "path": "字幕/台词.srt",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size": 105
+      },
+      {
+        "kind": "edl",
+        "path": "edl.json",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 245
+      },
+      {
+        "kind": "delivery_manifest",
+        "path": "delivery-manifest.json",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "size": 330
+      }
+    ],
+    "input_sha256": "cdf029dc945fb76664bf2a270a0c4ef5593520018a1ed9e3690a279744e99c05"
+  },
+  "expected_sha256": "cdf029dc945fb76664bf2a270a0c4ef5593520018a1ed9e3690a279744e99c05"
+}

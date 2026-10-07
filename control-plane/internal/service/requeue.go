@@ -127,6 +127,7 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) (int, error) {
 		s.publish("task_updated", cloneTask(saved))
 		s.publishTaskWorkflow(ctx, saved.TaskID)
 		s.publishTaskIngest(ctx, saved.TaskID)
+		s.publishTaskPreview(ctx, saved.TaskID)
 		if saved.Status == model.TaskStatusCancelled {
 			continue
 		}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
@@ -27,6 +28,10 @@ type Service struct {
 	maxAttempts int
 	// ingest is configured once at startup by ConfigureIngest.
 	ingest ingestConfig
+
+	// prober inspects preview media streams; defaults to preview.DefaultProber.
+	prober   preview.MediaProber
+	proberMu sync.RWMutex
 
 	// bus is the optional fan-out sink for state-change events. It is nil
 	// until SetBus is called, which keeps the service usable (and testable)
@@ -46,7 +51,25 @@ type Service struct {
 // New returns a Service backed by st with no bus attached. SetBus attaches
 // one later; until then publishes are no-ops.
 func New(st *store.Store) *Service {
-	return &Service{st: st}
+	return &Service{st: st, prober: preview.DefaultProber}
+}
+
+// SetMediaProber configures the prober used for preview media validation.
+func (s *Service) SetMediaProber(p preview.MediaProber) {
+	s.proberMu.Lock()
+	s.prober = p
+	s.proberMu.Unlock()
+}
+
+// MediaProber returns the current prober used for preview media validation.
+func (s *Service) MediaProber() preview.MediaProber {
+	s.proberMu.RLock()
+	p := s.prober
+	s.proberMu.RUnlock()
+	if p == nil {
+		return preview.DefaultProber
+	}
+	return p
 }
 
 // SetBus attaches the bus that state-change events are published to. Passing

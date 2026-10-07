@@ -16,7 +16,9 @@ export const REFRESH_DOMAINS = [
   'workflow',
   'review',
   'acceptance',
-  'ingest'
+  'ingest',
+  'mp4Previews',
+  'deliveryVariants'
 ] as const;
 
 export type RefreshDomain = (typeof REFRESH_DOMAINS)[number];
@@ -71,6 +73,8 @@ export interface EventPayloadMeta {
   asset_id?: string;
   task_id?: string;
   status?: string;
+  run_id?: string;
+  revision_id?: string;
 }
 
 export function extractEventMeta(data?: unknown): EventPayloadMeta {
@@ -101,6 +105,12 @@ function extractFromObject(obj: Record<string, unknown>): EventPayloadMeta {
   if (typeof obj.status === 'string' && obj.status.trim()) {
     meta.status = obj.status.trim();
   }
+  if (typeof obj.run_id === 'string' && obj.run_id.trim()) {
+    meta.run_id = obj.run_id.trim();
+  }
+  if (typeof obj.revision_id === 'string' && obj.revision_id.trim()) {
+    meta.revision_id = obj.revision_id.trim();
+  }
   return meta;
 }
 
@@ -116,7 +126,9 @@ export const SUPPORTED_SSE_EVENTS = [
   'profile.changed',
   'capability.changed',
   'ingest.changed',
-  'audit.changed'
+  'audit.changed',
+  'preview_updated',
+  'delivery_variant.changed'
 ] as const;
 
 export type SupportedSSEEvent = (typeof SUPPORTED_SSE_EVENTS)[number];
@@ -137,6 +149,9 @@ export function handleSSEEvent(
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
   const promises: Promise<void>[] = [];
+  if (['delivery_variant.changed', 'capability.changed', 'workflow.changed', 'asset_created', 'asset_updated', 'task_updated', 'task_created'].includes(eventName)) {
+    promises.push(queryClient.invalidateQueries({ queryKey: ['deliveryVariants'] }));
+  }
 
   switch (eventName) {
     case 'asset_created':
@@ -182,7 +197,8 @@ export function handleSSEEvent(
         queryClient.invalidateQueries({ queryKey: ['workflow'] }),
         queryClient.invalidateQueries({ queryKey: ['review'] }),
         queryClient.invalidateQueries({ queryKey: ['acceptance'] }),
-        queryClient.invalidateQueries({ queryKey: ['audit'] })
+        queryClient.invalidateQueries({ queryKey: ['audit'] }),
+        queryClient.invalidateQueries({ queryKey: ['mp4Previews'] })
       );
       break;
 
@@ -223,6 +239,34 @@ export function handleSSEEvent(
       break;
 
     case 'audit.changed':
+      promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] }));
+      break;
+
+    case 'preview_updated':
+      if (meta.asset_id && meta.run_id && meta.revision_id) {
+        promises.push(
+          queryClient.invalidateQueries({
+            queryKey: ['mp4Previews', meta.asset_id, meta.run_id, meta.revision_id]
+          })
+        );
+      } else if (meta.asset_id && meta.run_id) {
+        promises.push(
+          queryClient.invalidateQueries({
+            queryKey: ['mp4Previews', meta.asset_id, meta.run_id]
+          })
+        );
+      } else if (meta.asset_id) {
+        promises.push(
+          queryClient.invalidateQueries({
+            queryKey: ['mp4Previews', meta.asset_id]
+          })
+        );
+      } else {
+        promises.push(queryClient.invalidateQueries({ queryKey: ['mp4Previews'] }));
+      }
+      if (watchedTaskId && (!meta.task_id || meta.task_id === watchedTaskId)) {
+        promises.push(queryClient.invalidateQueries({ queryKey: ['task', watchedTaskId] }));
+      }
       promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] }));
       break;
 

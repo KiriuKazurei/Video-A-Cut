@@ -1,6 +1,6 @@
 # Python 流水线 Worker
 
-领取并执行 `recognize / sort / narrate / tts / subtitle / mix` 六类任务的 Worker。三阶段的最小可验证实现只依赖本机工具（ffmpeg / ffprobe / Windows SAPI）；四阶段将识别与解说抽为 `ContentProvider`，目前只内置 `builtin` 确定性实现，真实多模态/LLM 适配器尚待开发。
+领取并执行 `recognize / sort / narrate / tts / subtitle / mix` 六类任务的 Worker。媒体处理依赖本机 ffmpeg / ffprobe，中文语音使用 Windows SAPI。识别与解说通过 `ContentProvider` 接入：已实现 `builtin` 元数据/模板模式、`vision` 画面识别和 `narration` 解说适配器，并支持 OpenAI Chat Completions、Anthropic Messages、Google Gemini 请求格式。实际模型兼容性与游戏内容效果仍需验收。
 
 只通过 MCP（`/mcp`）与控制面通信：不打开 SQLite，不自报 agent ID 或角色。
 
@@ -31,7 +31,11 @@ VAC_WORKER_TOKEN=<明文 bearer token> python -m vac_worker --config worker.json
 
 `delivery_root` 必须是控制面 `delivery_root` 的同一目录；`heartbeat_interval_ms` 必须小于 `lease_seconds`。ffmpeg/ffprobe 需在 PATH 上。
 
-`content_provider` 默认 `builtin`，其标签标记 `metadata_only`，旁白为“第 N 段”模板。指定未知 provider 会在启动时失败，不会暗中使用模板；实现新适配器、取样证据和人工审查的顺序见 `docs/四阶段开发文档.md`。
+`content_provider` 默认 `builtin`，其标签标记 `metadata_only`，旁白为“第 N 段”模板，用于本地闭环与诊断，不执行真实画面识别或 LLM 推理。指定未知 provider 会在启动时失败，模型请求失败也不会暗中改用模板。
+
+实际模型使用 `vision`（识别）或 `narration`（解说），在 `content_provider_config` 中配置 `endpoint`、`model`、凭证环境变量名 `token_env` 和 `allow_external`。可选 `api_format` 为 `openai`、`anthropic` 或 `gemini`；省略时使用原有自定义 `/vision`、`/narration` JSON 契约。凭证由运行环境提供，预设不保存凭证值。
+
+固定预设流程推荐使用仓库根目录的 [Start-LocalPipeline.ps1](../../scripts/Start-LocalPipeline.ps1)，由选定 profile 生成各角色的匹配 Worker 配置，并按具体预设版本记录媒体外发许可。配置示例见 [configs/providers](../../configs/providers)，协议、连接测试与运行说明见 [服务商接入报告](../../docs/服务商通用接入开发报告.md)。取样证据和内容审查契约见 [四阶段开发文档](../../docs/四阶段开发文档.md)。
 
 `tts` 在 Windows 上使用本机中文 SAPI 语音。若语音不可用或合成失败，任务失败，不会用测试音冒充旁白。旁白窗口是最长可用时长；超长语音拒绝交付，实际语音长度回填 EDL，字幕与音乐压低跟随实际长度。单元测试可显式启用测试音；真实交付不启用。
 
@@ -45,6 +49,10 @@ VAC_WORKER_TOKEN=<明文 bearer token> python -m vac_worker --config worker.json
 
 ## 测试
 
+在 `workers/python` 目录执行完整测试，包括导入恢复测试：
+
 ```sh
-python -m unittest discover -s tests -t .
+python -m unittest discover -s tests -t . -v
 ```
+
+兼容不指定顶层目录的入口 `python -m unittest discover -s tests -v`，也可使用 `python -m unittest tests.test_ingest_recovery -v` 单独复验恢复逻辑。

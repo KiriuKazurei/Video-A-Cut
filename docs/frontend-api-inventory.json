@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
-  "verified_date": "2026-10-03",
+  "verified_date": "2026-10-07",
   "scope": "当前 Go REST/SSE 全部注册路由与前端功能映射；描述性清单，不是 OpenAPI Schema",
-  "registered_route_count": 51,
-  "expanded_endpoint_count": 52,
+  "registered_route_count": 62,
+  "expanded_endpoint_count": 63,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
     "webui/src/useEvents.ts",
-    "webui/src/components/WorkflowPanel.tsx"
+    "webui/src/components/WorkflowPanel.tsx",
+    "webui/src/components/DeliveryVariantPanel.tsx"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -895,7 +896,194 @@
         "file": "control-plane/internal/api/narration_review.go",
         "line": 47
       }
+    },
+    {
+      "id": "API-53",
+      "group": "合成成片 MP4 预览",
+      "method": "POST",
+      "path": "/api/workflows/{run}/previews",
+      "frontend_function": "api.startPreview",
+      "frontend_ui": "交付页 / Monitor：生成 MP4 预览",
+      "request": "JSON：revision_id:string, expected_version:number, preset_id:string, request_id:string",
+      "success_response": "202 / 200 PreviewView",
+      "behavior": "新任务 202，幂等复用 200。固定完整输入、预设和指纹，事务创建任务与绑定；校验工作流版本、导出版本、治理与有效能力",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "startPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/preview.go",
+        "line": 18
+      }
+    },
+    {
+      "id": "API-54",
+      "group": "合成成片 MP4 预览",
+      "method": "GET",
+      "path": "/api/workflows/{run}/previews",
+      "frontend_function": "api.listPreviews",
+      "frontend_ui": "交付页 / Monitor：预览列表、前置检查与生成入口状态",
+      "request": "路径 run=run_id；无请求体",
+      "success_response": "200 PreviewList",
+      "behavior": "返回当前 revision、expected_version、can_start/checks 和历史 preview 列表",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "listPreviews",
+      "backend_source": {
+        "file": "control-plane/internal/api/preview.go",
+        "line": 42
+      }
+    },
+    {
+      "id": "API-55",
+      "group": "合成成片 MP4 预览",
+      "method": "GET",
+      "path": "/api/previews/{id}",
+      "frontend_function": "api.getPreview",
+      "frontend_ui": "交付页 / Monitor：单个预览任务状态、进度与媒体详情",
+      "request": "路径 id=preview_id；无请求体",
+      "success_response": "200 PreviewView",
+      "behavior": "投影 Task 状态、进度、错误，结合关联产物与媒体元数据",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "getPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/preview.go",
+        "line": 57
+      }
+    },
+    {
+      "id": "API-56",
+      "group": "合成成片 MP4 预览",
+      "method": "POST",
+      "path": "/api/previews/{id}/cancel",
+      "frontend_function": "api.cancelPreview",
+      "frontend_ui": "交付页 / Monitor：取消当前进行中的预览合成",
+      "request": "路径 id=preview_id；空 JSON 对象 {}",
+      "success_response": "200 PreviewView",
+      "behavior": "仅取消该预览任务，不影响整个工作流；重复取消幂等，已终态返回原终态不删产物",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "cancelPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/preview.go",
+        "line": 72
+      }
+    },
+    {
+      "id": "API-57",
+      "group": "合成成片 MP4 预览",
+      "method": "GET",
+      "path": "/api/previews/{id}/files/{key}",
+      "frontend_function": "api.getPreviewFileUrl",
+      "frontend_ui": "交付页 / Monitor：播放 MP4 视频流或下载 MP4/报告/回执",
+      "request": "路径 id=preview_id, key=mp4|report|receipt；查询参数 ?download=1 强制下载",
+      "success_response": "200 / 206 媒体流或附件",
+      "behavior": "受控媒体读取；MP4 默认 inline 支持 Range 206 拖动播放，?download=1 明确 attachment；report/receipt 为附件",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "getPreviewFile",
+      "backend_source": {
+        "file": "control-plane/internal/api/preview.go",
+        "line": 87
+      }
+    },
+    {
+      "id": "API-58",
+      "group": "ASS 派生交付",
+      "method": "POST",
+      "path": "/api/workflows/{run}/delivery-variants",
+      "frontend_function": "deliveryVariantApi.start",
+      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "success_response": "202/200 VariantView",
+      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "usage": "页面已使用",
+      "backend_handler": "startDeliveryVariant",
+      "backend_source": {
+        "file": "control-plane/internal/api/delivery_variant.go",
+        "line": 61
+      }
+    },
+    {
+      "id": "API-59",
+      "group": "ASS 派生交付",
+      "method": "GET",
+      "path": "/api/workflows/{run}/delivery-variants",
+      "frontend_function": "deliveryVariantApi.list",
+      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "success_response": "200 VariantList",
+      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "usage": "页面已使用",
+      "backend_handler": "listDeliveryVariants",
+      "backend_source": {
+        "file": "control-plane/internal/api/delivery_variant.go",
+        "line": 85
+      }
+    },
+    {
+      "id": "API-60",
+      "group": "ASS 派生交付",
+      "method": "GET",
+      "path": "/api/delivery-variants/{id}",
+      "frontend_function": "deliveryVariantApi.get",
+      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "success_response": "200 VariantView",
+      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "usage": "已封装，页面使用列表快照",
+      "backend_handler": "getDeliveryVariant",
+      "backend_source": {
+        "file": "control-plane/internal/api/delivery_variant.go",
+        "line": 100
+      }
+    },
+    {
+      "id": "API-61",
+      "group": "ASS 派生交付",
+      "method": "POST",
+      "path": "/api/delivery-variants/{id}/cancel",
+      "frontend_function": "deliveryVariantApi.cancel",
+      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "success_response": "200 VariantView",
+      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "usage": "页面已使用",
+      "backend_handler": "cancelDeliveryVariant",
+      "backend_source": {
+        "file": "control-plane/internal/api/delivery_variant.go",
+        "line": 115
+      }
+    },
+    {
+      "id": "API-62",
+      "group": "ASS 派生交付",
+      "method": "GET",
+      "path": "/api/delivery-variants/{id}/files/{key}",
+      "frontend_function": "variantFileURL",
+      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "success_response": "200 registered file",
+      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "usage": "页面已使用",
+      "backend_handler": "getDeliveryVariantFile",
+      "backend_source": {
+        "file": "control-plane/internal/api/delivery_variant.go",
+        "line": 130
+      }
+    },
+    {
+      "id": "API-63",
+      "group": "ASS 派生交付",
+      "method": "GET",
+      "path": "/api/delivery-variants/{id}/delivery.zip",
+      "frontend_function": "variantZIPURL",
+      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "success_response": "200 application/zip",
+      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "usage": "页面已使用",
+      "backend_handler": "getDeliveryVariantZIP",
+      "backend_source": {
+        "file": "control-plane/internal/api/delivery_variant.go",
+        "line": 19
+      }
     }
   ],
-  "routes_source_sha256": "a130e2461926e30b9c3c1199791a6825c72dc5dda86e05c9ab8e020a6a85ee98"
+  "routes_source_sha256": "55b268e0208208f554b392c0d2a51647ff4375c2df18571437ca7133bbb3f1c7"
 }

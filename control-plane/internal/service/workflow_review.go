@@ -536,6 +536,28 @@ func (s *Service) invalidateFrom(ctx context.Context, tx *store.Store, run *mode
 		}
 		ids = append(ids, stg.TaskID)
 	}
+	if drop[model.TaskTypeExport] {
+		if err := s.invalidateDeliveryVariants(ctx, tx, run.RunID); err != nil {
+			return err
+		}
+		if previewJobs, perr := tx.ListPreviewJobs(ctx, run.RunID); perr == nil {
+			for _, pj := range previewJobs {
+				if !pj.Invalidated {
+					if err := tx.InvalidatePreviewJob(ctx, pj.PreviewID); err != nil {
+						return err
+					}
+					if ptk, err := tx.GetTask(ctx, pj.TaskID); err == nil {
+						if ptk.Status == model.TaskStatusQueued || ptk.Status == model.TaskStatusClaimed || ptk.Status == model.TaskStatusRunning {
+							ptk.Status = model.TaskStatusCancelled
+							ptk.LeaseUntil = nil
+							ptk.Message = "workflow invalidated this preview"
+							_ = tx.UpdateTask(ctx, ptk)
+						}
+					}
+				}
+			}
+		}
+	}
 	return tx.InvalidateQueuedStages(ctx, run.RunID, ids)
 }
 

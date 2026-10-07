@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ToolError } from './mcp.mjs';
+import { processPreviewTask, probePreviewCapability } from './preview.mjs';
+import { processDeliveryVariantTask, probeDeliveryVariantCapability } from './delivery-variant.mjs';
 
 /**
  * Worker configuration. Paths only; the bearer token is read from the
@@ -113,7 +115,11 @@ const sleep = (ms, signal) => new Promise((r) => {
  * Process one claimed export task end to end. Returns the final outcome for
  * logging. Never throws for task-level problems; those become fail_task.
  */
-export async function processTask({ client, cfg, task, log, signal, runCliImpl = runCli }) {
+export async function processTask({ client, cfg, task, log = () => {}, signal, runCliImpl = runCli, renderPreviewImpl, previewCapability, buildVariantImpl, deliveryVariantCapability }) {
+  if (task?.type === 'delivery_variant') return processDeliveryVariantTask({ client, cfg, task, log, signal, buildVariantImpl, deliveryVariantCapability });
+  if (task.type === 'preview') {
+    return processPreviewTask({ client, cfg, task, log, signal, renderPreviewImpl, previewCapability, deliveryVariantCapability });
+  }
   const id = task.task_id;
   let leaseLost = false;
   const taskAbort=new AbortController();
@@ -121,7 +127,7 @@ export async function processTask({ client, cfg, task, log, signal, runCliImpl =
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   const beat = setInterval(async () => {
     try {
-      await client.call('heartbeat', { task_id: id });
+      await client.call('heartbeat', { task_id: id, ...(previewCapability ? { preview_capability: previewCapability } : {}), ...(deliveryVariantCapability ? { delivery_variant_capability: deliveryVariantCapability } : {}) });
     } catch (err) {
       if (err instanceof ToolError && ['lease_expired', 'not_found', 'invalid_state', 'conflict'].includes(err.code)) {
         leaseLost = true;
@@ -214,20 +220,52 @@ export async function processTask({ client, cfg, task, log, signal, runCliImpl =
 }
 
 /** Poll-claim-process loop until signal aborts. */
-export async function runLoop({ client, cfg, log, signal, once = false }) {
+export async function runLoop({
+  client, cfg, log, signal, once = false,
+  runCliImpl = runCli, renderPreviewImpl, probePreviewCapabilityImpl = probePreviewCapability, buildVariantImpl,
+  probeDeliveryVariantCapabilityImpl = probeDeliveryVariantCapability
+}) {
   const tools = await client.listTools();
   for (const needed of ['claim_task', 'heartbeat', 'report_progress', 'get_asset', 'get_task_input', 'submit_delivery', 'fail_task']) {
     if (!tools.includes(needed)) throw new Error(`control plane does not expose ${needed}`);
   }
+  const hasPreviewTool = tools.includes('submit_preview');
+  const hasVariantTool = tools.includes('submit_delivery_variant');
+  let variantCap = hasVariantTool ? await probeDeliveryVariantCapabilityImpl() : null;
+  let previewCap = null;
+  if (hasPreviewTool) {
+    try {
+      previewCap = await probePreviewCapabilityImpl();
+    } catch (err) {
+      log(`preview capability probe error: ${err.message}`);
+    }
+  }
   const capability=cfg.profileSHA256 ? {profile_sha256:cfg.profileSHA256,tools_ready:await exporterToolsReady(cfg),credentials_ready:Boolean(cfg.token),tts_voices:[]} : null;
-  await client.call('heartbeat',capability ? {capability}:{});
+  const initialHb = {};
+  if (capability) initialHb.capability = capability;
+  if (previewCap) initialHb.preview_capability = previewCap;
+  if (variantCap) initialHb.delivery_variant_capability = variantCap;
+  await client.call('heartbeat', initialHb);
   let lastHeartbeat=Date.now();
   log('worker registered; polling');
   while (!signal.aborted) {
-    if(capability && Date.now()-lastHeartbeat>=5000){
-      capability.tools_ready=await exporterToolsReady(cfg);
-      try { await client.call('heartbeat',{capability}); }
-      catch(err){log(`capability heartbeat error: ${err.message}`);await sleep(cfg.pollIntervalMs,signal);continue;}
+    if(Date.now()-lastHeartbeat>=5000){
+      const hb = {};
+      if (capability) {
+        capability.tools_ready=await exporterToolsReady(cfg);
+        hb.capability = capability;
+      }
+      if (hasPreviewTool) {
+        if (!previewCap || !previewCap.ready) {
+          try { previewCap = await probePreviewCapabilityImpl(); } catch (_) {}
+        }
+        if (previewCap) hb.preview_capability = previewCap;
+      }
+      if (hasVariantTool) { if (!variantCap?.ready) variantCap = await probeDeliveryVariantCapabilityImpl(); if (variantCap) hb.delivery_variant_capability = variantCap; }
+      if (Object.keys(hb).length > 0) {
+        try { await client.call('heartbeat', hb); }
+        catch(err){log(`capability heartbeat error: ${err.message}`);await sleep(cfg.pollIntervalMs,signal);continue;}
+      }
       lastHeartbeat=Date.now();
     }
     let claim;
@@ -244,7 +282,7 @@ export async function runLoop({ client, cfg, log, signal, once = false }) {
       continue;
     }
     log(`claimed ${claim.task.task_id} (${claim.task.type}) for ${claim.task.asset_id}`);
-    const result = await processTask({ client, cfg, task: claim.task, log, signal });
+    const result = await processTask({ client, cfg, task: claim.task, log, signal, runCliImpl, renderPreviewImpl, previewCapability: previewCap, buildVariantImpl, deliveryVariantCapability: variantCap });
     log(`task ${claim.task.task_id}: ${result.outcome}${result.reason ? ` - ${result.reason}` : ''}`);
     if (once) return result;
   }

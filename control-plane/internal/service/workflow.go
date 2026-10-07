@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	dv "github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/deliveryvariant"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preparation"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
@@ -34,8 +36,10 @@ type TaskInput struct {
 	NarrationApprovals []string             `json:"narration_approvals"`
 	// InputKind is media_ingest for ingester tasks, which carry Ingest and
 	// no EDL. Older tasks omit both fields.
-	InputKind string       `json:"input_kind,omitempty"`
-	Ingest    *IngestInput `json:"ingest,omitempty"`
+	InputKind       string       `json:"input_kind,omitempty"`
+	Ingest          *IngestInput `json:"ingest,omitempty"`
+	Preview         any          `json:"preview,omitempty"`
+	DeliveryVariant any          `json:"delivery_variant,omitempty"`
 }
 
 var stageRoles = map[string]string{
@@ -446,6 +450,27 @@ func (s *Service) WorkflowBlocks(ctx context.Context, tx *store.Store, taskID st
 	}
 	stg, err := tx.StageByTask(ctx, taskID)
 	if errors.Is(err, model.ErrNotFound) {
+		if job, jerr := tx.GetPreviewJobByTaskID(ctx, taskID); jerr == nil {
+			if job.Invalidated {
+				return fmt.Errorf("service: preview task %s is invalidated: %w", taskID, model.ErrConflict)
+			}
+			current, e := s.currentPreviewRevision(ctx, tx, job.RunID)
+			if e != nil || current.RevisionID != job.RevisionID {
+				return fmt.Errorf("service: preview input is no longer current: %w", model.ErrConflict)
+			}
+			run, rerr := tx.GetWorkflow(ctx, job.RunID)
+			if rerr == nil && run.Status == model.WorkflowCancelled {
+				return fmt.Errorf("service: preview task %s was cancelled with its workflow: %w", taskID, model.ErrConflict)
+			}
+		}
+		if job, jerr := tx.GetDeliveryVariantJobByTaskID(ctx, taskID); jerr == nil {
+			current, e := s.currentPreviewRevision(ctx, tx, job.RunID)
+			if job.Invalidated || e != nil || current.RevisionID != job.RevisionID {
+				return model.ErrConflict
+			}
+		} else if !errors.Is(jerr, model.ErrNotFound) {
+			return jerr
+		}
 		return nil
 	}
 	if err != nil {
@@ -516,6 +541,44 @@ func (s *Service) loadHistoricalTaskInput(ctx context.Context, agentID, role, ta
 		return s.ingestTaskInput(ctx, tk, b)
 	} else if !errors.Is(err, model.ErrNotFound) {
 		return TaskInput{}, err
+	}
+	if tk.Type == model.TaskTypeDeliveryVariant {
+		job, e := s.st.GetDeliveryVariantJobByTaskID(ctx, taskID)
+		if e != nil {
+			return TaskInput{}, e
+		}
+		if e = s.WorkflowBlocks(ctx, s.st, taskID); e != nil {
+			return TaskInput{}, e
+		}
+		var input dv.Input
+		if e = json.Unmarshal([]byte(job.InputJSON), &input); e != nil {
+			return TaskInput{}, e
+		}
+		return TaskInput{Versioned: true, TaskID: taskID, AssetID: tk.AssetID, RevisionID: job.RevisionID, PackageRef: input.ParentPackageRef, InputKind: "delivery_variant", DeliveryVariant: &input, EDL: map[string]any{}, NarrationApprovals: []string{}}, nil
+	}
+	if tk.Type == model.TaskTypePreview {
+		job, err := s.st.GetPreviewJobByTaskID(ctx, taskID)
+		if err != nil {
+			return TaskInput{}, fmt.Errorf("service: preview task input %s: %w", taskID, err)
+		}
+		if job.Invalidated {
+			return TaskInput{}, fmt.Errorf("service: preview task input %s is invalidated: %w", taskID, model.ErrConflict)
+		}
+		var prevIn preview.Input
+		if err := json.Unmarshal([]byte(job.InputJSON), &prevIn); err != nil {
+			return TaskInput{}, fmt.Errorf("service: parse preview input for %s: %w", taskID, err)
+		}
+		return TaskInput{
+			Versioned:          true,
+			TaskID:             taskID,
+			AssetID:            tk.AssetID,
+			RevisionID:         job.RevisionID,
+			PackageRef:         prevIn.PackageRef,
+			InputKind:          "preview",
+			Preview:            &prevIn,
+			EDL:                map[string]any{},
+			NarrationApprovals: []string{},
+		}, nil
 	}
 	stg, err := s.st.StageByTask(ctx, taskID)
 	if errors.Is(err, model.ErrNotFound) {

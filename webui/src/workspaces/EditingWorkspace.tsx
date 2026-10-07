@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Tabs, Typography } from 'antd';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
@@ -6,7 +6,8 @@ import { EDITING_SECTIONS } from '../navigation';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { IngestPanel, IngestRegister } from '../components/IngestPanel';
 import { DeliveryImport } from '../components/DeliveryPanel';
-import { WorkflowPanel } from '../components/WorkflowPanel';
+import { WorkflowPanel, useWorkflowData } from '../components/WorkflowPanel';
+import { displayWorkflowPreview, samePreviewContext, workflowPreviewContext } from '../previewContext';
 import { Monitor, PreviewScope, type PreviewSource } from '../components/Monitor';
 
 interface EditingWorkspaceProps {
@@ -20,24 +21,28 @@ interface EditingWorkspaceProps {
 
 /**
  * 编辑工作区：导入与粗剪 / 内容编辑 / 审查
- * P1-02 修复：源监视器与节目监视器独立解耦；资产或流程变更时同步清理预览上下文，杜绝错图。
+ * 源/节目状态独立；节目监视器与两份审查面板使用同一实际流程及修订快照。
  */
 export function EditingWorkspace({ route, navigate, asset, selection, onSelect, onPreparedStarted }: EditingWorkspaceProps) {
   const { editingSection = 'import' } = route;
   const assetId = asset?.asset_id;
-  const runId = selection.runId;
+  const workflowData = useWorkflowData(assetId ?? '', selection);
+  const owner = workflowPreviewContext(workflowData.current);
 
   // 导入源监视器状态：随资产切换同步清空
   const [sourcePreview, setSourcePreview] = useState<PreviewSource>(null);
-  useEffect(() => {
+  const [sourceAssetId, setSourceAssetId] = useState(assetId);
+  useLayoutEffect(() => {
     setSourcePreview(null);
+    setSourceAssetId(assetId);
   }, [assetId]);
 
-  // 节目监视器状态：随资产或流程切换同步清空
+  // 渲染时验证归属；effect 仅回收已失效的保存记录。
   const [programPreview, setProgramPreview] = useState<PreviewSource>(null);
   useEffect(() => {
-    setProgramPreview(null);
-  }, [assetId, runId]);
+    setProgramPreview(previous => samePreviewContext(previous?.workflowContext, owner) ? previous : null);
+  }, [owner?.assetId, owner?.runId, owner?.revisionId]);
+  const visibleProgramPreview = displayWorkflowPreview(programPreview, owner, workflowData.review.data);
 
   return (
     <div className="page-body">
@@ -65,7 +70,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                   <div className="sticky-monitor">
                     <Monitor 
                       label="源" 
-                      preview={sourcePreview} 
+                      preview={sourceAssetId === assetId ? sourcePreview : null}
                       compact 
                       emptyTitle="源监视器"
                       emptyHint="切分完成后点击候选片段或时间线片段查看缩略图；短片生成后在此播放。" 
@@ -83,11 +88,12 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                     key={asset.asset_id} 
                     assetId={asset.asset_id} 
                     selection={selection}
+                    data={workflowData}
                     onGoExport={() => navigate({ workspace: 'export', exportSection: 'delivery' })}
                     monitor={
                       <Monitor 
                         label="节目" 
-                        preview={programPreview} 
+                        preview={visibleProgramPreview}
                         emptyTitle="节目监视器"
                         emptyHint="点击场景证据、时间线片段或解说的「在监视器预览」查看画面。" 
                       />
@@ -106,11 +112,12 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                     key={asset.asset_id} 
                     assetId={asset.asset_id} 
                     selection={selection}
+                    data={workflowData}
                     onGoExport={() => navigate({ workspace: 'export', exportSection: 'delivery' })}
                     monitor={
                       <Monitor 
                         label="节目" 
-                        preview={programPreview} 
+                        preview={visibleProgramPreview}
                         emptyTitle="节目监视器"
                         emptyHint="点击场景证据或解说预览画面。" 
                       />

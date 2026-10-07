@@ -1,0 +1,4 @@
+# Fixed media presets/specs are hashed as exact UTF-8 LF bytes on every platform.
+control-plane/internal/preview/presets/*.json text eol=lf
+contracts/delivery-variant/v1/specs/*.json text eol=lf
+control-plane/internal/deliveryvariant/specs/*.json text eol=lf

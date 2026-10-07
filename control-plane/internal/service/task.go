@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/ingest"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
@@ -46,6 +48,12 @@ func (s *Service) CreateTask(ctx context.Context, tk model.Task) error {
 	}
 	if ingest.IsTaskType(tk.Type) || tk.AgentRole == ingest.RoleIngester {
 		return fmt.Errorf("service: create task %s: ingest tasks are created only by ingest runs: %w", tk.TaskID, model.ErrArgument)
+	}
+	if tk.Type == model.TaskTypePreview {
+		return fmt.Errorf("service: create task %s: preview tasks must be created through StartPreview: %w", tk.TaskID, model.ErrArgument)
+	}
+	if tk.Type == model.TaskTypeDeliveryVariant {
+		return fmt.Errorf("delivery variants must be created through StartDeliveryVariant: %w", model.ErrArgument)
 	}
 
 	// A task starts as a clean queue entry regardless of fields a direct
@@ -257,6 +265,16 @@ func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, l
 			} else if !ok {
 				continue
 			}
+			if ok, err := s.previewClaimable(ctx, tx, agentID, candidate); err != nil {
+				return err
+			} else if !ok {
+				continue
+			}
+			if ok, err := s.deliveryVariantClaimable(ctx, tx, agentID, candidate); err != nil {
+				return err
+			} else if !ok {
+				continue
+			}
 			if stage, e := tx.StageByTask(ctx, candidate.TaskID); e == nil {
 				if binding, e := tx.ProfileBinding(ctx, stage.RunID); e == nil {
 					ok, e := tx.HasCapability(ctx, agentID, binding.SHA256)
@@ -398,6 +416,8 @@ func (s *Service) ReportProgressScoped(ctx context.Context, scope ExecutionScope
 	}
 
 	s.publish("task_updated", cloneTask(saved))
+	s.publishTaskPreview(ctx, saved.TaskID)
+	s.publishTaskDeliveryVariant(ctx, saved.TaskID)
 	return nil
 }
 
@@ -423,6 +443,12 @@ func (s *Service) SubmitResult(ctx context.Context, agentID, taskID string, arti
 		}
 		if _, err := tx.GetIngestBinding(ctx, taskID); err == nil {
 			return fmt.Errorf("ingest tasks require submit_ingest_result: %w", model.ErrInvalidState)
+		}
+		if _, err := tx.GetPreviewJobByTaskID(ctx, taskID); err == nil {
+			return fmt.Errorf("preview tasks require submit_preview: %w", model.ErrInvalidState)
+		}
+		if tk.Type == model.TaskTypeDeliveryVariant {
+			return fmt.Errorf("delivery variants require submit_delivery_variant: %w", model.ErrInvalidState)
 		}
 		if tk.Status == model.TaskStatusSucceeded {
 			return nil
@@ -535,6 +561,8 @@ func (s *Service) FailTaskScoped(ctx context.Context, scope ExecutionScope, reas
 		s.publishTaskWorkflow(ctx, scope.TaskID)
 		s.publishTaskIngest(ctx, scope.TaskID)
 		s.publish("task_updated", cloneTask(saved))
+		s.publishTaskPreview(ctx, scope.TaskID)
+		s.publishTaskDeliveryVariant(ctx, scope.TaskID)
 		s.audit(ctx, "agent:"+scope.AgentID, "task.fail", scope.TaskID, reason)
 		s.cascadeFailure(ctx, scope.TaskID)
 	}
@@ -641,4 +669,45 @@ func cloneStringMap(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+func (s *Service) previewClaimable(ctx context.Context, tx *store.Store, agentID string, candidate model.Task) (bool, error) {
+	if candidate.Type != model.TaskTypePreview {
+		return true, nil
+	}
+	job, err := tx.GetPreviewJobByTaskID(ctx, candidate.TaskID)
+	if err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if job.Invalidated {
+		return false, nil
+	}
+	capRec, err := tx.GetActivePreviewCapability(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !capRec.Ready || capRec.ProtocolVersion != preview.ProtocolVersion {
+		return false, nil
+	}
+	var capData preview.Capability
+	if err := json.Unmarshal([]byte(capRec.CapabilityJSON), &capData); err != nil {
+		return false, nil
+	}
+	supported := false
+	for _, p := range capData.Presets {
+		if p.PresetID == preview.PresetID && p.SHA256 == job.PresetSHA256 {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		return false, nil
+	}
+	return true, nil
 }

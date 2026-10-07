@@ -1,15 +1,40 @@
 import { spawn } from 'node:child_process';
 import { dirname, isAbsolute, resolve } from 'node:path';
 
-export function runTool(command, args) {
+export function runTool(command, args, { signal, timeoutMs, maxOutputBytes = 8 * 1024 * 1024, cwd } = {}) {
+  signal?.throwIfAborted();
   return new Promise((done, fail) => {
-    const child = spawn(command, args, { windowsHide: true });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (part) => { stdout += part; });
-    child.stderr.on('data', (part) => { stderr += part; });
-    child.on('error', fail);
-    child.on('close', (code) => code === 0 ? done(stdout) : fail(new Error(`${command} exited ${code}: ${stderr.trim()}`)));
+    const child = spawn(command, args, { windowsHide: true, cwd });
+    const stdout = [];
+    let stdoutBytes = 0, stderr = '', failure, escalation;
+    const stop = error => {
+      if (failure) return;
+      failure = error;
+      child.kill('SIGTERM');
+      escalation = setTimeout(() => child.kill('SIGKILL'), 1000);
+      escalation.unref();
+    };
+    const abort = () => stop(signal.reason);
+    const timeout = timeoutMs > 0 ? setTimeout(() => stop(Object.assign(new Error(`${command} timed out`), { code: 'media_tool_timeout' })), timeoutMs) : undefined;
+    timeout?.unref();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    child.stdout.on('data', part => {
+      stdoutBytes += part.length;
+      if (stdoutBytes > maxOutputBytes) {
+        stop(Object.assign(new Error(`${command} output exceeds limit`), { code: 'media_tool_output_limit' }));
+      } else if (!failure) stdout.push(part);
+    });
+    child.stderr.on('data', part => { stderr = (stderr + part.toString()).slice(-50_000); });
+    child.on('error', error => { failure ??= error; });
+    // Settle after close so callers can safely clean the process's working directory.
+    child.on('close', code => {
+      clearTimeout(timeout); clearTimeout(escalation);
+      signal?.removeEventListener('abort', abort);
+      if (failure) fail(failure);
+      else if (code !== 0) fail(new Error(`${command} exited ${code}: ${stderr.trim()}`));
+      else done(Buffer.concat(stdout).toString('utf8'));
+    });
   });
 }
 
@@ -23,8 +48,8 @@ function rate(value) {
   return den ? num / den : 0;
 }
 
-export async function probeMedia(path) {
-  const raw = await runTool('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', path]);
+export async function probeMedia(path, options) {
+  const raw = await runTool('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', path], { timeoutMs: 30_000, ...options });
   const data = JSON.parse(raw);
   const video = data.streams?.find((stream) => stream.codec_type === 'video');
   const audio = data.streams?.find((stream) => stream.codec_type === 'audio');

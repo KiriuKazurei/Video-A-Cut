@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Card, Empty, Flex, Slider, Tag, Typography } from 'antd';
 import { SoundOutlined } from '@ant-design/icons';
+import type { PreviewTarget, WorkflowPreviewContext } from '../previewContext';
 
 /**
  * 监视器（Premiere 的源/节目监视器）。只播放服务端受控 URL（文件键、证据键），
@@ -16,6 +17,10 @@ export type PreviewSource = {
   caption?: string;
   /** 画面下方的说明，例如“取样证据帧，非成片”。 */
   note?: string;
+  workflowContext?: WorkflowPreviewContext;
+  evidenceKey?: string;
+  evidenceSha?: string;
+  target?: PreviewTarget;
 } | null;
 
 const PreviewContext = createContext<(preview: PreviewSource) => void>(() => {});
@@ -48,8 +53,11 @@ export function Monitor({ label, preview, emptyTitle, emptyHint, compact, childr
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
   const [volume, setVolume] = useState(100);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const failed = Boolean(preview && failedSource === preview.src);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => { setTime(0); setDuration(null); }, [preview?.src]);
+  useEffect(() => { setFailedSource(null); }, [preview?.src]);
   useEffect(() => { if (audioRef.current) audioRef.current.volume = volume / 100; }, [volume, preview?.src]);
   const timed = preview?.kind === 'video' || preview?.kind === 'audio';
   const note = preview?.note ?? (preview?.kind === 'audio' ? '音量仅作用于本次浏览器试听，不改写交付文件' : '');
@@ -63,18 +71,22 @@ export function Monitor({ label, preview, emptyTitle, emptyHint, compact, childr
       <div className={`monitor-screen${preview ? ' has-media' : ''}${compact ? ' is-compact' : ''}`}>
         {!preview && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={<><Typography.Text strong>{emptyTitle}</Typography.Text><br /><Typography.Text type="secondary">{emptyHint}</Typography.Text></>} />}
+        {failed && <div role="alert" className="monitor-load-error">预览加载失败，请刷新后重新选择证据或媒体。</div>}
         {preview?.kind === 'video' && <video key={preview.src} className="monitor-media" controls preload="metadata" src={preview.src}
+          style={{ display: failed ? 'none' : undefined }} onError={() => setFailedSource(preview.src)} onLoadedData={() => setFailedSource(null)}
           aria-label={`预览 ${preview.title}`}
           onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : null)} />}
-        {preview?.kind === 'image' && <img key={preview.src} className="monitor-media" src={preview.src} alt={preview.title} />}
+        {preview?.kind === 'image' && <img key={preview.src} className="monitor-media" src={preview.src} alt={preview.title}
+          style={{ display: failed ? 'none' : undefined }} onError={() => setFailedSource(preview.src)} onLoad={() => setFailedSource(null)} />}
         {preview?.kind === 'audio' && <Flex vertical align="center" gap={12} className="monitor-audio">
           <SoundOutlined style={{ fontSize: 40, color: '#fff' }} />
           <audio key={preview.src} ref={audioRef} controls preload="metadata" src={preview.src} aria-label={`试听 ${preview.title}`}
+            onError={() => setFailedSource(preview.src)} onLoadedData={() => setFailedSource(null)}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
             onLoadedMetadata={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : null)} />
         </Flex>}
-        {preview?.caption && <p className="monitor-caption">{preview.caption}</p>}
+        {preview?.caption && !failed && <p className="monitor-caption">{preview.caption}</p>}
       </div>
       {preview?.kind === 'audio' && <Flex align="center" gap={12} style={{ padding: '8px 12px 0' }}>
         <Typography.Text type="secondary">试听音量</Typography.Text>

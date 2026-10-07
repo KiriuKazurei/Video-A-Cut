@@ -65,6 +65,22 @@ func (s *Service) ReopenAsset(ctx context.Context, actor, assetID string) (model
 		if err := tx.UpdateAsset(ctx, a); err != nil {
 			return err
 		}
+		if err := tx.InvalidatePreviewJobsForAssetExcept(ctx, assetID, ""); err != nil {
+			return err
+		}
+		if err := tx.InvalidateDeliveryVariantJobsForAssetExcept(ctx, assetID, ""); err != nil {
+			return err
+		}
+		for _, task := range active {
+			if task.AssetID == assetID && task.Type == model.TaskTypeDeliveryVariant {
+				task.Status = model.TaskStatusCancelled
+				task.LeaseUntil = nil
+				task.Message = "资产重新打开，字幕交付任务已取消"
+				if err := tx.UpdateTask(ctx, task); err != nil {
+					return err
+				}
+			}
+		}
 		saved, err = tx.GetAsset(ctx, assetID)
 		return err
 	})

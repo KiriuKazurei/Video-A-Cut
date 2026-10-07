@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	dv "github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/deliveryvariant"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preparation"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -42,13 +44,25 @@ type progressArgs struct {
 	Generation        int     `json:"generation,omitempty" jsonschema:"execution generation from claim; required for ingest"`
 }
 type heartbeatArgs struct {
-	Capability        *preparation.Capability   `json:"capability,omitempty" jsonschema:"optional local capability observation for a fixed profile"`
-	IngestCapability  *service.IngestCapability `json:"ingest_capability,omitempty" jsonschema:"optional ingester tool and root-mapping observation, including execution_protocol"`
-	TaskID            string                    `json:"task_id,omitempty" jsonschema:"held task to renew; empty only registers liveness"`
-	RuntimeInstanceID string                    `json:"runtime_instance_id,omitempty" jsonschema:"worker process instance; required when task_id is an ingest execution"`
-	ExecutionID       string                    `json:"execution_id,omitempty" jsonschema:"execution id from claim; required for ingest"`
-	Generation        int                       `json:"generation,omitempty" jsonschema:"execution generation from claim; required for ingest"`
+	Capability                *preparation.Capability   `json:"capability,omitempty" jsonschema:"optional local capability observation for a fixed profile"`
+	IngestCapability          *service.IngestCapability `json:"ingest_capability,omitempty" jsonschema:"optional ingester tool and root-mapping observation, including execution_protocol"`
+	PreviewCapability         *preview.Capability       `json:"preview_capability,omitempty" jsonschema:"optional preview capability observation for exporter agent"`
+	DeliveryVariantCapability *dv.Capability            `json:"delivery_variant_capability,omitempty" jsonschema:"optional derived delivery capability for exporter agent"`
+	TaskID                    string                    `json:"task_id,omitempty" jsonschema:"held task to renew; empty only registers liveness"`
+	RuntimeInstanceID         string                    `json:"runtime_instance_id,omitempty" jsonschema:"worker process instance; required when task_id is an ingest execution"`
+	ExecutionID               string                    `json:"execution_id,omitempty" jsonschema:"execution id from claim; required for ingest"`
+	Generation                int                       `json:"generation,omitempty" jsonschema:"execution generation from claim; required for ingest"`
 }
+
+type previewArgs struct {
+	TaskID     string `json:"task_id" jsonschema:"preview task identifier"`
+	PreviewDir string `json:"preview_dir" jsonschema:"rendered preview directory relative to delivery root"`
+}
+type deliveryVariantArgs struct {
+	TaskID     string `json:"task_id"`
+	VariantDir string `json:"variant_dir"`
+}
+
 type checkpointArgs struct {
 	TaskID            string `json:"task_id" jsonschema:"held ingest task"`
 	ExecutionID       string `json:"execution_id" jsonschema:"execution id from claim"`
@@ -271,6 +285,16 @@ func registerTaskTools(server *mcp.Server, svc *service.Service, lease time.Dura
 					return nil, ackResult{}, toolError(err)
 				}
 			}
+			if args.PreviewCapability != nil {
+				if err := svc.ReportPreviewCapability(ctx, a.ID, a.Role, *args.PreviewCapability); err != nil {
+					return nil, ackResult{}, toolError(err)
+				}
+			}
+			if args.DeliveryVariantCapability != nil {
+				if err := svc.ReportDeliveryVariantCapability(ctx, a.ID, a.Role, *args.DeliveryVariantCapability); err != nil {
+					return nil, ackResult{}, toolError(err)
+				}
+			}
 			if args.TaskID == "" {
 				return nil, ackResult{OK: true}, nil
 			}
@@ -341,6 +365,37 @@ func registerTaskTools(server *mcp.Server, svc *service.Service, lease time.Dura
 			}
 			a := identity(ctx)
 			if err := svc.SubmitDelivery(ctx, a.ID, args.TaskID, args.PackageDir); err != nil {
+				return nil, submitResult{}, toolError(err)
+			}
+			return nil, submitResult{Submitted: true}, nil
+		})
+
+	mcp.AddTool(server, &mcp.Tool{Name: "submit_delivery_variant", Description: "Register an immutable derived ASS delivery package under the delivery root"},
+		func(ctx context.Context, _ *mcp.CallToolRequest, args deliveryVariantArgs) (*mcp.CallToolResult, submitResult, error) {
+			if identity(ctx).Role != "exporter" {
+				return nil, submitResult{}, toolError(model.ErrForbidden)
+			}
+			if err := requireTaskID(args.TaskID); err != nil {
+				return nil, submitResult{}, err
+			}
+			if strings.TrimSpace(args.VariantDir) == "" {
+				return nil, submitResult{}, errors.New("invalid_argument: variant_dir is required")
+			}
+			if err := svc.SubmitDeliveryVariant(ctx, identity(ctx).ID, args.TaskID, args.VariantDir); err != nil {
+				return nil, submitResult{}, toolError(err)
+			}
+			return nil, submitResult{Submitted: true}, nil
+		})
+	mcp.AddTool(server, &mcp.Tool{Name: "submit_preview", Description: "Close a held preview task by registering the preview directory (final.mp4 + render-report.json + preview-receipt.json + preview-manifest.json) written under the delivery root"},
+		func(ctx context.Context, _ *mcp.CallToolRequest, args previewArgs) (*mcp.CallToolResult, submitResult, error) {
+			if err := requireTaskID(args.TaskID); err != nil {
+				return nil, submitResult{}, err
+			}
+			if strings.TrimSpace(args.PreviewDir) == "" {
+				return nil, submitResult{}, errors.New("invalid_argument: preview_dir is required")
+			}
+			a := identity(ctx)
+			if err := svc.SubmitPreview(ctx, a.ID, args.TaskID, args.PreviewDir); err != nil {
 				return nil, submitResult{}, toolError(err)
 			}
 			return nil, submitResult{Submitted: true}, nil

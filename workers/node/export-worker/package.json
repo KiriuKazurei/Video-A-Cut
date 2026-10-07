@@ -2,10 +2,14 @@
   "name": "@video-auto-cut/export-worker",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
-  "bin": { "vac-export-worker": "./src/main.mjs" },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "vac-export-worker": "./src/main.mjs"
+  },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/main.mjs && node --check src/mcp.mjs && node --check src/worker.mjs"
+    "check": "node --check src/main.mjs && node --check src/mcp.mjs && node --check src/worker.mjs && node --check src/preview.mjs && node --check src/delivery-variant.mjs"
   }
 }

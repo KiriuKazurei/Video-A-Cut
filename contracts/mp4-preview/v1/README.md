@@ -1,0 +1,148 @@
+# MP4 预览 v1 框架与 Agent 交接
+
+docs 中的交接副本：[MP4 预览框架与 Agent 交接说明](../../../docs/MP4预览框架与Agent交接说明-2026-10-06.md)。
+
+> 2026-10-07 当前状态：A–D 已实现，六项 P1 问题已修复；自动回归及真实合成素材浏览器链路通过。见 [远程同步与 MP4 预览修复复验](../../../docs/远程同步与MP4预览修复复验-2026-10-07.md)。以下状态和分工保留为 2026-10-06 的框架交付历史快照，“待实现”并非当前状态。
+
+2026-10-06 框架交付时：仅提供接口骨架，入口尚未接入 CLI、Worker、REST/MCP 或页面。
+
+原始计划：`docs/合成成片MP4预览开发计划-2026-10-05.md`。该计划被仓库默认忽略，本目录内的协议、SQL 蓝图和交接说明可以随代码版本管理。本轮没有提交或发布。
+
+## 已固定的框架
+
+独立 preview 任务，从成功导出的不可变 revision 读取 EDL、原媒体、最终三轨 WAV 和 SRT；继续使用 exporter 角色。默认按需生成、H.264/AAC、720p 范围、中文字幕烧录。共享预设是首版实现基准，最终画质、听感、字体和同步仍需实测验收。
+
+| 文件 | 用途 / 当前状态 |
+|---|---|
+| `contracts.d.ts` | Node/WebUI 共用的请求、固定输入、预设、能力、产物和视图类型 |
+| `presets/mp4-720p-v1.json` | 共享参数文件；SHA-256 覆盖精确 UTF-8 文件字节，含结尾 LF；目录属性固定 LF |
+| `fixtures/input.json` | 独立 Python hashlib 生成的跨语言指纹样本，含中文及 `&` 路径；不含真实媒体，不是验收产物 |
+| `preview-store.sql` | Go Agent 的存储蓝图，尚未加入迁移目录、尚未执行 |
+| `control-plane/internal/preview/` | Go DTO、Application 端口、指纹实现和明确失败的骨架 |
+| `workers/node/timeline-cli/src/preview-protocol.mjs` | 共享预设读取、文件名和输入指纹实现 |
+| `workers/node/timeline-cli/src/preview.mjs` | 渲染库入口；待 Agent A 实现 |
+| `workers/node/export-worker/src/preview.mjs` | Worker 执行/能力端口；待 Agent C 实现，当前明确不具备能力 |
+| `webui/src/previewContracts.ts` | 共用类型、PreviewClient 端口、包含资产/run/revision 的查询键和文件 URL |
+| `scripts/Measure-TestStorage.ps1` | 可复用占用统计；包含本目录固定 fixture，超限立即报错 |
+
+Go 是任务/租约/治理/持久化状态的所有者；MCP 只调用 Go service。渲染成功不能替换资产的交接 artifact map、改动 EDL revision、修改原 ZIP/manifest 或自动通过人工验收。
+
+## 输入和哈希规则
+
+`PreviewInput` 是 Go 创建任务时的完整固定快照。`package_ref` 相对 delivery_root；`files[].path` 相对该导出包。预览 artifacts 的 path 则相对新预览目录，两者不能混用。
+
+固定文件清单覆盖 EDL、交接 manifest、所有 EDL 引用媒体、三条最终 stems，以及存在时的 SRT。`source_video` 对应原视频；`packaged_source` 对应 EDL 引用的其他原始音频；`game_audio/voice/music` 各唯一对应一条**最终 WAV**。Renderer 不再重复应用 EDL gain/ducking。
+
+输入指纹算法 v1 已实现，两个语言不得各自改用 JSON.stringify / json.Marshal 散列：
+
+1. 建立 UTF-8 字符串 atom 序列：`vac.mp4-preview.input.v1`，asset_id，run_id，revision_id，package_ref，edl_sha256，manifest_sha256，preset_sha256，preset_id，文件数的十进制字符串。
+2. 按 path 的 UTF-8 字节序排列文件，逐个追加 kind、path、sha256、size 的十进制字符串。
+3. 每个 atom 编码为 `UTF8字节长度的ASCII十进制 + ':' + UTF8内容`，依次拼接，取 SHA-256 小写十六进制。
+4. preview_id/task_id/input_sha256 不参与散列，新尝试可以沿用相同输入身份。完整 preset 快照必须与注册预设及其文件哈希匹配；实际工具/字体版本和字体哈希记入 receipt。
+
+当前 helper 只做协议/路径语法检查。它不能代替 Go 的目录包含关系、重解析点、大小写路径别名、文件完整性、媒体、审批或租约检查。Go 的整数须处于 JavaScript 安全整数范围，所有散列使用小写 64 位 hex。
+
+共享 fixture 的媒体和哈希是结构样本，不能被 Worker 当作真实输入。不要为了让检查通过直接重写 expected hash；协议或预设变更必须协调 Go/Node/UI，补充变更说明和独立样本。
+
+## 固定的接口和响应
+
+| 接口 | 请求 / 成功响应 |
+|---|---|
+| POST `/api/workflows/{run}/previews` | PreviewStartRequest → PreviewView；新任务 202，幂等复用 200 |
+| GET `/api/workflows/{run}/previews` | PreviewList；包含当前 revision、expected_version、can_start/checks 和历史 previews |
+| GET `/api/previews/{id}` | PreviewView |
+| POST `/api/previews/{id}/cancel` | 空 JSON 对象 → PreviewView；重复取消幂等，已经完成时返回原终态，不删除产物 |
+| GET `/api/previews/{id}/files/{key}` | 受控媒体读取；默认 MP4 inline/Range，`?download=1` 明确 attachment；report/receipt 为附件 |
+
+沿用既有 API 错误 envelope `{error:{code,message}}` 和 Go 错误分类。错误版本/相同 request_id 不同请求返回冲突；治理拒绝、无能力和未成功导出的输入必须有明确检查原因，不能空队列等待。不存在的预览/文件返回 not found。
+
+同 run/request_id 的传输重试返回原记录，不从新 revision 重建输入。相同输入的活跃任务复用；用户明确重试失败/取消任务使用新 request_id，重新创建任务，不重置旧记录。创建任务和绑定必须同一事务。
+
+首版生成入口只针对资产最新工作流的当前成功导出版本，且资产当前 EDL 引用仍对应该导出包；新工作流或重新导入不能继续把旧 export 当作当前输入。`is_current` 按这些条件及失效标记计算，不随任务进度刷新改变。历史文件保留只读访问和版本标签，自动节目选择只使用当前匹配结果。
+
+MCP：`get_task_input` 对 preview 返回现有 TaskInput 外层中的 `preview: PreviewInput`；新增 `submit_preview({task_id,preview_dir})`。heartbeat 增加 `preview_capability: PreviewCapability`，由 Go 检查认证、能力过期及支持的预设哈希；它独立于原 processing_profile 指纹，不改变旧 export 的能力判断。
+
+Capability 检查字体时需区分有/无 SRT：无字幕无需字体，有字幕必须有可用中文字体。旧服务/Worker 缺少 preview 工具时，保留原 export 能力，将 preview 判为不可用。
+
+事件：沿用 task_created/task_updated，新增 `preview_updated`，payload 为 PreviewView。空集合编码为 `[]`；Media 只在成功登记后出现；Task 状态是唯一状态来源，invalidated/is_current 为独立版本标识。初版不提供预览删除或覆盖旧产物的操作。
+
+输出使用新目录 `previews/<asset_id>/<revision_id>/<preview_id>/`。manifest 仅声明 `final.mp4`、`render-report.json` 和 `preview-receipt.json`，使用 key `mp4/report/receipt`；manifest 自身不散列自己。它与原 delivery-manifest 不同，不能交给 SubmitDelivery/importDelivery 处理。
+
+Report 的必要检查项固定为 `source_fingerprint`、`timeline_frames`、`audio_alignment`、`subtitles`、`media_streams`。发布成功前均须 passed；无字幕时 subtitles 为 passed 并说明无需烧录。报告不代表人工作出的内容或听感验收。
+
+## 给其他 Agent 的分工
+
+本轮不启动其他 Agent。用户后续可将下面各段任务分别交给实现者；共享协议变更先交给统筹者决定，避免多个 Agent 同时修改契约。
+
+### Agent A：渲染内核
+
+请实现 `workers/node/timeline-cli/src/preview.mjs` 的 `renderPreview({input,packageDir,outputDir,signal,onProgress})`，返回 PreviewManifest。以本目录 v1 契约为准，复用现有 cuts/timebase/tracks/sync；所有 EDL 引用文件先通过固定文件清单检查。按整数帧裁剪并补黑间隙，处理画布/旋转/SAR，混合已做 gain/ducking 的最终 WAV，补齐/裁齐总长，按预设烧字幕、限幅和编码。
+
+自行增加必要的内部 render 模块和测试；直接持有 FFmpeg 子进程，实现 abort/超时/进度/有界日志。先核验，再原子发布到全新目录；不能覆盖交接包，也不能生成虚假 manifest。CLI 增加 render-preview 命令并更新 CLI README/package check 脚本。
+
+文件边界：timeline-cli 的 preview 内核/内部模块/CLI/Node 测试和 README。不要改 Go、export-worker 或 WebUI；共享 protocol/preset 需要修改时先报告给统筹者。
+
+完成门槛：真 FFmpeg 短样本的剪辑顺序/非零 source in/间隙/30和60fps/总帧数、三轨与空轨、ducking 不重复、限幅不漂移、中文/特殊路径/无字幕、异常输入、取消后进程退出和新目录发布。交付一段实际 MP4 和机器报告；可播放、画面字幕以及人工听感分别报告。
+
+### Agent B：Go 任务与状态闭环
+
+请实现 `internal/preview.Application`，由现有 Go service/store 承接。将 SQL 蓝图提升到下一空闲 migration，完成固定输入、绑定/幂等、预览产物及状态投影。StartPreview 校验成功 export 的 output revision、期望工作流版本、治理和有效 capability。
+
+接入 REST 五个接口及 get_task_input/submit_preview/heartbeat 投影；只有有合法绑定且能力匹配的 preview 可在 exported 资产上领取。通用 CreateTask 拒绝孤立 preview；preview 领取/进度/失败/续租必须使用现有所有权与租约规则，状态投影不能只处理成功提交。
+
+覆盖编辑/审批撤回/取消/新工作流替换/治理变化时的失效处理。审批撤回先确认受影响输入，不能无条件失效无关预览。SubmitPreview 重新核对版本/租约/治理/输入/产物，并进行受限 ffprobe 校验；事务登记 Task 和产物。重启恢复发布后未登记的合法目录，隔离残留，禁止伪成功。
+
+文件边界：control-plane 的 preview/model/store/service/API/MCP 与相关 Go 测试；同步接口清单 `docs/frontend-api-inventory.json` 和 `docs/前端接口清单与重构交接.md`。保持旧 processing profile 的字节规范和 SHA-256；不替换 asset.Artifacts、当前 EDL revision 和人工验收状态。
+
+完成门槛：迁移/幂等竞争/非法任务/权限/能力过期/租约丢失/失效晚提交/失败投影/取消和重启；文件越界/重解析点/别名/Range/强制下载；原 export 和原有 API 回归。不要仅以 Worker 自报或伪媒体文件证明合成成功。
+
+### Agent C：Node Worker 接入
+
+请在 Agent A 的渲染库和 Agent B 的协议之上，实现 `src/preview.mjs` 的 processPreviewTask/probePreviewCapability，扩展 export-worker 为 export/preview 分派。preview 直接调用渲染库，校验 get_task_input.preview 的固定输入及 preset 哈希，维护租约、上报各阶段进度，使用 submit_preview 登记。
+
+发布但提交失败时核对 receipt 和实际产物再重试；租约过期/取消/输入失效时停止 FFmpeg 并确认退出，不再晚提交。独立报告 preview_capability；没有新 MCP 工具时禁用 preview，但不让已有 export 失败。不要把现有 export processing_profile 的匹配规则机械应用到只读取已导出产物的 preview。
+
+文件边界：export-worker 配置/worker/MCP 客户端/测试/README，以及 `scripts/Start-LocalPipeline.ps1`。不修改 Go 或页面；不得将令牌放入日志、receipt 或前端。
+
+完成门槛：真实 Go↔Node↔FFmpeg 的创建/领取/续租/进度/登记/重试/取消/恢复；精确核验输出归属和回执；保持旧 export 运行行为。
+
+### Agent D：前端接入
+
+请实现 `webui/src/previewContracts.ts` 的 PreviewClient 端口，以共享类型定义 API 方法、查询 hook 和 PreviewPanel。接到 `#/export/delivery`，保留 existing Monitor、文件选择、AcceptancePanel 和导航；通用任务表单中的 preview 占位引导到专用入口。
+
+从 PreviewList 的 can_start/checks/revision/expected_version 构造请求；一次点击生成 request_id，传输重试复用，明确新尝试才换 ID。query/选择键包含 asset/run/revision；处理 preview_updated 和 SSE 重连。只有 succeeded、未失效且完全匹配当前选择的 MP4 才自动成为节目源；同版本刷新不要清空有效播放，切换版本或离开页面立即停止并清除旧媒体。
+
+文件边界：WebUI previewContracts/API/query 刷新/PreviewPanel/ExportWorkspace 及有必要的样式和浏览器验收脚本。修改已存在未提交的文件前先查看当前 diff，保留用户既有改动；使用现有可访问和窄屏布局模式。
+
+完成门槛：实际 Go 的进度/错误/取消/重试/下载，真实浏览器加载/播放/seek，A→B→A、不同 run/revision、编辑失效、同版本刷新、断线恢复、375px 布局和加载失败提示。mock UI 检查和真实 MP4 播放分别报告；不把通过浏览器测试当作人工内容验收。
+
+## 实施依赖与统筹验收
+
+A 与 B 可分别开始；C 依赖 A/B；D 可先做接口驱动的界面，最终联调依赖 B/C。协议冻结后各自开发，统筹者接收成果、检查改动边界并独立复验；不按实现者自报直接宣布完成。
+
+每个 Agent 交付：文件清单、实现与待验范围、执行命令/结果/源版本、未关闭问题、测试占用前后统计和一个可供统筹者复验的结果。不要提交/推送其他 Agent 的文件；本任务未授权自动 commit/push。
+
+测试前后执行 `powershell -File scripts/Measure-TestStorage.ps1 -Label <unique-label>`。总占用上限 500 MiB；超限按根 AGENTS 完整安全清理，不删固定 fixture、源码、验收脚本、文字/JSON 结果或业务素材。后续新增测试目录也须加入统计。媒体测试使用 5–8 秒低分辨率样本，真实录制素材只受控引用。
+
+框架复验命令：
+
+```powershell
+# 每批前后运行占用检查；Go 缓存使用仓库 .run-data/go-cache。
+node --test workers/node/timeline-cli/test/preview-framework.test.mjs
+node --test workers/node/export-worker/test/preview-framework.test.mjs
+python scripts/verify-preview-store-blueprint.py
+# 在 control-plane 目录
+go test -count=1 -v ./internal/preview
+# 在 webui 目录
+npm run check
+```
+
+完整功能完成条件：真媒体渲染、Go/Worker 闭环、实际浏览器播放和真实素材人工观看/试听均有独立证据。原始项目的真实模型和 Premiere/Resolve 联合验收仍单独处理。
+
+## 本轮框架验证（2026-10-06）
+
+Go 新包 3 项、Node 协议/渲染/Worker 骨架 6 项均通过，无跳过；WebUI TypeScript 检查通过。SQL 蓝图在现有 10 份迁移之后于内存 SQLite 成功建立，业务数据库未修改。输入指纹 fixture 同时由 Go/Node 核对，包含中文和特殊路径；它仅验证协议，不能代替媒体验收。
+
+测试总占用由初次测试前 397446746 字节（379.035 MiB）增长至最终复验后 398712415 字节（380.242 MiB），均低于 500 MiB；未触发清理。日志和 JSON 结果放在 `.run-data/mp4-preview-framework-2026-10-06/`，占用报告在 `.run-data/test-storage/`。后续书面报告自身也计入下次统计。
+
+本轮保留既有未提交改动，未注册新接口、未执行迁移、未接入任务/页面、未生成成片，也未完成全项目回归或人工验收。

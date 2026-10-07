@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "module": "R2",
+  "storage_limit_bytes": 524288000,
+  "cases": [
+    { "id": "Q01", "status": "not_run", "name": "30/60 fps 真实裁切与黑场", "requires": ["real_ffmpeg", "independent_frame_decode"], "pass_criteria": "目标帧数/FPS/PTS和首尾成立；切点画面正确；开头、中间、结尾黑场符合输入" },
+    { "id": "Q02", "status": "not_run", "name": "三轨混音和音频有效尾部", "requires": ["real_ffmpeg", "sample_window_analysis"], "pass_criteria": "仅混合最终stems一次，正确处理AAC延迟/padding，有效音频不被截断，目标样本区间可核对" },
+    { "id": "Q03", "status": "not_run", "name": "字幕和特殊路径", "requires": ["real_ffmpeg", "chinese_font"], "pass_criteria": "中文、空格、&、引号及合法特殊文本正确；路径不被解释成额外参数；字幕时间与固定输入一致" },
+    { "id": "Q04", "status": "not_run", "name": "各执行窗口取消与超时", "requires": ["real_worker", "owned_process_tracking"], "pass_criteria": "哈希/探测/编码/发布前取消不发布；确认取消后自有编解码进程5秒内退出；无误删成功目录" },
+    { "id": "Q05", "status": "not_run", "name": "发布后未登记恢复", "requires": ["real_go_mcp", "real_worker"], "pass_criteria": "原身份回执可恢复登记；改变revision/input/lease的恢复被拒绝；成功重复提交不重复产物" },
+    { "id": "Q06", "status": "not_run", "name": "输入和治理变化", "requires": ["real_go_api", "real_browser"], "pass_criteria": "创建/编码期间文件改变、换run/revision、取消或撤销治理时旧结果被拒绝，监视器清空旧源" },
+    { "id": "Q07", "status": "not_run", "name": "请求幂等与并发", "requires": ["real_go_api", "real_browser"], "pass_criteria": "首响应丢失返回原绑定；不同请求复用活动任务有各自绑定；跨输入同ID冲突；成功再次生成新任务" },
+    { "id": "Q08", "status": "not_run", "name": "Windows junction 与别名", "requires": ["windows", "isolated_link_fixture"], "pass_criteria": "包根、输入、输出链接/重解析点和大小写别名绕过被拒绝；清理仅处理自有受控目标" },
+    { "id": "Q09", "status": "not_run", "name": "代表素材规模与锁等待", "requires": ["real_recording", "disk_budget", "resource_measurement"], "pass_criteria": "记录实际输入及渲染长度、尺寸、RSS、耗时、锁等待和占用；在500MiB内完成，无法预算则blocked，不宣称任意长视频通过" },
+    { "id": "Q10", "status": "not_run", "name": "实际 UI 上下文和恢复快照", "requires": ["real_go_api", "real_browser"], "pass_criteria": "asset/run/revision切换、同版本失效、SSE重连均正确；普通进度刷新保留有效播放；窄屏按钮可达" }
+  ]
+}
