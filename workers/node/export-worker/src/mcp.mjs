@@ -19,7 +19,8 @@ export function createClient({ url, token, timeoutMs = 15_000, fetchImpl = fetch
   if (!token || token.length < 32) throw new Error('mcp token is missing or too short');
   let nextId = 1;
 
-  async function rpc(method, params, name, signal) {
+  async function rpc(method, params, name, signal, requestTimeoutMs = timeoutMs) {
+    if (!Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs <= 0) throw new Error('invalid MCP request timeout');
     const headers = {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
@@ -40,7 +41,7 @@ export function createClient({ url, token, timeoutMs = 15_000, fetchImpl = fetch
         }
       }
     });
-    const deadline = AbortSignal.timeout(timeoutMs);
+    const deadline = AbortSignal.timeout(requestTimeoutMs);
     const res = await fetchImpl(url, { method: 'POST', headers, body, signal: signal ? AbortSignal.any([signal, deadline]) : deadline });
     const text = await res.text();
     if (!res.ok) throw new Error(`mcp http ${res.status}: ${text.slice(0, 200)}`);
@@ -50,9 +51,9 @@ export function createClient({ url, token, timeoutMs = 15_000, fetchImpl = fetch
   }
 
   return {
-    async call(tool, args = {}, { signal } = {}) {
+    async call(tool, args = {}, { signal, timeoutMs: requestTimeoutMs } = {}) {
       signal?.throwIfAborted();
-      const result = await rpc('tools/call', { name: tool, arguments: args }, tool, signal);
+      const result = await rpc('tools/call', { name: tool, arguments: args }, tool, signal, requestTimeoutMs);
       if (result.isError) {
         const text = result.content?.find((c) => c.type === 'text')?.text ?? 'unknown error';
         throw new ToolError(tool, text);

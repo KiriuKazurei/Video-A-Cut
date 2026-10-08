@@ -12,6 +12,7 @@ import (
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
 
 type mcpTestProber struct {
@@ -150,8 +151,9 @@ func TestMCPPreviewLifecycle(t *testing.T) {
 	// 1. Report preview_capability via heartbeat tool
 	hbArgs := heartbeatArgs{
 		PreviewCapability: &preview.Capability{
-			ProtocolVersion: preview.ProtocolVersion,
-			Ready:           true,
+			ExecutionProtocol: service.PreviewExecutionProtocol,
+			ProtocolVersion:   preview.ProtocolVersion,
+			Ready:             true,
 			Presets: []preview.PresetRef{
 				{PresetID: preview.PresetID, SHA256: preview.DefaultPresetSHA256()},
 			},
@@ -183,7 +185,7 @@ func TestMCPPreviewLifecycle(t *testing.T) {
 	}
 
 	// 2. Claim preview task via MCP claim_task
-	claimOut, isErr, raw := f.call("exp1", "claim_task", struct{}{})
+	claimOut, isErr, raw := f.call("exp1", "claim_task", claimArgs{RuntimeInstanceID: "preview-test-instance", RequestID: "preview-test-claim"})
 	if isErr || claimOut["claimed"] != true {
 		t.Fatalf("claim_task failed: %s", raw)
 	}
@@ -193,7 +195,15 @@ func TestMCPPreviewLifecycle(t *testing.T) {
 	}
 
 	// 3. Read input via MCP get_task_input
-	inputOut, isErr, raw := f.call("exp1", "get_task_input", taskIDArgs{TaskID: view.TaskID})
+	scopeBytes, err := json.Marshal(claimOut["scope"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scope executionScopeArgs
+	if err = json.Unmarshal(scopeBytes, &scope); err != nil {
+		t.Fatal(err)
+	}
+	inputOut, isErr, raw := f.call("exp1", "get_task_input", scope)
 	if isErr {
 		t.Fatalf("get_task_input failed: %s", raw)
 	}
@@ -287,6 +297,8 @@ func TestMCPPreviewLifecycle(t *testing.T) {
 	}
 
 	submitOut, isErr, raw := f.call("exp1", "submit_preview", previewArgs{
+		RuntimeInstanceID: scope.RuntimeInstanceID, ExecutionID: scope.ExecutionID,
+		Generation: scope.Generation, InputSHA256: scope.InputSHA256,
 		TaskID:     job.TaskID,
 		PreviewDir: filepath.ToSlash(previewDir),
 	})

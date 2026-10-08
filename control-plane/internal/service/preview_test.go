@@ -158,8 +158,9 @@ func registerValidCapability(t *testing.T, svc *service.Service, agentID string)
 	t.Helper()
 	ctx := context.Background()
 	cap := preview.Capability{
-		ProtocolVersion: preview.ProtocolVersion,
-		Ready:           true,
+		ExecutionProtocol: service.PreviewExecutionProtocol,
+		ProtocolVersion:   preview.ProtocolVersion,
+		Ready:             true,
 		Presets: []preview.PresetRef{
 			{PresetID: preview.PresetID, SHA256: preview.DefaultPresetSHA256()},
 		},
@@ -170,6 +171,27 @@ func registerValidCapability(t *testing.T, svc *service.Service, agentID string)
 	if err := svc.ReportPreviewCapability(ctx, agentID, "exporter", cap); err != nil {
 		t.Fatalf("ReportPreviewCapability: %v", err)
 	}
+}
+
+func previewClaimOptions(agentID string) service.ClaimOptions {
+	sum := sha256.Sum256([]byte(time.Now().String()))
+	return service.ClaimOptions{RuntimeInstanceID: "preview-test-" + agentID, RequestID: hex.EncodeToString(sum[:])}
+}
+
+func previewTestScope(t *testing.T, svc *service.Service, agentID, taskID string) service.ExecutionScope {
+	t.Helper()
+	st := getTestStore(svc)
+	task, err := st.GetTask(t.Context(), taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex, err := st.GetPreviewExecution(t.Context(), taskID, task.Attempts+1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service.ExecutionScope{AgentID: agentID, Role: "exporter", TaskID: taskID,
+		RuntimeInstanceID: ex.RuntimeInstanceID, ExecutionID: ex.ExecutionID,
+		Generation: ex.Generation, InputSHA256: ex.InputSHA256}
 }
 
 func TestPreviewCapabilityRegistrationAndCheck(t *testing.T) {
@@ -371,7 +393,7 @@ func TestClaimPreviewTaskGating(t *testing.T) {
 	}
 
 	// Worker without capability (agent-exp-2) cannot claim
-	outcome, err := svc.ClaimForExecution(ctx, "agent-exp-2", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{})
+	outcome, err := svc.ClaimForExecution(ctx, "agent-exp-2", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-2"))
 	if err != nil && !errors.Is(err, model.ErrNotFound) {
 		t.Fatalf("ClaimForExecution: %v", err)
 	}
@@ -380,7 +402,7 @@ func TestClaimPreviewTaskGating(t *testing.T) {
 	}
 
 	// Worker with capability (agent-exp-1) CAN claim
-	outcome, err = svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{})
+	outcome, err = svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-1"))
 	if err != nil {
 		t.Fatalf("ClaimForExecution: %v", err)
 	}
@@ -389,16 +411,19 @@ func TestClaimPreviewTaskGating(t *testing.T) {
 	}
 
 	// TaskInput
-	in, err := svc.TaskInput(ctx, "agent-exp-1", view.TaskID)
+	taskInput, err := svc.GetTaskInputScoped(ctx, outcome.Scope)
 	if err != nil {
 		t.Fatalf("TaskInput: %v", err)
 	}
-	if in.PreviewID != view.PreviewID || in.TaskID != view.TaskID || in.InputSHA256 != view.InputSHA256 {
-		t.Fatalf("unexpected TaskInput: %+v", in)
+	in, ok := taskInput.Preview.(*preview.Input)
+	if !ok || in == nil || in.PreviewID != view.PreviewID || in.TaskID != view.TaskID || in.InputSHA256 != view.InputSHA256 {
+		t.Fatalf("unexpected TaskInput: %+v", taskInput)
 	}
 
 	// Another agent cannot read input
-	_, err = svc.TaskInput(ctx, "agent-intruder", view.TaskID)
+	intruder := outcome.Scope
+	intruder.AgentID = "agent-intruder"
+	_, err = svc.GetTaskInputScoped(ctx, intruder)
 	if !errors.Is(err, model.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden, got %v", err)
 	}
@@ -471,10 +496,10 @@ func writeCompletePreviewOutput(t *testing.T, root, previewDir string, job model
 	manBytes, _ := json.Marshal(manifest)
 
 	for name, data := range map[string][]byte{
-		"final.mp4":              mp4Data,
-		"render-report.json":     repBytes,
-		"preview-receipt.json":   recBytes,
-		"preview-manifest.json":  manBytes,
+		"final.mp4":             mp4Data,
+		"render-report.json":    repBytes,
+		"preview-receipt.json":  recBytes,
+		"preview-manifest.json": manBytes,
 	} {
 		if err := os.WriteFile(filepath.Join(abs, name), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -517,7 +542,7 @@ func TestSubmitPreviewAndResolveFiles(t *testing.T) {
 	}
 
 	// Claim task
-	_, err = svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{})
+	_, err = svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +556,7 @@ func TestSubmitPreviewAndResolveFiles(t *testing.T) {
 	writeCompletePreviewOutput(t, root, previewDir, job)
 
 	// Submit preview
-	if err := svc.SubmitPreview(ctx, "agent-exp-1", job.TaskID, filepath.ToSlash(previewDir)); err != nil {
+	if err := svc.SubmitPreviewScoped(ctx, previewTestScope(t, svc, "agent-exp-1", job.TaskID), filepath.ToSlash(previewDir)); err != nil {
 		t.Fatalf("SubmitPreview: %v", err)
 	}
 
@@ -648,7 +673,7 @@ func TestPreviewInvalidationOnWorkflowCancelAndReopen(t *testing.T) {
 	}
 
 	// Invalidated task cannot be claimed
-	outcome, err := svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{})
+	outcome, err := svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-1"))
 	if err != nil && !errors.Is(err, model.ErrNotFound) {
 		t.Fatal(err)
 	}

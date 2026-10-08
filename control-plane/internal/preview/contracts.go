@@ -114,10 +114,11 @@ type PresetRef struct {
 	SHA256   string `json:"sha256"`
 }
 type Capability struct {
-	ProtocolVersion int         `json:"protocol_version"`
-	Ready           bool        `json:"ready"`
-	Presets         []PresetRef `json:"presets"`
-	Checks          []Check     `json:"checks"`
+	ExecutionProtocol int         `json:"execution_protocol"`
+	ProtocolVersion   int         `json:"protocol_version"`
+	Ready             bool        `json:"ready"`
+	Presets           []PresetRef `json:"presets"`
+	Checks            []Check     `json:"checks"`
 }
 type Font struct {
 	Family string `json:"family"`

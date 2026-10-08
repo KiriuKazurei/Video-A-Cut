@@ -183,8 +183,9 @@ func setupAPIPreviewFixture(t *testing.T) (*Server, string, *store.Store, model.
 
 	// Register exporter capability
 	cap := preview.Capability{
-		ProtocolVersion: preview.ProtocolVersion,
-		Ready:           true,
+		ExecutionProtocol: service.PreviewExecutionProtocol,
+		ProtocolVersion:   preview.ProtocolVersion,
+		Ready:             true,
 		Presets: []preview.PresetRef{
 			{PresetID: preview.PresetID, SHA256: preview.DefaultPresetSHA256()},
 		},
@@ -379,7 +380,7 @@ func TestAPIPreviewEndToEnd(t *testing.T) {
 	_ = json.Unmarshal(rec2.Body.Bytes(), &view2)
 
 	// Claim and submit
-	_, err := srv.svc.ClaimForExecution(ctx, "agent-exp-api", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{})
+	claim, err := srv.svc.ClaimForExecution(ctx, "agent-exp-api", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{RuntimeInstanceID: "api-test-instance", RequestID: "api-test-preview-claim"})
 	if err != nil {
 		t.Fatalf("ClaimForExecution: %v", err)
 	}
@@ -390,7 +391,7 @@ func TestAPIPreviewEndToEnd(t *testing.T) {
 	}
 	previewDir := filepath.Join("previews", job2.AssetID, job2.RevisionID, job2.PreviewID)
 	writeOutputForJob(t, root, previewDir, job2)
-	if err := srv.svc.SubmitPreview(ctx, "agent-exp-api", job2.TaskID, filepath.ToSlash(previewDir)); err != nil {
+	if err := srv.svc.SubmitPreviewScoped(ctx, claim.Scope, filepath.ToSlash(previewDir)); err != nil {
 		t.Fatalf("SubmitPreview: %v", err)
 	}
 

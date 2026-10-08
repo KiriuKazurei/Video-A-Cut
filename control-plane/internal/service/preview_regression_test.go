@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
-	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +49,7 @@ func TestPreviewSubmissionChecksSpecificationsAndRegeneration(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			if _, e = svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{}); e != nil {
+			if _, e = svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-1")); e != nil {
 				t.Fatal(e)
 			}
 			job, e := getTestStore(svc).GetPreviewJob(ctx, v.PreviewID)
@@ -98,7 +97,7 @@ func TestPreviewSubmissionChecksSpecificationsAndRegeneration(t *testing.T) {
 			if e = os.WriteFile(manPath, raw, 0600); e != nil {
 				t.Fatal(e)
 			}
-			e = svc.SubmitPreview(ctx, "agent-exp-1", job.TaskID, filepath.ToSlash(dir))
+			e = svc.SubmitPreviewScoped(ctx, previewTestScope(t, svc, "agent-exp-1", job.TaskID), filepath.ToSlash(dir))
 			if c.valid {
 				if e != nil {
 					t.Fatal(e)
@@ -211,7 +210,7 @@ func TestAuditPreviewRejectsNonCompliantRealMedia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), service.ClaimOptions{})
+	claim, err := svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-1"))
 	if err != nil || !claim.Claimed || claim.Task.TaskID != v.TaskID {
 		t.Fatalf("claim: %+v %v", claim, err)
 	}
@@ -270,7 +269,7 @@ func TestAuditPreviewRejectsNonCompliantRealMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Uses the production ffprobe prober, not the existing unit-test stub.
-	if err = svc.SubmitPreview(ctx, "agent-exp-1", job.TaskID, filepath.ToSlash(rel)); err == nil {
+	if err = svc.SubmitPreviewScoped(ctx, previewTestScope(t, svc, "agent-exp-1", job.TaskID), filepath.ToSlash(rel)); err == nil {
 		result, e := svc.GetPreview(ctx, job.PreviewID)
 		if e != nil {
 			t.Fatal(e)

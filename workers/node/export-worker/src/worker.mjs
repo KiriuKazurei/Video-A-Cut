@@ -3,6 +3,7 @@ import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ToolError } from './mcp.mjs';
 import { processPreviewTask, probePreviewCapability } from './preview.mjs';
+import { randomUUID } from 'node:crypto';
 import { processDeliveryVariantTask, probeDeliveryVariantCapability } from './delivery-variant.mjs';
 
 /**
@@ -115,10 +116,10 @@ const sleep = (ms, signal) => new Promise((r) => {
  * Process one claimed export task end to end. Returns the final outcome for
  * logging. Never throws for task-level problems; those become fail_task.
  */
-export async function processTask({ client, cfg, task, log = () => {}, signal, runCliImpl = runCli, renderPreviewImpl, previewCapability, buildVariantImpl, deliveryVariantCapability }) {
+export async function processTask({ client, cfg, task, executionScope, log = () => {}, signal, runCliImpl = runCli, renderPreviewImpl, previewCapability, buildVariantImpl, deliveryVariantCapability }) {
   if (task?.type === 'delivery_variant') return processDeliveryVariantTask({ client, cfg, task, log, signal, buildVariantImpl, deliveryVariantCapability });
   if (task.type === 'preview') {
-    return processPreviewTask({ client, cfg, task, log, signal, renderPreviewImpl, previewCapability, deliveryVariantCapability });
+    return processPreviewTask({ client, cfg, task, executionScope, log, signal, renderPreviewImpl, previewCapability, deliveryVariantCapability });
   }
   const id = task.task_id;
   let leaseLost = false;
@@ -230,6 +231,7 @@ export async function runLoop({
     if (!tools.includes(needed)) throw new Error(`control plane does not expose ${needed}`);
   }
   const hasPreviewTool = tools.includes('submit_preview');
+  if (hasPreviewTool && !tools.includes('get_task_status')) throw new Error('control plane does not expose get_task_status');
   const hasVariantTool = tools.includes('submit_delivery_variant');
   let variantCap = hasVariantTool ? await probeDeliveryVariantCapabilityImpl() : null;
   let previewCap = null;
@@ -248,6 +250,9 @@ export async function runLoop({
   await client.call('heartbeat', initialHb);
   let lastHeartbeat=Date.now();
   log('worker registered; polling');
+  const runtimeInstanceID = randomUUID();
+  let claimRequestID = randomUUID();
+  let deferredPreviewExecution = '';
   while (!signal.aborted) {
     if(Date.now()-lastHeartbeat>=5000){
       const hb = {};
@@ -270,21 +275,32 @@ export async function runLoop({
     }
     let claim;
     try {
-      claim = await client.call('claim_task', {});
+      claim = await client.call('claim_task', { runtime_instance_id: runtimeInstanceID, request_id: claimRequestID }, { signal });
     } catch (err) {
       log(`claim error: ${err.message}`);
       await sleep(cfg.pollIntervalMs, signal);
       continue;
     }
+    if (claim.claimed && claim.task?.type === 'preview' && claim.scope?.execution_id === deferredPreviewExecution) {
+      // A published result with unknown registration must keep its package
+      // and let this lease expire. Do not restart its task deadline or renew it.
+      await sleep(cfg.pollIntervalMs, signal);
+      continue;
+    }
+    claimRequestID = randomUUID();
     if (!claim.claimed) {
       if (once) return { outcome: 'idle' };
       await sleep(cfg.pollIntervalMs, signal);
       continue;
     }
     log(`claimed ${claim.task.task_id} (${claim.task.type}) for ${claim.task.asset_id}`);
-    const result = await processTask({ client, cfg, task: claim.task, log, signal, runCliImpl, renderPreviewImpl, previewCapability: previewCap, buildVariantImpl, deliveryVariantCapability: variantCap });
+    const result = await processTask({ client, cfg, task: claim.task, executionScope: claim.scope, log, signal, runCliImpl, renderPreviewImpl, previewCapability: previewCap, buildVariantImpl, deliveryVariantCapability: variantCap });
     log(`task ${claim.task.task_id}: ${result.outcome}${result.reason ? ` - ${result.reason}` : ''}`);
     if (once) return result;
+    if (result.outcome === 'registration_pending') {
+      deferredPreviewExecution = claim.scope.execution_id;
+      await sleep(cfg.pollIntervalMs, signal);
+    }
   }
   return { outcome: 'stopped' };
 }

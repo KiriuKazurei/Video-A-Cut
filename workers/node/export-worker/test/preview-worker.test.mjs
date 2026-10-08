@@ -52,14 +52,18 @@ const defaultTask = {
   asset_id: 'asset_fixture',
   type: 'preview'
 };
+const defaultScope = {
+  task_id: defaultTask.task_id, runtime_instance_id: 'preview-test-instance',
+  execution_id: 'preview-test-execution', generation: 1, input_sha256: fixture.input.input_sha256
+};
 
 test('preview cannot submit after its deadline even if the renderer returns late', async () => {
   const {dir,cleanup}=await createTestRoot();
   try {
     const client=fakeClient({get_task_input:()=>({preview:fixture.input})});
-    const result=await processPreviewTask({client,cfg:{...baseCfg(dir),taskTimeoutMs:30},task:defaultTask,
+    const result=await processPreviewTask({client,cfg:{...baseCfg(dir),taskTimeoutMs:30},task:defaultTask, executionScope: defaultScope,
       renderPreviewImpl:async()=>{await new Promise(resolve=>setTimeout(resolve,100));}});
-    assert.equal(result.outcome,'failed');
+    assert.equal(result.outcome,'registration_pending');
     assert.match(result.reason,/timed out/);
     assert.ok(!client.calls.some(([tool])=>tool==='submit_preview'));
   } finally {await cleanup();}
@@ -72,7 +76,7 @@ test('preview rejects path separators in revision and preview IDs', async () => 
       const input={...fixture.input,[key]:'../foreign'};
       const client=fakeClient({get_task_input:()=>({preview:input})});
       let rendered=false;
-      const result=await processPreviewTask({client,cfg:baseCfg(dir),task:defaultTask,renderPreviewImpl:async()=>{rendered=true}});
+      const result=await processPreviewTask({client,cfg:baseCfg(dir),task:defaultTask, executionScope: defaultScope,renderPreviewImpl:async()=>{rendered=true}});
       assert.equal(result.outcome,'failed');assert.equal(rendered,false);
     }
   } finally {await cleanup();}
@@ -85,7 +89,7 @@ test('preview refuses a redirected output parent before rendering or recovery', 
     const target=join(dir,'redirected');await mkdir(target);
     await symlink(target,link,process.platform==='win32'?'junction':'dir');
     const client=fakeClient({get_task_input:()=>({preview:fixture.input})});let rendered=false;
-    const result=await processPreviewTask({client,cfg:baseCfg(dir),task:defaultTask,renderPreviewImpl:async()=>{rendered=true}});
+    const result=await processPreviewTask({client,cfg:baseCfg(dir),task:defaultTask, executionScope: defaultScope,renderPreviewImpl:async()=>{rendered=true}});
     assert.equal(result.outcome,'failed');assert.equal(rendered,false);
     assert.ok(!client.calls.some(([tool])=>tool==='submit_preview'));
   } finally {await unlink(link).catch(error=>{if(error.code!=='ENOENT')throw error});await cleanup();}
@@ -105,7 +109,7 @@ test('preview recovery rejects foreign task or preset bindings and oversized JSO
           await writeFile(join(output, PREVIEW_FILENAMES[item]), JSON.stringify({ ...binding, ...(file === item ? { [field]: 'foreign' } : {}) }));
         }
         const client = fakeClient({ get_task_input: () => ({ preview: fixture.input }) });
-        const result = await processPreviewTask({ client, cfg: baseCfg(dir), task: defaultTask,
+        const result = await processPreviewTask({ client, cfg: baseCfg(dir), task: defaultTask, executionScope: defaultScope,
           renderPreviewImpl: async () => assert.fail('foreign receipt caused a rerender') });
         assert.equal(result.outcome, 'failed');
         assert.match(result.reason, /different task input/);
@@ -115,7 +119,7 @@ test('preview recovery rejects foreign task or preset bindings and oversized JSO
     await writeFile(join(output, PREVIEW_FILENAMES.receipt), JSON.stringify(binding));
     await writeFile(join(output, PREVIEW_FILENAMES.manifest), ' '.repeat(1024 * 1024 + 1));
     const client = fakeClient({ get_task_input: () => ({ preview: fixture.input }) });
-    const result = await processPreviewTask({ client, cfg: baseCfg(dir), task: defaultTask,
+    const result = await processPreviewTask({ client, cfg: baseCfg(dir), task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => assert.fail('oversized receipt caused a rerender') });
     assert.equal(result.outcome, 'failed');
     assert.match(result.reason, /exceeds limit/);
@@ -134,7 +138,7 @@ test('preview deadline aborts fetching input before it can reach the renderer', 
       });
       return {};
     } };
-    const result = await processPreviewTask({ client, cfg: { ...baseCfg(dir), taskTimeoutMs: 30 }, task: defaultTask,
+    const result = await processPreviewTask({ client, cfg: { ...baseCfg(dir), taskTimeoutMs: 30 }, task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => assert.fail('timed out input reached renderer') });
     assert.equal(result.outcome, 'failed');
     assert.match(result.reason, /timed out/);
@@ -153,7 +157,7 @@ test('late progress lease failure prevents registration after rendering returns'
         }
         return {};
       } });
-    const result = await processPreviewTask({ client, cfg: baseCfg(dir), task: defaultTask,
+    const result = await processPreviewTask({ client, cfg: baseCfg(dir), task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async ({ onProgress }) => onProgress({ progress: 0.5 }) });
     assert.equal(result.outcome, 'abandoned');
     assert.ok(!client.calls.some(([tool]) => ['submit_preview', 'fail_task'].includes(tool)));
@@ -247,7 +251,7 @@ test('processPreviewTask happy path renders and submits preview', async () => {
     const result = await processPreviewTask({
       client,
       cfg: { ...baseCfg(dir), heartbeatIntervalMs: 20 },
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async (opts) => {
         rendered = true;
         assert.equal(opts.input.preview_id, fixture.input.preview_id);
@@ -264,6 +268,9 @@ test('processPreviewTask happy path renders and submits preview', async () => {
     assert.ok(submitCall);
     assert.deepEqual(submitCall[1], {
       task_id: defaultTask.task_id,
+      runtime_instance_id: defaultScope.runtime_instance_id,
+      execution_id: defaultScope.execution_id, generation: defaultScope.generation,
+      input_sha256: defaultScope.input_sha256,
       preview_dir: `previews/${fixture.input.asset_id}/${fixture.input.revision_id}/${fixture.input.preview_id}`
     });
 
@@ -309,7 +316,7 @@ test('processPreviewTask recovers existing completed preview without re-renderin
     const result = await processPreviewTask({
       client,
       cfg: baseCfg(dir),
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => { renderRan = true; }
     });
 
@@ -355,7 +362,7 @@ test('processPreviewTask rejects mismatched existing preview directory', async (
     const result = await processPreviewTask({
       client,
       cfg: baseCfg(dir),
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => {}
     });
 
@@ -381,7 +388,7 @@ test('processPreviewTask aborts without fail_task when lease is lost during hear
     const result = await processPreviewTask({
       client,
       cfg: { ...baseCfg(dir), heartbeatIntervalMs: 20 },
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async ({ signal }) => {
         return new Promise((resolve, reject) => {
           signal.addEventListener('abort', () => {
@@ -411,7 +418,7 @@ test('processPreviewTask reports failure with fail_task when renderer fails', as
     const result = await processPreviewTask({
       client,
       cfg: baseCfg(dir),
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => {
         throw new WorkerFailure('FFmpeg exited 1: unsupported codec');
       }
@@ -440,7 +447,7 @@ test('processPreviewTask validates input structure and rejects invalid attribute
     const result = await processPreviewTask({
       client,
       cfg: baseCfg(dir),
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => {}
     });
 
@@ -462,7 +469,7 @@ test('processPreviewTask fails cleanly when workflow cancels task', async () => 
     const result = await processPreviewTask({
       client,
       cfg: baseCfg(dir),
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => {}
     });
 
@@ -490,7 +497,7 @@ test('processTask dispatches preview task to processPreviewTask', async () => {
     const result = await processTask({
       client,
       cfg: baseCfg(dir),
-      task: defaultTask,
+      task: defaultTask, executionScope: defaultScope,
       renderPreviewImpl: async () => { previewInvoked = true; }
     });
 
@@ -506,6 +513,7 @@ test('runLoop registers preview_capability when submit_preview tool is present',
   try {
     const mockCap = {
       protocol_version: 1,
+      execution_protocol: 2,
       ready: true,
       presets: [{ preset_id: 'mp4-720p-v1', sha256: 'abc' }],
       checks: [{ code: 'ffmpeg', status: 'passed', message: 'ok' }]
@@ -515,13 +523,13 @@ test('runLoop registers preview_capability when submit_preview tool is present',
     const client = {
       listTools: async () => [
         'claim_task', 'heartbeat', 'report_progress', 'get_asset',
-        'get_task_input', 'submit_delivery', 'fail_task', 'submit_preview'
+        'get_task_input', 'get_task_status', 'submit_delivery', 'fail_task', 'submit_preview'
       ],
       call: async (tool, args) => {
         if (tool === 'claim_task') {
           if (!claimed) {
             claimed = true;
-            return { claimed: true, task: defaultTask };
+            return { claimed: true, task: defaultTask, scope: defaultScope };
           }
           return { claimed: false };
         }
@@ -558,7 +566,7 @@ test('preview task heartbeats keep the advertised capability alive while renderi
       get_task_input: async () => ({ preview: fixture.input }),
       heartbeat: async args => { if (args.task_id) { assert.deepEqual(args.preview_capability, capability); renewals++; } }
     });
-    const result = await processPreviewTask({client, cfg:{...baseCfg(dir), heartbeatIntervalMs:20}, task:defaultTask,
+    const result = await processPreviewTask({client, cfg:{...baseCfg(dir), heartbeatIntervalMs:20}, task:defaultTask, executionScope: defaultScope,
       previewCapability:capability, renderPreviewImpl: async () => {await new Promise(resolve=>setTimeout(resolve,100));}});
     assert.equal(result.outcome,'succeeded');
     assert.ok(renewals>=1);

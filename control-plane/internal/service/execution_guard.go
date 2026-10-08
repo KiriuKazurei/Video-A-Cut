@@ -33,7 +33,7 @@ const (
 	opRecovery               = "list_recovery_candidates"
 )
 
-// ExecutionScope is the server-authenticated identity of one ingest attempt.
+// ExecutionScope is the server-authenticated identity of one ingest or preview attempt.
 // Agent and role are filled by the service from the authenticated caller.
 // A missing field is not treated as a trusted internal call.
 type ExecutionScope struct {
@@ -62,7 +62,7 @@ type controlSlot struct {
 }
 
 // ClaimOptions carries the optional instance identity on claim_task.
-// Ingest claims require both fields. Ordinary tasks ignore them.
+// Ingest and preview claims require both fields. Ordinary tasks ignore them.
 type ClaimOptions struct {
 	RuntimeInstanceID string
 	RequestID         string
@@ -153,7 +153,8 @@ func sourceSnapshotKey(sourceID string) string {
 }
 
 // authorizeExecution enforces one operation against the stored execution.
-// Historical tasks without an ingest binding pass through. A bound task with
+// Ordinary historical tasks without an ingest binding pass through. Preview
+// tasks have their own attempt fence. A bound ingest task with
 // a missing, old, or mismatched scope is rejected. A revoked execution's
 // original instance may still read its own stop state, acknowledge it, and
 // query its own submit.
@@ -171,6 +172,18 @@ func authorizeExecution(ctx context.Context, tx *store.Store, scope ExecutionSco
 		return auth, err
 	}
 	auth.Task = tk
+	if tk.Type == model.TaskTypePreview {
+		if err := authorizePreviewExecution(ctx, tx, scope, tk, operation == opSubmit); err != nil {
+			return auth, err
+		}
+		if (operation == opGetInput || operation == opHeartbeat || operation == opProgress || operation == opFail || operation == opSubmit) &&
+			(tk.Status == model.TaskStatusClaimed || tk.Status == model.TaskStatusRunning) && (tk.LeaseUntil == nil || leaseExpired(tk)) {
+			return auth, model.ErrLeaseExpired
+		}
+		// Skip the ingest-specific lifecycle after checking the preview attempt.
+		auth.Historical = true
+		return auth, nil
+	}
 	b, err := tx.GetIngestBinding(ctx, scope.TaskID)
 	if errors.Is(err, model.ErrNotFound) {
 		auth.Historical = true

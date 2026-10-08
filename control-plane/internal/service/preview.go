@@ -395,6 +395,10 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 	}
 
 	var createdView preview.View
+	snapshot, err := s.verifyPreviewSnapshot(ctx, previewIn)
+	if err != nil {
+		return preview.View{}, false, err
+	}
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		// Concurrency double check for request_id
 		if dup, e := tx.GetPreviewJobByRequest(ctx, runID, req.RequestID); e == nil {
@@ -422,7 +426,7 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 		if fresh.Version != req.ExpectedVersion || current.RevisionID != req.RevisionID {
 			return model.ErrConflict
 		}
-		if _, e = s.verifyPreviewInput(ctx, previewIn); e != nil {
+		if e = s.recheckPreviewSnapshot(ctx, snapshot); e != nil {
 			return e
 		}
 		// Concurrency double check for reusable job
@@ -675,27 +679,18 @@ func (s *Service) Cancel(ctx context.Context, actor, previewID string) (preview.
 	return s.CancelPreview(ctx, actor, previewID)
 }
 
-// PreviewTaskInput returns the fixed PreviewInput snapshot for a held preview task.
+// PreviewTaskInput is the legacy port. Preview callers must use GetTaskInputScoped;
+// an identity without a claim scope fails closed.
 func (s *Service) PreviewTaskInput(ctx context.Context, agentID, taskID string) (preview.Input, error) {
-	job, err := s.st.GetPreviewJobByTaskID(ctx, taskID)
+	in, err := s.GetTaskInputScoped(ctx, ExecutionScope{AgentID: agentID, Role: "exporter", TaskID: taskID})
 	if err != nil {
 		return preview.Input{}, err
 	}
-	if job.Invalidated {
-		return preview.Input{}, fmt.Errorf("service: preview task %s is invalidated: %w", taskID, model.ErrConflict)
+	prevIn, ok := in.Preview.(*preview.Input)
+	if !ok || prevIn == nil {
+		return preview.Input{}, model.ErrInvalidState
 	}
-	tk, err := s.st.GetTask(ctx, taskID)
-	if err != nil {
-		return preview.Input{}, err
-	}
-	if tk.AgentID != "" && tk.AgentID != agentID {
-		return preview.Input{}, fmt.Errorf("service: task %s belongs to another agent: %w", taskID, model.ErrForbidden)
-	}
-	var prevIn preview.Input
-	if err := json.Unmarshal([]byte(job.InputJSON), &prevIn); err != nil {
-		return preview.Input{}, fmt.Errorf("service: parse preview input for task %s: %w", taskID, err)
-	}
-	return prevIn, nil
+	return *prevIn, nil
 }
 
 // TaskInput satisfies preview.Application.
@@ -703,8 +698,15 @@ func (s *Service) TaskInput(ctx context.Context, agentID, taskID string) (previe
 	return s.PreviewTaskInput(ctx, agentID, taskID)
 }
 
-// SubmitPreview validates and registers artifacts from a rendered preview directory.
+// SubmitPreview is the legacy port and rejects an identity without a claim scope.
+// Preview callers must use SubmitPreviewScoped.
 func (s *Service) SubmitPreview(ctx context.Context, agentID, taskID, previewDir string) error {
+	return s.SubmitPreviewScoped(ctx, ExecutionScope{AgentID: agentID, Role: "exporter", TaskID: taskID}, previewDir)
+}
+
+// SubmitPreviewScoped binds registration (including replay) to the current attempt.
+func (s *Service) SubmitPreviewScoped(ctx context.Context, scope ExecutionScope, previewDir string) error {
+	agentID, taskID := scope.AgentID, scope.TaskID
 	if agentID == "" || taskID == "" || previewDir == "" {
 		return fmt.Errorf("service: agent_id, task_id and preview_dir are required: %w", model.ErrArgument)
 	}
@@ -712,7 +714,12 @@ func (s *Service) SubmitPreview(ctx context.Context, agentID, taskID, previewDir
 	if err != nil {
 		return err
 	}
-	task, err := s.st.GetTask(ctx, taskID)
+	var task model.Task
+	err = s.st.Transaction(ctx, func(tx *store.Store) error {
+		auth, e := authorizeExecution(ctx, tx, scope, opSubmit)
+		task = auth.Task
+		return e
+	})
 	if err != nil {
 		return err
 	}
@@ -870,7 +877,18 @@ func (s *Service) SubmitPreview(ctx context.Context, agentID, taskID, previewDir
 		if err != nil {
 			return err
 		}
+		if _, err = authorizeExecution(ctx, tx, scope, opSubmit); err != nil {
+			return err
+		}
 		if tk.Status == model.TaskStatusSucceeded {
+			j, e := tx.GetPreviewJobByTaskID(ctx, taskID)
+			if e != nil {
+				return e
+			}
+			if j.OutputDir != filepathSlash(previewDir) {
+				return model.ErrConflict
+			}
+			job = j
 			savedTask = tk
 			return nil
 		}

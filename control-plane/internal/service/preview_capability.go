@@ -26,7 +26,7 @@ func (s *Service) ReportPreviewCapability(ctx context.Context, agentID, role str
 		return fmt.Errorf("service: encode preview capability: %w", err)
 	}
 	expiresAt := time.Now().UTC().Add(DefaultPreviewCapabilityExpiry)
-	ready := cap.Ready && cap.ProtocolVersion == preview.ProtocolVersion
+	ready := cap.Ready && cap.ProtocolVersion == preview.ProtocolVersion && cap.ExecutionProtocol == PreviewExecutionProtocol
 	if err := s.st.PutPreviewCapability(ctx, agentID, cap.ProtocolVersion, ready, string(raw), expiresAt); err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (s *Service) CheckPreviewCapability(ctx context.Context, presetID string) (
 		if err := json.Unmarshal([]byte(c.CapabilityJSON), &parsed); err != nil {
 			continue
 		}
-		if !parsed.Ready || parsed.ProtocolVersion != preview.ProtocolVersion {
+		if !parsed.Ready || parsed.ProtocolVersion != preview.ProtocolVersion || parsed.ExecutionProtocol != PreviewExecutionProtocol {
 			continue
 		}
 		for _, p := range parsed.Presets {

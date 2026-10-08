@@ -146,7 +146,7 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 	return out.Task, nil
 }
 
-// ClaimForExecution claims a task and, for ingest work, allocates an execution
+// ClaimForExecution claims a task and, for ingest/preview work, allocates an execution
 // scope. Replaying request_id returns the original scope or obsolete.
 func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, lease time.Time, opt ClaimOptions) (ClaimOutcome, error) {
 	if agentID == "" {
@@ -167,6 +167,23 @@ func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, l
 		if opt.RequestID != "" || opt.RuntimeInstanceID != "" {
 			if !idemKeyPattern.MatchString(opt.RuntimeInstanceID) || !idemKeyPattern.MatchString(opt.RequestID) {
 				return fmt.Errorf("runtime_instance_id and request_id are required together: %w", model.ErrArgument)
+			}
+			pex, err := tx.PreviewExecutionByRequest(ctx, opt.RuntimeInstanceID, opt.RequestID)
+			if err == nil {
+				if pex.AgentID != agentID || role != "exporter" {
+					return model.ErrForbidden
+				}
+				tk, e := tx.GetTask(ctx, pex.TaskID)
+				if e != nil {
+					return e
+				}
+				live := tk.AgentID == agentID && tk.Attempts+1 == pex.Generation &&
+					(tk.Status == model.TaskStatusClaimed || tk.Status == model.TaskStatusRunning) &&
+					tk.LeaseUntil != nil && tk.LeaseUntil.After(now)
+				outcome = previewExecutionOutcome(pex, tk, !live)
+				return nil
+			} else if !errors.Is(err, model.ErrNotFound) {
+				return err
 			}
 			req, err := tx.GetExecutionRequest(ctx, opt.RuntimeInstanceID, opt.RequestID, opClaim)
 			if err == nil {
@@ -215,6 +232,10 @@ func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, l
 			if !assetVisibleForRole(asset, role) {
 				return fmt.Errorf("service: claim task %s: asset is not visible to role %q: %w",
 					tk.TaskID, role, model.ErrForbidden)
+			}
+			if tk.Type == model.TaskTypePreview {
+				outcome, err = claimPreviewExecution(ctx, tx, tk, opt)
+				return err
 			}
 			if b, err := tx.GetIngestBinding(ctx, tk.TaskID); err == nil {
 				if b.ExecutionID == "" {
@@ -314,6 +335,14 @@ func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, l
 			candidate.Artifacts = map[string]string{}
 			if err := tx.UpdateTask(ctx, candidate); err != nil {
 				return fmt.Errorf("service: claim task %s: %w", candidate.TaskID, err)
+			}
+			if candidate.Type == model.TaskTypePreview {
+				outcome, err = claimPreviewExecution(ctx, tx, candidate, opt)
+				if err != nil {
+					return err
+				}
+				changed = true
+				return nil
 			}
 			if _, err := tx.GetIngestBinding(ctx, candidate.TaskID); err == nil {
 				ex, err := s.allocateIngestExecution(ctx, tx, agentID, role, opt, candidate, lease, &wake)
@@ -697,6 +726,9 @@ func (s *Service) previewClaimable(ctx context.Context, tx *store.Store, agentID
 	}
 	var capData preview.Capability
 	if err := json.Unmarshal([]byte(capRec.CapabilityJSON), &capData); err != nil {
+		return false, nil
+	}
+	if !capData.Ready || capData.ExecutionProtocol != PreviewExecutionProtocol {
 		return false, nil
 	}
 	supported := false

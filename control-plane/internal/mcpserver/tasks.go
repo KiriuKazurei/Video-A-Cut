@@ -55,8 +55,12 @@ type heartbeatArgs struct {
 }
 
 type previewArgs struct {
-	TaskID     string `json:"task_id" jsonschema:"preview task identifier"`
-	PreviewDir string `json:"preview_dir" jsonschema:"rendered preview directory relative to delivery root"`
+	TaskID            string `json:"task_id" jsonschema:"preview task identifier"`
+	RuntimeInstanceID string `json:"runtime_instance_id"`
+	ExecutionID       string `json:"execution_id"`
+	Generation        int    `json:"generation"`
+	InputSHA256       string `json:"input_sha256"`
+	PreviewDir        string `json:"preview_dir" jsonschema:"rendered preview directory relative to delivery root"`
 }
 type deliveryVariantArgs struct {
 	TaskID     string `json:"task_id"`
@@ -138,6 +142,8 @@ type recoveryResult struct {
 }
 type ackResult struct {
 	OK               bool       `json:"ok"`
+	TaskStatus       string     `json:"task_status,omitempty"`
+	Stopped          bool       `json:"stopped,omitempty"`
 	LeaseExpiresAt   *time.Time `json:"lease_expires_at,omitempty"`
 	LeaseRemainingMs int64      `json:"lease_remaining_ms,omitempty"`
 }
@@ -174,7 +180,7 @@ func toolError(err error) error {
 	case errors.Is(err, model.ErrInstanceConflict):
 		return errors.New("instance_conflict: another runtime instance is active for this agent")
 	case errors.Is(err, model.ErrProtocolUpgrade):
-		return errors.New("execution_protocol_required: upgrade the ingester execution protocol")
+		return errors.New("execution_protocol_required: upgrade the worker execution protocol")
 	case errors.Is(err, model.ErrConflict):
 		return errors.New("conflict: " + lastSegment(err))
 	case errors.Is(err, model.ErrInvalidState):
@@ -233,7 +239,7 @@ func requireTaskID(id string) error {
 }
 
 func registerTaskTools(server *mcp.Server, svc *service.Service, lease time.Duration) {
-	mcp.AddTool(server, &mcp.Tool{Name: "claim_task", Description: "Claim the oldest queued task for this agent's role, or get back the task already held. Ingest claims require runtime_instance_id and request_id and return an execution scope."},
+	mcp.AddTool(server, &mcp.Tool{Name: "claim_task", Description: "Claim the oldest queued task for this agent's role, or get back the task already held. Ingest and preview claims require runtime_instance_id and request_id and return an execution scope."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, args claimArgs) (*mcp.CallToolResult, claimResult, error) {
 			a := identity(ctx)
 			out, err := svc.ClaimForExecution(ctx, a.ID, a.Role, time.Now().UTC().Add(lease), service.ClaimOptions{
@@ -306,16 +312,17 @@ func registerTaskTools(server *mcp.Server, svc *service.Service, lease time.Dura
 			if tk.LeaseUntil != nil {
 				remaining = max(0, time.Until(*tk.LeaseUntil).Milliseconds())
 			}
-			return nil, ackResult{OK: true, LeaseExpiresAt: tk.LeaseUntil, LeaseRemainingMs: remaining}, nil
+			stopped := tk.Status != model.TaskStatusClaimed && tk.Status != model.TaskStatusRunning
+			return nil, ackResult{OK: true, TaskStatus: tk.Status, Stopped: stopped, LeaseExpiresAt: tk.LeaseUntil, LeaseRemainingMs: remaining}, nil
 		})
 
 	mcp.AddTool(server, &mcp.Tool{Name: "get_task_status", Description: "Read a task held (or last held) by this agent"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, args taskIDArgs) (*mcp.CallToolResult, taskResult, error) {
+		func(ctx context.Context, _ *mcp.CallToolRequest, args executionScopeArgs) (*mcp.CallToolResult, taskResult, error) {
 			if err := requireTaskID(args.TaskID); err != nil {
 				return nil, taskResult{}, err
 			}
 			a := identity(ctx)
-			tk, err := svc.GetTask(ctx, args.TaskID)
+			tk, err := svc.GetTaskStatusScoped(ctx, scopeFrom(a, args))
 			if err != nil {
 				return nil, taskResult{}, toolError(err)
 			}
@@ -327,7 +334,7 @@ func registerTaskTools(server *mcp.Server, svc *service.Service, lease time.Dura
 			return nil, taskResult{Task: tk}, nil
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "get_task_input", Description: "Read the fixed input package for a task this agent currently holds. Ingest tasks require the claim scope and never return a newer execution."},
+	mcp.AddTool(server, &mcp.Tool{Name: "get_task_input", Description: "Read the fixed input package for a task this agent currently holds. Ingest and preview tasks require the claim scope and never return a newer execution."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, args executionScopeArgs) (*mcp.CallToolResult, service.TaskInput, error) {
 			if err := requireTaskID(args.TaskID); err != nil {
 				return nil, service.TaskInput{}, err
@@ -395,7 +402,9 @@ func registerTaskTools(server *mcp.Server, svc *service.Service, lease time.Dura
 				return nil, submitResult{}, errors.New("invalid_argument: preview_dir is required")
 			}
 			a := identity(ctx)
-			if err := svc.SubmitPreview(ctx, a.ID, args.TaskID, args.PreviewDir); err != nil {
+			if err := svc.SubmitPreviewScoped(ctx, scopeFrom(a, executionScopeArgs{TaskID: args.TaskID,
+				RuntimeInstanceID: args.RuntimeInstanceID, ExecutionID: args.ExecutionID,
+				Generation: args.Generation, InputSHA256: args.InputSHA256}), args.PreviewDir); err != nil {
 				return nil, submitResult{}, toolError(err)
 			}
 			return nil, submitResult{Submitted: true}, nil

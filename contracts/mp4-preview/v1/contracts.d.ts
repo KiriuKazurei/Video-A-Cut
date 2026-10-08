@@ -82,9 +82,17 @@ export interface PreviewList {
   checks: PreviewCheck[]; previews: PreviewView[];
 }
 export interface PreviewCapability {
-  protocol_version: 1; ready: boolean;
+  protocol_version: 1; execution_protocol: 2; ready: boolean;
   presets: Array<{ preset_id: string; sha256: string }>;
   checks: PreviewCheck[];
+}
+/** Returned by claim_task; products remain bound to the immutable preview input. */
+export interface PreviewExecutionScope {
+  task_id: string; runtime_instance_id: string; execution_id: string;
+  generation: number; input_sha256: string;
+}
+export interface SubmitPreviewRequest extends PreviewExecutionScope {
+  preview_dir: string;
 }
 export interface PreviewReceipt {
   schema_version: 1; preview_id: string; task_id: string;

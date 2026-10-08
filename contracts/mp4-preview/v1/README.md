@@ -60,7 +60,11 @@ Go 是任务/租约/治理/持久化状态的所有者；MCP 只调用 Go servic
 
 首版生成入口只针对资产最新工作流的当前成功导出版本，且资产当前 EDL 引用仍对应该导出包；新工作流或重新导入不能继续把旧 export 当作当前输入。`is_current` 按这些条件及失效标记计算，不随任务进度刷新改变。历史文件保留只读访问和版本标签，自动节目选择只使用当前匹配结果。
 
-MCP：`get_task_input` 对 preview 返回现有 TaskInput 外层中的 `preview: PreviewInput`；新增 `submit_preview({task_id,preview_dir})`。heartbeat 增加 `preview_capability: PreviewCapability`，由 Go 检查认证、能力过期及支持的预设哈希；它独立于原 processing_profile 指纹，不改变旧 export 的能力判断。
+MCP：`get_task_input` 对 preview 返回现有 TaskInput 外层中的 `preview: PreviewInput`。`claim_task({runtime_instance_id,request_id})` 为预览返回 `scope` 和 `execution_protocol:2`；每个 Worker 进程生成独立 runtime_instance_id，传输故障重试沿用同一 request_id。预览的 get_task_input、heartbeat、report_progress、fail_task、get_task_status、submit_preview 都携带 task_id/runtime_instance_id/execution_id/generation；submit_preview 还携带 input_sha256 和 preview_dir。租约回收后的新领取使用新执行身份，旧身份不可修改新执行。未携带 scope 的预览调用拒绝，旧 Worker 的能力报告不可领取预览；控制面和 exporter 需要一起升级。
+
+heartbeat 增加 `preview_capability: PreviewCapability`，由 Go 检查认证、能力过期、执行协议和支持的预设哈希；它独立于原 processing_profile 指纹。携带 task_id 的心跳返回 task_status/stopped/lease_expires_at/lease_remaining_ms，Worker 将终态或空租约接到任务 AbortSignal。预览心跳单次最多3秒且不重叠，轮询间隔最多2秒；这些是代码期限，未替代运行时停止时限验收。
+
+发布后的网络或服务内部暂时故障先通过 get_task_status 核对，再以同一 scope、input_sha256 和 preview_dir 最多重试5次。提交请求使用任务剩余期限，状态查询和心跳使用独立短期限；结果未知时返回 registration_pending、保留已发布目录，不调用 fail_task。连续轮询模式暂缓同一执行，不重新启动任务期限或续租；租约回收后由新执行恢复登记。已成功提交的同身份同目录请求幂等返回；取消、失效和明确错误产物继续拒绝。历史产物 manifest/receipt 不绑定执行代际，由当前领取者验证并登记同一固定预览身份。
 
 Capability 检查字体时需区分有/无 SRT：无字幕无需字体，有字幕必须有可用中文字体。旧服务/Worker 缺少 preview 工具时，保留原 export 能力，将 preview 判为不可用。
 
