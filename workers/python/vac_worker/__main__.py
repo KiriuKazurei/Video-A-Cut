@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 import threading
@@ -21,6 +22,21 @@ def main(argv=None) -> int:
         print(f"[py-worker {time.strftime('%Y-%m-%dT%H:%M:%S')}] {msg}", flush=True)
 
     stop = threading.Event()
+    watcher_done = threading.Event()
+    stop_path = os.environ.get("VAC_SESSION_STOP", "")
+    if stop_path and os.path.exists(stop_path):
+        log("session was stopped before worker startup")
+        return 0
+
+    def watch_session_stop() -> None:
+        while not watcher_done.wait(0.2):
+            if os.path.exists(stop_path):
+                log("session stop requested; no further tasks will be claimed")
+                stop.set()
+                return
+
+    if stop_path:
+        threading.Thread(target=watch_session_stop, daemon=True).start()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: (log("signal received; stopping after current step"), stop.set()))
     try:
@@ -38,6 +54,8 @@ def main(argv=None) -> int:
     except Exception as err:  # startup failure; task transport errors stay inside the ingester loop
         log(f"fatal: {err}")
         return 2
+    finally:
+        watcher_done.set()
     log(f"exit: {result['outcome']}")
     return 1 if result["outcome"] in ("failed", "fail_report_error") else 0
 
