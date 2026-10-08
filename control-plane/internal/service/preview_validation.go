@@ -281,6 +281,19 @@ func (s *Service) validatePreviewMedia(ctx context.Context, input preview.Input,
 	if report.TargetFrames != frames || report.TargetSamples != targetSamples || report.Media.Width != media.Width || report.Media.Height != media.Height || report.Media.FPS != media.FPS || report.Media.FrameCount != media.FrameCount || report.Media.VideoCodec != media.VideoCodec || report.Media.AudioCodec != media.AudioCodec || report.Media.SampleRate != media.SampleRate || report.Media.Channels != media.Channels || math.IsNaN(report.Media.DurationSeconds) || math.Abs(report.Media.DurationSeconds-duration) > 0.025 {
 		return model.ErrArgument
 	}
+	if err := preview.ValidateAudioInterval(media.AudioInterval, targetSamples, media.SampleRate, fps); err != nil {
+		return fmt.Errorf("preview audio timing: %v: %w", err, model.ErrArgument)
+	}
+	// Older published reports may omit interval metadata. They still need a
+	// fresh successful probe; reported timing, when present, must match it.
+	if reported := report.Media.AudioInterval; reported != nil {
+		if err := preview.ValidateAudioInterval(reported, targetSamples, media.SampleRate, fps); err != nil {
+			return fmt.Errorf("reported audio timing: %v: %w", err, model.ErrArgument)
+		}
+		if reported.StartPTS != media.AudioInterval.StartPTS || reported.DurationTS != media.AudioInterval.DurationTS || reported.TimeBase != media.AudioInterval.TimeBase {
+			return fmt.Errorf("reported audio timing does not match probe: %w", model.ErrArgument)
+		}
+	}
 	if hasSRT && (receipt.Font == nil || receipt.Font.Family != "Microsoft YaHei" || len(receipt.Font.SHA256) != 64) {
 		return model.ErrArgument
 	}

@@ -62,15 +62,24 @@ type Check struct {
 }
 
 type Media struct {
-	Width           int     `json:"width"`
-	Height          int     `json:"height"`
-	FPS             float64 `json:"fps"`
-	FrameCount      int64   `json:"frame_count"`
+	AudioInterval   *AudioInterval `json:"audio_interval,omitempty"`
+	Width           int            `json:"width"`
+	Height          int            `json:"height"`
+	FPS             float64        `json:"fps"`
+	FrameCount      int64          `json:"frame_count"`
+	DurationSeconds float64        `json:"duration_seconds"`
+	VideoCodec      string         `json:"video_codec"`
+	AudioCodec      string         `json:"audio_codec"`
+	SampleRate      int            `json:"sample_rate"`
+	Channels        int            `json:"channels"`
+}
+
+type AudioInterval struct {
+	StartPTS        int64   `json:"start_pts"`
+	DurationTS      int64   `json:"duration_ts"`
+	TimeBase        string  `json:"time_base"`
+	StartSeconds    float64 `json:"start_seconds"`
 	DurationSeconds float64 `json:"duration_seconds"`
-	VideoCodec      string  `json:"video_codec"`
-	AudioCodec      string  `json:"audio_codec"`
-	SampleRate      int     `json:"sample_rate"`
-	Channels        int     `json:"channels"`
 }
 
 type Artifact struct {

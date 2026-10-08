@@ -58,6 +58,12 @@ export interface PreviewCheck { code: string; status: 'passed' | 'blocked' | 'no
 export interface PreviewMedia {
   width: number; height: number; fps: number; frame_count: number; duration_seconds: number;
   video_codec: string; audio_codec: string; sample_rate: number; channels: number;
+  /** Present for newly probed output; historical views may omit it. */
+  audio_interval?: PreviewAudioInterval;
+}
+export interface PreviewAudioInterval {
+  start_pts: number; duration_ts: number; time_base: string;
+  start_seconds: number; duration_seconds: number;
 }
 export interface PreviewArtifact {
   key: string;

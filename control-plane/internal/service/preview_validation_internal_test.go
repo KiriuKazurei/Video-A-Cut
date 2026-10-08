@@ -56,7 +56,7 @@ func TestPreviewFrozenTimelineCanvasAndOverlap(t *testing.T) {
 			}
 			svc.SetMediaProber(timelineSourceProber{sameCanvas: !tc.valid})
 			input := preview.Input{Files: []preview.InputFile{{Kind: "source_video", Path: "earlier.mp4"}, {Kind: "source_video", Path: "later.mp4"}}}
-			media := preview.Media{Width: 320, Height: 180, FPS: 30, FrameCount: tc.frames, DurationSeconds: float64(tc.frames) / 30, VideoCodec: "h264", AudioCodec: "aac", SampleRate: 48000, Channels: 2}
+			media := preview.Media{Width: 320, Height: 180, FPS: 30, FrameCount: tc.frames, DurationSeconds: float64(tc.frames) / 30, VideoCodec: "h264", AudioCodec: "aac", SampleRate: 48000, Channels: 2, AudioInterval: &preview.AudioInterval{DurationTS: tc.frames * 1600, TimeBase: "1/48000", DurationSeconds: float64(tc.frames) / 30}}
 			report := preview.Report{TargetFrames: tc.frames, TargetSamples: tc.frames * 1600, Media: media}
 			for _, code := range []string{"source_fingerprint", "timeline_frames", "audio_alignment", "subtitles", "media_streams"} {
 				report.Checks = append(report.Checks, preview.Check{Code: code, Status: "passed"})

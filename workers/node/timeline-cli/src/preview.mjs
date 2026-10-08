@@ -15,6 +15,7 @@ import {
 import { publishNewDirectory } from './publish.mjs';
 import { toUnits } from './time.mjs';
 import { isDeepStrictEqual } from 'node:util';
+import { audioIntervalFromStream, validateAudioInterval } from './preview-audio.mjs';
 
 /** @typedef {import('../../../../contracts/mp4-preview/v1/contracts').PreviewInput} PreviewInput */
 /** @typedef {import('../../../../contracts/mp4-preview/v1/contracts').PreviewPhase} PreviewPhase */
@@ -147,6 +148,10 @@ export async function probePreviewMedia(filePath, options) {
   if (!video) throw new PreviewError('rendered output has no video stream', 'missing_video_stream');
   if (!audio) throw new PreviewError('rendered output has no audio stream', 'missing_audio_stream');
   const fps = rate(video.avg_frame_rate) || rate(video.r_frame_rate);
+  const videoDuration = Number(video.duration) || duration;
+  if (!Number.isFinite(fps) || fps <= 0 || !Number.isFinite(videoDuration) || videoDuration <= 0) {
+    throw new PreviewError('rendered output has invalid video timing', 'invalid_media_timing');
+  }
   let frames = Number(video.nb_frames);
   if (!Number.isFinite(frames) || frames <= 0) {
     frames = Math.round((Number(video.duration) || duration) * fps);
@@ -156,11 +161,12 @@ export async function probePreviewMedia(filePath, options) {
     height: Number(video.height),
     fps,
     frame_count: frames,
-    duration_seconds: Number(video.duration) || duration,
+    duration_seconds: videoDuration,
     video_codec: video.codec_name,
     audio_codec: audio.codec_name,
     sample_rate: Number(audio.sample_rate),
-    channels: Number(audio.channels)
+    channels: Number(audio.channels),
+    audio_interval: audioIntervalFromStream(audio)
   };
 }
 
@@ -595,8 +601,18 @@ export async function renderPreview(options) {
     ];
 
     const filterComplex = [...vFilters, ...aFilters].join(';');
+    if (Buffer.byteLength(filterComplex, 'utf8') > 8 * 1024 * 1024) {
+      throw new PreviewError('preview filter graph exceeds 8 MiB', 'filter_graph_too_large');
+    }
+    const graphFile = 'filtergraph.txt';
+    signal?.throwIfAborted();
+    await writeFile(join(stagingDir, graphFile), filterComplex, {encoding:'utf8', signal});
+    // FFmpeg 7+ accepts the generic file-valued option syntax. Older stable
+    // releases use the legacy script option; no graph text goes on the argv.
+    const ffmpegVersion = await getFfmpegVersion({signal});
+    const ffmpegMajor = Number(/^(\d+)\./.exec(ffmpegVersion)?.[1]);
     ffmpegArgs.push(
-      '-filter_complex', filterComplex,
+      Number.isFinite(ffmpegMajor) && ffmpegMajor >= 7 ? '-/filter_complex' : '-filter_complex_script', graphFile,
       '-map', '[vfinal]',
       '-c:v', input.preset.video.encoder,
       '-pix_fmt', input.preset.video.pixel_format,
@@ -612,18 +628,29 @@ export async function renderPreview(options) {
       ffmpegArgs.push('-movflags', '+faststart');
     }
     ffmpegArgs.push('-r', String(fps), '-fps_mode', 'cfr', '-progress', 'pipe:1', 'final.mp4');
+    // Reserve executable space and conservatively allow Windows quoting and
+    // doubled backslashes. Many distinct source paths can still exceed argv.
+    const commandUnits = 1024 + ffmpegArgs.reduce((units, arg) => units + 2 * arg.length + 3, 0);
+    if (process.platform === 'win32' && commandUnits > 30_000) {
+      throw new PreviewError('too many input paths for the Windows command line', 'command_line_too_large');
+    }
+    signal?.throwIfAborted();
 
     // 7. Spawn FFmpeg child process
     childProcess = spawn('ffmpeg', ffmpegArgs, { cwd: stagingDir, windowsHide: true });
 
-    let killTimer;
+    let killTimer, processError;
+    const stopProcess = () => {
+      if (killTimer) return;
+      try { childProcess.kill('SIGTERM'); } catch (error) { processError ??= error; }
+      killTimer = setTimeout(() => {
+        try { childProcess.kill('SIGKILL'); } catch (_) {}
+      }, 1000);
+      killTimer.unref();
+    };
     const abortHandler = () => {
       killed = true;
-      try {
-        childProcess.kill('SIGTERM');
-      } catch (_) {}
-      killTimer = setTimeout(() => childProcess.kill('SIGKILL'), 1000);
-      killTimer.unref();
+      stopProcess();
     };
     signal?.addEventListener('abort', abortHandler, { once: true });
     if (signal?.aborted) abortHandler();
@@ -638,6 +665,15 @@ export async function renderPreview(options) {
 
     let stdoutBuf = '';
     childProcess.stdout.on('data', (chunk) => {
+      if (processError || killed) return;
+      // Progress is a sequence of short ASCII lines. Bound an unterminated
+      // line before retaining it, and still wait for close before cleanup.
+      if (stdoutBuf.length + chunk.length > 128 * 1024) {
+        processError = new PreviewError('ffmpeg progress exceeds 128 KiB', 'progress_output_limit');
+        stdoutBuf = '';
+        stopProcess();
+        return;
+      }
       stdoutBuf += chunk.toString('utf8');
       const lines = stdoutBuf.split('\n');
       stdoutBuf = lines.pop() || '';
@@ -647,19 +683,24 @@ export async function renderPreview(options) {
           const currentFrame = parseInt(trimmed.slice(6).trim(), 10);
           if (Number.isFinite(currentFrame) && total_frames > 0) {
             const p = Math.min(0.85, 0.10 + 0.75 * Math.min(1, currentFrame / total_frames));
-            onProgress?.({
-              phase: 'rendering',
-              progress: p,
-              message: `Rendering frame ${currentFrame}/${total_frames}`
-            });
+            try {
+              onProgress?.({
+                phase: 'rendering',
+                progress: p,
+                message: `Rendering frame ${currentFrame}/${total_frames}`
+              });
+            } catch (error) {
+              processError = error instanceof Error ? error : new PreviewError(String(error), 'progress_callback_failed');
+              stopProcess();
+              break;
+            }
           }
         }
       }
     });
 
-    let processError;
     const exitCode = await new Promise(resolveClose => {
-      childProcess.on('error', error => { processError = error; });
+      childProcess.on('error', error => { processError ??= error; });
       childProcess.on('close', code => resolveClose(code));
     });
     clearTimeout(killTimer);
@@ -682,6 +723,9 @@ export async function renderPreview(options) {
     const finalMp4Path = join(stagingDir, 'final.mp4');
     const mediaInfo = await probePreviewMedia(finalMp4Path, { signal });
 
+    if (mediaInfo.video_codec !== 'h264' || mediaInfo.audio_codec !== 'aac') {
+      throw new PreviewError('rendered output codecs mismatch H.264/AAC preset', 'codec_mismatch');
+    }
     if (mediaInfo.width !== canvasW || mediaInfo.height !== canvasH) {
       throw new PreviewError(
         `rendered video dimensions ${mediaInfo.width}x${mediaInfo.height} mismatch canvas ${canvasW}x${canvasH}`,
@@ -697,6 +741,9 @@ export async function renderPreview(options) {
         'frame_count_mismatch'
       );
     }
+    if (Math.abs(mediaInfo.duration_seconds - total_frames / fps) > 0.025) {
+      throw new PreviewError('rendered video duration mismatches timeline', 'duration_mismatch');
+    }
     if (mediaInfo.sample_rate !== sampleRate) {
       throw new PreviewError(
         `rendered audio sample rate ${mediaInfo.sample_rate} mismatch target ${sampleRate}`,
@@ -706,11 +753,12 @@ export async function renderPreview(options) {
     if (mediaInfo.channels !== 2) {
       throw new PreviewError(`rendered audio channels ${mediaInfo.channels} mismatch 2`, 'channel_mismatch');
     }
+    validateAudioInterval(mediaInfo.audio_interval, target_samples, sampleRate, fps);
 
     const checks = [
       { code: 'source_fingerprint', status: 'passed', message: 'Input identity and package files verified' },
       { code: 'timeline_frames', status: 'passed', message: `Rendered ${mediaInfo.frame_count} frames matches target ${total_frames}` },
-      { code: 'audio_alignment', status: 'passed', message: `Target audio samples: ${target_samples}` },
+      { code: 'audio_alignment', status: 'passed', message: `Audio stream starts at ${mediaInfo.audio_interval.start_seconds}s and covers ${mediaInfo.audio_interval.duration_seconds}s; target ${target_samples}/${sampleRate}s` },
       {
         code: 'subtitles',
         status: 'passed',
@@ -734,7 +782,6 @@ export async function renderPreview(options) {
     const reportContent = `${JSON.stringify(report, null, 2)}\n`;
     await writeFile(join(stagingDir, PREVIEW_FILENAMES.report), reportContent, 'utf8');
 
-    const ffmpegVersion = await getFfmpegVersion({ signal });
     const receipt = {
       schema_version: 1,
       preview_id: input.preview_id,
@@ -773,6 +820,8 @@ export async function renderPreview(options) {
     };
     await writeFile(join(stagingDir, PREVIEW_FILENAMES.manifest), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
+    // Keep the private filter graph out of the published package.
+    await rm(join(stagingDir, graphFile));
     // Clean up temporary subtitles.srt from staging before publication
     if (hasSubtitles) {
       await rm(join(stagingDir, 'subtitles.srt'), { force: true });
@@ -783,7 +832,7 @@ export async function renderPreview(options) {
     signal?.throwIfAborted();
 
     await verifyOutputParent(resolvedOutput);
-    await publishNewDirectory(stagingDir, resolvedOutput);
+    await publishNewDirectory(stagingDir, resolvedOutput, {signal});
     return manifest;
   } catch (error) {
     await rm(stagingDir, { recursive: true, force: true });

@@ -42,6 +42,7 @@ func TestMCPPreviewLifecycle(t *testing.T) {
 			AudioCodec:      "aac",
 			SampleRate:      48000,
 			Channels:        2,
+			AudioInterval:   &preview.AudioInterval{StartPTS: 0, DurationTS: 48000, TimeBase: "1/48000", StartSeconds: 0, DurationSeconds: 1},
 		},
 	})
 
@@ -258,6 +259,7 @@ func TestMCPPreviewLifecycle(t *testing.T) {
 			AudioCodec:      "aac",
 			SampleRate:      48000,
 			Channels:        2,
+			AudioInterval:   &preview.AudioInterval{StartPTS: 0, DurationTS: 48000, TimeBase: "1/48000", StartSeconds: 0, DurationSeconds: 1},
 		},
 		Checks: []preview.Check{
 			{Code: "source_fingerprint", Status: "passed", Message: "verified"},

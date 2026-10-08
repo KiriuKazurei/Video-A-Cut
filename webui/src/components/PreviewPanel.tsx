@@ -61,33 +61,48 @@ export function PreviewPanel({
   const { current, runs } = useWorkflowData(asset?.asset_id ?? '', selection);
   const runId = current?.run_id ?? selection.runId;
   const revisionId = current?.current_revision_id ?? '';
+  const contextKey = JSON.stringify([asset?.asset_id ?? '', runId, revisionId]);
 
   const query = useQuery({
     queryKey: previewQueryKey(asset?.asset_id ?? '', runId, revisionId),
     queryFn: () => previewApi.list(runId),
     enabled: Boolean(asset?.asset_id && runId)
   });
+  const canStart = Boolean(runId && query.data?.can_start && !query.isError);
 
   // 初次生成生成唯一 request_id；传输重试复用；明确重试则生成新 request_id
   const requestIdRef = useRef<{ context: string; request: PreviewStartRequest } | null>(null);
 
   const startMutation = useMutation({
-    mutationFn: async (req: PreviewStartRequest) => previewApi.start(runId, req),
-    onSuccess: () => {
+    mutationFn: ({ targetRun, request }: {
+      targetRun: string;
+      context: string;
+      queryKey: ReturnType<typeof previewQueryKey>;
+      request: PreviewStartRequest;
+    }) => previewApi.start(targetRun, request),
+    onSuccess: (_data, operation) => {
       void queryClient.invalidateQueries({
-        queryKey: previewQueryKey(asset?.asset_id ?? '', runId, revisionId)
+        queryKey: operation.queryKey
       });
     }
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (previewId: string) => previewApi.cancel(previewId),
-    onSuccess: () => {
+    mutationFn: ({ previewId }: {
+      previewId: string;
+      context: string;
+      queryKey: ReturnType<typeof previewQueryKey>;
+    }) => previewApi.cancel(previewId),
+    onSuccess: (_data, operation) => {
       void queryClient.invalidateQueries({
-        queryKey: previewQueryKey(asset?.asset_id ?? '', runId, revisionId)
+        queryKey: operation.queryKey
       });
     }
   });
+  const isStarting = startMutation.variables?.context === contextKey && startMutation.isPending;
+  const hasStartError = startMutation.variables?.context === contextKey && startMutation.isError;
+  const isCanceling = cancelMutation.variables?.context === contextKey && cancelMutation.isPending;
+  const hasCancelError = cancelMutation.variables?.context === contextKey && cancelMutation.isError;
 
   const previews = query.data?.previews ?? [];
   const latestPreview = previews[0];
@@ -108,12 +123,16 @@ export function PreviewPanel({
   const prevContextKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const contextKey = JSON.stringify([asset?.asset_id, runId, revisionId]);
     if (prevContextKeyRef.current !== contextKey) {
+      if (prevContextKeyRef.current !== null) {
+        startMutation.reset();
+        cancelMutation.reset();
+        requestIdRef.current = null;
+      }
       prevContextKeyRef.current = contextKey;
       autoLinkedIdRef.current = null;
     }
-  }, [asset?.asset_id, runId, revisionId]);
+  }, [contextKey, startMutation.reset, cancelMutation.reset]);
 
   useEffect(() => {
     if (!latestSucceededPreview || !onSelectPreview) return;
@@ -127,10 +146,10 @@ export function PreviewPanel({
   }, [latestSucceededPreview, activePreviewSrc, onSelectPreview]);
 
   const handleStart = (explicitRetry = false) => {
-    if (!runId || !query.data || !query.data.can_start) return;
+    if (!canStart || isStarting || !runId || !query.data) return;
     const context = JSON.stringify([asset?.asset_id, runId, query.data.revision_id]);
     // A failed transport repeats its frozen body; a new action gets a new ID.
-    if (explicitRetry || requestIdRef.current?.context !== context || !startMutation.isError) {
+    if (explicitRetry || requestIdRef.current?.context !== context || !hasStartError) {
       requestIdRef.current = { context, request: {
         revision_id: query.data.revision_id,
         expected_version: query.data.expected_version,
@@ -138,14 +157,28 @@ export function PreviewPanel({
         request_id: crypto.randomUUID()
       } };
     }
-    startMutation.mutate(requestIdRef.current!.request);
+    startMutation.mutate({
+      targetRun: runId,
+      context: contextKey,
+      queryKey: previewQueryKey(asset?.asset_id ?? '', runId, revisionId),
+      request: requestIdRef.current!.request
+    });
+  };
+  const handleCancel = (previewId: string) => {
+    if (isCanceling) return;
+    cancelMutation.mutate({
+      previewId,
+      context: contextKey,
+      queryKey: previewQueryKey(asset?.asset_id ?? '', runId, revisionId)
+    });
   };
 
-  const isBusy = startMutation.isPending || Boolean(inProgressPreview);
+  const isBusy = isStarting || Boolean(inProgressPreview);
 
   return (
     <Card
       size="small"
+      loading={query.isLoading}
       className="preview-panel glass glass-window"
       aria-labelledby="preview-panel-title"
       title={
@@ -172,7 +205,43 @@ export function PreviewPanel({
           />
         )}
 
-        {asset && (!runId || !query.data?.revision_id || query.data.revision_id === '') && (
+        {asset && runId && query.isError && (
+          <Alert
+            role="alert" type="error" showIcon message="读取预览失败"
+            description={query.error instanceof Error ? query.error.message : '无法读取预览记录，请重试。'}
+            action={
+              <Button icon={<ReloadOutlined />} onClick={() => void query.refetch()} loading={query.isFetching}>
+                重试读取
+              </Button>
+            }
+          />
+        )}
+        {hasStartError && (
+          <Alert
+            role="alert" type="error" showIcon message="请求发起失败"
+            description={startMutation.error instanceof Error ? startMutation.error.message : '网络或服务异常，请重试。'}
+            action={
+              <Button icon={<ReloadOutlined />} onClick={() => handleStart(false)} disabled={!canStart || isStarting}>
+                重试发起
+              </Button>
+            }
+          />
+        )}
+        {hasCancelError && (
+          <Alert
+            role="alert" type="error" showIcon message="取消预览失败"
+            description={cancelMutation.error instanceof Error ? cancelMutation.error.message : '取消请求未完成，请重试。'}
+            action={
+              <Button danger icon={<ReloadOutlined />} onClick={() => {
+                if (cancelMutation.variables) handleCancel(cancelMutation.variables.previewId);
+              }} loading={isCanceling}>
+                重试取消
+              </Button>
+            }
+          />
+        )}
+
+        {asset && (!runId || (!query.isPending && !query.isError && !query.data?.revision_id)) && (
           <Alert
             type="info"
             showIcon
@@ -189,8 +258,8 @@ export function PreviewPanel({
                   type="primary"
                   icon={isBusy ? <SyncOutlined spin /> : <VideoCameraOutlined />}
                   onClick={() => handleStart(false)}
-                  loading={startMutation.isPending}
-                  disabled={!query.data.can_start || isBusy}
+                  loading={isStarting}
+                  disabled={!canStart || isBusy}
                 >
                   {isBusy ? '渲染进行中…' : '生成 MP4 预览'}
                 </Button>
@@ -198,8 +267,8 @@ export function PreviewPanel({
                   <Button
                     icon={<ReloadOutlined />}
                     onClick={() => handleStart(true)}
-                    loading={startMutation.isPending}
-                    disabled={!query.data.can_start || startMutation.isPending}
+                    loading={isStarting}
+                    disabled={!canStart || isStarting}
                   >
                     重试生成
                   </Button>
@@ -235,18 +304,6 @@ export function PreviewPanel({
               />
             )}
 
-            {startMutation.isError && (
-              <Alert
-                type="error"
-                showIcon
-                message="请求发起失败"
-                description={
-                  startMutation.error instanceof Error
-                    ? startMutation.error.message
-                    : '网络或服务异常，请稍后重试'
-                }
-              />
-            )}
 
             {inProgressPreview && (
               <Card
@@ -273,8 +330,9 @@ export function PreviewPanel({
                     <Button
                       size="small"
                       danger
-                      onClick={() => cancelMutation.mutate(inProgressPreview.preview_id)}
-                      loading={cancelMutation.isPending}
+                      onClick={() => handleCancel(inProgressPreview.preview_id)}
+                      disabled={isCanceling}
+                      loading={isCanceling && cancelMutation.variables?.previewId === inProgressPreview.preview_id}
                     >
                       取消任务
                     </Button>
@@ -309,7 +367,8 @@ export function PreviewPanel({
                         danger
                         icon={<ReloadOutlined />}
                         onClick={() => handleStart(true)}
-                        loading={startMutation.isPending}
+                        loading={isStarting}
+                        disabled={!canStart || isStarting}
                       >
                         重试生成
                       </Button>
@@ -332,7 +391,8 @@ export function PreviewPanel({
                     <Button
                       size="small"
                       onClick={() => handleStart(true)}
-                      loading={startMutation.isPending}
+                      loading={isStarting}
+                      disabled={!canStart || isStarting}
                     >
                       重新生成
                     </Button>
@@ -456,9 +516,10 @@ export function PreviewPanel({
                                         size="small"
                                         danger
                                         onClick={() =>
-                                          cancelMutation.mutate(p.preview_id)
+                                          handleCancel(p.preview_id)
                                         }
-                                        loading={cancelMutation.isPending}
+                                        disabled={isCanceling}
+                                        loading={isCanceling && cancelMutation.variables?.previewId === p.preview_id}
                                       >
                                         取消
                                       </Button>

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os/exec"
 	"strconv"
@@ -40,6 +39,9 @@ type ffprobeStream struct {
 	NBFrames     string `json:"nb_frames"`
 	SampleRate   string `json:"sample_rate"`
 	Channels     int    `json:"channels"`
+	StartPTS     *int64 `json:"start_pts"`
+	DurationTS   *int64 `json:"duration_ts"`
+	TimeBase     string `json:"time_base"`
 }
 
 type ffprobeFormat struct {
@@ -66,26 +68,31 @@ func (p *FFprobeProber) ProbeMedia(ctx context.Context, absPath string) (Media, 
 
 	cmd := exec.CommandContext(cctx, bin,
 		"-v", "error",
-		"-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,nb_frames,sample_rate,channels:format=duration",
+		"-show_entries", "stream=codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,nb_frames,sample_rate,channels,start_pts,duration_ts,time_base:format=duration",
 		"-of", "json",
 		absPath,
 	)
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	stdout := probeOutput{cancel: cancel}
+	stdout.buffer.Grow(maxProbeStdout)
+	stderr := probeTail{data: make([]byte, 0, maxProbeStderr)}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	cmd.WaitDelay = time.Second
+	err := cmd.Run()
+	if stdout.exceeded {
+		return Media{}, fmt.Errorf("ffprobe output exceeds 1 MiB on %s", absPath)
+	}
+	if err != nil {
 		if cctx.Err() != nil {
-			return Media{}, fmt.Errorf("ffprobe probe timed out on %s: %w", absPath, cctx.Err())
+			return Media{}, fmt.Errorf("ffprobe probe interrupted on %s: %w", absPath, cctx.Err())
 		}
 		return Media{}, fmt.Errorf("ffprobe probe failed on %s: %w (stderr: %s)", absPath, err, stderr.String())
 	}
 
 	var out ffprobeOutput
-	lr := io.LimitReader(&stdout, 1<<20) // max 1MB
-	if err := json.NewDecoder(lr).Decode(&out); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(stdout.buffer.Bytes())).Decode(&out); err != nil {
 		return Media{}, fmt.Errorf("decode ffprobe output for %s: %w", absPath, err)
 	}
 
@@ -115,6 +122,11 @@ func (p *FFprobeProber) ProbeMedia(ctx context.Context, absPath string) (Media, 
 				media.Channels = s.Channels
 				if sr, err := strconv.Atoi(s.SampleRate); err == nil {
 					media.SampleRate = sr
+				}
+				if s.StartPTS != nil && s.DurationTS != nil {
+					// Source containers may have no timing; final MP4 registration
+					// requires an independently probed interval.
+					media.AudioInterval, _ = AudioIntervalFromStream(*s.StartPTS, *s.DurationTS, s.TimeBase)
 				}
 			}
 		}
