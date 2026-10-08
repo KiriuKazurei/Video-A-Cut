@@ -39,7 +39,7 @@ func (s *Service) SetProcessingConsent(ctx context.Context, actor, id string, re
 	if e != nil {
 		return e
 	}
-	if !p.Vision.External() && !p.Narration.External() {
+	if !p.External() {
 		return model.ErrArgument
 	}
 	e = s.st.Transaction(ctx, func(tx *store.Store) error {
@@ -55,6 +55,9 @@ func (s *Service) SetProcessingConsent(ctx context.Context, actor, id string, re
 }
 func (s *Service) ReportWorkerCapability(ctx context.Context, id, role string, c preparation.Capability) error {
 	if len(c.ProfileSHA256) != 64 || !isHex(c.ProfileSHA256) || len(c.TTSVoices) > 128 || !containsString([]string{"recognizer", "narrator", "exporter"}, role) {
+		return model.ErrArgument
+	}
+	if c.TTSTemplateSHA256 != "" && (len(c.TTSTemplateSHA256) != 64 || !isHex(c.TTSTemplateSHA256)) {
 		return model.ErrArgument
 	}
 	for _, v := range c.TTSVoices {
@@ -120,14 +123,24 @@ func (s *Service) preparedChecks(ctx context.Context, st *store.Store, asset mod
 		ready := false
 		for _, raw := range caps[role] {
 			var c preparation.Capability
-			if json.Unmarshal([]byte(raw), &c) == nil && c.ProfileSHA256 == sum && c.ToolsReady && c.CredentialsReady && (role != "narrator" || containsString(c.TTSVoices, p.TTSVoice)) {
+			ttsReady := role != "narrator"
+			if json.Unmarshal([]byte(raw), &c) == nil {
+				if role == "narrator" {
+					if p.TTSTemplate != nil {
+						ttsReady = c.TTSReady != nil && *c.TTSReady && c.TTSTemplateSHA256 == p.TTSTemplate.SHA256
+					} else {
+						ttsReady = containsString(c.TTSVoices, p.TTSVoice)
+					}
+				}
+			}
+			if c.ProfileSHA256 == sum && c.ToolsReady && c.CredentialsReady && ttsReady {
 				ready = true
 			}
 		}
 		add("worker_"+role, ready, "需要匹配预设、凭证及声音的新鲜 Worker 能力")
 	}
 	consent := true
-	if p.Vision.External() || p.Narration.External() {
+	if p.External() {
 		consent, e = st.ProfileConsent(ctx, p.ProfileID, p.Revision, sum)
 		if e != nil {
 			return nil, "", e
@@ -205,7 +218,7 @@ func (s *Service) boundProfile(ctx context.Context, st *store.Store, run string)
 	if p.Revision != b.Revision {
 		return nil, "", model.ErrInvalidState
 	}
-	if p.Vision.External() || p.Narration.External() {
+	if p.External() {
 		ok, e := st.ProfileConsent(ctx, p.ProfileID, p.Revision, b.SHA256)
 		if e != nil {
 			return nil, "", e

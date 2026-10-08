@@ -31,25 +31,34 @@ func (s *Service) ReportDeliveryVariantCapability(ctx context.Context, agentID, 
 	}
 	return err
 }
-func variantCapability(raw string) bool {
+func variantCapability(raw string) bool { return variantCapabilityFor(raw, dv.SpecID) }
+func variantCapabilityFor(raw string, id string) bool {
 	var cap dv.Capability
 	if json.Unmarshal([]byte(raw), &cap) != nil || !cap.Ready || cap.ProtocolVersion != 1 {
 		return false
 	}
 	for _, spec := range cap.Specs {
-		if spec.SpecID == dv.SpecID && spec.SHA256 == dv.SpecSHA {
+		expected := dv.SpecSHA
+		if id == dv.EditableSpecID {
+			expected = dv.EditableSpecSHA
+		}
+		if spec.SpecID == id && spec.SHA256 == expected {
 			return true
 		}
 	}
 	return false
 }
-func (s *Service) hasVariantCapability(ctx context.Context) (bool, error) {
+func (s *Service) hasVariantCapability(ctx context.Context, ids ...string) (bool, error) {
+	id := dv.SpecID
+	if len(ids) > 0 {
+		id = ids[0]
+	}
 	caps, err := s.st.ListActiveDeliveryVariantCapabilities(ctx)
 	if err != nil {
 		return false, err
 	}
 	for _, cap := range caps {
-		if cap.Ready && variantCapability(cap.CapabilityJSON) {
+		if cap.Ready && variantCapabilityFor(cap.CapabilityJSON, id) {
 			return true, nil
 		}
 	}
@@ -73,7 +82,11 @@ func (s *Service) deliveryVariantClaimable(ctx context.Context, tx *store.Store,
 	if err != nil {
 		return false, err
 	}
-	return !job.Invalidated && cap.Ready && variantCapability(cap.CapabilityJSON) && job.SpecSHA256 == dv.SpecSHA, nil
+	var input dv.Input
+	if json.Unmarshal([]byte(job.InputJSON), &input) != nil {
+		return false, model.ErrArgument
+	}
+	return !job.Invalidated && cap.Ready && variantCapabilityFor(cap.CapabilityJSON, input.SpecID), nil
 }
 func (s *Service) variantView(ctx context.Context, st *store.Store, job model.DeliveryVariantJob, current string) (dv.View, error) {
 	task, err := st.GetTask(ctx, job.TaskID)
@@ -88,7 +101,9 @@ func (s *Service) variantView(ctx context.Context, st *store.Store, job model.De
 	for _, a := range records {
 		artifacts = append(artifacts, dv.Artifact{Key: a.Key, Kind: a.Kind, Path: a.Path, MIME: a.MIME, Size: a.Size, SHA256: a.SHA256})
 	}
-	return dv.View{VariantID: job.VariantID, TaskID: job.TaskID, AssetID: job.AssetID, RunID: job.RunID, RevisionID: job.RevisionID, SpecID: dv.SpecID, Format: "ass", InputSHA256: job.InputSHA256, Status: task.Status, Progress: task.Progress, Message: task.Message, Invalidated: job.Invalidated, IsCurrent: !job.Invalidated && current != "" && job.RevisionID == current, Artifacts: artifacts}, nil
+	var input dv.Input
+	_ = json.Unmarshal([]byte(job.InputJSON), &input)
+	return dv.View{StyleSHA256: input.StyleSHA256, VariantID: job.VariantID, TaskID: job.TaskID, AssetID: job.AssetID, RunID: job.RunID, RevisionID: job.RevisionID, SpecID: input.SpecID, Format: "ass", InputSHA256: job.InputSHA256, Status: task.Status, Progress: task.Progress, Message: task.Message, Invalidated: job.Invalidated, IsCurrent: !job.Invalidated && current != "" && job.RevisionID == current, Artifacts: artifacts}, nil
 }
 func (s *Service) variantInput(ctx context.Context, run model.WorkflowRun, rev model.Revision) (dv.Input, error) {
 	pkg, err := s.previewPackageDir(rev.PackageRef)
@@ -178,7 +193,7 @@ func (s *Service) variantInput(ctx context.Context, run model.WorkflowRun, rev m
 			if e != nil {
 				return dv.Input{}, e
 			}
-			if _, e = dv.ParseSRT(b, duration); e != nil {
+			if _, e = dv.ParseSourceSRT(b, duration); e != nil {
 				return dv.Input{}, fmt.Errorf("invalid exported subtitles: %v: %w", e, model.ErrArgument)
 			}
 		}
@@ -195,11 +210,19 @@ func (s *Service) verifyVariantInput(ctx context.Context, in dv.Input) (string, 
 	return s.verifyPreviewInput(ctx, preview.Input{PackageRef: in.ParentPackageRef, Files: in.SourceFiles})
 }
 func (s *Service) StartDeliveryVariant(ctx context.Context, actor, runID string, req dv.StartRequest) (dv.View, bool, error) {
-	if actor == "" || !validTaskID(runID) || req.RevisionID == "" || req.RequestID == "" || req.SpecID != dv.SpecID {
+	if req.SpecID == dv.SpecID && (req.DraftVersion != 0 || req.StyleSHA256 != "") {
+		return dv.View{}, false, model.ErrArgument
+	}
+	reqSpecSHA := dv.SpecSHA
+	if req.SpecID == dv.EditableSpecID {
+		reqSpecSHA = dv.EditableSpecSHA
+	}
+
+	if actor == "" || !validTaskID(runID) || req.RevisionID == "" || req.RequestID == "" || (req.SpecID != dv.SpecID && req.SpecID != dv.EditableSpecID) {
 		return dv.View{}, false, model.ErrArgument
 	}
 	if old, e := s.st.GetDeliveryVariantJobByRequest(ctx, runID, req.RequestID); e == nil {
-		if old.RevisionID != req.RevisionID || old.ExpectedVersion != req.ExpectedVersion || old.SpecSHA256 != dv.SpecSHA {
+		if old.RevisionID != req.RevisionID || old.ExpectedVersion != req.ExpectedVersion || old.SpecSHA256 != reqSpecSHA || !variantRequestStyleMatches(old, req) {
 			return dv.View{}, false, model.ErrConflict
 		}
 		current, _ := s.getLatestExportRevisionID(ctx, runID)
@@ -225,7 +248,7 @@ func (s *Service) StartDeliveryVariant(ctx context.Context, actor, runID string,
 	if rev.RevisionID != req.RevisionID {
 		return dv.View{}, false, model.ErrConflict
 	}
-	cap, err := s.hasVariantCapability(ctx)
+	cap, err := s.hasVariantCapability(ctx, req.SpecID)
 	if err != nil {
 		return dv.View{}, false, err
 	}
@@ -235,6 +258,25 @@ func (s *Service) StartDeliveryVariant(ctx context.Context, actor, runID string,
 	input, err := s.variantInput(ctx, run, rev)
 	if err != nil {
 		return dv.View{}, false, err
+	}
+	if req.SpecID == dv.EditableSpecID {
+		d, e := s.GetSubtitleStyle(ctx, runID)
+		if e != nil {
+			return dv.View{}, false, e
+		}
+		if d.DraftVersion < 1 || d.DraftVersion != req.DraftVersion || d.StyleSHA256 != req.StyleSHA256 {
+			return dv.View{}, false, model.ErrConflict
+		}
+		input.SchemaVersion = 2
+		input.SpecID = dv.EditableSpecID
+		input.Spec = dv.EditableSpecBytes
+		input.SpecSHA256 = dv.EditableSpecSHA
+		input.StyleDocument = &d.Document
+		input.StyleSHA256 = d.StyleSHA256
+		input.InputSHA256, e = dv.Fingerprint(input)
+		if e != nil {
+			return dv.View{}, false, e
+		}
 	}
 	input.VariantID = newID("dv")
 	input.TaskID = newID("tkdv")
@@ -249,7 +291,7 @@ func (s *Service) StartDeliveryVariant(ctx context.Context, actor, runID string,
 	created := false
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		if old, e := tx.GetDeliveryVariantJobByRequest(ctx, runID, req.RequestID); e == nil {
-			if old.RevisionID != req.RevisionID || old.ExpectedVersion != req.ExpectedVersion || old.SpecSHA256 != dv.SpecSHA {
+			if old.RevisionID != req.RevisionID || old.ExpectedVersion != req.ExpectedVersion || old.SpecSHA256 != reqSpecSHA || !variantRequestStyleMatches(old, req) {
 				return model.ErrConflict
 			}
 			current, _ := s.previewRevisionID(ctx, tx, runID)
@@ -269,11 +311,21 @@ func (s *Service) StartDeliveryVariant(ctx context.Context, actor, runID string,
 		if fresh.Version != req.ExpectedVersion || current.RevisionID != req.RevisionID {
 			return model.ErrConflict
 		}
+		if req.SpecID == dv.EditableSpecID {
+			v, raw, e := tx.GetSubtitleStyle(ctx, runID, rev.RevisionID)
+			if e != nil {
+				return e
+			}
+			var doc dv.StyleDocument
+			if v != req.DraftVersion || json.Unmarshal([]byte(raw), &doc) != nil || dv.StyleHash(doc) != req.StyleSHA256 {
+				return model.ErrConflict
+			}
+		}
 		if _, e = s.verifyVariantInput(ctx, input); e != nil {
 			return e
 		}
 		if old, e := tx.FindReusableDeliveryVariantJob(ctx, runID, rev.RevisionID, input.InputSHA256); e == nil {
-			if e = tx.BindDeliveryVariantRequest(ctx, runID, req.RequestID, old.VariantID, rev.RevisionID, req.ExpectedVersion, dv.SpecSHA); e != nil {
+			if e = tx.BindDeliveryVariantRequest(ctx, runID, req.RequestID, old.VariantID, rev.RevisionID, req.ExpectedVersion, reqSpecSHA); e != nil {
 				return e
 			}
 			view, e = s.variantView(ctx, tx, old, current.RevisionID)
@@ -343,11 +395,25 @@ func (s *Service) ListDeliveryVariants(ctx context.Context, runID string) (dv.Li
 		}
 		views = append(views, v)
 	}
-	return dv.List{RunID: runID, RevisionID: current, ExpectedVersion: run.Version, CanStart: ready, Checks: checks, Specs: []dv.SpecRef{{SpecID: dv.SpecID, SHA256: dv.SpecSHA}}, Variants: views}, nil
+	editable, e := s.hasVariantCapability(ctx, dv.EditableSpecID)
+	if e != nil {
+		return dv.List{}, e
+	}
+	editableReady := current != "" && editable
+	if editableReady {
+		rev, e := s.st.GetRevision(ctx, current)
+		if e != nil {
+			return dv.List{}, e
+		}
+		if e = s.variantSubtitleReady(rev, true); e != nil {
+			editableReady = false
+		}
+	}
+	return dv.List{CanStartEditable: editableReady, RunID: runID, RevisionID: current, ExpectedVersion: run.Version, CanStart: ready, Checks: checks, Specs: []dv.SpecRef{{SpecID: dv.SpecID, SHA256: dv.SpecSHA}, {SpecID: dv.EditableSpecID, SHA256: dv.EditableSpecSHA}}, Variants: views}, nil
 }
 
 // Polling readiness reads only bounded metadata and subtitles; media is hashed at start/submit.
-func (s *Service) variantSubtitleReady(rev model.Revision) error {
+func (s *Service) variantSubtitleReady(rev model.Revision, editable ...bool) error {
 	pkg, err := s.previewPackageDir(rev.PackageRef)
 	if err != nil {
 		return err
@@ -390,6 +456,16 @@ func (s *Service) variantSubtitleReady(rev model.Revision) error {
 	srt, err := read(srtPath)
 	if err != nil {
 		return err
+	}
+	if len(editable) > 0 && editable[0] {
+		cues, e := dv.ParseSourceSRT(srt, duration)
+		if e != nil {
+			return e
+		}
+		if len(cues) == 0 {
+			return fmt.Errorf("当前导出没有字幕: %w", model.ErrInvalidState)
+		}
+		return nil
 	}
 	_, err = dv.ParseSRT(srt, duration)
 	return err
@@ -464,4 +540,12 @@ func (s *Service) invalidateDeliveryVariants(ctx context.Context, tx *store.Stor
 		}
 	}
 	return nil
+}
+
+func variantRequestStyleMatches(job model.DeliveryVariantJob, req dv.StartRequest) bool {
+	var in dv.Input
+	if json.Unmarshal([]byte(job.InputJSON), &in) != nil {
+		return false
+	}
+	return in.StyleSHA256 == req.StyleSHA256
 }

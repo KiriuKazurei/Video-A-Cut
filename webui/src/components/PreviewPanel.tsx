@@ -29,7 +29,7 @@ import { useWorkflowData } from './WorkflowPanel';
 import type { PreviewSource } from './Monitor';
 import { previewApi, previewFileURL, previewQueryKey } from '../api';
 import type { PreviewCheck, PreviewStartRequest, PreviewView } from '../previewContracts';
-import { createPreviewSource, formatSeconds } from '../previewContracts';
+import { createPreviewSource, formatSeconds, previewProductKey, previewStyleLabel, shouldAutoSelectPreview } from '../previewContracts';
 
 export { createPreviewSource };
 
@@ -104,14 +104,19 @@ export function PreviewPanel({
   const isCanceling = cancelMutation.variables?.context === contextKey && cancelMutation.isPending;
   const hasCancelError = cancelMutation.variables?.context === contextKey && cancelMutation.isError;
 
-  const previews = query.data?.previews ?? [];
-  const latestPreview = previews[0];
+  const allPreviews = query.data?.previews ?? [];
+  const srtPreviews = allPreviews.filter((p) => previewProductKey(p) === 'srt');
+  const styledPreviews = allPreviews.filter((p) => previewProductKey(p) !== 'srt');
+  const latestPreview = srtPreviews[0];
 
-  const inProgressPreview = previews.find(
+  const inProgressPreview = srtPreviews.find(
     (p) => p.status === 'queued' || p.status === 'claimed' || p.status === 'running'
   );
+  const styledInProgress = styledPreviews.filter(
+    (p) => (p.status === 'queued' || p.status === 'claimed' || p.status === 'running') && p.revision_id === revisionId && !p.invalidated
+  );
 
-  const latestSucceededPreview = previews.find(
+  const latestSucceededPreview = srtPreviews.find(
     (p) =>
       p.status === 'succeeded' &&
       !p.invalidated &&
@@ -136,6 +141,7 @@ export function PreviewPanel({
 
   useEffect(() => {
     if (!latestSucceededPreview || !onSelectPreview) return;
+    if (!shouldAutoSelectPreview(latestSucceededPreview, activePreviewSrc, allPreviews)) return;
     const targetSrc = previewFileURL(latestSucceededPreview.preview_id, 'mp4');
     if (autoLinkedIdRef.current !== latestSucceededPreview.preview_id) {
       if (!activePreviewSrc || activePreviewSrc !== targetSrc) {
@@ -143,7 +149,7 @@ export function PreviewPanel({
       }
       autoLinkedIdRef.current = latestSucceededPreview.preview_id;
     }
-  }, [latestSucceededPreview, activePreviewSrc, onSelectPreview]);
+  }, [latestSucceededPreview, activePreviewSrc, onSelectPreview, allPreviews]);
 
   const handleStart = (explicitRetry = false) => {
     if (!canStart || isStarting || !runId || !query.data) return;
@@ -304,6 +310,22 @@ export function PreviewPanel({
               />
             )}
 
+            {styledInProgress.map((job) => (
+              <Card key={job.preview_id} size="small" className="preview-progress-card">
+                <Flex vertical gap={6}>
+                  <Flex justify="space-between" align="center" wrap gap={8}>
+                    <Space wrap>
+                      <SyncOutlined spin style={{ color: '#1677ff' }} />
+                      <Typography.Text strong>{previewStyleLabel(job)} MP4</Typography.Text>
+                      <Tag color="processing">{job.status}</Tag>
+                    </Space>
+                    <Button size="small" danger onClick={() => handleCancel(job.preview_id)} disabled={isCanceling} loading={isCanceling && cancelMutation.variables?.previewId === job.preview_id}>取消任务</Button>
+                  </Flex>
+                  <Progress percent={Math.round((job.progress ?? 0) * 100)} status="active" />
+                  <Typography.Text type="secondary">{job.message || '正在烧录已冻结的 ASS 样式，不会自动改播原 SRT 成片。'}</Typography.Text>
+                </Flex>
+              </Card>
+            ))}
 
             {inProgressPreview && (
               <Card
@@ -414,8 +436,9 @@ export function PreviewPanel({
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
                       <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
-                      <Typography.Text strong>成片 MP4 预览已就绪</Typography.Text>
+                      <Typography.Text strong>原 SRT 成片 MP4 已就绪</Typography.Text>
                       <Tag color="success">已完成</Tag>
+                      <Tag>原 SRT</Tag>
                       {latestSucceededPreview.invalidated && (
                         <Tag color="warning">已失效（上游有新变动）</Tag>
                       )}
@@ -466,17 +489,17 @@ export function PreviewPanel({
               </Card>
             )}
 
-            {previews.length > 0 && (
+            {allPreviews.length > 0 && (
               <Collapse
                 size="small"
                 items={[
                   {
                     key: 'history',
-                    label: `历史预览记录 (${previews.length} 条)`,
+                    label: `历史预览记录 (${allPreviews.length} 条)`,
                     children: (
                       <List
                         size="small"
-                        dataSource={previews}
+                        dataSource={allPreviews}
                         renderItem={(p) => {
                           const isPlaying =
                             activePreviewSrc === previewFileURL(p.preview_id, 'mp4');
@@ -533,6 +556,7 @@ export function PreviewPanel({
                                     <Typography.Text code>
                                       {p.preview_id.slice(0, 8)}
                                     </Typography.Text>
+                                    <Tag>{previewStyleLabel(p)}</Tag>
                                     <Tag>{p.revision_id}</Tag>
                                     <Tag
                                       color={

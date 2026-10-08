@@ -13,10 +13,11 @@ import type {
   WorkflowSnapshot
 } from './types';
 import type { ProcessingProfile, ProcessingProvider, ProviderDiagnostic, PreparationReport } from './preparation';
+import type { TtsCapabilities, TtsTemplate, TtsSettings, TtsPreview } from './ttsContracts';
 import type { IngestRoots, IngestRun, IngestRunView, RecordingSource, SegmentPage, Segmentation, SelectedSegment } from './ingest';
 import type { PreviewClient, PreviewStartRequest, PreviewView, PreviewList } from './previewContracts.ts';
 import { previewFileURL, previewQueryKey } from './previewContracts.ts';
-import type { VariantStartRequest, VariantView, VariantList } from './deliveryVariantContracts';
+import type { SaveStyleRequest, SubtitleFontFamily, SubtitleStyleDraft, VariantStartRequest, VariantView, VariantList } from './deliveryVariantContracts';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -44,11 +45,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-function json(method: 'POST' | 'PATCH', body: object): RequestInit {
+function json(method: 'POST' | 'PATCH' | 'PUT', body: object): RequestInit {
   return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
 
 export const api = {
+  ttsCapabilities: (tokenEnv = 'VAC_TTS_TOKEN') => request<TtsCapabilities>(`/api/tts/capabilities?token_env=${encodeURIComponent(tokenEnv)}`),
+  ttsTemplates: () => request<TtsTemplate[]>('/api/tts/templates'),
+  ttsTemplate: (id: string, revision: number) => request<TtsTemplate>(`/api/tts/templates/${encodeURIComponent(id)}/revisions/${revision}`),
+  saveTtsTemplate: (template: { template_id: string; name: string; settings: TtsSettings; reference_text: string }, expected: number) =>
+    request<TtsTemplate>('/api/tts/templates', json('POST', { ...template, expected_revision: expected, idempotency_key: crypto.randomUUID() })),
+  archiveTtsTemplate: (id: string, revision: number) => request<{ archived: boolean }>(`/api/tts/templates/${encodeURIComponent(id)}/archive`, json('POST', { expected_revision: revision })),
+  ttsPreviews: () => request<TtsPreview[]>('/api/tts/preview-jobs'),
+  ttsPreview: (id: string) => request<TtsPreview>(`/api/tts/preview-jobs/${encodeURIComponent(id)}`),
+  startTtsPreview: (text: string, settings: TtsSettings) => request<TtsPreview>('/api/tts/preview-jobs', json('POST', { text, settings, idempotency_key: crypto.randomUUID() })),
+  cancelTtsPreview: (id: string) => request<TtsPreview>(`/api/tts/preview-jobs/${encodeURIComponent(id)}/cancel`, json('POST', {})),
+  ttsAudioURL: (id: string, download = false) => `/api/tts/preview-jobs/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   diagnoseProvider: (provider: ProcessingProvider, operation: 'test' | 'models', apiKey: string, signal?: AbortSignal) =>
     request<ProviderDiagnostic>(`/api/providers/${operation}`, { ...json('POST', { provider, ...(apiKey ? { api_key: apiKey } : {}) }), signal }),
   listProfiles: () => request<ProcessingProfile[]>('/api/processing-profiles?limit=50'),
@@ -140,6 +152,13 @@ export const previewApi: PreviewClient = {
 };
 
 export { previewFileURL, previewQueryKey };
+
+export const subtitleStyleApi = {
+  get: (run: string) => request<SubtitleStyleDraft>(`/api/workflows/${encodeURIComponent(run)}/subtitle-style`),
+  save: (run: string, body: SaveStyleRequest) => request<SubtitleStyleDraft>(
+    `/api/workflows/${encodeURIComponent(run)}/subtitle-style`, json('PUT', body)),
+  fonts: () => request<SubtitleFontFamily[]>('/api/subtitle-fonts')
+};
 
 export const deliveryVariantApi = {
   start: (run: string, body: VariantStartRequest) => request<VariantView>(

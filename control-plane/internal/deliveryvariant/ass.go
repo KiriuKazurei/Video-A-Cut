@@ -49,7 +49,11 @@ func TimelineDuration(edl []byte) (int64, error) {
 	}
 	return int64(ms), nil
 }
-func ParseSRT(raw []byte, durationMs int64) ([]Cue, error) {
+func ParseSRT(raw []byte, durationMs int64) ([]Cue, error) { return parseSRT(raw, durationMs, true) }
+func ParseSourceSRT(raw []byte, durationMs int64) ([]Cue, error) {
+	return parseSRT(raw, durationMs, false)
+}
+func parseSRT(raw []byte, durationMs int64, fixed bool) ([]Cue, error) {
 	if !utf8.Valid(raw) {
 		return nil, fmt.Errorf("SRT is not UTF-8")
 	}
@@ -93,11 +97,11 @@ func ParseSRT(raw []byte, durationMs int64) ([]Cue, error) {
 			return nil, fmt.Errorf("empty or out-of-range subtitle")
 		}
 		cues = append(cues, Cue{a, b, content})
-		if strings.Count(wrapASS(content), "\n") >= 8 {
+		if fixed && strings.Count(wrapASS(content), "\n") >= 8 {
 			return nil, fmt.Errorf("subtitle exceeds fixed ASS line limit")
 		}
 	}
-	if len(ASS(cues)) > 1024*1024 {
+	if fixed && len(ASS(cues)) > 1024*1024 {
 		return nil, fmt.Errorf("ASS exceeds 1 MiB")
 	}
 	return cues, nil
@@ -130,7 +134,8 @@ func ASS(cues []Cue) string {
 	return out.String()
 }
 
-func wrapASS(text string) string {
+func wrapASS(text string) string { return wrapASSLimit(text, 56) }
+func wrapASSLimit(text string, limit int) string {
 	var out strings.Builder
 	units := 0
 	for _, r := range text {
@@ -146,7 +151,7 @@ func wrapASS(text string) string {
 		if r >= 0x300 && r <= 0x36f || r >= 0xfe00 && r <= 0xfe0f || r >= 0xe0100 && r <= 0xe01ef || r == 0x200d {
 			width = 0
 		}
-		if width > 0 && units+width > 56 {
+		if width > 0 && units+width > limit {
 			out.WriteByte('\n')
 			units = 0
 		}

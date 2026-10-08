@@ -18,7 +18,8 @@ export const REFRESH_DOMAINS = [
   'acceptance',
   'ingest',
   'mp4Previews',
-  'deliveryVariants'
+  'deliveryVariants',
+  'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities'
 ] as const;
 
 export type RefreshDomain = (typeof REFRESH_DOMAINS)[number];
@@ -128,7 +129,8 @@ export const SUPPORTED_SSE_EVENTS = [
   'ingest.changed',
   'audit.changed',
   'preview_updated',
-  'delivery_variant.changed'
+  'delivery_variant.changed',
+  'tts.template.changed', 'tts.preview.changed'
 ] as const;
 
 export type SupportedSSEEvent = (typeof SUPPORTED_SSE_EVENTS)[number];
@@ -148,6 +150,8 @@ export function handleSSEEvent(
   watchedTaskId?: string | null
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
+  if (eventName === 'tts.template.changed') return Promise.all([queryClient.invalidateQueries({queryKey:['tts-templates']}),queryClient.invalidateQueries({queryKey:['audit']})]);
+  if (eventName === 'tts.preview.changed') return Promise.all([queryClient.invalidateQueries({queryKey:['tts-previews']}),queryClient.invalidateQueries({queryKey:['tts-preview']}),queryClient.invalidateQueries({queryKey:['audit']})]);
   const promises: Promise<void>[] = [];
   if (['delivery_variant.changed', 'capability.changed', 'workflow.changed', 'asset_created', 'asset_updated', 'task_updated', 'task_created'].includes(eventName)) {
     promises.push(queryClient.invalidateQueries({ queryKey: ['deliveryVariants'] }));

@@ -17,15 +17,25 @@ import (
 //go:embed specs/ass-basic-v1.json
 var SpecBytes []byte
 var SpecSHA = digest(SpecBytes)
+
+//go:embed specs/ass-basic-v2.json
+var EditableSpecBytes []byte
+var EditableSpecSHA = digest(EditableSpecBytes)
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 func ValidSpec(raw json.RawMessage, sha string) bool {
 	var a, b any
-	return sha == SpecSHA && json.Unmarshal(raw, &a) == nil && json.Unmarshal(SpecBytes, &b) == nil && reflect.DeepEqual(a, b)
+	spec := SpecBytes
+	expected := SpecSHA
+	if sha == EditableSpecSHA {
+		spec = EditableSpecBytes
+		expected = EditableSpecSHA
+	}
+	return sha == expected && json.Unmarshal(raw, &a) == nil && json.Unmarshal(spec, &b) == nil && reflect.DeepEqual(a, b)
 }
 func Fingerprint(in Input) (string, error) {
-	if in.SchemaVersion != 1 || in.Format != "ass" || in.SpecID != SpecID || in.AssetID == "" || in.RunID == "" || in.RevisionID == "" || !preview.IsRelativePath(in.ParentPackageRef) || len(in.SourceFiles) == 0 {
+	if (in.SchemaVersion != 1 || in.SpecID != SpecID) && (in.SchemaVersion != 2 || in.SpecID != EditableSpecID) || in.Format != "ass" || in.AssetID == "" || in.RunID == "" || in.RevisionID == "" || !preview.IsRelativePath(in.ParentPackageRef) || len(in.SourceFiles) == 0 {
 		return "", fmt.Errorf("invalid variant input")
 	}
 	atoms := []string{"vac.delivery-variant.input.v1", "1", in.AssetID, in.RunID, in.RevisionID, in.ParentPackageRef, in.EDLSHA256, in.ParentManifestSHA256, in.Format, in.SpecID, in.SpecSHA256, strconv.Itoa(len(in.SourceFiles))}
@@ -44,6 +54,12 @@ func Fingerprint(in Input) (string, error) {
 		}
 		seen[alias] = true
 		atoms = append(atoms, f.Kind, f.Path, f.SHA256, strconv.FormatInt(f.Size, 10))
+	}
+	if in.SchemaVersion == 2 {
+		if in.StyleDocument == nil || in.StyleSHA256 != StyleHash(*in.StyleDocument) {
+			return "", fmt.Errorf("invalid style snapshot")
+		}
+		atoms = append(atoms, "ass-basic-v2", in.StyleSHA256)
 	}
 	hash := sha256.New()
 	for _, a := range atoms {

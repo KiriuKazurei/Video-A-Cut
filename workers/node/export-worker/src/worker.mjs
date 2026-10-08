@@ -266,7 +266,10 @@ export async function runLoop({
         }
         if (previewCap) hb.preview_capability = previewCap;
       }
-      if (hasVariantTool) { if (!variantCap?.ready) variantCap = await probeDeliveryVariantCapabilityImpl(); if (variantCap) hb.delivery_variant_capability = variantCap; }
+      if (hasVariantTool) {
+        variantCap = await probeDeliveryVariantCapabilityImpl();
+        if (variantCap) hb.delivery_variant_capability = variantCap;
+      }
       if (Object.keys(hb).length > 0) {
         try { await client.call('heartbeat', hb); }
         catch(err){log(`capability heartbeat error: ${err.message}`);await sleep(cfg.pollIntervalMs,signal);continue;}

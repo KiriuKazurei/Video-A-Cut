@@ -12,6 +12,16 @@ R2 静态审查的 P1 修复已保存为本地提交 `76dea8c`；P2 的 S05–S0
 - 预览面板分别展示读取、发起和取消错误；读取和取消提供重试。操作与提示绑定 asset/run/revision，切换上下文重置，异步成功回调仅刷新原请求所属查询。
 - 补充复审修复：用 lstat 拒绝悬空发布目标；呈现时间必须有效，编码和时长须符合冻结规格，之后才记录通过；编码进度缓存限制 128 KiB，超限或同步进度回调抛错时停止进程，等待 close 后清理。音频时间戳拒绝布尔值、空串等隐式转换，Go/Node time_base 语法一致。发起错误增加复用 request_id 的重试入口，读取错误时禁用基于旧缓存的生成操作。
 
+## ASS 输入扩展（2026-10-07）
+
+创建请求可选 `subtitle_variant_id`。不传继续使用原 SRT；指定时 Go 冻结同流程、同导出修订、成功且未失效的 ASS 交付为 `PreviewInput.schema_version=2`。新字段 `subtitle_variant` 包含 variant_id、相对 deliveryRoot 的 package_ref、相对该字幕包的 ass 文件元数据、style_sha256 和 font_families。
+
+输入 fingerprint 保留原 atom 序列，在源文件后追加：`subtitle-variant-v1`、variant_id、package_ref、ass.kind、ass.path、ass.sha256、ass.size、style_sha256、字体族数量、依次排列的字体族。共享 Go/Node 测试覆盖该扩展；不带 ASS 的 v1 hash 不变。
+
+Worker 能力保持 protocol_version=1，执行协议使用 `execution_protocol:2`，并增加 `subtitle_formats:["srt","ass"]`；只有支持 ASS 且上报所选字体的 Worker 可领取 v2 输入。PreviewView 增加 subtitle_variant_id/style_sha256。视频/音频 preset 和输出 manifest/report/receipt 的 schema_version 仍为1；receipt 增加实际 `fonts:[{family,sha256}]`，不暴露绝对路径。
+
+Go 冻结、派发与验证已经接通；Node ASS 烧录扩展和前端链路属于并行实施部分，不能据此宣称真实 ASS MP4 已验收。见 [并行实施分工](../../../docs/ASS样式编辑器-并行实施分工.md)。
+
 docs 中的交接副本：[MP4 预览框架与 Agent 交接说明](../../../docs/MP4预览框架与Agent交接说明-2026-10-06.md)。
 
 > 2026-10-07 当前状态：A–D 已实现，六项 P1 问题已修复；自动回归及真实合成素材浏览器链路通过。见 [远程同步与 MP4 预览修复复验](../../../docs/远程同步与MP4预览修复复验-2026-10-07.md)。以下状态和分工保留为 2026-10-06 的框架交付历史快照，“待实现”并非当前状态。

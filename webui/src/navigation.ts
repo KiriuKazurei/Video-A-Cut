@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * 四工作区架构：资源管理 → 编辑 → 导出 + 设置（独立）
- * 主工作区按 Premiere 式操作流程排列；设置页独立，不属于素材处理流程。
+ * 工作区：资源管理 → 编辑 → 导出 + 独立 TTS、设置。
+ * 主工作区按 Premiere 式操作流程排列；TTS 和设置不依赖素材处理流程。
  */
-export type WorkspaceId = 'resources' | 'editing' | 'export' | 'settings';
+export type WorkspaceId = 'resources' | 'editing' | 'export' | 'settings' | 'tts';
 
 /**
  * 编辑页二级分区：导入与粗剪 / 内容编辑 / 审查
@@ -52,6 +52,7 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
   { id: 'resources', label: '资源管理', english: 'Resources', description: '资产库、素材预览、属性治理、本地草稿', apis: 'API-01 · 03 · 43~45' },
   { id: 'editing', label: '编辑', english: 'Editing', description: '导入、粗剪、内容编辑、场景审查', apis: 'API-03~16 · 19 · 28~38 · 42' },
   { id: 'export', label: '导出', english: 'Export', description: '交付文件、人工验收、任务监控', apis: 'API-28 · 30 · 39~41 · 43~49' },
+  { id: 'tts', label: 'TTS', english: 'TTS', description: '文本试听、声音调控、模板版本与正式配音配置', apis: 'TTS API' },
   { id: 'settings', label: '设置', english: 'Settings', description: '处理预设、服务商、运行准备、日志诊断', apis: 'API-17~21 · 23~26 · 49~50' }
 ];
 

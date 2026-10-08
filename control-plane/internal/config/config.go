@@ -64,6 +64,8 @@ const (
 // is validated exactly once, by Validate, and every consumer can therefore
 // assume a Config it received is trustworthy.
 type Config struct {
+	TTSPython    string
+	TTSWorkerDir string
 	// LeaseSeconds is how long a claimed task stays leased before the
 	// reclaimer may hand it back. Default 30.
 	LeaseSeconds int
@@ -155,6 +157,9 @@ func Load(path string) (Config, error) {
 // with. Each violation wraps ErrInvalid and names both the field and the
 // offending value, so a log line is enough to find the line to fix.
 func (c Config) Validate() error {
+	if c.TTSWorkerDir != "" && !filepath.IsAbs(c.TTSWorkerDir) {
+		return fmt.Errorf("config: tts_worker_dir must be absolute: %w", ErrInvalid)
+	}
 	if c.LeaseSeconds <= 0 || c.LeaseSeconds > maxLeaseSeconds {
 		return fmt.Errorf("config: lease_seconds must be > 0 and <= %d: got %d: %w", maxLeaseSeconds, c.LeaseSeconds, ErrInvalid)
 	}
@@ -231,6 +236,15 @@ func validHTTPAddr(addr string) bool {
 // quoted number, which is exactly the class of mistake the file is there to
 // make impossible.
 func apply(cfg *Config, raw map[string]any) error {
+	for key, target := range map[string]*string{"tts_python": &cfg.TTSPython, "tts_worker_dir": &cfg.TTSWorkerDir} {
+		if value, ok := raw[key]; ok {
+			text, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("%s: expected string: %w", key, ErrInvalid)
+			}
+			*target = text
+		}
+	}
 	if v, ok := raw["lease_seconds"]; ok {
 		n, err := decodeLeaseSeconds(v)
 		if err != nil {

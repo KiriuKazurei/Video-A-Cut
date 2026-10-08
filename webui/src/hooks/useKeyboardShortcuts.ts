@@ -165,6 +165,9 @@ export function useKeyboardShortcuts({
       }
 
       // 1 ~ 4 切换主工作区
+      if (e.key === '5' && !isInteractiveControl(e.target)) {
+        e.preventDefault(); navigate({ workspace: 'tts' }); return;
+      }
       if (e.key === '1') {
         e.preventDefault();
         navigate({ workspace: 'resources' });

@@ -39,7 +39,11 @@ func (p Profile) Validate() error {
 	if p.ExportTarget != "premiere" {
 		return fmt.Errorf("export_target must be premiere in phase 6")
 	}
-	if !textOK(p.TTSVoice, 100) {
+	if p.TTSTemplate != nil {
+		if err := p.TTSTemplate.Validate(); err != nil {
+			return err
+		}
+	} else if !textOK(p.TTSVoice, 100) {
 		return fmt.Errorf("tts_voice is required")
 	}
 	if p.Sampling.MaxFrames < 1 || p.Sampling.MaxFrames > 48 || p.Sampling.MaxBytes < 1 || p.Sampling.MaxBytes > 48*1024*1024 || p.Sampling.TimeoutSeconds < 1 || p.Sampling.TimeoutSeconds > 120 {
@@ -101,6 +105,10 @@ func localHost(host string) bool {
 func (p Provider) External() bool {
 	u, err := url.Parse(p.Endpoint)
 	return err == nil && u.Hostname() != "" && !localHost(u.Hostname())
+}
+
+func (p Profile) External() bool {
+	return p.Vision.External() || p.Narration.External() || (p.TTSTemplate != nil && p.TTSTemplate.Settings != nil && p.TTSTemplate.Settings.External())
 }
 
 func (p Profile) Fingerprint() (string, error) {

@@ -2,14 +2,16 @@
   "schema_version": 1,
   "verified_date": "2026-10-07",
   "scope": "当前 Go REST/SSE 全部注册路由与前端功能映射；描述性清单，不是 OpenAPI Schema",
-  "registered_route_count": 62,
-  "expanded_endpoint_count": 63,
+  "registered_route_count": 76,
+  "expanded_endpoint_count": 77,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
     "webui/src/useEvents.ts",
     "webui/src/components/WorkflowPanel.tsx",
-    "webui/src/components/DeliveryVariantPanel.tsx"
+    "webui/src/components/DeliveryVariantPanel.tsx",
+    "webui/src/workspaces/TtsWorkspace.tsx",
+    "webui/src/components/TtsTemplateBindingEditor.tsx"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -904,9 +906,9 @@
       "path": "/api/workflows/{run}/previews",
       "frontend_function": "api.startPreview",
       "frontend_ui": "交付页 / Monitor：生成 MP4 预览",
-      "request": "JSON：revision_id:string, expected_version:number, preset_id:string, request_id:string",
+      "request": "revision_id, expected_version, request_id, preset_id；可选 subtitle_variant_id",
       "success_response": "202 / 200 PreviewView",
-      "behavior": "新任务 202，幂等复用 200。固定完整输入、预设和指纹，事务创建任务与绑定；校验工作流版本、导出版本、治理与有效能力",
+      "behavior": "不传 ASS ID 沿用 SRT；传入时冻结同 run/revision 成功 ASS 与样式哈希，按 Worker ASS/字体能力派发",
       "usage": "后端已提供，前端待接入",
       "backend_handler": "startPreview",
       "backend_source": {
@@ -989,9 +991,9 @@
       "path": "/api/workflows/{run}/delivery-variants",
       "frontend_function": "deliveryVariantApi.start",
       "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
-      "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
+      "request": "revision_id, expected_version, request_id, spec_id；ass-basic-v2 另传 draft_version/style_sha256",
       "success_response": "202/200 VariantView",
-      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
+      "behavior": "独立 ASS 交付任务；支持固定 v1 与冻结草稿 v2，保留父交付包",
       "usage": "页面已使用",
       "backend_handler": "startDeliveryVariant",
       "backend_source": {
@@ -1083,7 +1085,249 @@
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 19
       }
+    },
+    {
+      "id": "API-64",
+      "group": "ASS 样式编辑",
+      "method": "GET",
+      "path": "/api/workflows/{run}/subtitle-style",
+      "frontend_function": "待 B 部分接入",
+      "frontend_ui": "ASS 编辑弹窗",
+      "request": "PUT: revision_id, expected_draft_version, document；GET: 无",
+      "success_response": "200 SubtitleStyleDraft",
+      "behavior": "读取当前成功导出字幕与草稿，正文只读",
+      "usage": "后端已实现，前端待接入",
+      "backend_handler": "getSubtitleStyle",
+      "backend_source": {
+        "file": "control-plane/internal/api/subtitle_style.go",
+        "line": 8
+      }
+    },
+    {
+      "id": "API-65",
+      "group": "ASS 样式编辑",
+      "method": "PUT",
+      "path": "/api/workflows/{run}/subtitle-style",
+      "frontend_function": "待 B 部分接入",
+      "frontend_ui": "ASS 编辑弹窗",
+      "request": "PUT: revision_id, expected_draft_version, document；GET: 无",
+      "success_response": "200 SubtitleStyleDraft",
+      "behavior": "独立草稿 CAS；源/修订/旧版本冲突409，非法参数400，锁定403",
+      "usage": "后端已实现，前端待接入",
+      "backend_handler": "putSubtitleStyle",
+      "backend_source": {
+        "file": "control-plane/internal/api/subtitle_style.go",
+        "line": 16
+      }
+    },
+    {
+      "id": "API-66",
+      "group": "ASS 样式编辑",
+      "method": "GET",
+      "path": "/api/subtitle-fonts",
+      "frontend_function": "待 B 部分接入",
+      "frontend_ui": "ASS 编辑弹窗",
+      "request": "PUT: revision_id, expected_draft_version, document；GET: 无",
+      "success_response": "200 SubtitleFontFamily[]",
+      "behavior": "活跃 Exporter 字体族及哈希，不暴露本机路径",
+      "usage": "后端已实现，前端待接入",
+      "backend_handler": "getSubtitleFonts",
+      "backend_source": {
+        "file": "control-plane/internal/api/subtitle_style.go",
+        "line": 29
+      }
+    },
+    {
+      "id": "API-TTS-01",
+      "group": "TTS 调控台",
+      "method": "GET",
+      "path": "/api/tts/capabilities",
+      "frontend_function": "api.ttsCapabilities",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsCapabilities",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 24
+      }
+    },
+    {
+      "id": "API-TTS-02",
+      "group": "TTS 调控台",
+      "method": "GET",
+      "path": "/api/tts/templates",
+      "frontend_function": "api.ttsTemplates",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsTemplates",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 32
+      }
+    },
+    {
+      "id": "API-TTS-03",
+      "group": "TTS 调控台",
+      "method": "POST",
+      "path": "/api/tts/templates",
+      "frontend_function": "api.saveTtsTemplate",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "201 TtsTemplate",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsSaveTemplate",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 40
+      }
+    },
+    {
+      "id": "API-TTS-04",
+      "group": "TTS 调控台",
+      "method": "GET",
+      "path": "/api/tts/templates/{id}/revisions/{revision}",
+      "frontend_function": "api.ttsTemplate",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsTemplate",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 57
+      }
+    },
+    {
+      "id": "API-TTS-05",
+      "group": "TTS 调控台",
+      "method": "POST",
+      "path": "/api/tts/templates/{id}/revisions",
+      "frontend_function": "api.saveTtsTemplate",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "201 TtsTemplate",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "客户端用 POST /api/tts/templates 保存新版本；此路由同一契约",
+      "backend_handler": "ttsSaveTemplate",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 40
+      }
+    },
+    {
+      "id": "API-TTS-06",
+      "group": "TTS 调控台",
+      "method": "POST",
+      "path": "/api/tts/templates/{id}/archive",
+      "frontend_function": "api.archiveTtsTemplate",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsArchiveTemplate",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 70
+      }
+    },
+    {
+      "id": "API-TTS-07",
+      "group": "TTS 调控台",
+      "method": "GET",
+      "path": "/api/tts/preview-jobs",
+      "frontend_function": "api.ttsPreviews",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsPreviews",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 97
+      }
+    },
+    {
+      "id": "API-TTS-08",
+      "group": "TTS 调控台",
+      "method": "POST",
+      "path": "/api/tts/preview-jobs",
+      "frontend_function": "api.startTtsPreview",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "202 TtsPreview",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsStartPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 84
+      }
+    },
+    {
+      "id": "API-TTS-09",
+      "group": "TTS 调控台",
+      "method": "GET",
+      "path": "/api/tts/preview-jobs/{id}",
+      "frontend_function": "api.ttsPreview",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 105
+      }
+    },
+    {
+      "id": "API-TTS-10",
+      "group": "TTS 调控台",
+      "method": "POST",
+      "path": "/api/tts/preview-jobs/{id}/cancel",
+      "frontend_function": "api.cancelTtsPreview",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 JSON",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsCancelPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 113
+      }
+    },
+    {
+      "id": "API-TTS-11",
+      "group": "TTS 调控台",
+      "method": "GET",
+      "path": "/api/tts/preview-jobs/{id}/audio",
+      "frontend_function": "api.ttsAudioURL",
+      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "success_response": "200 audio/wav",
+      "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
+      "usage": "页面已使用",
+      "backend_handler": "ttsAudio",
+      "backend_source": {
+        "file": "control-plane/internal/api/tts.go",
+        "line": 121
+      }
     }
   ],
-  "routes_source_sha256": "55b268e0208208f554b392c0d2a51647ff4375c2df18571437ca7133bbb3f1c7"
+  "routes_source_sha256": "55b268e0208208f554b392c0d2a51647ff4375c2df18571437ca7133bbb3f1c7",
+  "routes_sources": [
+    "control-plane/internal/api/api.go",
+    "control-plane/internal/api/tts.go"
+  ]
 }

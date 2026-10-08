@@ -34,7 +34,7 @@ func IsRelativePath(value string) bool {
 // preview_id/task_id are excluded so transport retries/new attempts share the input identity.
 // This helper does not check actual files, preset contents, authorization or media readiness.
 func Fingerprint(in Input) (string, error) {
-	if in.SchemaVersion != ProtocolVersion || in.PresetID != PresetID || in.AssetID == "" || in.RunID == "" || in.RevisionID == "" || !IsRelativePath(in.PackageRef) || len(in.Files) == 0 {
+	if (in.SchemaVersion != ProtocolVersion && in.SchemaVersion != 2) || (in.SchemaVersion == 2) != (in.SubtitleVariant != nil) || in.PresetID != PresetID || in.AssetID == "" || in.RunID == "" || in.RevisionID == "" || !IsRelativePath(in.PackageRef) || len(in.Files) == 0 {
 		return "", ErrInvalidInput
 	}
 	atoms := []string{"vac.mp4-preview.input.v1", in.AssetID, in.RunID, in.RevisionID, in.PackageRef}
@@ -59,6 +59,20 @@ func Fingerprint(in Input) (string, error) {
 		}
 		seen[file.Path] = true
 		atoms = append(atoms, file.Kind, file.Path, file.SHA256, strconv.FormatInt(file.Size, 10))
+	}
+	if sub := in.SubtitleVariant; sub != nil {
+		if !IsRelativePath(sub.VariantID) || strings.Contains(sub.VariantID, "/") || !IsRelativePath(sub.PackageRef) || sub.ASS.Kind != "ass" || !IsRelativePath(sub.ASS.Path) || !shaPattern.MatchString(sub.ASS.SHA256) || sub.ASS.Size <= 0 || sub.ASS.Size > 1024*1024 || !shaPattern.MatchString(sub.StyleSHA256) || len(sub.FontFamilies) == 0 {
+			return "", ErrInvalidInput
+		}
+		atoms = append(atoms, "subtitle-variant-v1", sub.VariantID, sub.PackageRef, sub.ASS.Kind, sub.ASS.Path, sub.ASS.SHA256, strconv.FormatInt(sub.ASS.Size, 10), sub.StyleSHA256, strconv.Itoa(len(sub.FontFamilies)))
+		seenFonts := map[string]bool{}
+		for _, font := range sub.FontFamilies {
+			if font == "" || seenFonts[font] {
+				return "", ErrInvalidInput
+			}
+			seenFonts[font] = true
+			atoms = append(atoms, font)
+		}
 	}
 	hash := sha256.New()
 	for _, atom := range atoms {

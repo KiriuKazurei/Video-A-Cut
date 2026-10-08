@@ -23,6 +23,7 @@ from pathlib import Path
 from .content import (ClipEvidence, ContentError, ContentProvider, SceneDecision,
                       make_content_provider, narration_draft_hash, validate_narration, validate_scenes)
 from .sampling import SamplingBudgetTracker, SamplingError, SamplingLimits, sample_clip_frames
+from .tts import TTSError, legacy_settings, sapi_script, synthesize
 
 SAMPLING_CONFIG_VERSION = "sampling-v1"
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -48,6 +49,7 @@ class StageContext:
     # Draft hashes recorded by the control-plane governance API.
     narration_approvals: tuple[str, ...] = ()
     tts_voice: str = ""
+    tts_settings: dict | None = None
 
 
 @dataclass
@@ -643,29 +645,7 @@ def narrate(ctx: StageContext) -> dict:
 
 
 def _sapi_script(text: str, out: Path, voice_name: str = "") -> str:
-    # Text and path are passed as base64 to avoid any quoting into the script.
-    import base64
-    t = base64.b64encode(text.encode("utf-8")).decode()
-    p = base64.b64encode(str(out).encode("utf-8")).decode()
-    v = base64.b64encode(voice_name.encode('utf-8')).decode()
-    return (
-        "$ErrorActionPreference='Stop';"
-        f"$t=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{t}'));"
-        f"$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{p}'));"
-        "$s=New-Object -ComObject SAPI.SpVoice;"
-        "$voices=$s.GetVoices('Language=804','');"
-        "if($voices.Count -lt 1){throw 'Chinese SAPI voice unavailable'};"
-        "$s.Voice=$voices.Item(0);"
-        f"$wanted=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{v}'));"
-        "if($wanted){$found=$false;foreach($v in $s.GetVoices()){if($v.GetAttribute('Name') -eq $wanted){$s.Voice=$v;$found=$true;break}};if(!$found){throw 'Selected SAPI voice unavailable'}};"
-        "$s.Rate=5;"
-        "$stream=New-Object -ComObject SAPI.SpFileStream;"
-        "$fmt=New-Object -ComObject SAPI.SpAudioFormat;"
-        "$fmt.Type=22;"
-        "$stream.Format=$fmt;"
-        "try{$stream.Open($p,3,$false);$s.AudioOutputStream=$stream;[void]$s.Speak($t)}"
-        "finally{if($stream){$stream.Close()}}"
-    )
+    return sapi_script(text, out, voice_name)
 
 
 def _narration_source(line: dict) -> str:
@@ -734,19 +714,19 @@ def tts(ctx: StageContext) -> dict:
     generated: dict[str, Path] = {}
     voice = []
     engine = "sapi"
+    settings = ctx.tts_settings or legacy_settings(ctx.tts_voice)
+    engine = settings['engine']
     with tempfile.TemporaryDirectory() as tmp:
         for i, line in enumerate(lines):
             span = line["end"] - line["start"]
             raw = Path(tmp) / f"{line['id']}.wav"
             try:
-                if os.name != "nt":
-                    raise StageFailure("sapi unavailable")
-                ctx.tools.run([ctx.tools.powershell, "-NoProfile", "-NonInteractive", "-Command", _sapi_script(line["text"], raw, ctx.tts_voice)])
+                synthesize(line["text"], raw, settings, ctx.tools, legacy=ctx.tts_settings is None)
                 src_args = ["-i", str(raw)]
                 duration = ctx.tools.duration(raw)
-            except StageFailure:
+            except (StageFailure, TTSError) as err:
                 if not ctx.tools.allow_test_tone:
-                    raise
+                    raise StageFailure(str(err)) from err
                 engine = "tone"
                 src_args = ["-f", "lavfi", "-i", f"sine=frequency=520:sample_rate={rate}:duration={span}"]
                 duration = span
@@ -756,7 +736,7 @@ def tts(ctx: StageContext) -> dict:
                 raise StageFailure(f"narration {line['id']} speech duration {duration:.3f}s exceeds window {span:.3f}s")
             final = voice_dir / f"{line['id']}.wav"
             ctx.tools.run([ctx.tools.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", *src_args,
-                           "-af", f"aresample={rate},apad,atrim=end_sample={samples}",
+                            "-af", f"aresample={rate},apad,atrim=end_sample={samples}",
                            "-ar", str(rate), "-ac", "2", "-c:a", "pcm_s16le", str(final)])
             key = f"__gen_voice_{i}"
             generated[key] = final

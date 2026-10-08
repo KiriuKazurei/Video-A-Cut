@@ -299,7 +299,10 @@ class StageChainTest(unittest.TestCase):
                     # Mock powershell TTS writing a dummy wav file
                     out_path = Path(cmd[-1]) if cmd and cmd[-1].endswith(".wav") else None
                     if out_path:
-                        out_path.write_bytes(b"RIFFdummyWAVE")
+                        import wave
+                        with wave.open(str(out_path), 'wb') as audio:
+                            audio.setnchannels(2); audio.setsampwidth(2); audio.setframerate(48000)
+                            audio.writeframes(b'\x00' * (48000 * 2 * 2))
                     return ""
 
             with self.assertRaisesRegex(StageFailure, "speech duration 2.500s exceeds window 0.500s"):

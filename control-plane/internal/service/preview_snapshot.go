@@ -38,6 +38,11 @@ func (s *Service) verifyPreviewSnapshot(ctx context.Context, in preview.Input) (
 			return nil, err
 		}
 	}
+	if in.SubtitleVariant != nil {
+		if err := add(in.SubtitleVariant.PackageRef, in.SubtitleVariant.ASS.Path); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := s.verifyPreviewInput(ctx, in); err != nil {
 		return nil, err
 	}

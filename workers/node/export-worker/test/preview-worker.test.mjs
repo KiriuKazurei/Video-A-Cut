@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, symlink, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { ToolError } from '../src/mcp.mjs';
 import { processPreviewTask, probePreviewCapability } from '../src/preview.mjs';
 import { runLoop, processTask, WorkerFailure } from '../src/worker.mjs';
@@ -171,6 +171,7 @@ test('late progress lease failure prevents registration after rendering returns'
 test('probePreviewCapability detects environment and passes when tools and font available', async () => {
   const cap = await probePreviewCapability();
   assert.equal(cap.protocol_version, 1);
+  assert.deepEqual(cap.subtitle_formats, ['srt', 'ass']);
   assert.equal(typeof cap.ready, 'boolean');
   assert.ok(Array.isArray(cap.presets));
   assert.ok(Array.isArray(cap.checks));
@@ -571,6 +572,53 @@ test('preview task heartbeats keep the advertised capability alive while renderi
     assert.equal(result.outcome,'succeeded');
     assert.ok(renewals>=1);
   } finally {await cleanup();}
+});
+
+test('schema 2 preview resolves the ASS package separately from the source package', async () => {
+  const { dir, cleanup } = await createTestRoot();
+  try {
+    const subRel = 'delivery-variants/asset_fixture/dv_styled';
+    await mkdir(join(dir, ...subRel.split('/')), { recursive: true });
+    const input = {
+      ...fixture.input,
+      schema_version: 2,
+      subtitle_variant: {
+        variant_id: 'dv_styled',
+        package_ref: subRel,
+        ass: { kind: 'ass', path: 'styled.ass', size: 32, sha256: 'a'.repeat(64) },
+        style_sha256: 'b'.repeat(64),
+        font_families: ['Microsoft YaHei']
+      }
+    };
+    let seen;
+    const client = fakeClient({ get_task_input: () => ({ preview: input }) });
+    const result = await processPreviewTask({
+      client, cfg: baseCfg(dir), task: defaultTask, executionScope: defaultScope,
+      renderPreviewImpl: async (options) => { seen = options; }
+    });
+    assert.equal(result.outcome, 'succeeded');
+    assert.equal(relative(dir, seen.packageDir).replaceAll('\\', '/'), 'exports/fixture');
+    assert.equal(relative(dir, seen.subtitlePackageDir).replaceAll('\\', '/'), subRel);
+    assert.notEqual(seen.packageDir, seen.subtitlePackageDir);
+
+    let rendered = false;
+    const missing = await processPreviewTask({
+      client: fakeClient({ get_task_input: () => ({ preview: { ...input, subtitle_variant: { ...input.subtitle_variant, package_ref: 'delivery-variants/missing/pack' } } }) }),
+      cfg: baseCfg(dir), task: defaultTask, executionScope: defaultScope,
+      renderPreviewImpl: async () => { rendered = true; }
+    });
+    assert.equal(missing.outcome, 'failed');
+    assert.equal(rendered, false);
+
+    const rejected = await processPreviewTask({
+      client: fakeClient({ get_task_input: () => ({ preview: { ...fixture.input, schema_version: 2 } }) }),
+      cfg: baseCfg(dir), task: defaultTask, executionScope: defaultScope,
+      renderPreviewImpl: async () => { rendered = true; }
+    });
+    assert.equal(rejected.outcome, 'failed');
+    assert.match(rejected.reason, /schema_version/);
+    assert.equal(rendered, false);
+  } finally { await cleanup(); }
 });
 
 test('runLoop does not include preview_capability when submit_preview tool is missing', async () => {

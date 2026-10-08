@@ -8,7 +8,8 @@ import { writeFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { parseSrt, serializeAss, assText, wrapAssText } from '../adapters/ass.mjs';
+import { parseSrt, serializeAss, serializeStyledAss, assText, wrapAssText } from '../adapters/ass.mjs';
+import { canonicalJSON, defaultStyle } from '../../../../contracts/delivery-variant/v1/style.mjs';
 import { buildVariantInputFromPackage, buildDeliveryVariant, loadVariantSpec, variantFingerprint } from '../src/delivery-variant.mjs';
 
 const srt = '1\r\n00:00:00,005 --> 00:00:00,995\r\n中文, 😀 {\\an8} \\N \\h\r\n第二行  \r\n\r\n';
@@ -96,4 +97,83 @@ test('ASS fixed wrapping preserves all characters and explicit newlines within l
   assert([...wrapAssText('W'.repeat(56),56).split('\n')].every(line=>line.length<=28));
   const { spec } = await loadVariantSpec();
   assert.throws(() => serializeAss([{start:0,end:100,text:'长'.repeat(28*9)}],spec),/line limit/);
+});
+
+async function makeEditable(f, overrides = [], changes = {}) {
+  const {spec,sha256}=await loadVariantSpec('ass-basic-v2');
+  const document={source_srt_sha256:f.input.source_files.find(file=>file.kind==='srt').sha256,
+    play_res_x:1280,play_res_y:720,style:{...defaultStyle(),...changes},overrides};
+  const input={...f.input,schema_version:2,spec_id:spec.spec_id,spec_sha256:sha256,spec,style_document:document,
+    style_sha256:createHash('sha256').update(canonicalJSON(document)).digest('hex')};
+  input.input_sha256=variantFingerprint(input);return input;
+}
+
+test('editable ASS writes colors, flags, fractional borders, fades and all nine alignments', () => {
+  const cues=Array.from({length:9},(_,i)=>({start:i*100,end:(i+1)*100,text:'字 {\\an1}\\N\n第二行'}));
+  const document={source_srt_sha256:'a'.repeat(64),play_res_x:1280,play_res_y:720,
+    style:{...defaultStyle(),font_family:'示例 Serif',font_size:48,bold:true,italic:true,underline:true,
+      outline:0,shadow:1.25,primary_color:'#12abEF',outline_color:'#987654',margin_l:10,margin_r:20,margin_v:30,fade_in_ms:100,fade_out_ms:200},
+    overrides:cues.map((_,i)=>({cue_id:i+1,style:{alignment:i+1}}))};
+  const ass=serializeStyledAss(cues,document,9000);
+  for(let i=1;i<=9;i++) assert(ass.includes(`Style: Cue_${i},示例 Serif,48,&H00EFAB12,&H00EFAB12,&H00547698,&H80000000,-1,-1,-1,0,100,100,0,0,1,0,1.25,${i},10,20,30,1\n`));
+  assert.equal((ass.match(/\\fad\(100,200\)/g)||[]).length,9);
+  assert(ass.includes('\\{\\\u2060an1\\}\\\u2060N\\N第二行'));
+  document.style.fade_in_ms=0;document.style.fade_out_ms=0;
+  assert(!serializeStyledAss(cues,document,9000).includes('\\fad'));
+});
+
+test('editable ASS inherits fields, applies millisecond time overrides and scales wrapping', () => {
+  const text='长'.repeat(100)+'\n显式换行';
+  const cues=[{start:0,end:100,text}];
+  const document={source_srt_sha256:'a'.repeat(64),play_res_x:720,play_res_y:720,style:defaultStyle(),
+    overrides:[{cue_id:1,start_ms:15,end_ms:995,style:{font_size:120,primary_color:'#FF0000'}}]};
+  const ass=serializeStyledAss(cues,document,1000);
+  assert(ass.includes('0:00:00.02,0:00:01.00,Cue_1'));
+  assert(ass.includes(',120,&H000000FF,&H000000FF,&H00000000,'));
+  const last=ass.trimEnd().split('\n').at(-1).split(',,0,0,0,,')[1].split('\\N');
+  assert.equal(last.join(''),text.replaceAll('\n',''));assert(last.slice(0,-1).every(line=>[...line].length<=4));
+  document.overrides[0].end_ms=15;assert.throws(()=>serializeStyledAss(cues,document,1000),/时间/);
+  document.overrides[0].end_ms=25;document.style.fade_in_ms=11;
+  assert.throws(()=>serializeStyledAss(cues,document,1000),/渐入渐出/);
+  document.style.fade_in_ms=10;serializeStyledAss(cues,document,1000);
+});
+
+test('editable bundle freezes canonical style, timing and original file bytes', async t => {
+  const f=await fixture(t);const input=await makeEditable(f,[{cue_id:1,start_ms:20,end_ms:980,style:{primary_color:'#ABCDEF',alignment:8}}],{bold:true,fade_in_ms:50});
+  const manifest=await buildDeliveryVariant({input,packageDir:f.pkg,outputDir:f.output});
+  assert.equal(manifest.schema_version,2);
+  assert.equal(await readFile(join(f.output,'ass-style.json'),'utf8'),canonicalJSON(input.style_document));
+  assert.equal(JSON.parse(await readFile(join(f.output,'variant-receipt.json'))).converter_version,'vac.ass-basic-v2/1');
+  const ass=await readFile(join(f.output,'subtitles.ass'),'utf8');assert(ass.includes('0:00:00.02,0:00:00.98'));assert(ass.includes('&H00EFCDAB'));assert(ass.includes('\\fad(50,0)'));
+  for(const [path,bytes] of Object.entries(f.contents)) assert.deepEqual(await readFile(join(f.output,path)),Buffer.from(bytes));
+  const previous=input.input_sha256;
+  input.style_document.style.font_size=72;
+  assert.throws(()=>variantFingerprint(input),/style snapshot/);
+  input.style_sha256=createHash('sha256').update(canonicalJSON(input.style_document)).digest('hex');
+  assert.notEqual(variantFingerprint(input),previous);
+});
+
+test('editable inputs reject a forged source hash and v1 style injection before publication', async t => {
+  const f=await fixture(t);const input=await makeEditable(f);
+  input.style_document.source_srt_sha256='0'.repeat(64);input.style_sha256=createHash('sha256').update(canonicalJSON(input.style_document)).digest('hex');
+  await assert.rejects(buildDeliveryVariant({input,packageDir:f.pkg,outputDir:f.output}),/source SRT/);
+  assert.throws(()=>variantFingerprint({...f.input,style_document:input.style_document}),/fixed ASS/);
+  assert.deepEqual(await readdir(f.root),['parent']);
+});
+
+test('editable ASS supports long source text beyond the v1 limit and rejects empty input', async t => {
+  const long=await fixture(t,'1\n00:00:00,000 --> 00:00:01,000\n'+'中'.repeat(400)+'\n');
+  await buildDeliveryVariant({input:await makeEditable(long),packageDir:long.pkg,outputDir:long.output});
+  assert((await readFile(join(long.output,'subtitles.ass'),'utf8')).includes('Dialogue:'));
+  const empty=await fixture(t,'');
+  await assert.rejects(buildDeliveryVariant({input:await makeEditable(empty),packageDir:empty.pkg,outputDir:empty.output}),/nonempty/);
+});
+
+test('editable ASS cancellation cleans unpublished output and retry succeeds', async t => {
+  const f=await fixture(t),input=await makeEditable(f),controller=new AbortController();
+  await assert.rejects(buildDeliveryVariant({input,packageDir:f.pkg,outputDir:f.output,signal:controller.signal,
+    onProgress:()=>controller.abort(new Error('cancelled editable ASS'))}),/cancelled editable/);
+  assert.deepEqual(await readdir(f.root),['parent']);
+  await buildDeliveryVariant({input,packageDir:f.pkg,outputDir:f.output});
+  assert.equal(JSON.parse(await readFile(join(f.output,'variant-manifest.json'))).input_sha256,input.input_sha256);
 });

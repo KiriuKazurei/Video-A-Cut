@@ -6,6 +6,7 @@ import { WorkerFailure } from '../src/worker.mjs';
 test('Worker advertises compliant capability structure and handles missing tools', async () => {
   const capability = await probePreviewCapability();
   assert.equal(capability.protocol_version, 1);
+  assert.deepEqual(capability.subtitle_formats, ['srt', 'ass']);
   assert.equal(typeof capability.ready, 'boolean');
   assert.ok(Array.isArray(capability.presets));
   assert.ok(Array.isArray(capability.checks));

@@ -1,3 +1,4 @@
+import type { TtsBinding } from './ttsContracts';
 export type ProviderFormat = 'openai' | 'anthropic' | 'gemini';
 export interface ProcessingProvider {
   adapter: 'builtin' | 'vision' | 'narration';
@@ -24,6 +25,7 @@ export interface ProcessingProfile {
   narration: ProcessingProvider;
   sampling: { max_frames: number; max_bytes: number; timeout_seconds: number };
   tts_voice: string;
+  tts_template?: TtsBinding;
   export_target: 'premiere';
 }
 export interface PreparationReport {

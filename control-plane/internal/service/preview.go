@@ -70,8 +70,16 @@ func (s *Service) projectPreviewViewAt(ctx context.Context, st *store.Store, job
 			media = &m
 		}
 	}
+	var frozen preview.Input
+	_ = json.Unmarshal([]byte(job.InputJSON), &frozen)
+	subtitleID, styleSHA := "", ""
+	if frozen.SubtitleVariant != nil {
+		subtitleID = frozen.SubtitleVariant.VariantID
+		styleSHA = frozen.SubtitleVariant.StyleSHA256
+	}
 	isCurrent := !job.Invalidated && (latestExportRevID != "") && (job.RevisionID == latestExportRevID)
 	return preview.View{
+		SubtitleVariantID: subtitleID, StyleSHA256: styleSHA,
 		PreviewID:   job.PreviewID,
 		TaskID:      job.TaskID,
 		AssetID:     job.AssetID,
@@ -117,7 +125,7 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 	}
 	// Recover an existing transport request before checking mutable prerequisites.
 	if existing, e := s.st.GetPreviewJobByRequest(ctx, runID, req.RequestID); e == nil {
-		if existing.RevisionID != req.RevisionID || existing.ExpectedVersion != req.ExpectedVersion || existing.PresetSHA256 != presetSHA {
+		if existing.RevisionID != req.RevisionID || existing.ExpectedVersion != req.ExpectedVersion || existing.PresetSHA256 != presetSHA || !previewRequestSubtitleMatches(existing, req) {
 			return preview.View{}, false, model.ErrConflict
 		}
 		current, _ := s.getLatestExportRevisionID(ctx, runID)
@@ -352,6 +360,21 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 		Preset:         json.RawMessage(presetBytes),
 		Files:          files,
 	}
+	if req.SubtitleVariantID != "" {
+		sub, e := s.freezeSubtitleVariant(ctx, req.SubtitleVariantID, runID, rev.RevisionID)
+		if e != nil {
+			return preview.View{}, false, e
+		}
+		ok, e := s.checkASSPreviewCapability(ctx, sub.FontFamilies)
+		if e != nil {
+			return preview.View{}, false, e
+		}
+		if !ok {
+			return preview.View{}, false, fmt.Errorf("等待支持 ASS 且具有所选字体的预览 Worker: %w", model.ErrInvalidState)
+		}
+		previewIn.SchemaVersion = 2
+		previewIn.SubtitleVariant = sub
+	}
 	inputSHA, err := preview.Fingerprint(previewIn)
 	if err != nil {
 		return preview.View{}, false, fmt.Errorf("service: compute preview fingerprint: %w", err)
@@ -402,7 +425,7 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		// Concurrency double check for request_id
 		if dup, e := tx.GetPreviewJobByRequest(ctx, runID, req.RequestID); e == nil {
-			if dup.RevisionID != req.RevisionID || dup.ExpectedVersion != req.ExpectedVersion || dup.PresetSHA256 != presetSHA {
+			if dup.RevisionID != req.RevisionID || dup.ExpectedVersion != req.ExpectedVersion || dup.PresetSHA256 != presetSHA || !previewRequestSubtitleMatches(dup, req) {
 				return model.ErrConflict
 			}
 			current, _ := s.previewRevisionID(ctx, tx, runID)
@@ -427,6 +450,9 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 			return model.ErrConflict
 		}
 		if e = s.recheckPreviewSnapshot(ctx, snapshot); e != nil {
+			return e
+		}
+		if e = s.verifySubtitleBindingAt(ctx, tx, previewIn); e != nil {
 			return e
 		}
 		// Concurrency double check for reusable job
@@ -454,19 +480,9 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 			return err
 		}
 
-		createdView = preview.View{
-			PreviewID:   previewID,
-			TaskID:      taskID,
-			AssetID:     asset.AssetID,
-			RunID:       run.RunID,
-			RevisionID:  rev.RevisionID,
-			PresetID:    preview.PresetID,
-			InputSHA256: inputSHA,
-			Status:      model.TaskStatusQueued,
-			Progress:    0,
-			Invalidated: false,
-			IsCurrent:   true,
-			Artifacts:   []preview.Artifact{},
+		createdView, e = s.projectPreviewViewAt(ctx, tx, job, rev.RevisionID)
+		if e != nil {
+			return e
 		}
 		return nil
 	})

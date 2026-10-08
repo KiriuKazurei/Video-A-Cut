@@ -37,6 +37,7 @@ class Config:
     profile_sha256: str = ""
     processing_profile: dict = field(default_factory=dict)
     tts_voice: str = ""
+    tts_settings: dict | None = None
     output_prefix: str = "stages"
     poll_interval: float = 2.0
     heartbeat_interval: float = 5.0
@@ -260,7 +261,8 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
                                tools=Tools(ffmpeg=cfg.ffmpeg, ffprobe=cfg.ffprobe, timeout=cfg.tool_timeout),
                                progress=progress, content_provider=make_content_provider(cfg.content_provider, **cfg.content_provider_config),
                                work_dir=work_dir, sampling_limits=cfg.sampling_limits,
-                               tts_auto_approve=cfg.tts_auto_approve, narration_approvals=approvals, tts_voice=cfg.tts_voice)
+                                tts_auto_approve=cfg.tts_auto_approve, narration_approvals=approvals, tts_voice=cfg.tts_voice,
+                                tts_settings=cfg.tts_settings)
             summary = stages[kind](ctx)
             if work_dir.exists():
                 shutil.rmtree(work_dir, ignore_errors=True)

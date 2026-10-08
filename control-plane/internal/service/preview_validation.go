@@ -178,6 +178,9 @@ func (s *Service) verifyPreviewInput(ctx context.Context, input preview.Input) (
 			return "", fmt.Errorf("preview input changed: %s: %w", f.Path, model.ErrConflict)
 		}
 	}
+	if e := s.verifySubtitleBinding(ctx, input); e != nil {
+		return "", e
+	}
 	return pkg, nil
 }
 
@@ -293,6 +296,12 @@ func (s *Service) validatePreviewMedia(ctx context.Context, input preview.Input,
 		if reported.StartPTS != media.AudioInterval.StartPTS || reported.DurationTS != media.AudioInterval.DurationTS || reported.TimeBase != media.AudioInterval.TimeBase {
 			return fmt.Errorf("reported audio timing does not match probe: %w", model.ErrArgument)
 		}
+	}
+	if input.SubtitleVariant != nil {
+		if !validFontReceipt(receipt.Fonts, input.SubtitleVariant.FontFamilies) {
+			return model.ErrArgument
+		}
+		hasSRT = false
 	}
 	if hasSRT && (receipt.Font == nil || receipt.Font.Family != "Microsoft YaHei" || len(receipt.Font.SHA256) != 64) {
 		return model.ErrArgument

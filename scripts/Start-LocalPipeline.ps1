@@ -67,7 +67,16 @@ function Stop-RecordedProcess($entry){
  }
 }
 function New-RecordedProcess($process,$role){
- return @{process=$process;identity_path=$process.Path;started_at=$process.StartTime.ToUniversalTime().ToString('o');role=$role}
+ # Start-Process can return before the executable path becomes readable.
+ $taskIdentity=$null
+ for($taskIdentityAttempt=0;$taskIdentityAttempt -lt 40;$taskIdentityAttempt++){
+  $taskIdentity=Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+  if($taskIdentity -and $taskIdentity.Path){break}
+  if($process.HasExited){throw 'Newly launched process exited before identity could be recorded.'}
+  Start-Sleep -Milliseconds 50
+ }
+ if(!$taskIdentity -or !$taskIdentity.Path){throw 'Newly launched process identity could not be verified.'}
+ return @{process=$process;identity_path=$taskIdentity.Path;started_at=$taskIdentity.StartTime.ToUniversalTime().ToString('o');role=$role}
 }
 function Write-OwnedSnapshot {
  Write-VacJson (Join-Path $taskRun 'owned-processes.json') @($taskOwned | ForEach-Object {@{pid=$_.process.Id;path=$_.identity_path;role=$_.role;started_at=$_.started_at}})
@@ -113,7 +122,7 @@ try {
  $taskPrevious['VAC_SESSION_STOP']=[Environment]::GetEnvironmentVariable('VAC_SESSION_STOP','Process')
  $env:VAC_SESSION_STOP=$taskStopPath
  Write-TaskJson (Join-Path $taskRun 'agents.json') @{agents=$taskAgents}
- $taskControl=@{http_addr="127.0.0.1:$Port";delivery_root=$taskDelivery;web_root=(Join-Path $taskRoot 'webui/dist');mcp_agents_file=(Join-Path $taskRun 'agents.json');lease_seconds=60}
+ $taskControl=@{http_addr="127.0.0.1:$Port";delivery_root=$taskDelivery;web_root=(Join-Path $taskRoot 'webui/dist');mcp_agents_file=(Join-Path $taskRun 'agents.json');lease_seconds=60;tts_python=(Get-Command python).Source;tts_worker_dir=(Join-Path $taskRoot 'workers/python')}
  if($taskIngestRoots){$taskControl.ingest_roots=@($taskIngestRoots | ForEach-Object {@{root_id=$_.root_id;name=$_.name;path=$_.path}})}
  Write-TaskJson (Join-Path $taskRun 'control.json') $taskControl
  $taskBinary=$ControlBinary

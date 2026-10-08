@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { access, copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { validateEdl } from './edl.mjs';
 import { probeMedia, runTool } from './media.mjs';
 import {
@@ -13,6 +13,7 @@ import {
   PREVIEW_PRESET_ID
 } from './preview-protocol.mjs';
 import { publishNewDirectory } from './publish.mjs';
+import { resolveFonts as defaultResolveFonts } from './fonts.mjs';
 import { toUnits } from './time.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { audioIntervalFromStream, validateAudioInterval } from './preview-audio.mjs';
@@ -170,6 +171,67 @@ export async function probePreviewMedia(filePath, options) {
   };
 }
 
+async function loadFrozenAss(input, subtitlePackageDir) {
+  if (typeof subtitlePackageDir !== 'string' || !subtitlePackageDir.trim()) {
+    throw new PreviewError('subtitlePackageDir string is required', 'package_not_found');
+  }
+  const root = resolve(subtitlePackageDir);
+  try {
+    const info = await stat(root);
+    if (!info.isDirectory()) throw new Error('not a directory');
+    if ((await realpath(root)).toLowerCase() !== root.toLowerCase()) throw new Error('redirected');
+  } catch (error) {
+    if (error instanceof PreviewError) throw error;
+    throw new PreviewError('subtitle package directory is missing or redirected', 'package_not_found');
+  }
+  const file = input.subtitle_variant.ass;
+  const absPath = await packageFile(root, file.path);
+  const info = await stat(absPath);
+  if (!info.isFile() || info.size !== file.size) {
+    throw new PreviewError(`ASS size mismatch for ${file.path}`, 'size_mismatch');
+  }
+  if (await hashFile(absPath) !== file.sha256) {
+    throw new PreviewError(`ASS hash mismatch for ${file.path}`, 'hash_mismatch');
+  }
+  return absPath;
+}
+
+async function resolveAssFonts(families, resolveFontsImpl) {
+  let resolved;
+  try {
+    resolved = await resolveFontsImpl(families);
+  } catch (error) {
+    throw new PreviewError(error instanceof Error ? error.message : '字体不可用', 'font_not_found');
+  }
+  const files = new Map();
+  for (const font of resolved) {
+    const current = files.get(font.path);
+    if (current && current.sha256 !== font.sha256) throw new PreviewError(`字体文件哈希冲突：${font.family}`, 'font_hash_mismatch');
+    const entry = current ?? { sha256: font.sha256, families: new Set() };
+    entry.families.add(font.family);
+    files.set(font.path, entry);
+  }
+  for (const [fontPath, font] of files) {
+    const actual = createHash('sha256').update(await readFile(fontPath)).digest('hex');
+    if (actual !== font.sha256) throw new PreviewError(`字体文件哈希不符：${[...font.families].join(',')}`, 'font_hash_mismatch');
+  }
+  const receipt = [];
+  const seen = new Set();
+  for (const family of families) {
+    let found = false;
+    for (const font of files.values()) {
+      if (!font.families.has(family)) continue;
+      found = true;
+      const key = `${family}\0${font.sha256}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      receipt.push({ family, sha256: font.sha256 });
+    }
+    if (!found) throw new PreviewError(`字体不可用：${family}`, 'font_not_found');
+  }
+  return { files, receipt };
+}
+
 /**
  * Construct compliant PreviewInput from an exported package directory.
  * Useful for CLI execution and automated testing.
@@ -281,13 +343,14 @@ export async function buildPreviewInputFromPackage({ packageDir, presetId = PREV
 export async function renderPreview(options) {
   options?.signal?.throwIfAborted();
 
-  const { input, packageDir, outputDir, signal, onProgress } = options || {};
+  const { input, packageDir, subtitlePackageDir, outputDir, signal, onProgress, resolveFontsImpl = defaultResolveFonts } = options || {};
 
   // 1. Validate input structure and identity
   if (!input || typeof input !== 'object') {
     throw new PreviewError('valid PreviewInput is required', 'invalid_input');
   }
-  if (input.schema_version !== 1 || input.preset_id !== PREVIEW_PRESET_ID) {
+  const burnAss = input.schema_version === 2;
+  if (![1, 2].includes(input.schema_version) || input.preset_id !== PREVIEW_PRESET_ID || burnAss !== Boolean(input.subtitle_variant)) {
     throw new PreviewError('unsupported preview protocol or preset', 'unsupported_preset');
   }
 
@@ -398,15 +461,17 @@ export async function renderPreview(options) {
   if (srtList.length > 1) {
     throw new PreviewError('at most one subtitle (srt) file allowed in input', 'duplicate_subtitles');
   }
-  const hasSubtitles = srtList.length === 1;
+  const burnSrt = !burnAss && srtList.length === 1;
 
   let fontInfo = null;
-  if (hasSubtitles) {
+  if (burnSrt) {
     fontInfo = await findFontFile(input.preset.subtitles.font_family);
     if (!fontInfo) {
       throw new PreviewError(`required subtitle font not found: ${input.preset.subtitles.font_family}`, 'font_not_found');
     }
   }
+  const frozenAss = burnAss ? await loadFrozenAss(input, subtitlePackageDir) : null;
+  const assFonts = burnAss ? await resolveAssFonts(input.subtitle_variant.font_families, resolveFontsImpl) : null;
 
   // 4. Parse EDL and construct timeline
   const edlRaw = (await readPackageJSON(edlList[0].absPath)).toString('utf8');
@@ -540,9 +605,21 @@ export async function renderPreview(options) {
   let killed = false;
 
   try {
-    // Copy subtitles.srt to stagingDir if subtitles exist (avoids path escaping on Windows)
-    if (hasSubtitles) {
+    // Copy subtitles into the staging directory and reference them relatively.
+    // An absolute Windows path would be escaped by the subtitles filter.
+    if (burnSrt) {
       await copyFile(srtList[0].absPath, join(stagingDir, 'subtitles.srt'));
+    }
+    if (burnAss) {
+      await copyFile(frozenAss, join(stagingDir, 'subtitles.ass'));
+      await mkdir(join(stagingDir, 'fonts'));
+      let fontIndex = 0;
+      for (const [fontPath, font] of assFonts.files) {
+        const ext = extname(fontPath).toLowerCase();
+        if (!['.ttf', '.otf', '.ttc'].includes(ext)) throw new PreviewError(`字体文件类型无效：${[...font.families].join(',')}`, 'font_not_found');
+        await copyFile(fontPath, join(stagingDir, 'fonts', `${String(fontIndex).padStart(2, '0')}-${font.sha256.slice(0, 16)}${ext}`));
+        fontIndex += 1;
+      }
     }
 
     // Build FFmpeg arguments and filter graph
@@ -584,7 +661,9 @@ export async function renderPreview(options) {
 
     vFilters.push(`${vSegmentLabels.join('')}concat=n=${segments.length}:v=1:a=0[vconcat]`);
 
-    if (hasSubtitles) {
+    if (burnAss) {
+      vFilters.push('[vconcat]subtitles=filename=subtitles.ass:fontsdir=fonts[vfinal]');
+    } else if (burnSrt) {
       vFilters.push(`[vconcat]subtitles=filename=subtitles.srt:force_style='FontName=${input.preset.subtitles.font_family}'[vfinal]`);
     } else {
       vFilters.push(`[vconcat]null[vfinal]`);
@@ -762,7 +841,9 @@ export async function renderPreview(options) {
       {
         code: 'subtitles',
         status: 'passed',
-        message: hasSubtitles ? `Subtitles burned with font ${input.preset.subtitles.font_family}` : 'No subtitles present; burn omitted'
+        message: burnAss
+          ? `ASS burned with fonts ${assFonts.receipt.map(font => font.family).join(', ')}`
+          : burnSrt ? `Subtitles burned with font ${input.preset.subtitles.font_family}` : 'No subtitles present; burn omitted'
       },
       {
         code: 'media_streams',
@@ -790,7 +871,8 @@ export async function renderPreview(options) {
       preset_sha256: input.preset_sha256,
       renderer_version: '@video-auto-cut/timeline-cli 1.0.0',
       ffmpeg_version: ffmpegVersion,
-      ...(hasSubtitles && fontInfo ? { font: { family: fontInfo.family, sha256: fontInfo.sha256 } } : {})
+      ...(burnAss ? { fonts: assFonts.receipt } : {}),
+      ...(burnSrt && fontInfo ? { font: { family: fontInfo.family, sha256: fontInfo.sha256 } } : {})
     };
     const receiptContent = `${JSON.stringify(receipt, null, 2)}\n`;
     await writeFile(join(stagingDir, PREVIEW_FILENAMES.receipt), receiptContent, 'utf8');
@@ -820,11 +902,12 @@ export async function renderPreview(options) {
     };
     await writeFile(join(stagingDir, PREVIEW_FILENAMES.manifest), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
-    // Keep the private filter graph out of the published package.
+    // Temporary subtitle and font files stay out of the published preview package.
     await rm(join(stagingDir, graphFile));
-    // Clean up temporary subtitles.srt from staging before publication
-    if (hasSubtitles) {
-      await rm(join(stagingDir, 'subtitles.srt'), { force: true });
+    if (burnSrt) await rm(join(stagingDir, 'subtitles.srt'), { force: true });
+    if (burnAss) {
+      await rm(join(stagingDir, 'subtitles.ass'), { force: true });
+      await rm(join(stagingDir, 'fonts'), { recursive: true, force: true });
     }
 
     // 9. Atomic publication to new directory

@@ -1,3 +1,4 @@
+import { effectiveCue, validateDocument } from '../../../../contracts/delivery-variant/v1/style.mjs';
 export const ASS_EVENT_FORMAT = 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
 export function parseSrt(raw, durationMs) {
   const content = raw.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
@@ -47,4 +48,26 @@ export function serializeAss(cues, spec) {
   }).join('');
   if (Buffer.byteLength(result) > 1024 * 1024) throw new Error('ASS exceeds 1 MiB');
   return result;
+}
+
+export function serializeStyledAss(cues, document, durationMs) {
+  const source = cues.map((c,i) => ({cue_id:i+1,start_ms:c.start*10,end_ms:c.end*10,text:c.text}));
+  const errors = validateDocument(document, source, durationMs);
+  if (errors.length) throw new Error(errors.join('；'));
+  const color = c => `&H00${(c.slice(5,7)+c.slice(3,5)+c.slice(1,3)).toUpperCase()}`;
+  const flag = b => b ? -1 : 0;
+  const resolved = source.map(c => effectiveCue(c,document));
+  let out = `[Script Info]\nScriptType: v4.00+\nPlayResX: ${document.play_res_x}\nPlayResY: ${document.play_res_y}\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n`;
+  for (const c of resolved) {
+    const s = c.style;
+    out += `Style: Cue_${c.cue_id},${s.font_family},${s.font_size},${color(s.primary_color)},${color(s.primary_color)},${color(s.outline_color)},&H80000000,${flag(s.bold)},${flag(s.italic)},${flag(s.underline)},0,100,100,0,0,1,${s.outline},${s.shadow},${s.alignment},${s.margin_l},${s.margin_r},${s.margin_v},1\n`;
+  }
+  out += `\n[Events]\n${ASS_EVENT_FORMAT}\n`;
+  for (const c of resolved) {
+    const s = c.style, limit = Math.max(2, Math.floor((document.play_res_x-s.margin_l-s.margin_r-20)/s.font_size)*2);
+    const effect = s.fade_in_ms || s.fade_out_ms ? `{\\fad(${s.fade_in_ms},${s.fade_out_ms})}` : '';
+    out += `Dialogue: 0,${assTime(Math.floor((c.start_ms+5)/10))},${assTime(Math.floor((c.end_ms+5)/10))},Cue_${c.cue_id},,0,0,0,,${effect}${assText(wrapAssText(c.text,limit))}\n`;
+  }
+  if (Buffer.byteLength(out)>1024*1024) throw new Error('ASS exceeds 1 MiB');
+  return out;
 }

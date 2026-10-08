@@ -84,8 +84,8 @@ func (s *Service) SubmitDeliveryVariant(ctx context.Context, agentID, taskID, ou
 	if json.Unmarshal(reportRaw, &report) != nil {
 		return model.ErrArgument
 	}
-	wanted := dv.Binding{SchemaVersion: 1, VariantID: job.VariantID, TaskID: job.TaskID, AssetID: job.AssetID, RunID: job.RunID, RevisionID: job.RevisionID, InputSHA256: job.InputSHA256, SpecSHA256: job.SpecSHA256}
-	if manifest.Binding != wanted || receipt.Binding != wanted || report.Binding != wanted || receipt.ConverterVersion != "vac.ass-basic-v1/1" {
+	wanted := dv.Binding{SchemaVersion: input.SchemaVersion, VariantID: job.VariantID, TaskID: job.TaskID, AssetID: job.AssetID, RunID: job.RunID, RevisionID: job.RevisionID, InputSHA256: job.InputSHA256, SpecSHA256: job.SpecSHA256}
+	if manifest.Binding != wanted || receipt.Binding != wanted || report.Binding != wanted || receipt.ConverterVersion != "vac."+input.SpecID+"/1" {
 		return model.ErrArgument
 	}
 	checks := map[string]bool{"source_fingerprint": false, "subtitle_text": false, "subtitle_timing": false, "ass_style": false, "self_contained": false}
@@ -158,7 +158,11 @@ func (s *Service) SubmitDeliveryVariant(ctx context.Context, agentID, taskID, ou
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(style, dv.SpecBytes) {
+	wantedStyle := dv.SpecBytes
+	if input.StyleDocument != nil {
+		wantedStyle = dv.StyleDocumentBytes(*input.StyleDocument)
+	}
+	if !bytes.Equal(style, wantedStyle) {
 		return model.ErrArgument
 	}
 	edlPath, _, err := s.previewPackageFile(parent, "edl.json")
@@ -184,7 +188,7 @@ func (s *Service) SubmitDeliveryVariant(ctx context.Context, agentID, taskID, ou
 			if e != nil {
 				return e
 			}
-			cues, e = dv.ParseSRT(raw, duration)
+			cues, e = dv.ParseSourceSRT(raw, duration)
 			if e != nil {
 				return model.ErrArgument
 			}
@@ -194,7 +198,14 @@ func (s *Service) SubmitDeliveryVariant(ctx context.Context, agentID, taskID, ou
 	if err != nil {
 		return err
 	}
-	if string(ass) != dv.ASS(cues) || report.SubtitleCount != len(cues) || report.DurationCentiseconds != (duration+5)/10 {
+	expectedASS := dv.ASS(cues)
+	if input.StyleDocument != nil {
+		if e := dv.ValidateStyleDocument(*input.StyleDocument, cues, duration); e != nil {
+			return model.ErrArgument
+		}
+		expectedASS = dv.StyledASS(cues, *input.StyleDocument)
+	}
+	if string(ass) != expectedASS || report.SubtitleCount != len(cues) || report.DurationCentiseconds != (duration+5)/10 {
 		return fmt.Errorf("ASS differs from approved SRT/style: %w", model.ErrArgument)
 	}
 	if _, err = s.verifyVariantInput(ctx, input); err != nil {

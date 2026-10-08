@@ -18,6 +18,7 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: '2', keys: ['2'], action: '切换到「编辑」工作区', category: '工作区导航' },
   { key: '3', keys: ['3'], action: '切换到「导出」工作区', category: '工作区导航' },
   { key: '4', keys: ['4'], action: '切换到「设置」工作区', category: '工作区导航' },
+  { key: '5', keys: ['5'], action: '切换到「TTS」工作区', category: '工作区导航' },
   { key: '[', keys: ['['], action: '切换到上一个二级分区 / 分类', category: '二级导航' },
   { key: ']', keys: [']'], action: '切换到下一个二级分区 / 分类', category: '二级导航' },
   { key: 'space', keys: ['Space'], action: '播放 / 暂停当前监视器媒体', category: '播放控制' },

@@ -10,6 +10,9 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/cli.mjs && node --check src/edl.mjs && node --check src/pipeline.mjs && node --check src/preview.mjs && node --check src/preview-protocol.mjs && node --check src/media.mjs && node --check src/time.mjs && node --check scripts/generate-media.mjs && node --check adapters/index.mjs && node --check adapters/cuts.mjs && node --check adapters/timebase.mjs && node --check adapters/tracks.mjs && node --check adapters/sync.mjs && node --check adapters/formats.mjs && node --check adapters/audio.mjs && node --check adapters/subtitles.mjs && node --check src/delivery-variant.mjs && node --check adapters/ass.mjs"
+    "check": "node --check src/cli.mjs && node --check src/edl.mjs && node --check src/pipeline.mjs && node --check src/preview.mjs && node --check src/preview-protocol.mjs && node --check src/media.mjs && node --check src/time.mjs && node --check scripts/generate-media.mjs && node --check adapters/index.mjs && node --check adapters/cuts.mjs && node --check adapters/timebase.mjs && node --check adapters/tracks.mjs && node --check adapters/sync.mjs && node --check adapters/formats.mjs && node --check adapters/audio.mjs && node --check adapters/subtitles.mjs && node --check src/delivery-variant.mjs && node --check src/fonts.mjs && node --check adapters/ass.mjs"
+  },
+  "dependencies": {
+    "fontkit": "2.0.4"
   }
 }

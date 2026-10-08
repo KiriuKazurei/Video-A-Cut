@@ -29,7 +29,8 @@ export interface PreviewInputFile {
 }
 
 export interface PreviewInput {
-  schema_version: 1;
+  schema_version: 1 | 2;
+  subtitle_variant?: SubtitleVariantInput;
   preview_id: string;
   task_id: string;
   asset_id: string;
@@ -47,6 +48,7 @@ export interface PreviewInput {
 }
 
 export interface PreviewStartRequest {
+  subtitle_variant_id?: string;
   revision_id: string;
   expected_version: number;
   preset_id: 'mp4-720p-v1';
@@ -75,6 +77,8 @@ export interface PreviewArtifact {
   sha256: string;
 }
 export interface PreviewView {
+  subtitle_variant_id?: string;
+  style_sha256?: string;
   preview_id: string; task_id: string; asset_id: string; run_id: string; revision_id: string;
   preset_id: string; input_sha256: string;
   /** Projected from Task, never maintained as another state machine. */
@@ -88,6 +92,7 @@ export interface PreviewList {
   checks: PreviewCheck[]; previews: PreviewView[];
 }
 export interface PreviewCapability {
+  subtitle_formats?: Array<'srt' | 'ass'>;
   protocol_version: 1; execution_protocol: 2; ready: boolean;
   presets: Array<{ preset_id: string; sha256: string }>;
   checks: PreviewCheck[];
@@ -101,6 +106,7 @@ export interface SubmitPreviewRequest extends PreviewExecutionScope {
   preview_dir: string;
 }
 export interface PreviewReceipt {
+  fonts?: Array<{family: string; sha256: string}>;
   schema_version: 1; preview_id: string; task_id: string;
   input_sha256: string; preset_sha256: string;
   renderer_version: string; ffmpeg_version: string;
@@ -117,4 +123,10 @@ export interface PreviewManifest {
   input_sha256: string; preset_sha256: string;
   /** Only these output files; source media are referenced via the fixed input. */
   artifacts: PreviewArtifact[];
+}
+
+export interface SubtitleVariantInput {
+ variant_id: string; package_ref: string;
+ ass: {kind: 'ass'; path: string; sha256: string; size: number};
+ style_sha256: string; font_families: string[];
 }

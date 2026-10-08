@@ -191,7 +191,7 @@ function createMockQueryClient() {
   };
 }
 
-test('queryRefresh: domains and scopes contain all 13 required domains', () => {
+test('queryRefresh: domains and scopes contain all 17 required domains', () => {
   const expectedDomains = [
     'assets',
     'deliveryFiles',
@@ -205,23 +205,24 @@ test('queryRefresh: domains and scopes contain all 13 required domains', () => {
     'acceptance',
     'ingest',
     'mp4Previews',
-    'deliveryVariants'
+    'deliveryVariants',
+    'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities'
   ];
   assert.deepEqual([...REFRESH_DOMAINS], expectedDomains);
-  assert.equal(REFRESH_SCOPES.length, 13);
+  assert.equal(REFRESH_SCOPES.length, 17);
   assert.deepEqual(REFRESH_SCOPES.map((s) => s[0]), expectedDomains);
 });
 
 test('queryRefresh: refreshSnapshot invalidates all domains and watchedTaskId if present', async () => {
   const client1 = createMockQueryClient();
   await refreshSnapshot(client1, null);
-  assert.equal(client1.invalidated.length, 13);
+  assert.equal(client1.invalidated.length, 17);
   assert.deepEqual(client1.invalidated.map((k) => k[0]), [...REFRESH_DOMAINS]);
 
   const client2 = createMockQueryClient();
   await refreshSnapshot(client2, 'task-999');
-  assert.equal(client2.invalidated.length, 14);
-  assert.deepEqual(client2.invalidated[13], ['task', 'task-999']);
+  assert.equal(client2.invalidated.length, 18);
+  assert.deepEqual(client2.invalidated[17], ['task', 'task-999']);
 });
 
 test('queryRefresh: invalidateDeliveryFiles targets specific asset or full prefix', async () => {
@@ -696,4 +697,157 @@ test('ASS SSE invalidates variant queries after task, governance and capability 
     assert(client.invalidated.some(key=>key[0]==='deliveryVariants'));
   }
   assert(SUPPORTED_SSE_EVENTS.includes('delivery_variant.changed'));
+});
+
+import {
+  adoptServerDraft,
+  applyStyleToAll,
+  clearLocalDrafts,
+  commitEdit,
+  defaultStyle,
+  effectiveCue,
+  freezeStartRequest,
+  noteSaveOutcome,
+  rememberLocalDraft,
+  restoreInheritance,
+  runStyledExport,
+  selectAssJob,
+  selectMp4Job,
+  setCueDuration,
+  setCueStyles,
+  setCueTiming,
+  setGlobalField,
+  styleCacheKey,
+  styleSha256,
+  undoEdit,
+  validateDocument
+} from './src/assEditorModel.ts';
+import { validateDocument as sharedValidateDocument } from '../contracts/delivery-variant/v1/style.mjs';
+import { previewProductKey, shouldAutoSelectPreview } from './src/previewContracts.ts';
+
+test('ASS editor uses the shared validator and keeps inheritance, timing, undo and conflicts', async () => {
+  assert.equal(validateDocument, sharedValidateDocument);
+  clearLocalDrafts();
+  const sha = 'a'.repeat(64);
+  const cues = [
+    { cue_id: 1, start_ms: 0, end_ms: 1000, text: '甲' },
+    { cue_id: 2, start_ms: 1000, end_ms: 2000, text: '乙' }
+  ];
+  let doc = {
+    source_srt_sha256: sha, play_res_x: 1280, play_res_y: 720,
+    style: defaultStyle(),
+    overrides: [{ cue_id: 1, style: { font_size: 48 } }]
+  };
+  doc = setGlobalField(doc, 'font_size', 20);
+  assert.equal(effectiveCue(cues[0], doc).style.font_size, 48);
+  assert.equal(effectiveCue(cues[1], doc).style.font_size, 20);
+  doc = setCueStyles(doc, [1, 2], { bold: true });
+  assert.equal(doc.style.bold, false);
+  assert.equal(effectiveCue(cues[0], doc).style.bold, true);
+  assert.equal(effectiveCue(cues[0], doc).style.font_size, 48);
+  assert.equal(effectiveCue(cues[1], doc).style.font_size, 20);
+  doc = setCueTiming(doc, 2, { start_ms: 1100 });
+  assert.equal(effectiveCue(cues[0], doc).start_ms, 0);
+  assert.equal(effectiveCue(cues[1], doc).start_ms, 1100);
+  doc = setCueDuration(doc, cues, 2, 500);
+  assert.equal(effectiveCue(cues[1], doc).end_ms, 1600);
+  assert.equal(effectiveCue(cues[0], doc).end_ms, 1000);
+  const restored = restoreInheritance(doc, [1]);
+  assert.equal(effectiveCue(cues[0], restored).style.font_size, 20);
+  assert.equal(restored.overrides.find(item => item.cue_id === 1), undefined);
+  assert.equal(effectiveCue(cues[1], restored).start_ms, 1100);
+  const applied = applyStyleToAll(restored, { ...restored.style, italic: true });
+  assert.equal(applied.style.italic, true);
+  assert.equal(applied.overrides.some(item => item.style), false);
+  assert.equal(applied.overrides.find(item => item.cue_id === 2).start_ms, 1100);
+
+  const invalidSize = setGlobalField(applied, 'font_size', 11);
+  assert.ok(validateDocument(invalidSize, cues, 5000).length > 0);
+  const tooMuchFade = setGlobalField(setGlobalField(applied, 'fade_in_ms', 900), 'fade_out_ms', 900);
+  assert.ok(validateDocument(tooMuchFade, cues, 5000).some(error => error.includes('第 2 条')));
+
+  const undone = undoEdit(commitEdit([], applied, invalidSize).undo, invalidSize);
+  assert.equal(undone.current.style.font_size, applied.style.font_size);
+
+  const server = {
+    asset_id: 'a', run_id: 'r', revision_id: 'v', draft_version: 2, style_sha256: 'b'.repeat(64),
+    duration_ms: 5000, cues, document: applied
+  };
+  const key = styleCacheKey('a', 'r', 'v', sha);
+  rememberLocalDraft(key, { document: invalidSize, undo: [], baseDraftVersion: 1 });
+  const loaded = adoptServerDraft(server, key);
+  assert.equal(loaded.baseDraftVersion, 1);
+  assert.equal(loaded.document.style.font_size, 11);
+  const conflict = noteSaveOutcome(loaded, { ok: false });
+  assert.equal(conflict, loaded);
+  assert.equal(adoptServerDraft(server, styleCacheKey('b', 'r', 'v', sha)).document.style.font_size, applied.style.font_size);
+  assert.equal(adoptServerDraft(server, key).document.style.font_size, 11);
+  const saved = noteSaveOutcome(conflict, { ok: true, server: { ...server, draft_version: 3, document: applied } });
+  assert.equal(saved.baseDraftVersion, 3);
+  assert.equal(saved.document.style.italic, true);
+
+  const reusable = selectAssJob([
+    { variant_id: 'old', revision_id: 'v', spec_id: 'ass-basic-v2', style_sha256: 'c'.repeat(64), status: 'succeeded', invalidated: false },
+    { variant_id: 'match', revision_id: 'v', spec_id: 'ass-basic-v2', style_sha256: 'd'.repeat(64), status: 'succeeded', invalidated: false },
+    { variant_id: 'v1', revision_id: 'v', spec_id: 'ass-basic-v1', style_sha256: 'd'.repeat(64), status: 'succeeded', invalidated: false }
+  ], 'v', 'd'.repeat(64), false);
+  assert.equal(reusable.variant.variant_id, 'match');
+  assert.equal(selectAssJob([
+    { variant_id: 'failed', revision_id: 'v', spec_id: 'ass-basic-v2', style_sha256: 'd'.repeat(64), status: 'failed', invalidated: false }
+  ], 'v', 'd'.repeat(64), true).kind, 'start');
+  const mp4 = selectMp4Job([
+    { preview_id: 'srt', revision_id: 'v', status: 'succeeded', invalidated: false },
+    { preview_id: 'styled', revision_id: 'v', subtitle_variant_id: 'match', style_sha256: 'd'.repeat(64), status: 'succeeded', invalidated: false },
+    { preview_id: 'other-style', revision_id: 'v', subtitle_variant_id: 'match', style_sha256: 'e'.repeat(64), status: 'succeeded', invalidated: false }
+  ], 'v', 'match', 'd'.repeat(64), false);
+  assert.equal(mp4.preview.preview_id, 'styled');
+
+  const frozen = freezeStartRequest(true, { request_id: 'keep' }, () => true, () => ({ request_id: 'new' }));
+  assert.equal(frozen.request_id, 'keep');
+  assert.equal(freezeStartRequest(false, frozen, () => true, () => ({ request_id: 'explicit' })).request_id, 'explicit');
+
+  let current = true;
+  let started = 0;
+  const stopped = await runStyledExport({
+    isCurrent: () => current,
+    revisionId: 'v',
+    draftVersion: 1,
+    document: applied,
+    through: 'mp4',
+    explicitRetry: false,
+    reuseRequests: false,
+    requestId: () => 'req',
+    wait: async () => {},
+    save: async () => { current = false; return server; },
+    onDraftSaved: () => {},
+    listVariants: async () => { throw new Error('should not list after a context switch'); },
+    startVariant: async () => { started += 1; throw new Error('should not start'); },
+    readVariant: async () => { throw new Error('should not read'); },
+    listPreviews: async () => { throw new Error('should not list previews'); },
+    startPreview: async () => { started += 1; throw new Error('should not start preview'); },
+    readPreview: async () => { throw new Error('should not read preview'); },
+    onProgress: () => {}
+  });
+  assert.equal(stopped.phase, 'stopped');
+  assert.equal(started, 0);
+  const reordered = {
+    overrides: applied.overrides, style: applied.style, play_res_y: applied.play_res_y,
+    play_res_x: applied.play_res_x, source_srt_sha256: applied.source_srt_sha256
+  };
+  assert.equal(await styleSha256(applied), await styleSha256(reordered));
+  assert.notEqual(await styleSha256(applied), await styleSha256(setGlobalField(applied, 'bold', true)));
+  clearLocalDrafts();
+});
+
+test('styled MP4 is a different product from the original SRT preview and is not auto-selected back', () => {
+  const srt = { preview_id: 'srt' };
+  const styled = { preview_id: 'styled', subtitle_variant_id: 'variant-1', style_sha256: 'abc' };
+  const other = { preview_id: 'other', subtitle_variant_id: 'variant-2', style_sha256: 'def' };
+  assert.equal(previewProductKey(srt), 'srt');
+  assert.notEqual(previewProductKey(styled), previewProductKey(other));
+  assert.equal(shouldAutoSelectPreview(srt, undefined, [srt, styled]), true);
+  assert.equal(shouldAutoSelectPreview(styled, undefined, [styled]), false);
+  assert.equal(shouldAutoSelectPreview(srt, '/api/previews/styled/files/mp4', [srt, styled]), false);
+  assert.equal(shouldAutoSelectPreview(srt, '/api/previews/missing/files/mp4', [srt, styled]), false);
+  assert.equal(shouldAutoSelectPreview(srt, '/api/previews/srt/files/mp4', [srt, styled]), true);
 });

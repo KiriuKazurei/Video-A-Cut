@@ -153,6 +153,11 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 		return nil, fmt.Errorf("control plane: ingest: %w", err)
 	}
 	svc.SetBus(bus)
+	if err := svc.ConfigureTTS(cfg.TTSPython, cfg.TTSWorkerDir); err != nil {
+		svc.CloseTTS()
+		st.Close()
+		return nil, fmt.Errorf("control plane: TTS: %w", err)
+	}
 	svc.SetMaxAttempts(cfg.MaxAttempts)
 	a := &app{
 		st:   st,
@@ -255,6 +260,9 @@ func startup(configPath, dbPath string) (*app, error) {
 // call on a partially assembled app (nil fields are skipped), so a failed
 // startup can still shut down cleanly.
 func (a *app) Close() error {
+	if a.svc != nil {
+		a.svc.CloseTTS()
+	}
 	var errs []error
 	// The listener is released before the bus so a surface that is still
 	// accepting cannot outlive the store its handlers read from. Closing a

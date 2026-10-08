@@ -27,7 +27,8 @@ def configured_task(cfg, task_input):
     return replace(cfg, content_provider=spec['adapter'], content_provider_config=provider_config,
                    sampling_limits=SamplingLimits(max_total_frames=budget['max_frames'],
                    max_total_bytes=budget['max_bytes'],max_total_time=budget['timeout_seconds']),
-                   tts_voice=p['tts_voice'],tts_auto_approve=False)
+                   tts_voice=p.get('tts_voice',''),tts_auto_approve=False,
+                   tts_settings=(p.get('tts_template') or {}).get('settings'))
 
 def local_capability(cfg):
     if not cfg.profile_sha256:
@@ -52,4 +53,21 @@ def local_capability(cfg):
             pass
     spec=(cfg.processing_profile or {}).get('vision' if cfg.role=='recognizer' else 'narration',{})
     credentials=bool(cfg.token) and (spec.get('adapter')=='builtin' or bool(os.environ.get(spec.get('token_env',''))))
-    return {'profile_sha256':cfg.profile_sha256,'tools_ready':tools,'credentials_ready':credentials,'tts_voices':voices}
+    result = {'profile_sha256':cfg.profile_sha256,'tools_ready':tools,'credentials_ready':credentials,'tts_voices':voices}
+    binding = (cfg.processing_profile or {}).get('tts_template')
+    if binding and cfg.role == 'narrator':
+        from .tts import validate_settings, capabilities
+        settings = binding.get('settings') or {}
+        ready = False
+        try:
+            validate_settings(settings)
+            runtime = capabilities(cfg.ffmpeg)
+            ready = tools and (not settings['pitch_semitones'] or runtime['pitch_available'])
+            if settings['engine'] == 'sapi':
+                ready = ready and settings['voice'] in voices
+            else:
+                ready = ready and bool(os.environ.get(settings['token_env']))
+        except Exception:
+            pass
+        result.update(tts_ready=bool(ready), tts_template_sha256=binding['sha256'])
+    return result

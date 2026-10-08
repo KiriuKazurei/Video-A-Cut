@@ -741,5 +741,16 @@ func (s *Service) previewClaimable(ctx context.Context, tx *store.Store, agentID
 	if !supported {
 		return false, nil
 	}
+	var frozen preview.Input
+	if json.Unmarshal([]byte(job.InputJSON), &frozen) != nil {
+		return false, model.ErrArgument
+	}
+	if frozen.SubtitleVariant != nil {
+		ok, e := s.assPreviewWorkerReady(ctx, tx, agentID, frozen.SubtitleVariant.FontFamilies)
+		if errors.Is(e, model.ErrNotFound) {
+			return false, nil
+		}
+		return ok, e
+	}
 	return true, nil
 }

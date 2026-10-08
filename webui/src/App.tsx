@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined, VideoCameraOutlined
+  PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined, VideoCameraOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
@@ -24,12 +24,14 @@ import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
 import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
 import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
+import { TtsWorkspace } from './workspaces/TtsWorkspace';
 
 const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
   resources: <FolderOpenOutlined />,
   editing: <PlaySquareOutlined />,
   export: <ExportOutlined />,
-  settings: <SettingOutlined />
+  settings: <SettingOutlined />,
+  tts: <SoundOutlined />
 };
 
 /**
@@ -151,8 +153,9 @@ export default function App() {
 
   // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
   const useSidebar = screens.xl;
-  const showLeftSider = useSidebar && workspace !== 'settings';
-  const showRightSider = useSidebar && workspace !== 'settings';
+  const independentWorkspace = workspace === 'settings' || workspace === 'tts';
+  const showLeftSider = useSidebar && !independentWorkspace;
+  const showRightSider = useSidebar && !independentWorkspace;
 
   // 侧栏内容
   const leftSiderContent = (
@@ -180,7 +183,7 @@ export default function App() {
           </div>
         </div>
         
-        {/* 工作区导航：三个主工作区 + 右侧设置 */}
+        {/* 工作区导航：资源、编辑、导出、TTS + 右侧设置 */}
         <div className="app-nav-wrap">
           <Menu 
             className="app-nav glass-nav" 
@@ -198,7 +201,7 @@ export default function App() {
         </div>
 
         {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
-        {screens.xl && (
+        {screens.xl && workspace !== 'tts' && (
           <PipelineStepper 
             route={route} 
             navigate={navigate} 
@@ -208,7 +211,7 @@ export default function App() {
         
         <div className="app-header-right">
           {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
-          {screens.md && (
+          {screens.md && workspace !== 'tts' && (
             <div className="app-quick-actions">
               <Select
                 size="small"
@@ -250,7 +253,7 @@ export default function App() {
             </div>
           )}
 
-          {!useSidebar && workspace !== 'settings' && (
+          {!useSidebar && !independentWorkspace && (
             <>
               <Button 
                 size="small"
@@ -332,7 +335,7 @@ export default function App() {
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
           {/* 折叠按钮：仅在 xl 及以上且非设置页显示 */}
-          {useSidebar && workspace !== 'settings' && (
+          {useSidebar && !independentWorkspace && (
             <div className="sider-toggles">
               <Button 
                 type="text" 
@@ -351,6 +354,9 @@ export default function App() {
             </div>
           )}
           
+          <WorkspacePage pageId="tts" active={workspace === 'tts'}>
+            <TtsWorkspace active={workspace === 'tts'} />
+          </WorkspacePage>
           <WorkspacePage pageId="resources" active={workspace === 'resources'}>
             <ResourcesWorkspace asset={selected} onSelect={setSelectedId} />
           </WorkspacePage>
@@ -423,7 +429,7 @@ export default function App() {
       <Drawer
         title="项目面板"
         placement="left"
-        open={leftDrawerOpen}
+        open={leftDrawerOpen && !independentWorkspace}
         onClose={() => setLeftDrawerOpen(false)}
         width={280}
       >
@@ -433,7 +439,7 @@ export default function App() {
       <Drawer
         title="属性面板"
         placement="right"
-        open={rightDrawerOpen}
+        open={rightDrawerOpen && !independentWorkspace}
         onClose={() => setRightDrawerOpen(false)}
         width={320}
       >
@@ -451,7 +457,7 @@ export default function App() {
           onDisconnect={events.disconnect}
         />
         <Typography.Text type="secondary" className="app-footer-meta">
-          {selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · {current.label}
+          {workspace === 'tts' ? '独立文本试听 · TTS' : `${selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · ${current.label}`}
         </Typography.Text>
       </Layout.Footer>
 

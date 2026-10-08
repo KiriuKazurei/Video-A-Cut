@@ -87,6 +87,7 @@ const (
 // server sees one error shape from day one and a later task only replaces the
 // response behind the status.
 func (s *Server) routes() {
+	s.ttsRoutes()
 	s.mux.HandleFunc("POST /api/providers/{operation}", s.diagnoseProvider)
 	s.mux.HandleFunc("GET /api/processing-profiles", s.listProfiles)
 	s.mux.HandleFunc("POST /api/processing-profiles", s.saveProfile)
@@ -134,6 +135,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/previews/{id}", s.getPreview)
 	s.mux.HandleFunc("POST /api/previews/{id}/cancel", s.cancelPreview)
 	s.mux.HandleFunc("GET /api/previews/{id}/files/{key}", s.getPreviewFile)
+	s.mux.HandleFunc("GET /api/workflows/{run}/subtitle-style", s.getSubtitleStyle)
+	s.mux.HandleFunc("PUT /api/workflows/{run}/subtitle-style", s.putSubtitleStyle)
+	s.mux.HandleFunc("GET /api/subtitle-fonts", s.getSubtitleFonts)
 	s.mux.HandleFunc("POST /api/workflows/{run}/delivery-variants", s.startDeliveryVariant)
 	s.mux.HandleFunc("GET /api/workflows/{run}/delivery-variants", s.listDeliveryVariants)
 	s.mux.HandleFunc("GET /api/delivery-variants/{id}", s.getDeliveryVariant)
@@ -188,7 +192,7 @@ func localRequestGate(next http.Handler) http.Handler {
 }
 
 func requestHasJSONBody(r *http.Request) bool {
-	if r.Method != http.MethodPost && r.Method != http.MethodPatch {
+	if r.Method != http.MethodPost && r.Method != http.MethodPatch && r.Method != http.MethodPut {
 		return false
 	}
 	return r.ContentLength != 0

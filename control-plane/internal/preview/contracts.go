@@ -23,10 +23,11 @@ var (
 )
 
 type StartRequest struct {
-	RevisionID      string `json:"revision_id"`
-	ExpectedVersion int    `json:"expected_version"`
-	PresetID        string `json:"preset_id"`
-	RequestID       string `json:"request_id"`
+	SubtitleVariantID string `json:"subtitle_variant_id,omitempty"`
+	RevisionID        string `json:"revision_id"`
+	ExpectedVersion   int    `json:"expected_version"`
+	PresetID          string `json:"preset_id"`
+	RequestID         string `json:"request_id"`
 }
 
 type InputFile struct {
@@ -39,20 +40,21 @@ type InputFile struct {
 // Input is fixed by Go at task creation. Hashes refer to actual source files.
 // Preset is the full snapshot matching the shared preset file SHA-256.
 type Input struct {
-	SchemaVersion  int             `json:"schema_version"`
-	PreviewID      string          `json:"preview_id"`
-	TaskID         string          `json:"task_id"`
-	AssetID        string          `json:"asset_id"`
-	RunID          string          `json:"run_id"`
-	RevisionID     string          `json:"revision_id"`
-	PackageRef     string          `json:"package_ref"`
-	EDLSHA256      string          `json:"edl_sha256"`
-	ManifestSHA256 string          `json:"manifest_sha256"`
-	PresetID       string          `json:"preset_id"`
-	PresetSHA256   string          `json:"preset_sha256"`
-	Preset         json.RawMessage `json:"preset"`
-	Files          []InputFile     `json:"files"`
-	InputSHA256    string          `json:"input_sha256"`
+	SubtitleVariant *SubtitleVariantInput `json:"subtitle_variant,omitempty"`
+	SchemaVersion   int                   `json:"schema_version"`
+	PreviewID       string                `json:"preview_id"`
+	TaskID          string                `json:"task_id"`
+	AssetID         string                `json:"asset_id"`
+	RunID           string                `json:"run_id"`
+	RevisionID      string                `json:"revision_id"`
+	PackageRef      string                `json:"package_ref"`
+	EDLSHA256       string                `json:"edl_sha256"`
+	ManifestSHA256  string                `json:"manifest_sha256"`
+	PresetID        string                `json:"preset_id"`
+	PresetSHA256    string                `json:"preset_sha256"`
+	Preset          json.RawMessage       `json:"preset"`
+	Files           []InputFile           `json:"files"`
+	InputSHA256     string                `json:"input_sha256"`
 }
 
 type Check struct {
@@ -93,20 +95,22 @@ type Artifact struct {
 
 // View projects status/progress/message from Task. Initialize empty slices to serialize [].
 type View struct {
-	PreviewID   string     `json:"preview_id"`
-	TaskID      string     `json:"task_id"`
-	AssetID     string     `json:"asset_id"`
-	RunID       string     `json:"run_id"`
-	RevisionID  string     `json:"revision_id"`
-	PresetID    string     `json:"preset_id"`
-	InputSHA256 string     `json:"input_sha256"`
-	Status      string     `json:"status"`
-	Progress    float64    `json:"progress"`
-	Message     string     `json:"message,omitempty"`
-	Invalidated bool       `json:"invalidated"`
-	IsCurrent   bool       `json:"is_current"`
-	Artifacts   []Artifact `json:"artifacts"`
-	Media       *Media     `json:"media,omitempty"`
+	SubtitleVariantID string     `json:"subtitle_variant_id,omitempty"`
+	StyleSHA256       string     `json:"style_sha256,omitempty"`
+	PreviewID         string     `json:"preview_id"`
+	TaskID            string     `json:"task_id"`
+	AssetID           string     `json:"asset_id"`
+	RunID             string     `json:"run_id"`
+	RevisionID        string     `json:"revision_id"`
+	PresetID          string     `json:"preset_id"`
+	InputSHA256       string     `json:"input_sha256"`
+	Status            string     `json:"status"`
+	Progress          float64    `json:"progress"`
+	Message           string     `json:"message,omitempty"`
+	Invalidated       bool       `json:"invalidated"`
+	IsCurrent         bool       `json:"is_current"`
+	Artifacts         []Artifact `json:"artifacts"`
+	Media             *Media     `json:"media,omitempty"`
 }
 
 type List struct {
@@ -124,6 +128,7 @@ type PresetRef struct {
 }
 type Capability struct {
 	ExecutionProtocol int         `json:"execution_protocol"`
+	SubtitleFormats   []string    `json:"subtitle_formats,omitempty"`
 	ProtocolVersion   int         `json:"protocol_version"`
 	Ready             bool        `json:"ready"`
 	Presets           []PresetRef `json:"presets"`
@@ -134,6 +139,7 @@ type Font struct {
 	SHA256 string `json:"sha256"`
 }
 type Receipt struct {
+	Fonts           []Font `json:"fonts,omitempty"`
 	SchemaVersion   int    `json:"schema_version"`
 	PreviewID       string `json:"preview_id"`
 	TaskID          string `json:"task_id"`
@@ -176,4 +182,12 @@ type Application interface {
 	TaskInput(ctx context.Context, agentID, taskID string) (Input, error)
 	Submit(ctx context.Context, agentID, taskID, previewDir string) error
 	ResolveFile(ctx context.Context, previewID, key string) (ResolvedFile, error)
+}
+
+type SubtitleVariantInput struct {
+	VariantID    string    `json:"variant_id"`
+	PackageRef   string    `json:"package_ref"`
+	ASS          InputFile `json:"ass"`
+	StyleSHA256  string    `json:"style_sha256"`
+	FontFamilies []string  `json:"font_families"`
 }

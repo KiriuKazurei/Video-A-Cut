@@ -126,7 +126,7 @@ export async function probePreviewCapability(options = {}) {
     try {
       const font = await findFontImpl('Microsoft YaHei');
       if (font?.path) {
-        checks.push({ code: 'font', status: 'passed', message: `Subtitle font available: ${font.family || 'Microsoft YaHei'} (${font.path})` });
+        checks.push({ code: 'font', status: 'passed', message: `Subtitle font available: ${font.family || 'Microsoft YaHei'}` });
       } else {
         checks.push({ code: 'font', status: 'blocked', message: 'Required subtitle font (Microsoft YaHei) not found' });
       }
@@ -137,6 +137,7 @@ export async function probePreviewCapability(options = {}) {
 
   const ready = checks.every((c) => c.status === 'passed');
   return {
+    subtitle_formats: ['srt', 'ass'],
     protocol_version: PREVIEW_PROTOCOL_VERSION,
     execution_protocol: 2,
     ready,
@@ -334,7 +335,7 @@ export async function processPreviewTask(options = {}) {
     if (!input || typeof input !== 'object') {
       throw new WorkerFailure('missing preview task input');
     }
-    if (input.schema_version !== 1) {
+    if (![1, 2].includes(input.schema_version) || (input.schema_version === 2) !== Boolean(input.subtitle_variant)) {
       throw new WorkerFailure(`unsupported preview schema_version ${input.schema_version}`);
     }
     if (input.preset_id !== PREVIEW_PRESET_ID) {
@@ -361,9 +362,12 @@ export async function processPreviewTask(options = {}) {
     if (input.input_sha256 !== executionScope.input_sha256) throw new WorkerFailure('claim input fingerprint mismatch');
     inputSHA = input.input_sha256;
 
-    // Resolve package directory
+    // Resolve package directory. ASS lives in its own delivery package, not in packageDir.
     const packageRel = input.package_ref;
     const packageDir = await previewDirectory(cfg.deliveryRoot, packageRel);
+    const subtitlePackageDir = input.schema_version === 2
+      ? await previewDirectory(cfg.deliveryRoot, input.subtitle_variant.package_ref)
+      : undefined;
 
     // Calculate destination preview directory
     const previewRel = ['previews', task.asset_id, input.revision_id, input.preview_id].join('/');
@@ -417,6 +421,7 @@ export async function processPreviewTask(options = {}) {
     await renderPreviewImpl({
       input,
       packageDir,
+      subtitlePackageDir,
       outputDir: previewDir,
       signal: taskAbort.signal,
       onProgress: (p) => {

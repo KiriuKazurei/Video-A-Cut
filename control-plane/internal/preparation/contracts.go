@@ -2,7 +2,10 @@
 // Profile validation is pure; explicitly requested provider diagnostics use bounded HTTP.
 package preparation
 
-import "context"
+import (
+	"context"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/tts"
+)
 
 type Provider struct {
 	Adapter  string `json:"adapter"`
@@ -22,16 +25,17 @@ type Sampling struct {
 // Profile contains references to credentials, never credentials themselves.
 // Revision and fingerprint bind a future run to the selected configuration.
 type Profile struct {
-	SchemaVersion int      `json:"schema_version"`
-	ProfileID     string   `json:"profile_id"`
-	Revision      int      `json:"revision"`
-	Name          string   `json:"name"`
-	ContentMode   string   `json:"content_mode"`
-	Vision        Provider `json:"vision"`
-	Narration     Provider `json:"narration"`
-	Sampling      Sampling `json:"sampling"`
-	TTSVoice      string   `json:"tts_voice"`
-	ExportTarget  string   `json:"export_target"`
+	SchemaVersion int          `json:"schema_version"`
+	ProfileID     string       `json:"profile_id"`
+	Revision      int          `json:"revision"`
+	Name          string       `json:"name"`
+	ContentMode   string       `json:"content_mode"`
+	Vision        Provider     `json:"vision"`
+	Narration     Provider     `json:"narration"`
+	Sampling      Sampling     `json:"sampling"`
+	TTSVoice      string       `json:"tts_voice"`
+	ExportTarget  string       `json:"export_target"`
+	TTSTemplate   *tts.Binding `json:"tts_template,omitempty"`
 }
 
 type Check struct {
@@ -53,10 +57,12 @@ type Report struct {
 
 // A capability is reported by an authenticated Worker and expires server-side.
 type Capability struct {
-	ProfileSHA256    string   `json:"profile_sha256"`
-	ToolsReady       bool     `json:"tools_ready"`
-	CredentialsReady bool     `json:"credentials_ready"`
-	TTSVoices        []string `json:"tts_voices,omitempty"`
+	ProfileSHA256     string   `json:"profile_sha256"`
+	ToolsReady        bool     `json:"tools_ready"`
+	CredentialsReady  bool     `json:"credentials_ready"`
+	TTSVoices         []string `json:"tts_voices,omitempty"`
+	TTSReady          *bool    `json:"tts_ready,omitempty"`
+	TTSTemplateSHA256 string   `json:"tts_template_sha256,omitempty"`
 }
 
 // RuntimeProbe is implemented later by a bounded, local-only host/Worker probe.

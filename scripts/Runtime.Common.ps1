@@ -17,12 +17,20 @@ function Resolve-VacSessionPath([string]$DataDirectory, [string]$SessionID) {
 }
 
 function Test-VacProcessIdentity($Entry) {
-    if (!$Entry -or $Entry.pid -lt 1 -or !$Entry.path -or !$Entry.started_at) { throw 'Incomplete process identity; automatic runtime changes are blocked.' }
+    if (!$Entry -or $Entry.pid -lt 1) { throw 'Incomplete process identity; automatic runtime changes are blocked.' }
     $current = Get-Process -Id $Entry.pid -ErrorAction SilentlyContinue
     if (!$current) { return $false }
+    if (!$Entry.path -or !$Entry.started_at) { throw 'Incomplete live process identity; automatic runtime changes are blocked.' }
     try {
+        # ConvertFrom-Json may materialize ISO timestamps as DateTime in newer
+        # PowerShell versions. Compare UTC ticks without losing fractional seconds.
+        $recordedStart = if ($Entry.started_at -is [datetime]) {
+            $Entry.started_at.ToUniversalTime()
+        } else {
+            [DateTimeOffset]::Parse([string]$Entry.started_at, [Globalization.CultureInfo]::InvariantCulture).UtcDateTime
+        }
         return $current.Path -eq $Entry.path -and
-            $current.StartTime.ToUniversalTime().ToString('o') -eq $Entry.started_at
+            $current.StartTime.ToUniversalTime().Ticks -eq $recordedStart.Ticks
     } catch { throw 'Cannot verify process identity; automatic runtime changes are blocked.' }
 }
 

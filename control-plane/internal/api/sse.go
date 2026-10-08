@@ -13,7 +13,12 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 )
 
-var sseEventNames = []string{"asset_created", "asset_updated", "task_created", "task_updated", "workflow.changed", "review.changed", "acceptance.changed", "profile.changed", "capability.changed", "ingest.changed", "audit.changed"}
+var sseEventNames = []string{
+	"asset_created", "asset_updated", "task_created", "task_updated",
+	"workflow.changed", "review.changed", "acceptance.changed", "profile.changed",
+	"capability.changed", "ingest.changed", "audit.changed", "preview_updated",
+	"delivery_variant.changed", "tts.template.changed", "tts.preview.changed",
+}
 
 var sseHeartbeatInterval = 15 * time.Second
 

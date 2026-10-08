@@ -148,7 +148,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                         activePreviewSrc={activeMp4Preview?.src}
                       />
                       {asset && <AcceptancePanel key={asset.asset_id} assetId={asset.asset_id} selection={selection} />}
-                      <DeliveryVariantPanel asset={asset} selection={selection} />
+                      <DeliveryVariantPanel asset={asset} selection={selection} onSelectPreview={setActiveMp4Preview} />
                     </Flex>
                   </Col>
                   <Col xs={24} xl={10}>

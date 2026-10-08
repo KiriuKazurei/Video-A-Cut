@@ -1,6 +1,20 @@
 # Delivery variant protocol v1 — ASS
 
-ASS is a separate `delivery_variant` Task. The original export package, approved text, asset artifacts, workflow revision and existing MP4 preset stay immutable. Only `ass-basic-v1` is registered in this version; FCPXML is a later extension.
+ASS is a separate `delivery_variant` Task. The original export package, approved text, asset artifacts, workflow revision and existing MP4 preset stay immutable. `ass-basic-v1` remains compatible; `ass-basic-v2` adds editable style/time snapshots. FCPXML is a later extension.
+
+## Editable style extension (2026-10-07)
+
+Shared types: `contracts.ts`; browser/Node defaults, inheritance, canonical JSON and validation: `style.mjs`. GET/PUT `/api/workflows/{run}/subtitle-style` return/save `SubtitleStyleDraft`. PUT carries `revision_id`, `expected_draft_version`, and `document`; stale versions/source bindings return 409. GET `/api/subtitle-fonts` returns active exporter family/hash metadata, never absolute paths.
+
+`ass-basic-v2` creation also carries `draft_version` and `style_sha256`. Go freezes `style_document`/`style_sha256` in input `schema_version=2`. `spec`/`spec_sha256` still identify the fixed v2 contract, not the custom style. Worker heartbeat protocol remains 1; the `specs` array advertises supported v1/v2 contracts and optional `fonts:[{family,sha256}]`. Tasks are matched to their own spec.
+
+The document contains source SRT hash, script dimensions, global style, and cue overrides. Timing is integer milliseconds, quantized half-up to centiseconds; fades must fit the quantized duration. Cue IDs are 1-based source SRT ordinals. Body text is immutable. `play_res_y=720`; width follows the existing preview canvas aspect ratio. Outline/shadow accept at most two decimal places.
+
+SHA-256 over `canonicalJSON(document)` is the style identity: sorted object keys, literal Unicode/HTML, array order retained, no final newline. `overrides` is an array, never null; absent optional override fields are omitted. `ass-style.json` uses those exact canonical bytes. V2 manifest/receipt/report binding uses schema version 2; converter version is `vac.ass-basic-v2/1`. V1 output bytes stay unchanged.
+
+The v2 input fingerprint retains the v1 atom algorithm and appends `ass-basic-v2`, `style_sha256` after the source files. The style hash includes source binding, resolution, timing and all custom styles. Go independently regenerates and checks ASS from the approved source and frozen document.
+
+Parallel ownership and acceptance: [ASS editor work allocation](../../../docs/ASS样式编辑器-并行实施分工.md). Go/shared-contract implementation is separate from frontend acceptance and ASS MP4 renderer acceptance.
 
 ## Request and capability
 

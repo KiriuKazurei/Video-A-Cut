@@ -37,9 +37,9 @@ body { background: var(--vac-bg); }
 .app-header { display: flex; background: radial-gradient(240px 56px at 50% 0, rgba(22, 119, 255, 0.2), transparent) var(--vac-bg); align-items: center; gap: 16px; height: auto; min-height: 56px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.app-nav-wrap { flex: 0 1 auto; min-width: 280px; display: flex; justify-content: center; }
+.app-nav-wrap { flex: 0 1 390px; min-width: 280px; display: flex; justify-content: center; }
 /* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳四个工作区页签 */
-.app-nav { flex: 0 1 420px; min-width: 260px; justify-content: center; border-bottom: 0 !important; }
+.app-nav { flex: 1 1 auto; width: 100%; min-width: 260px; justify-content: center; border-bottom: 0 !important; }
 .app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
 @media (max-width: 1279px) {
   .app-connection .ant-badge-status-text { display: none; }
@@ -415,6 +415,40 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   overflow-wrap: anywhere;
 }
 
+.ass-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+.ass-cue-scroll { max-height: min(68vh, 720px); overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.ass-cue { display: flex; gap: 8px; padding: 8px; border-radius: 8px; cursor: pointer; }
+.ass-cue.is-selected { background: rgba(22, 119, 255, 0.16); }
+.ass-cue-text { margin: 0 !important; white-space: pre-wrap; }
+.ass-stage {
+  container-type: inline-size;
+  position: relative;
+  display: flex;
+  width: 100%;
+  background: #101114;
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.ass-caption-placement { position: absolute; display: flex; min-width: 0; }
+.ass-caption { max-width: 100%; white-space: pre-wrap; line-height: 1.25; paint-order: stroke fill; }
+.ass-style-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 12px; }
+.ass-style-grid label, .ass-checks { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ass-checks { flex-direction: row; align-items: center; flex-wrap: wrap; }
+.ass-align-grid { display: grid; grid-template-columns: repeat(3, 48px); gap: 4px; }
+.ass-style-grid input[type="color"] { width: 42px; height: 32px; padding: 2px; flex-shrink: 0; }
+.ass-editor-player { width: 100%; max-height: 360px; background: #000; border-radius: 8px; }
+@media (max-width: 760px) {
+  .ass-editor-layout { grid-template-columns: 1fr; }
+  .ass-cue-scroll { max-height: 240px; }
+}
+
 @media (max-width: 480px) {
   .preview-panel .ant-card-extra {
     font-size: 11px;
@@ -428,3 +462,25 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
     font-size: 12px;
   }
 }
+/* Independent TTS workspace: the mixer uses the existing dark theme tokens. */
+.tts-console-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.tts-console-grid > *, .tts-text-column { min-width: 0; }
+.tts-text-column { display: grid; gap: 16px; }
+.tts-template-button { text-align: left; height: auto; white-space: normal; overflow-wrap: anywhere; padding-inline: 4px; }
+.tts-template-selected { background: var(--vac-selected, rgba(22,119,255,.12)); }
+.tts-fader-bank { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 20px 0; }
+.tts-fader { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+.tts-fader .ant-input-number { width: 100%; }
+.tts-fader-track { width: 100%; }
+.tts-fader-track.vertical { height: 140px; display: flex; justify-content: center; }
+.tts-fader-track.vertical .ant-slider { margin-block: 6px; }
+.tts-fader > .ant-typography { text-align: center; }
+.tts-instruction-preview { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--vac-hairline); padding: 10px; font: inherit; min-height: 60px; }
+.tts-player-panel { display: grid; gap: 12px; margin-top: 20px; }
+.tts-player-panel audio { width: 100%; }
+.tts-waveform { height: 120px; border: 1px solid var(--vac-hairline); display: flex; align-items: center; justify-content: center; color: var(--vac-muted, rgba(255,255,255,.68)); padding: 8px; }
+.tts-waveform svg { width: 100%; height: 100%; fill: #69b1ff; }
+.tts-save-form { border-top: 1px solid var(--vac-hairline); margin-top: 24px; padding-top: 16px; }
+.tts-generate-actions { margin-top: 16px; }
+@media (max-width: 1199px) { .tts-console-grid { grid-template-columns: 180px minmax(0,1fr); } .tts-controls { grid-column: 1 / -1; } }
+@media (max-width: 767px) { .tts-console-grid { grid-template-columns: minmax(0,1fr); } .tts-controls { grid-column: 1; } }

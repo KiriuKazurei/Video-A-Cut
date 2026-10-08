@@ -14,6 +14,7 @@ import {
   PreviewError
 } from '../src/preview.mjs';
 import { loadPreviewPreset, fingerprintPreviewInput } from '../src/preview-protocol.mjs';
+import { resolveFonts } from '../src/fonts.mjs';
 
 function runProcess(cmd, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -44,13 +45,13 @@ async function createTestPackage(dir, options = {}) {
   const clip2Path = join(dir, 'clip_02.mp4');
   await runProcess('ffmpeg', [
     '-hide_banner', '-y',
-    '-f', 'lavfi', '-i', 'smptebars=size=320x180:rate=30:duration=1.0',
+    '-f', 'lavfi', '-i', options.videoLavfi || 'smptebars=size=320x180:rate=30:duration=1.0',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-r', '30',
     clip1Path
   ]);
   await runProcess('ffmpeg', [
     '-hide_banner', '-y',
-    '-f', 'lavfi', '-i', `testsrc2=size=${options.clip2Size || '320x180'}:rate=30:duration=1.0`,
+    '-f', 'lavfi', '-i', options.clip2Lavfi || `testsrc2=size=${options.clip2Size || '320x180'}:rate=30:duration=1.0`,
     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-r', '30',
     clip2Path
   ]);
@@ -460,4 +461,115 @@ test('CLI render-preview command renders preview end-to-end', async (t) => {
   await access(join(cliOutputDir, 'preview-manifest.json'));
   await access(join(cliOutputDir, 'render-report.json'));
   await access(join(cliOutputDir, 'preview-receipt.json'));
+});
+
+test('schema 2 burns only the frozen ASS, keeps cue color, placement, fade and font hashes', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'vac-preview-ass-'));
+  t.after(async () => { await rm(root, { recursive: true, force: true }); });
+  const packageDir = join(root, 'pkg files');
+  const subtitleDir = join(root, 'sub pack');
+  const outputDir = join(root, 'preview out');
+  await createTestPackage(packageDir, {
+    subtitles: true,
+    videoLavfi: 'color=c=black:s=320x180:r=30:d=1',
+    clip2Lavfi: 'color=c=black:s=320x180:r=30:d=1'
+  });
+  await writeFile(join(packageDir, 'subtitles.srt'), '1\n00:00:00,050 --> 00:00:00,300\nSHOULD_NOT_BURN\n\n', 'utf8');
+  let families = ['Microsoft YaHei'];
+  try {
+    await resolveFonts(['Microsoft YaHei', 'Arial']);
+    families = ['Microsoft YaHei', 'Arial'];
+  } catch { /* The second cue uses the same installed family when Arial is absent. */ }
+  const [bottomFamily, topFamily] = [families[0], families[1] ?? families[0]];
+  const ass = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    'PlayResX: 320',
+    'PlayResY: 180',
+    'WrapStyle: 2',
+    'ScaledBorderAndShadow: yes',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Bottom,${bottomFamily},64,&H000000FF,&H000000FF,&H00000000,&H00000000,-1,-1,-1,0,100,100,0,0,1,0,0,2,8,8,2,1`,
+    `Style: Top,${topFamily},64,&H00FF0000,&H00FF0000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,8,8,2,1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    'Dialogue: 0,0:00:00.40,0:00:00.95,Bottom,,0,0,0,,{\\fad(300,0)}中中中中',
+    'Dialogue: 0,0:00:00.40,0:00:00.95,Top,,0,0,0,,中中中中',
+    ''
+  ].join('\n');
+  await mkdir(subtitleDir);
+  await writeFile(join(subtitleDir, 'styled.ass'), ass, 'utf8');
+  const { input: base } = await buildPreviewInputFromPackage({ packageDir });
+  const assBytes = Buffer.from(ass, 'utf8');
+  const styled = {
+    ...base,
+    schema_version: 2,
+    subtitle_variant: {
+      variant_id: 'dv_styled',
+      package_ref: 'delivery-variants/asset/dv_styled',
+      ass: { kind: 'ass', path: 'styled.ass', size: assBytes.length, sha256: createHash('sha256').update(assBytes).digest('hex') },
+      style_sha256: 'b'.repeat(64),
+      font_families: families
+    }
+  };
+  styled.input_sha256 = fingerprintPreviewInput(styled);
+  await renderPreview({ input: styled, packageDir, subtitlePackageDir: subtitleDir, outputDir });
+
+  const names = (await readdir(outputDir)).sort();
+  assert.deepEqual(names, ['final.mp4', 'preview-manifest.json', 'preview-receipt.json', 'render-report.json']);
+  const receipt = JSON.parse(await readFile(join(outputDir, 'preview-receipt.json'), 'utf8'));
+  assert.equal(receipt.schema_version, 1);
+  assert.equal(receipt.input_sha256, styled.input_sha256);
+  assert.equal(receipt.font, undefined);
+  for (const family of families) assert.ok(receipt.fonts.some(font => font.family === family));
+  assert.ok(receipt.fonts.every(font => families.includes(font.family)));
+  for (const font of receipt.fonts) assert.match(font.sha256, /^[0-9a-f]{64}$/);
+  assert.doesNotMatch(JSON.stringify(receipt), /[A-Za-z]:\\|\\\\|sub pack|styled\.ass/);
+  const report = JSON.parse(await readFile(join(outputDir, 'render-report.json'), 'utf8'));
+  assert.equal(report.schema_version, 1);
+  assert.match(report.checks.find(check => check.code === 'subtitles').message, /ASS burned/);
+  assert.doesNotMatch(report.checks.find(check => check.code === 'subtitles').message, /SHOULD_NOT_BURN|subtitles\.srt/);
+
+  const frame = async (seconds) => {
+    const { stdoutBytes } = await runProcess('ffmpeg', [
+      '-hide_banner', '-i', join(outputDir, 'final.mp4'), '-ss', String(seconds),
+      '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'
+    ]);
+    assert.equal(stdoutBytes.length, 320 * 180 * 3);
+    return stdoutBytes;
+  };
+  const mean = (buf, y0, y1, channel) => {
+    let sum = 0;
+    let count = 0;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = 40; x < 280; x += 1) {
+        sum += buf[(y * 320 + x) * 3 + channel];
+        count += 1;
+      }
+    }
+    return sum / count;
+  };
+  const quiet = await frame(0.12);
+  assert.ok(mean(quiet, 140, 175, 0) < 8, 'SRT window must stay empty when only ASS is burned');
+  const fading = await frame(0.48);
+  const opaque = await frame(0.82);
+  const bottomFade = mean(fading, 140, 175, 0);
+  const bottomOpaque = mean(opaque, 140, 175, 0);
+  const topBlue = mean(opaque, 4, 40, 2);
+  assert.ok(bottomOpaque > 25 && bottomOpaque > mean(opaque, 140, 175, 1) + 10, 'bottom cue is red');
+  assert.ok(topBlue > 25 && topBlue > mean(opaque, 4, 40, 0) + 10, 'top cue is blue');
+  assert.ok(bottomFade < bottomOpaque * 0.75, 'fade-in is darker than the settled cue');
+
+  const mismatch = { ...styled, subtitle_variant: { ...styled.subtitle_variant, ass: { ...styled.subtitle_variant.ass, sha256: 'c'.repeat(64) } } };
+  mismatch.input_sha256 = fingerprintPreviewInput(mismatch);
+  await assert.rejects(renderPreview({ input: mismatch, packageDir, subtitlePackageDir: subtitleDir, outputDir: join(root, 'bad-hash') }), { code: 'hash_mismatch' });
+  const missing = { ...styled, subtitle_variant: { ...styled.subtitle_variant, font_families: ['Unavailable Preview Font'] } };
+  missing.input_sha256 = fingerprintPreviewInput(missing);
+  await assert.rejects(
+    renderPreview({ input: missing, packageDir, subtitlePackageDir: subtitleDir, outputDir: join(root, 'missing-font') }),
+    (error) => error.code === 'font_not_found' && /字体不可用：Unavailable Preview Font/.test(error.message)
+  );
 });

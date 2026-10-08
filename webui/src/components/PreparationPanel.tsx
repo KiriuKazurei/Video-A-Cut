@@ -3,6 +3,7 @@ import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {api} from '../api';
 import type {ProcessingProfile} from '../preparation';
 import {ProviderEditor} from './ProviderEditor';
+import {TtsTemplateBindingEditor} from './TtsTemplateBindingEditor';
 import {Alert,Button,Card,Col,Flex,Form,Input,InputNumber,List,Row,Space,Tag,Typography,theme} from 'antd';
 import {CheckCircleOutlined,ExclamationCircleOutlined,LockOutlined,QuestionCircleOutlined} from '@ant-design/icons';
 import type {WorkflowRun} from '../types';
@@ -36,7 +37,7 @@ export function PreparationPanel({
   const action=useMutation({mutationFn:(fn:()=>Promise<unknown>)=>fn(),onSuccess:async()=>{setError('');await refresh()},onError:e=>{setError(e instanceof Error?e.message:'操作失败');void refresh()}});
   const busy=action.isPending;
   const unsaved=notice.startsWith('有未保存');
-  const canConsent=draft.revision>0&&!unsaved&&(externalEndpoint(draft.vision.endpoint)||externalEndpoint(draft.narration.endpoint));
+  const canConsent=draft.revision>0&&!unsaved&&(externalEndpoint(draft.vision.endpoint)||externalEndpoint(draft.narration.endpoint)||externalEndpoint(draft.tts_template?.settings?.endpoint));
   const edit=(next:ProcessingProfile)=>{setDraft(next);setRequested(false);setNotice('有未保存修改，请先保存新版本')};
   const changeMode=(mode:'builtin'|'configured')=>edit({...draft,content_mode:mode,vision:mode==='builtin'?{adapter:'builtin'}:{adapter:'vision',api_format:'openai',endpoint:'https://api.openai.com/v1',model:'',token_env:'VAC_VISION_TOKEN'},narration:mode==='builtin'?{adapter:'builtin'}:{adapter:'narration',api_format:'openai',endpoint:'https://api.openai.com/v1',model:'',token_env:'VAC_NARRATION_TOKEN'}});
   const sampling=(patch:Partial<ProcessingProfile['sampling']>)=>edit({...draft,sampling:{...draft.sampling,...patch}});
@@ -93,6 +94,7 @@ export function PreparationPanel({
       </Typography.Text>
       
       {profilePicker}
+      {(activeSection === 'profiles' || activeSection === 'all') && <TtsTemplateBindingEditor binding={draft.tts_template} onChange={binding=>edit({...draft,tts_template:binding})}/>}
       {fetchError&&<Alert type="error" showIcon role="alert" message={fetchError}/>}
       {busy&&<Typography.Text type="secondary" role="status">正在处理…</Typography.Text>}
       {notice&&<Alert type={unsaved?'warning':'info'} showIcon role="status" message={notice}/>}

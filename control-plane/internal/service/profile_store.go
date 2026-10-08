@@ -25,6 +25,11 @@ func (s *Service) SaveProcessingProfile(ctx context.Context, actor, idemKey stri
 	if profile.Revision != next {
 		return preparation.Profile{}, fmt.Errorf("service: save profile: revision must be the next server revision: %w", model.ErrArgument)
 	}
+	binding, err := s.resolveTTSBinding(ctx, profile.TTSTemplate)
+	if err != nil {
+		return preparation.Profile{}, err
+	}
+	profile.TTSTemplate = binding
 	sum, err := profile.Fingerprint()
 	if err != nil {
 		return preparation.Profile{}, fmt.Errorf("service: save profile: %v: %w", err, model.ErrArgument)

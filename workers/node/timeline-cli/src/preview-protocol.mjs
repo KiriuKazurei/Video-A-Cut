@@ -19,7 +19,7 @@ export function isPreviewRelativePath(value) {
 
 /** Hash length-prefixed UTF-8 atoms; independent of JSON serialization and key order. */
 export function fingerprintPreviewInput(input) {
-  if (input?.schema_version !== 1 || input.preset_id !== PREVIEW_PRESET_ID) throw new Error('unsupported preview protocol or preset');
+  if (![1,2].includes(input?.schema_version) || (input.schema_version === 2) !== Boolean(input.subtitle_variant) || input.preset_id !== PREVIEW_PRESET_ID) throw new Error('unsupported preview protocol or preset');
   const atoms = ['vac.mp4-preview.input.v1'];
   for (const key of ['asset_id', 'run_id', 'revision_id']) {
     if (typeof input[key] !== 'string' || !input[key]) throw new Error(`missing ${key}`);
@@ -42,7 +42,12 @@ export function fingerprintPreviewInput(input) {
     paths.add(file.path);
     atoms.push(file.kind, file.path, file.sha256, String(file.size));
   }
-  const hash = createHash('sha256');
+  if (input.subtitle_variant) {
+ const sub=input.subtitle_variant, f=sub.ass;
+ if (!isPreviewRelativePath(sub.variant_id)||sub.variant_id.includes('/')||!isPreviewRelativePath(sub.package_ref)||f?.kind!=='ass'||!isPreviewRelativePath(f.path)||!sha.test(f.sha256)||!Number.isSafeInteger(f.size)||f.size<=0||f.size>1024*1024||!sha.test(sub.style_sha256)||!Array.isArray(sub.font_families)||!sub.font_families.length||sub.font_families.some(f=>typeof f!=='string'||!f)||new Set(sub.font_families).size!==sub.font_families.length) throw new Error('invalid subtitle variant snapshot');
+ atoms.push('subtitle-variant-v1',sub.variant_id,sub.package_ref,f.kind,f.path,f.sha256,String(f.size),sub.style_sha256,String(sub.font_families.length),...sub.font_families);
+ }
+ const hash = createHash('sha256');
   for (const atom of atoms) {
     const bytes = Buffer.from(atom, 'utf8');
     hash.update(`${bytes.length}:`, 'ascii');

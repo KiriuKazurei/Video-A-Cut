@@ -339,6 +339,10 @@ func TestSSESubscribesEveryKnownEventName(t *testing.T) {
 		"task_created",
 		"task_updated",
 		"audit.changed",
+		"preview_updated",
+		"delivery_variant.changed",
+		"tts.template.changed",
+		"tts.preview.changed",
 	}
 
 	srv := newBusServer(t)
@@ -349,6 +353,22 @@ func TestSSESubscribesEveryKnownEventName(t *testing.T) {
 	for _, name := range want {
 		if len(taken[name]) == 0 {
 			t.Fatalf("no subscription recorded for %q (got %v)", name, taken)
+		}
+	}
+}
+
+// Preview and voice jobs finish outside the main workflow state transitions.
+// Their events must reach an already-open browser without a manual refresh.
+func TestSSEStreamsMediaCompletionEvents(t *testing.T) {
+	srv := newBusServer(t)
+	st, _ := connectSSE(t, srv)
+	defer st.stop()
+	for _, name := range []string{"preview_updated", "delivery_variant.changed", "tts.template.changed", "tts.preview.changed"} {
+		srv.svc.Bus().Publish(events.Envelope{Name: name, Payload: map[string]any{"status": "succeeded"}})
+		frame := st.waitFrameName(t, name)
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(frame.data), &payload); err != nil || payload["status"] != "succeeded" {
+			t.Fatalf("media event %s: payload=%s, error=%v", name, frame.data, err)
 		}
 	}
 }
