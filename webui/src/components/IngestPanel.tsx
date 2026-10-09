@@ -461,7 +461,7 @@ function ReadyFiles({ view }: { view: IngestRunView }) {
   return <div className="ingest-ready">
     <Alert type="success" showIcon style={{ marginBottom: 12 }} message={`已生成 ${media.length} 个短片，资产已切换为 EDL 包，可到「准备」页启动内容流程。内容质量仍需人工验收。`} />
     <Row gutter={[12, 12]}>{media.map((k) => <Col key={k} xs={24} sm={12} xxl={8}>
-      <Card size="small" className="glass glass-window" styles={{ body: { padding: 8 } }}>
+      <Card size="small" styles={{ body: { padding: 8 } }}>
         <video className="ready-video" controls preload="metadata" src={ingestFileURL(view.run.run_id, k)} />
         <Flex justify="space-between" align="center" gap={8} style={{ marginTop: 6 }}>
           <Typography.Text code ellipsis>{k.slice('media_'.length)}</Typography.Text>

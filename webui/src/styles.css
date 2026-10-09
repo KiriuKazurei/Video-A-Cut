@@ -528,16 +528,18 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 /* ---------- 资源缩略图视图 ---------- */
 .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; }
 .asset-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; animation: vac-item-in var(--vac-dur) var(--vac-ease-out) backwards; }
+.asset-card-media { position: relative; width: 100%; aspect-ratio: 16 / 9; transition: transform var(--vac-dur-fast) var(--vac-ease); }
+.asset-card-media:has(.asset-card-thumb:active) { transform: scale(0.985); }
 .asset-card-thumb {
-  position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; cursor: pointer;
+  position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--vac-radius); background: #121316;
-  transition: border-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease);
+  transition: border-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease);
 }
 .asset-card-thumb:hover { border-color: rgba(255, 255, 255, 0.36); }
-.asset-card-thumb:active { transform: scale(0.985); }
 .asset-card-thumb:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
 .asset-card.is-selected .asset-card-thumb { border-color: #1677ff; box-shadow: 0 0 0 1px #1677ff; }
 .asset-card.is-draft .asset-card-thumb { border-style: dashed; opacity: 0.72; }
+.asset-card.is-draft .asset-card-badges { opacity: 0.72; }
 .asset-card-placeholder { position: absolute; inset: 0; margin: auto; font-size: 36px; color: rgba(255, 255, 255, 0.16); transition: color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-slow) var(--vac-ease-out); }
 .asset-card-thumb:hover .asset-card-placeholder { color: rgba(255, 255, 255, 0.28); transform: scale(1.06); }
 .asset-card-badges { position: absolute; inset: auto 6px 6px 6px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }

@@ -32,8 +32,12 @@ export function AssetThumbGrid({ rows, selectedId, pendingId, onSelect, onToggle
         return (
           <div key={asset.asset_id} role="listitem" data-asset-card={asset.asset_id}
             className={`asset-card${selected ? ' is-selected' : ''}${inLibrary ? '' : ' is-draft'}`} style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }}>
-            <button type="button" className="asset-card-thumb" aria-pressed={selected} aria-label={`选择资产 ${asset.asset_id}`} onClick={() => onSelect(asset.asset_id)}>
-              <Icon className="asset-card-placeholder" aria-hidden="true" />
+            {/* 选择按钮与眼睛/入库徽标是同级兄弟：徽标绝对定位叠在缩略图上，不嵌在按钮里（避免 button 套 button） */}
+            <div className="asset-card-media">
+              <button type="button" className="asset-card-thumb" aria-pressed={selected} aria-label={`选择资产 ${asset.asset_id}`} onClick={() => onSelect(asset.asset_id)}>
+                <Icon className="asset-card-placeholder" aria-hidden="true" />
+                {asset.locked && <LockOutlined className="asset-card-lock" aria-label="已锁定" />}
+              </button>
               <span className="asset-card-badges">
                 <Tooltip title={visibleTip}>
                   <span className="asset-badge-slot">
@@ -41,7 +45,7 @@ export function AssetThumbGrid({ rows, selectedId, pendingId, onSelect, onToggle
                       disabled={Boolean(draft) || asset.locked || pendingId === asset.asset_id}
                       aria-label={visible ? `${asset.asset_id} Agent 可见，点击设为不可见` : `${asset.asset_id} Agent 不可见，点击设为可见`} aria-pressed={visible}
                       icon={visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-                      onClick={(event) => { event.stopPropagation(); onToggleVisible(row); }} />
+                      onClick={() => onToggleVisible(row)} />
                   </span>
                 </Tooltip>
                 <Tooltip title={inLibrary ? `已入库（状态：${row.statusLabel}）` : '未入库（本地草稿，未写入控制面）'}>
@@ -50,8 +54,7 @@ export function AssetThumbGrid({ rows, selectedId, pendingId, onSelect, onToggle
                   </span>
                 </Tooltip>
               </span>
-              {asset.locked && <LockOutlined className="asset-card-lock" aria-label="已锁定" />}
-            </button>
+            </div>
             <div className="asset-card-meta">
               <Typography.Text strong ellipsis={{ tooltip: asset.asset_id }}>{asset.asset_id}</Typography.Text>
               <Typography.Text type="secondary" ellipsis style={{ fontSize: 12 }}>{categoryText(row.categories) || (asset.input_kind === 'raw_recording' ? '原始录像' : '无产物记录')}</Typography.Text>
