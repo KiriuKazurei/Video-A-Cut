@@ -22,13 +22,6 @@ export function ResourcesWorkspace({ asset, onSelect }: ResourcesWorkspaceProps)
 
   return (
     <div className="page-body">
-      <div className="page-header">
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          资源管理 <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>Resources</Typography.Text>
-        </Typography.Title>
-        <Typography.Text type="secondary">浏览资产库、预览素材、查看属性与治理状态</Typography.Text>
-      </div>
-
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={15}>
           <Monitor 

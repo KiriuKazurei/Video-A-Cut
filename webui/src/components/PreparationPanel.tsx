@@ -61,7 +61,7 @@ export function PreparationPanel({
 
   // 运行条件侧边栏
   const conditionsCard = (
-    <Card size="small" className="prep-side" title="运行条件" aria-label="运行条件">
+    <Card size="small" className="prep-side" title="运行条件" aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}>
       <Flex vertical gap={10}>
         <Typography.Text type="secondary">以服务端预检的 can_start 与逐项检查为准；阻断也会以 HTTP 200 返回。</Typography.Text>
         <Button block disabled={busy||draft.revision<1||unsaved} onClick={()=>{setRequested(true);void report.refetch()}}>检查运行条件</Button>

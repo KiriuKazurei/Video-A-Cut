@@ -20,6 +20,7 @@
 :root {
   --vac-bg: #1c1d21;
   --vac-hairline: rgba(255, 255, 255, 0.07);
+  --vac-ctxbar-h: 40px;
   --vac-glass-fill: rgba(255, 255, 255, 0.07);
   --vac-glass-edge: rgba(255, 255, 255, 0.16);
   --vac-glass-highlight: rgba(255, 255, 255, 0.22);
@@ -71,7 +72,7 @@ body { background: var(--vac-bg); }
   .task-actions .task-watch-input { width: 100%; }
 }
 .page-header h4 { margin: 0 !important; }
-.sticky-monitor { position: sticky; top: 0; z-index: 5; padding-bottom: 8px; background: var(--vac-bg); }
+.sticky-monitor { position: sticky; top: var(--vac-ctxbar-h); z-index: 5; padding-bottom: 8px; background: var(--vac-bg); }
 
 /* 中间工作区：顶层卡片去掉边框与底色，只留标题下一条细线；嵌套卡片用极淡填充区分条目。 */
 .stage-main .ant-card { border-color: transparent; }
@@ -276,7 +277,7 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .provider-models { display: grid; gap: 4px; }
 
 /* ---------- 侧栏折叠按钮 ---------- */
-.sider-toggles { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; gap: 8px; }
+.sider-toggles { display: flex; gap: 4px; padding-left: 8px; margin-left: 4px; border-left: 1px solid var(--vac-hairline); }
 .sider-toggles .ant-btn { background: rgba(0, 0, 0, 0.4); border-color: rgba(255, 255, 255, 0.12); }
 .sider-toggles .ant-btn:hover { background: rgba(0, 0, 0, 0.6); border-color: rgba(255, 255, 255, 0.24); }
 
@@ -406,9 +407,11 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .app-header .ant-btn-sm { font-size: 12px; }
 
 /* 流程阶段条：扁平分段（小圆角矩形），当前阶段用底部强调线而不是胶囊色块 */
+.pipeline-stepper ol { display: flex; align-items: center; gap: 0; margin: 0; padding: 0; list-style: none; }
+.pipeline-stepper li { display: inline-flex; align-items: center; }
 .pipeline-stepper { display: flex; align-items: center; gap: 0; padding: 0 2px; border-left: 1px solid var(--vac-hairline); border-right: 1px solid var(--vac-hairline); min-width: 0; }
 .pipeline-step-item {
-  position: relative; display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px;
+  position: relative; display: flex; align-items: center; gap: 5px; height: 28px; padding: 0 9px; border: 0; background: transparent; font-family: inherit;
   border-radius: var(--vac-radius); font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap;
   color: rgba(255, 255, 255, 0.55);
   transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease);
@@ -417,9 +420,20 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .pipeline-step-item:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
 .pipeline-step-item:active { transform: scale(0.97); }
 .pipeline-step-item:focus-visible { outline: 2px solid #69b1ff; outline-offset: -2px; }
+.pipeline-step-item::-moz-focus-inner { border: 0; }
 .pipeline-step-item.is-current { color: #fff; font-weight: 500; }
 .pipeline-step-item.is-current::after { transform: scaleX(1); }
 .pipeline-step-item.is-done { color: rgba(255, 255, 255, 0.85); }
+.pipeline-step-item.is-blocked, .pipeline-step-item.is-unknown { color: rgba(255, 255, 255, 0.38); }
+.pipeline-step-item.is-error { color: #ff7875; }
+.pipeline-step-item.is-current.is-blocked, .pipeline-step-item.is-current.is-unknown { color: rgba(255, 255, 255, 0.8); }
+.stage-glyph { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 2px; font-size: 9px; border: 1px solid rgba(255, 255, 255, 0.28); color: transparent; flex: none; transition: background-color var(--vac-dur) var(--vac-ease), border-color var(--vac-dur) var(--vac-ease), color var(--vac-dur) var(--vac-ease); }
+.stage-glyph.is-done { background: rgba(82, 196, 26, 0.18); border-color: #52c41a; color: #73d13d; }
+.stage-glyph.is-active { border-color: #faad14; color: #faad14; }
+.stage-glyph.is-error { background: rgba(255, 77, 79, 0.16); border-color: #ff4d4f; color: #ff7875; }
+.stage-glyph.is-blocked { border-style: dashed; color: rgba(255, 255, 255, 0.4); }
+.stage-glyph.is-unknown { border-style: dotted; }
+.stage-next-dot { width: 5px; height: 5px; border-radius: 50%; background: #1677ff; box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.25); animation: vac-fade-in var(--vac-dur) var(--vac-ease-out); }
 .pipeline-step-arrow { color: rgba(255, 255, 255, 0.2); font-size: 10px; padding: 0 1px; }
 
 /* ---------- Phase D: MP4 预览面板与 375px 窄屏适配 ---------- */
@@ -631,3 +645,42 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   .page:not([hidden]), .ant-list-item, .ant-alert, .ant-empty, .ant-table-row { animation: none !important; }
   .ant-btn:not(:disabled):active, .app-nav.glass-nav > .ant-menu-item:active, [role="button"]:active { transform: none !important; }
 }
+
+
+/* ---------- 位置条：面包屑 + 唯一的主操作「下一步」 ---------- */
+.context-bar {
+  position: sticky; top: 0; z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: var(--vac-ctxbar-h); margin: 0 -16px; padding: 0 16px; background: var(--vac-bg); border-bottom: 1px solid var(--vac-hairline);
+}
+.context-crumbs { min-width: 0; animation: vac-fade-in var(--vac-dur) var(--vac-ease-out); }
+.context-crumbs ol { display: flex; align-items: center; margin: 0; padding: 0; list-style: none; min-width: 0; font-size: 13px; }
+.context-crumbs li { display: inline-flex; align-items: center; min-width: 0; white-space: nowrap; }
+.context-crumbs a { color: rgba(255, 255, 255, 0.62); border-radius: 2px; padding: 2px 3px; margin: 0 -3px; transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease); }
+.context-crumbs a:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
+.context-crumbs a:focus-visible { outline: 2px solid #69b1ff; outline-offset: 1px; }
+.context-crumbs li.is-current { color: #fff; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.context-crumbs .crumb-asset { overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.crumb-sep { margin: 0 8px; color: rgba(255, 255, 255, 0.28); }
+.context-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.next-step-prefix { font-size: 12px; color: rgba(255, 255, 255, 0.45); }
+.next-step-wrap { display: inline-flex; border-radius: var(--vac-radius); }
+.next-step-wrap:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
+.next-step-btn { animation: vac-fade-in var(--vac-dur) var(--vac-ease-out); }
+.next-step-btn .anticon { font-size: 10px; transition: transform var(--vac-dur) var(--vac-ease); }
+.next-step-btn:not(:disabled):hover .anticon { transform: translateX(2px); }
+@media (max-width: 959px) {
+  .context-bar { position: static; margin: 0 -8px; padding: 0 8px; }
+  .sticky-monitor { top: 0; }
+}
+@media (max-width: 560px) { .next-step-prefix { display: none; } .crumb-sep { margin: 0 5px; } }
+
+/* 二级菜单上的“对应流程阶段”状态点 */
+.section-tab-label { display: inline-flex; align-items: center; gap: 6px; }
+.stage-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.4); flex: none; transition: background-color var(--vac-dur) var(--vac-ease), border-color var(--vac-dur) var(--vac-ease); }
+.stage-dot.is-done { background: #52c41a; border-color: #52c41a; }
+.stage-dot.is-active { background: #faad14; border-color: #faad14; }
+.stage-dot.is-error { background: #ff4d4f; border-color: #ff4d4f; }
+.stage-dot.is-blocked { border-style: dashed; border-color: rgba(255, 255, 255, 0.28); }
+.stage-dot.is-todo { border-color: #69b1ff; }
+[data-nav-anchor]:focus { outline: none; }
+[data-nav-anchor]:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }

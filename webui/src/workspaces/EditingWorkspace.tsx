@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { Tabs, Typography } from 'antd';
+import { StageDot } from '../components/PipelineContext';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
 import { EDITING_SECTIONS } from '../navigation';
+import { SECTION_STAGE } from '../pipeline';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { IngestPanel, IngestRegister } from '../components/IngestPanel';
 import { DeliveryImport } from '../components/DeliveryPanel';
@@ -46,25 +48,14 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
 
   return (
     <div className="page-body">
-      <div className="page-header">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            编辑 <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>Editing</Typography.Text>
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            {asset ? `当前资产：${asset.asset_id}` : '未选择资产'}
-          </Typography.Text>
-        </div>
-      </div>
-
       <Tabs
         activeKey={editingSection}
         onChange={(key) => navigate({ editingSection: key as typeof editingSection })}
         items={EDITING_SECTIONS.map((section) => ({
           key: section.id,
-          label: section.label,
+          label: <span className="section-tab-label">{section.label}<StageDot stage={SECTION_STAGE.editing[section.id]} /></span>,
           children: (
-            <div className="section-content">
+            <div className="section-content" data-nav-anchor={section.id === 'import' ? 'ingest' : section.id} tabIndex={-1}>
               {section.id === 'import' && (
                 <PreviewScope onPreview={setSourcePreview}>
                   <div className="sticky-monitor">

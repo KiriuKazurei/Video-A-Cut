@@ -1,102 +1,45 @@
-import { Typography } from 'antd';
-import {
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  RightOutlined
-} from '@ant-design/icons';
-import type { RouteState } from '../navigation';
-import type { Asset, WorkflowRun } from '../types';
+import { Tooltip } from 'antd';
+import { CheckOutlined, CloseOutlined, LoadingOutlined, MinusOutlined, RightOutlined } from '@ant-design/icons';
+import type { StageInfo, StageStatus, StageTarget } from '../pipeline';
 
 export interface PipelineStepperProps {
-  route: RouteState;
-  navigate: (state: Partial<RouteState>) => void;
-  asset?: Asset;
-  currentRun?: WorkflowRun;
+  stages: readonly StageInfo[];
+  onGo: (target: StageTarget) => void;
 }
 
-interface StepItem {
-  id: string;
-  label: string;
-  target: Partial<RouteState>;
-  isMatch: (route: RouteState) => boolean;
+const WORD: Record<StageStatus, string> = { done: '已完成', active: '进行中', todo: '待办', blocked: '被阻塞', error: '出错', unknown: '读取中' };
+
+function StatusGlyph({ status }: { status: StageStatus }) {
+  const icon = status === 'done' ? <CheckOutlined /> : status === 'active' ? <LoadingOutlined spin /> : status === 'error' ? <CloseOutlined /> : status === 'blocked' ? <MinusOutlined /> : null;
+  return <span className={`stage-glyph is-${status}`} aria-hidden="true">{icon}</span>;
 }
 
-const STEPS: StepItem[] = [
-  {
-    id: 'import-assembly',
-    label: '导入与粗剪',
-    target: { workspace: 'editing', editingSection: 'import' },
-    isMatch: (r) => r.workspace === 'editing' && r.editingSection === 'import'
-  },
-  {
-    id: 'prepare',
-    label: '准备',
-    target: { workspace: 'settings', settingsCategory: 'preparation' },
-    isMatch: (r) => r.workspace === 'settings' && r.settingsCategory === 'preparation'
-  },
-  {
-    id: 'generate',
-    label: '生成',
-    target: { workspace: 'export', exportSection: 'tasks' },
-    isMatch: (r) => r.workspace === 'export' && r.exportSection === 'tasks'
-  },
-  {
-    id: 'review',
-    label: '审查',
-    target: { workspace: 'editing', editingSection: 'review' },
-    isMatch: (r) => r.workspace === 'editing' && (r.editingSection === 'review' || r.editingSection === 'content')
-  },
-  {
-    id: 'delivery',
-    label: '交付',
-    target: { workspace: 'export', exportSection: 'delivery' },
-    isMatch: (r) => r.workspace === 'export' && (r.exportSection === 'delivery' || r.exportSection === 'acceptance')
-  }
-];
-
-export function PipelineStepper({ route, navigate, asset, currentRun }: PipelineStepperProps) {
+/**
+ * 流程阶段条：导入与粗剪 → 准备 → 生成 → 审查 → 交付。
+ * 唯一的“流程走到哪了”指示：每个阶段点击都去它真正发生的页面；
+ * 状态来自真实的资产/导入/流程数据（见 pipeline.ts）；当前路由所在阶段带下划线，推荐的下一步阶段带一个蓝点。
+ */
+export function PipelineStepper({ stages, onGo }: PipelineStepperProps) {
   return (
-    <div className="pipeline-stepper" role="navigation" aria-label="全流程阶段指示器">
-      {STEPS.map((step, idx) => {
-        const isCurrent = step.isMatch(route);
-        const hasAsset = Boolean(asset);
-        const isPastRun = currentRun?.status === 'completed';
-        const isRunning = currentRun?.status === 'running';
-
-        return (
-          <div key={step.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <div
-              className={`pipeline-step-item ${isCurrent ? 'is-current' : ''}`}
-              onClick={() => navigate(step.target)}
-              title={`跳转到${step.label}阶段`}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  navigate(step.target);
-                }
-              }}
-            >
-              {step.id === 'import-assembly' && hasAsset && !isCurrent && (
-                <CheckCircleOutlined style={{ fontSize: 11, color: '#52c41a' }} />
-              )}
-              {step.id === 'generate' && isRunning && (
-                <ClockCircleOutlined style={{ fontSize: 11, color: '#faad14' }} />
-              )}
-              {step.id === 'delivery' && isPastRun && !isCurrent && (
-                <CheckCircleOutlined style={{ fontSize: 11, color: '#52c41a' }} />
-              )}
-              <span>{step.label}</span>
-            </div>
-            {idx < STEPS.length - 1 && (
-              <span className="pipeline-step-arrow" aria-hidden="true">
-                <RightOutlined style={{ fontSize: 9 }} />
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <nav className="pipeline-stepper" aria-label="流程阶段">
+      <ol>
+        {stages.map((step, idx) => {
+          const tip = `${step.label}：${WORD[step.status]} · ${step.statusText}${step.reason ? `。${step.reason}` : ''}${step.here ? '（当前位置）' : ''}${step.next ? '（推荐的下一步）' : ''}`;
+          return (
+            <li key={step.id}>
+              <Tooltip title={tip} mouseEnterDelay={0.3}>
+                <button type="button" className={`pipeline-step-item is-${step.status}${step.here ? ' is-current' : ''}${step.next ? ' is-next' : ''}`}
+                  aria-current={step.here ? 'step' : undefined} aria-label={tip} onClick={() => onGo(step.target)}>
+                  <StatusGlyph status={step.status} />
+                  <span>{step.label}</span>
+                  {step.next && <span className="stage-next-dot" aria-hidden="true" />}
+                </button>
+              </Tooltip>
+              {idx < stages.length - 1 && <span className="pipeline-step-arrow" aria-hidden="true"><RightOutlined style={{ fontSize: 9 }} /></span>}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }

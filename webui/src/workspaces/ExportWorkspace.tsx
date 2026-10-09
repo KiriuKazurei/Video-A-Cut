@@ -5,6 +5,8 @@ import type { Asset, AuditLog, CreateTask, Task } from '../types';
 import { parseDependsOn } from '../types';
 import type { RouteState } from '../navigation';
 import { EXPORT_SECTIONS } from '../navigation';
+import { SECTION_STAGE } from '../pipeline';
+import { StageDot } from '../components/PipelineContext';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { Monitor, type PreviewSource } from '../components/Monitor';
 import { AcceptancePanel, useWorkflowData } from '../components/WorkflowPanel';
@@ -112,25 +114,14 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
 
   return (
     <div className="page-body">
-      <div className="page-header">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            导出 <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>Export</Typography.Text>
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            {asset ? `当前资产：${asset.asset_id}` : '未选择资产'}
-          </Typography.Text>
-        </div>
-      </div>
-
       <Tabs
         activeKey={exportSection}
         onChange={(key) => navigate({ exportSection: key as typeof exportSection })}
         items={EXPORT_SECTIONS.map((section) => ({
           key: section.id,
-          label: section.label,
+          label: <span className="section-tab-label">{section.label}<StageDot stage={SECTION_STAGE.export[section.id]} /></span>,
           children: (
-            <div className="section-content">
+            <div className="section-content" data-nav-anchor={section.id} tabIndex={-1}>
               {section.id === 'delivery' && (
                 <Row gutter={[16, 16]}>
                   <Col xs={24} xl={14}>

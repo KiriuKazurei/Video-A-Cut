@@ -48,3 +48,9 @@ npm run dev
 ```
 
 `delivery_root` 省略时文件交付关闭；`web_root` 省略时由 Vite 或同源反向代理托管前端。运行 `npm run build` 后设置 `web_root`，Go 会从同一端口提供 WebUI 和 `/api`。两项路径均须是已存在的绝对目录。当前验收状态见 `docs/二阶段验收记录-2026-09-29.md`。
+
+## 统一导航与「下一步」（Stage 3a）
+
+- `src/pipeline.ts`：纯函数，从资产 / 导入运行 / 内容流程的真实状态推导五个阶段（导入与粗剪 → 准备 → 生成 → 审查 → 交付）的状态、推荐的「下一步」，以及位置面包屑。单元测试：`node pipeline_test.mjs`。
+- 页头阶段条（`PipelineStepper`）与页内位置条（`ContextBar`：面包屑 + 下一步）共用这份推导；编辑 / 导出 / 设置的二级菜单用同一阶段模型显示状态点。路由与深链不变。
+- 导航冒烟：`PLAYWRIGHT_CORE=<playwright-core/index.mjs> CHROME=<chrome> node navigation_smoke.mjs http://127.0.0.1:8816 [截图目录]`（连 `vite` 开发服务器可同时检查 React 的 DOM 嵌套警告）。

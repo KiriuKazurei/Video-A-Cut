@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined, VideoCameraOutlined, SoundOutlined
+  PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined, SoundOutlined
 } from '@ant-design/icons';
-import { api } from './api';
+import { api, ingestApi } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
 import { useEvents } from './useEvents';
 import { refreshSnapshot } from './queryRefresh';
@@ -13,12 +13,15 @@ import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { MediaBin } from './components/MediaBin';
 import { Inspector } from './components/Inspector';
 import { WorkspacePage } from './components/WorkspacePage';
-import type { RunSelection } from './components/WorkflowPanel';
+import { useWorkflowData, type RunSelection } from './components/WorkflowPanel';
 import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
 import { siderTheme } from './theme';
 import { useResizable } from './hooks/useResizable';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { PipelineStepper } from './components/PipelineStepper';
+import { ContextBar } from './components/ContextBar';
+import { PipelineContext } from './components/PipelineContext';
+import { derivePipeline, type StageTarget } from './pipeline';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
 import { EditingWorkspace } from './workspaces/EditingWorkspace';
@@ -180,6 +183,44 @@ export default function App() {
   }, [runState, assetId]);
   
   const current = WORKSPACES.find((item) => item.id === workspace)!;
+
+  // 统一流程模型：阶段条、位置条的「下一步」、二级菜单的阶段标记都来自同一份推导（pipeline.ts）。
+  // 与页面使用相同的查询键，React Query 自动去重，不产生额外请求。
+  const workflowData = useWorkflowData(assetId, selection);
+  const rawAsset = Boolean(selected && (selected.input_kind === 'raw_recording' || selected.ingest_run_id));
+  const ingestRuns = useQuery({ queryKey: ['ingest', 'runs', assetId], queryFn: () => ingestApi.runs(assetId), enabled: rawAsset });
+  const pipeline = useMemo(() => derivePipeline({
+    asset: selected,
+    assetCount: assets.data?.length ?? 0,
+    route,
+    ingestRuns: rawAsset ? ingestRuns.data : undefined,
+    // 未加载 = undefined；加载成功但没有流程 = null；出错时保守视为未知
+    workflow: !selected ? null : workflowData.runs.isSuccess ? (workflowData.current ?? null) : undefined
+  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.current]);
+
+  // 跳转并把目标分区滚动到视野内、聚焦（保持当前资产不变；路由不变时也会聚焦）
+  const [focusTick, setFocusTick] = useState(0);
+  const pendingAnchor = useRef<string | undefined>(undefined);
+  const goTo = (target: StageTarget) => {
+    pendingAnchor.current = target.anchor;
+    navigate(target.route);
+    setFocusTick((n) => n + 1);
+  };
+  useEffect(() => {
+    const anchor = pendingAnchor.current;
+    if (!anchor) return;
+    pendingAnchor.current = undefined;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    let tries = 0;
+    const attempt = () => {
+      const el = [...document.querySelectorAll<HTMLElement>(`.page:not([hidden]) [data-nav-anchor="${anchor}"]`)].find((node) => node.offsetParent !== null);
+      if (!el) { if (++tries < 12) frame = requestAnimationFrame(attempt); return; }
+      el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+      el.focus({ preventScroll: true });
+    };
+    let frame = requestAnimationFrame(attempt);
+    return () => cancelAnimationFrame(frame);
+  }, [focusTick]);
   
   // 准备页启动流程后：选中新流程并切到编辑/审查
   const onPreparedStarted = (run: WorkflowRun) => {
@@ -208,11 +249,12 @@ export default function App() {
   
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
-      <Inspector asset={selected} patch={patch} onNavigate={(ws) => navigate({ workspace: ws as WorkspaceId })} />
+      <Inspector asset={selected} patch={patch} />
     </ConfigProvider>
   );
 
   return (
+    <PipelineContext.Provider value={{ stages: pipeline.stages, goTo }}>
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
       
@@ -244,13 +286,7 @@ export default function App() {
         </div>
 
         {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
-        {screens.xl && workspace !== 'tts' && (
-          <PipelineStepper 
-            route={route} 
-            navigate={navigate} 
-            asset={selected} 
-          />
-        )}
+        {screens.xl && workspace !== 'tts' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
         
         <div className="app-header-right">
           {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
@@ -273,17 +309,6 @@ export default function App() {
 
               {screens.xl && (
                 <>
-                  <Tooltip title={assetId ? `为资产 ${assetId} 打开运行准备` : '打开运行准备'}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<ThunderboltOutlined />}
-                      onClick={() => navigate({ workspace: 'settings', settingsCategory: 'preparation' })}
-                    >
-                      运行准备
-                    </Button>
-                  </Tooltip>
-
                   <Tooltip title="查看审计与诊断日志">
                     <Button
                       type="text"
@@ -381,26 +406,22 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {/* 折叠按钮：仅在 xl 及以上且非设置页显示 */}
-          {useSidebar && !independentWorkspace && (
-            <div className="sider-toggles">
-              <Button 
-                type="text" 
-                size="small"
-                icon={leftCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setLeftCollapsed(!leftCollapsed)}
-                title={leftCollapsed ? '展开项目面板' : '收起项目面板'}
-              />
-              <Button 
-                type="text" 
-                size="small"
-                icon={rightCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setRightCollapsed(!rightCollapsed)}
-                title={rightCollapsed ? '展开属性面板' : '收起属性面板'}
-              />
-            </div>
-          )}
-          
+          <ContextBar
+            route={route}
+            assetId={workspace === 'tts' ? undefined : selected?.asset_id}
+            next={pipeline.next}
+            onGo={goTo}
+            onNavigate={navigate}
+            extra={useSidebar && !independentWorkspace ? (
+              <div className="sider-toggles">
+                <Button type="text" size="small" icon={leftCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  onClick={() => setLeftCollapsed(!leftCollapsed)} title={leftCollapsed ? '展开项目面板' : '收起项目面板'} aria-label={leftCollapsed ? '展开项目面板' : '收起项目面板'} />
+                <Button type="text" size="small" icon={rightCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  onClick={() => setRightCollapsed(!rightCollapsed)} title={rightCollapsed ? '展开属性面板' : '收起属性面板'} aria-label={rightCollapsed ? '展开属性面板' : '收起属性面板'} />
+              </div>
+            ) : undefined}
+          />
+
           <WorkspacePage pageId="tts" active={workspace === 'tts'}>
             <TtsWorkspace active={workspace === 'tts'} />
           </WorkspacePage>
@@ -514,5 +535,6 @@ export default function App() {
         onClose={() => setIsShortcutsHelpOpen(false)}
       />
     </Layout>
+    </PipelineContext.Provider>
   );
 }

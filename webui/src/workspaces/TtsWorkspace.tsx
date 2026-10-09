@@ -90,8 +90,6 @@ export function TtsWorkspace({ active }: { active: boolean }) {
   const saveSnapshot = (copy: boolean) => save.mutate({ copy, source: loaded, name, text, settings: { ...settings } });
 
   return <div className="page-body tts-workspace">
-    <div className="page-header"><Typography.Title level={4} style={{ margin: 0 }}><SoundOutlined /> TTS 调控台</Typography.Title>
-      <Typography.Text type="secondary">试听、调音与声音模板</Typography.Text></div>
     <div className="tts-console-grid">
       <Card title="声音模板" size="small" className="tts-template-library">
         <Space direction="vertical" style={{ width: '100%' }}>

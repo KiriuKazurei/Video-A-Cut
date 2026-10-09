@@ -4,6 +4,8 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
 import { SETTINGS_CATEGORIES } from '../navigation';
+import { SECTION_STAGE } from '../pipeline';
+import { StageDot } from '../components/PipelineContext';
 import { PreparationPanel } from '../components/PreparationPanel';
 import AuditLogViewer from '../components/AuditLogViewer';
 import { ConnectionStatusBar } from '../components/ConnectionStatusBar';
@@ -40,12 +42,6 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
 
   return (
     <div className="page-body settings-workspace">
-      <div className="page-header">
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          设置 <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>Settings</Typography.Text>
-        </Typography.Title>
-      </div>
-
       {/* 移动端/窄屏下的顶部分类切换 */}
       {isMobile && (
         <Segmented
@@ -54,7 +50,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
           onChange={(key) => navigate({ settingsCategory: key as typeof settingsCategory })}
           options={SETTINGS_CATEGORIES.map((cat) => ({
             value: cat.id,
-            label: cat.label
+            label: <span className="section-tab-label">{cat.label}<StageDot stage={cat.id === 'preparation' ? SECTION_STAGE.settings.preparation : undefined} /></span>
           }))}
           style={{ marginBottom: 16 }}
         />
@@ -76,7 +72,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
               onClick={({ key }) => navigate({ settingsCategory: key as typeof settingsCategory })}
               items={SETTINGS_CATEGORIES.map((cat) => ({
                 key: cat.id,
-                label: cat.label,
+                label: <span className="section-tab-label">{cat.label}<StageDot stage={cat.id === 'preparation' ? SECTION_STAGE.settings.preparation : undefined} /></span>,
                 title: cat.description
               }))}
               style={{ background: 'transparent', border: 'none' }}
