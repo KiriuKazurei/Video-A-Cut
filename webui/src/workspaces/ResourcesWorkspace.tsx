@@ -65,7 +65,7 @@ export function ResourcesWorkspace({ asset, onSelect }: ResourcesWorkspaceProps)
         </Col>
 
         <Col span={24}>
-          <AssetManager onSelect={onSelect} />
+          <AssetManager onSelect={onSelect} activeId={asset?.asset_id} />
         </Col>
       </Row>
     </div>

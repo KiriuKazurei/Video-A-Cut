@@ -185,7 +185,7 @@ export function PreviewPanel({
     <Card
       size="small"
       loading={query.isLoading}
-      className="preview-panel glass glass-window"
+      className="preview-panel"
       aria-labelledby="preview-panel-title"
       title={
         <Flex gap={8} align="center" wrap style={{ minWidth: 0 }}>

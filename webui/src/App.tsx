@@ -193,6 +193,7 @@ export default function App() {
             onClick={({ key }) => navigate({ workspace: key as WorkspaceId })}
             items={WORKSPACES.filter(w => w.id !== 'settings').map((item) => ({
               key: item.id, 
+              className: item.id === 'resources' ? 'nav-capsule' : undefined,
               icon: WORKSPACE_ICONS[item.id], 
               title: item.description,
               label: <span data-workspace={item.id} aria-current={workspace === item.id ? 'page' : undefined}>{item.label}</span>
@@ -213,7 +214,8 @@ export default function App() {
           {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
           {screens.md && workspace !== 'tts' && (
             <div className="app-quick-actions">
-              <Select
+              {/* 资产只有一个选择入口：侧栏可见时用项目面板，侧栏不可见（窄屏/设置页）时才在页头提供下拉。 */}
+              {!showLeftSider && <Select
                 size="small"
                 placeholder="选择资产"
                 value={assetId || undefined}
@@ -225,7 +227,7 @@ export default function App() {
                 style={{ width: screens.sm ? 120 : 90 }}
                 aria-label="快速切换资产"
                 popupMatchSelectWidth={false}
-              />
+              />}
 
               {screens.xl && (
                 <>
@@ -320,7 +322,7 @@ export default function App() {
             collapsed={leftCollapsed}
             collapsible
             trigger={null}
-            className="dock dock-left dock-resizable" 
+            className={`dock dock-left dock-resizable${isLeftDragging ? " is-dragging-resize" : ""}`} 
             aria-label="项目面板" 
             style={{ borderInlineEnd: siderBorder }}
           >
@@ -411,7 +413,7 @@ export default function App() {
             collapsed={rightCollapsed}
             collapsible
             trigger={null}
-            className="dock dock-right dock-resizable" 
+            className={`dock dock-right dock-resizable${isRightDragging ? " is-dragging-resize" : ""}`} 
             aria-label="属性面板" 
             style={{ borderInlineStart: siderBorder }}
           >

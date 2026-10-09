@@ -8,7 +8,7 @@
  *  - 只用于：顶部页签（玻璃胶囊 + 玻璃高亮、「…」折叠弹层）与监视器/预览窗口外框；
  *  - 左右侧栏是 antd Layout.Sider 标准外观：纯色底（colorBgContainer）、直角、antd 分隔线；
  *    侧栏内组件用独立 ConfigProvider（theme.ts 的 siderTheme），本文件不对侧栏内部写任何外观覆写；
- *  - 不设全页环境光层；唯一的光晕在页头中央（玻璃页签背后），限定在页头内、离两侧侧栏有距离；
+ *  - 不设任何环境光/光晕；
  *  - prefers-reduced-transparency 或不支持 backdrop-filter 时退化为不透明面板。
  */
 
@@ -46,7 +46,7 @@ body { background: var(--vac-bg); }
 .skip-link:focus { top: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.app-header { display: flex; background: radial-gradient(240px 48px at 50% 0, rgba(22, 119, 255, 0.2), transparent) var(--vac-bg); align-items: center; gap: 12px; height: auto; min-height: 48px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
+.app-header { display: flex; background: var(--vac-bg); align-items: center; gap: 12px; height: auto; min-height: 48px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
 .app-nav-wrap { flex: 0 1 372px; min-width: 280px; display: flex; justify-content: center; }
@@ -127,6 +127,8 @@ body { background: var(--vac-bg); }
 .app-nav.glass-nav > .ant-menu-submenu:focus-visible,
 .app-nav.glass-nav .ant-menu-submenu-title:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
 .app-nav.glass-nav:focus-visible { outline: 2px solid #69b1ff; outline-offset: 3px; }
+/* 「资源管理」页签保持胶囊形（和零指定）；其余页签仍是小圆角 */
+.app-nav.glass-nav > .ant-menu-item.nav-capsule { border-radius: 999px; padding-inline: 16px; margin-inline-end: 3px; }
 /* 「…」折叠弹层 */
 .app-nav-popup > .ant-menu {
   border: 1px solid var(--vac-glass-edge);
@@ -143,7 +145,6 @@ body { background: var(--vac-bg); }
   .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .app-header { background: var(--vac-bg); }
   .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .app-nav.glass-nav > .ant-menu-item-selected, .app-nav-popup .ant-menu-item-selected { background: #1668dc !important; }
 }
@@ -462,6 +463,74 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 @media (max-width: 1199px) { .tts-console-grid { grid-template-columns: 180px minmax(0,1fr); } .tts-controls { grid-column: 1 / -1; } }
 @media (max-width: 767px) { .tts-console-grid { grid-template-columns: minmax(0,1fr); } .tts-controls { grid-column: 1; } }
 
+
+/* ---------- 资源缩略图视图 ---------- */
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; }
+.asset-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; animation: vac-item-in var(--vac-dur) var(--vac-ease-out) backwards; }
+.asset-card-thumb {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--vac-radius); background: #121316;
+  transition: border-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease);
+}
+.asset-card-thumb:hover { border-color: rgba(255, 255, 255, 0.36); }
+.asset-card-thumb:active { transform: scale(0.985); }
+.asset-card-thumb:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
+.asset-card.is-selected .asset-card-thumb { border-color: #1677ff; box-shadow: 0 0 0 1px #1677ff; }
+.asset-card.is-draft .asset-card-thumb { border-style: dashed; opacity: 0.72; }
+.asset-card-placeholder { position: absolute; inset: 0; margin: auto; font-size: 36px; color: rgba(255, 255, 255, 0.16); transition: color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-slow) var(--vac-ease-out); }
+.asset-card-thumb:hover .asset-card-placeholder { color: rgba(255, 255, 255, 0.28); transform: scale(1.06); }
+.asset-card-badges { position: absolute; inset: auto 6px 6px 6px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.asset-card-badges > * { pointer-events: auto; }
+.asset-badge-slot { display: inline-flex; }
+.asset-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: var(--vac-radius); background: rgba(0, 0, 0, 0.62); font-size: 14px; color: rgba(255, 255, 255, 0.45); transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease); }
+.asset-badge.ant-btn:not(:disabled):hover { background: rgba(0, 0, 0, 0.82); color: #fff; }
+.asset-badge-eye.is-on { color: #69b1ff; }
+.asset-badge-check.is-on { color: #52c41a; }
+.asset-badge.ant-btn:disabled { color: rgba(255, 255, 255, 0.3); background: rgba(0, 0, 0, 0.5); }
+.asset-card-lock { position: absolute; top: 6px; right: 6px; font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+.asset-card-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* 侧栏折叠：宽度/外边过渡（antd Sider 自带 all 过渡，这里统一时长与曲线） */
+.dock { transition: width var(--vac-dur-slow) var(--vac-ease), flex-basis var(--vac-dur-slow) var(--vac-ease), max-width var(--vac-dur-slow) var(--vac-ease), min-width var(--vac-dur-slow) var(--vac-ease) !important; }
+.dock-resizable.is-dragging-resize { transition: none !important; }
+
+/* ---------- TTS 推子：antd Slider 外观改为矩形推子帽 + 凹槽轨道 ---------- */
+.tts-fader .ant-slider { --fader-cap-w: 32px; --fader-cap-h: 18px; }
+.tts-fader .ant-slider-vertical { margin-inline: auto; }
+.tts-fader .ant-slider .ant-slider-rail { background: #0d0e11 !important; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.08); border-radius: 2px; }
+.tts-fader .ant-slider-vertical .ant-slider-rail, .tts-fader .ant-slider-vertical .ant-slider-track { width: 6px; }
+.tts-fader .ant-slider:not(.ant-slider-vertical) .ant-slider-rail, .tts-fader .ant-slider:not(.ant-slider-vertical) .ant-slider-track { height: 6px; }
+.tts-fader .ant-slider .ant-slider-track { background: #1677ff !important; border-radius: 2px; transition: background-color var(--vac-dur) var(--vac-ease); }
+.tts-fader .ant-slider:hover .ant-slider-track { background: #4096ff !important; }
+.tts-fader .ant-slider-disabled .ant-slider-track { background: #3a3d46 !important; }
+.tts-fader .ant-slider .ant-slider-handle { width: 0; height: 0; }
+.tts-fader .ant-slider .ant-slider-handle::before { inset: -14px -18px !important; }
+.tts-fader .ant-slider .ant-slider-handle::after {
+  content: ''; position: absolute; inset: 50% auto auto 50% !important; margin: 0 !important;
+  width: var(--fader-cap-w) !important; height: var(--fader-cap-h) !important; transform: translate(-50%, -50%);
+  border-radius: 3px !important; border: 1px solid #0b0c0e;
+  background:
+    linear-gradient(#f0f0f0, #f0f0f0) center / 100% 2px no-repeat,
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.38) 0 1px, rgba(255, 255, 255, 0.08) 1px 2px, transparent 2px 4px),
+    linear-gradient(180deg, #6a6e7a 0%, #484b55 45%, #34363e 55%, #2a2c33 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -1px 0 rgba(0, 0, 0, 0.55), 0 2px 5px rgba(0, 0, 0, 0.65) !important;
+  transition: background-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease), filter var(--vac-dur) var(--vac-ease) !important;
+}
+.tts-fader .ant-slider:not(.ant-slider-vertical) .ant-slider-handle::after {
+  width: var(--fader-cap-h) !important; height: var(--fader-cap-w) !important;
+  background:
+    linear-gradient(#f0f0f0, #f0f0f0) center / 2px 100% no-repeat,
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.38) 0 1px, rgba(255, 255, 255, 0.08) 1px 2px, transparent 2px 4px),
+    linear-gradient(90deg, #6a6e7a 0%, #484b55 45%, #34363e 55%, #2a2c33 100%) !important;
+}
+.tts-fader .ant-slider:not(.ant-slider-disabled) .ant-slider-handle:hover::after { filter: brightness(1.18); }
+.tts-fader .ant-slider .ant-slider-handle:focus-visible::after { outline: 2px solid #69b1ff; outline-offset: 2px; }
+.tts-fader .ant-slider .ant-slider-handle-dragging::after, .tts-fader .ant-slider .ant-slider-handle:active::after {
+  filter: brightness(0.9); transform: translate(-50%, -50%) scale(0.97);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+}
+.tts-fader .ant-slider-disabled .ant-slider-handle::after { filter: grayscale(1) brightness(0.7); opacity: 0.6; }
+.tts-fader-track.vertical { height: 160px; }
 
 /* 进度条：方头小圆角，不用胶囊 */
 .ant-progress-line .ant-progress-bg, .ant-progress-line .ant-progress-inner, .ant-progress-line .ant-progress-success-bg { border-radius: 2px !important; }

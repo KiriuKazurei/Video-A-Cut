@@ -46,7 +46,7 @@ export function Inspector({ asset, patch, onNavigate }: { asset?: Asset; patch: 
         {patch.isError && <Alert type="error" showIcon message={`更新失败：${errorText(patch.error)}`} />}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>只发送修改的治理字段；人工批准资产不等于批准某句解说。修改权限可能影响活动任务。</Typography.Text>
         {next && <Alert type="info" message="建议下一步" description={next.text}
-          action={<Button size="small" type="link" icon={<RightOutlined />} iconPosition="end" onClick={() => onNavigate(next.page)}>前往</Button>} />}
+          action={<Button size="small" type="primary" icon={<RightOutlined />} iconPosition="end" onClick={() => onNavigate(next.page)}>前往</Button>} />}
       </Flex>}
     </Card>
   );

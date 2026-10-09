@@ -32,8 +32,14 @@ import {
   type AuditActionCount,
   type DraftInput
 } from './governanceModel';
-import { Alert, Button, Card, Checkbox, Col, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Progress, Row, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Progress, Row, Segmented, Space, Table, Tag, Typography } from 'antd';
 import { ValueSelect } from './ui';
+import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { AssetThumbGrid } from './AssetThumbGrid';
+
+const VIEW_KEY = 'vac_asset_view';
+type AssetView = 'list' | 'grid';
+const loadView = (): AssetView => { try { return localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list'; } catch { return 'list'; } };
 
 /* ------------------------------------------------------------------ *
  * 资产治理面板
@@ -71,13 +77,17 @@ interface AssetRow {
 export interface AssetManagerProps {
   /** 外部选中变化回调（例如与 App 的跟踪任务联动）。 */
   onSelect?: (assetId: string) => void;
+  /** 全局当前资产（左侧项目面板的选择）；给定时本面板的选中态以它为准，保证只有一个选择入口。 */
+  activeId?: string;
 }
 
-export default function AssetManager({ onSelect }: AssetManagerProps) {
+export default function AssetManager({ onSelect, activeId }: AssetManagerProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
+  const [view, setViewState] = useState<AssetView>(loadView);
+  const setView = (next: AssetView) => { setViewState(next); try { localStorage.setItem(VIEW_KEY, next); } catch { /* 无存储时仅本次有效 */ } };
   const [drafts, setDrafts] = useState<AssetDraft[]>(() => loadDrafts());
   const [draftInput, setDraftInput] = useState<DraftInput>(EMPTY_DRAFT_INPUT);
   const [draftErrors, setDraftErrors] = useState<string[]>([]);
@@ -168,7 +178,9 @@ export default function AssetManager({ onSelect }: AssetManagerProps) {
     });
   }, [rows, search, categoryFilter]);
 
-  const selected = visibleRows.find((row) => row.asset.asset_id === selectedId) ?? visibleRows[0] ?? null;
+  const wantedId = activeId && visibleRows.some((row) => row.asset.asset_id === activeId) ? activeId : selectedId;
+  const selected = visibleRows.find((row) => row.asset.asset_id === wantedId) ?? visibleRows[0] ?? null;
+  const setSelectedId = (id: string) => { setSelectedIdRaw(id); onSelect?.(id); };
 
   // onSelect 只用来告知外部「选中项变了」，用 ref 持有最新的回调，
   // 这样调用方每次渲染传新闭包也不会让这里反复触发。
@@ -214,7 +226,11 @@ export default function AssetManager({ onSelect }: AssetManagerProps) {
   const { Text } = Typography;
   return (
     <Card size="small" className="asset-manager" aria-labelledby="asset-manager-title" title={<span id="asset-manager-title">资产治理面板</span>}
-      extra={<Tag>{assetsQuery.isPending ? '读取中' : `${rows.length} 项`}</Tag>}>
+      extra={<Space size={8}>
+        <Segmented size="small" aria-label="资源视图" value={view} onChange={(value) => setView(value as AssetView)}
+          options={[{ value: 'list', icon: <UnorderedListOutlined />, label: '详细列表' }, { value: 'grid', icon: <AppstoreOutlined />, label: '缩略图' }]} />
+        <Tag>{assetsQuery.isPending ? '读取中' : `${rows.length} 项`}</Tag>
+      </Space>}>
       <Flex vertical gap={12}>
         <Row gutter={12} className="asset-toolbar">
           <Col xs={24} md={14}><Form.Item label="按资产 ID 筛选" htmlFor="asset-search" layout="vertical" style={{ marginBottom: 0 }}>
@@ -233,7 +249,10 @@ export default function AssetManager({ onSelect }: AssetManagerProps) {
         {assetsQuery.isSuccess && rows.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无资产。素材入库后会出现在这里。" />}
         {assetsQuery.isSuccess && rows.length > 0 && visibleRows.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的素材。可清空搜索词或把类型改回「全部类型」。" />}
 
-        {visibleRows.length > 0 && <Table<AssetRow> size="small" className="asset-manager-list" rowKey={(row) => row.asset.asset_id} dataSource={visibleRows}
+        {visibleRows.length > 0 && view === 'grid' && <AssetThumbGrid rows={visibleRows} selectedId={selected?.asset.asset_id} pendingId={patch.isPending ? patch.variables?.id : undefined}
+          onSelect={setSelectedId} onToggleVisible={(row) => runPatch(row.asset, { agent_visible: !row.asset.agent_visible })} />}
+
+        {visibleRows.length > 0 && view === 'list' && <Table<AssetRow> size="small" className="asset-manager-list" rowKey={(row) => row.asset.asset_id} dataSource={visibleRows}
           pagination={{ pageSize: 8, hideOnSinglePage: true, showSizeChanger: false }}
           rowClassName={(row) => selected?.asset.asset_id === row.asset.asset_id ? 'ant-table-row-selected' : ''}
           onRow={(row) => ({ onClick: () => setSelectedId(row.asset.asset_id), style: { cursor: 'pointer' } })}
