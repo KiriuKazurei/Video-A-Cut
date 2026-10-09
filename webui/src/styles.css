@@ -134,6 +134,11 @@ body { background: var(--vac-bg); }
 .app-nav.glass-nav .ant-menu-submenu-title:focus-visible { outline: 2px solid #69b1ff; outline-offset: 1px; }
 .app-nav.glass-nav:focus-visible { outline: 2px solid #69b1ff; outline-offset: 3px; }
 
+/* 文字/图标光学居中：CJK 与 Latin 字体的字形整体偏上约 1.5px，向下补偿（实测，见提交说明） */
+.app-nav.glass-nav > .ant-menu-item > .ant-menu-title-content,
+.app-nav.glass-nav > .ant-menu-submenu > .ant-menu-submenu-title > * { position: relative; top: 1.5px; }
+.app-nav.glass-nav > .ant-menu-item > .anticon { transform: translateY(1.75px); }
+
 /* 液态玻璃滑块：半透明蓝色玻璃 + 背景模糊/饱和 + 顶缘高光 + 底部内阴影 + 镜面高光斜层 + 细亮边 */
 .app-nav.glass-nav::before {
   content: ''; position: absolute; z-index: 0; display: block; pointer-events: none;
@@ -558,6 +563,13 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .tts-fader .ant-slider:hover .ant-slider-track { background: #4096ff !important; }
 .tts-fader .ant-slider-disabled .ant-slider-track { background: #3a3d46 !important; }
 .tts-fader .ant-slider .ant-slider-handle { width: 0; height: 0; }
+/* 居中：antd 轨道在 12px 高的滑块里偏在 4px、手柄点在 1.75px，改成都落在中线（6px）上 */
+.tts-fader .ant-slider:not(.ant-slider-vertical) .ant-slider-rail,
+.tts-fader .ant-slider:not(.ant-slider-vertical) .ant-slider-track { inset-block-start: 3px !important; }
+.tts-fader .ant-slider:not(.ant-slider-vertical) .ant-slider-handle { inset-block-start: 6px !important; }
+.tts-fader .ant-slider-vertical .ant-slider-rail,
+.tts-fader .ant-slider-vertical .ant-slider-track { inset-inline-start: 3px !important; }
+.tts-fader .ant-slider-vertical .ant-slider-handle { inset-inline-start: 6px !important; }
 .tts-fader .ant-slider .ant-slider-handle::before { inset: -14px -18px !important; }
 .tts-fader .ant-slider .ant-slider-handle::after {
   content: ''; position: absolute; inset: 50% auto auto 50% !important; margin: 0 !important;
