@@ -49,7 +49,7 @@ body { background: var(--vac-bg); }
 .app-header { display: flex; background: var(--vac-bg); align-items: center; gap: 12px; height: auto; min-height: 48px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.app-nav-wrap { flex: 0 1 378px; min-width: 280px; display: flex; justify-content: center; }
+.app-nav-wrap { flex: 0 1 426px; min-width: 280px; display: flex; justify-content: center; }
 /* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳四个工作区页签 */
 .app-nav { flex: 1 1 auto; width: 100%; min-width: 260px; justify-content: center; border-bottom: 0 !important; }
 .app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
@@ -109,12 +109,14 @@ body { background: var(--vac-bg); }
   -webkit-backdrop-filter: var(--vac-glass-blur);
   backdrop-filter: var(--vac-glass-blur);
   box-shadow: inset 0 1px 0 var(--vac-glass-highlight), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 6px 24px rgba(0, 0, 0, 0.32);
-  line-height: 28px;
+  line-height: 32px;
   gap: 0; justify-content: flex-start;
 }
 /* 四个页签等宽（与字体无关）：外框内边距因此在首/尾项上与上下完全一致；「…」按内容宽度 */
-.app-nav.glass-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) { width: 92px; padding-inline: 0; text-align: center; }
-.app-nav.glass-nav > .ant-menu-overflow-item-rest { min-width: 44px; text-align: center; padding-inline: 12px; }
+.app-nav.glass-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) { width: 104px; padding-inline: 0; text-align: center; }
+.app-nav.glass-nav > .ant-menu-item > .anticon + .ant-menu-title-content { margin-inline-start: 7px; }  /* 图标与文字间距（antd 默认 10px） */
+.app-nav.glass-nav > .ant-menu-item, .app-nav.glass-nav > .ant-menu-submenu, .app-nav.glass-nav > .ant-menu-submenu > .ant-menu-submenu-title { height: 32px; line-height: 32px; }
+.app-nav.glass-nav > .ant-menu-overflow-item-rest { min-width: 52px; text-align: center; padding-inline: 12px; }
 .app-nav.glass-nav > .ant-menu-item,
 .app-nav.glass-nav > .ant-menu-submenu { position: relative; z-index: 1; top: 0; margin: 0; padding-inline: 14px; border-radius: 999px; transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease); }
 .app-nav.glass-nav > .ant-menu-item:active { transform: scale(0.97); }
