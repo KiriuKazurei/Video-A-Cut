@@ -231,6 +231,7 @@ export default function App() {
                 <>
                   <Tooltip title={assetId ? `为资产 ${assetId} 打开运行准备` : '打开运行准备'}>
                     <Button
+                      type="text"
                       size="small"
                       icon={<ThunderboltOutlined />}
                       onClick={() => navigate({ workspace: 'settings', settingsCategory: 'preparation' })}
@@ -241,6 +242,7 @@ export default function App() {
 
                   <Tooltip title="查看审计与诊断日志">
                     <Button
+                      type="text"
                       size="small"
                       icon={<FileSearchOutlined />}
                       onClick={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })}
@@ -298,6 +300,7 @@ export default function App() {
           </Tooltip>
 
           <Button
+            size="small"
             type={workspace === 'settings' ? 'primary' : 'default'}
             icon={<SettingOutlined />}
             onClick={() => navigate({ workspace: 'settings' })}

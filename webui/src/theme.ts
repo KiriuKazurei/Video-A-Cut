@@ -13,7 +13,20 @@ const BASE_TOKEN: ThemeConfig['token'] = {
   colorBgContainer: UNIFIED_BG,
   colorTextSecondary: 'rgba(255, 255, 255, 0.68)',
   colorTextTertiary: 'rgba(255, 255, 255, 0.52)',
-  colorTextDescription: 'rgba(255, 255, 255, 0.6)'
+  colorTextDescription: 'rgba(255, 255, 255, 0.6)',
+  // 专业剪辑工具：小圆角（2–4px）、更紧凑的控件与字号；不再使用大圆角/胶囊。
+  borderRadius: 3,
+  borderRadiusLG: 4,
+  borderRadiusSM: 2,
+  borderRadiusXS: 2,
+  fontSize: 13,
+  controlHeight: 28,
+  controlHeightSM: 24,
+  controlHeightLG: 34,
+  // 动效：antd 缓动曲线 + 150–250ms 时长（与 styles.css 的 --vac-* 变量一致）
+  motionDurationFast: '0.15s',
+  motionDurationMid: '0.2s',
+  motionDurationSlow: '0.25s'
 };
 
 /**
@@ -24,11 +37,11 @@ export const appTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: BASE_TOKEN,
   components: {
-    Layout: { headerBg: UNIFIED_BG, bodyBg: UNIFIED_BG, footerBg: UNIFIED_BG, siderBg: UNIFIED_BG, lightSiderBg: UNIFIED_BG, headerHeight: 56, headerPadding: '0 16px', footerPadding: '6px 16px' },
-    // 页签胶囊：当前页白字落在蓝色玻璃高亮上（对比度 > 7:1）；去掉水平菜单的下划线指示。
-    Menu: { itemBg: 'transparent', horizontalLineHeight: '34px', horizontalItemSelectedColor: '#ffffff', horizontalItemHoverColor: '#ffffff', itemHoverColor: '#ffffff', activeBarHeight: 0, horizontalItemBorderRadius: 999, itemPaddingInline: 14 },
+    Layout: { headerBg: UNIFIED_BG, bodyBg: UNIFIED_BG, footerBg: UNIFIED_BG, siderBg: UNIFIED_BG, lightSiderBg: UNIFIED_BG, headerHeight: 48, headerPadding: '0 12px', footerPadding: '4px 12px' },
+    // 页签（小圆角矩形）：当前页白字落在蓝色玻璃高亮上（对比度 > 7:1）；去掉水平菜单的下划线指示。
+    Menu: { itemBg: 'transparent', horizontalLineHeight: '28px', horizontalItemSelectedColor: '#ffffff', horizontalItemHoverColor: '#ffffff', itemHoverColor: '#ffffff', activeBarHeight: 0, horizontalItemBorderRadius: 3, itemBorderRadius: 3, itemPaddingInline: 12 },
     // 以下组件级覆写只用于中间工作区（卡片/表格融入统一底色）；侧栏用 siderTheme，不继承这些覆写。
-    Card: { colorBgContainer: 'transparent', headerBg: 'transparent' },
+    Card: { colorBgContainer: 'transparent', headerBg: 'transparent', headerHeight: 38, headerFontSize: 14 },
     Table: { colorBgContainer: 'transparent', headerBg: 'rgba(255, 255, 255, 0.04)', rowHoverBg: 'rgba(255, 255, 255, 0.05)' },
     Descriptions: { labelBg: 'rgba(255, 255, 255, 0.04)' },
     Collapse: { headerBg: 'rgba(255, 255, 255, 0.03)', contentBg: 'transparent' },
