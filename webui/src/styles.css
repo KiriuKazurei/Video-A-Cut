@@ -49,7 +49,7 @@ body { background: var(--vac-bg); }
 .app-header { display: flex; background: var(--vac-bg); align-items: center; gap: 12px; height: auto; min-height: 48px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); }
 .app-brand { display: flex; align-items: center; gap: 10px; flex: none; }
 .app-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
-.app-nav-wrap { flex: 0 1 372px; min-width: 280px; display: flex; justify-content: center; }
+.app-nav-wrap { flex: 0 1 378px; min-width: 280px; display: flex; justify-content: center; }
 /* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳四个工作区页签 */
 .app-nav { flex: 1 1 auto; width: 100%; min-width: 260px; justify-content: center; border-bottom: 0 !important; }
 .app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
@@ -96,57 +96,111 @@ body { background: var(--vac-bg); }
 .glass-window { border-radius: var(--vac-radius-window) !important; overflow: hidden; }
 .glass-window > .ant-card-head { border-bottom-color: rgba(255, 255, 255, 0.08) !important; }
 
-/* 顶部页签：玻璃胶囊容器 */
+/* 顶部页签：整组是玻璃胶囊（外框全圆角，四周等距 4px 内边距），当前页是会滑动的液态玻璃滑块。
+   滑块位置由 App.tsx 量出选中项的 left/width 后写入 --nav-thumb-x / --nav-thumb-w；
+   滑块上下各留 4px（= 外框内边距），所以第一个、最后一个页签时也与外框等距。 */
 .app-nav.glass-nav {
-  padding: 2px;
+  --nav-pad: 4px;
+  position: relative; isolation: isolate;
+  padding: var(--nav-pad);
   border: 1px solid var(--vac-glass-edge);
-  border-radius: var(--vac-radius-window);
+  border-radius: 999px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04));
   -webkit-backdrop-filter: var(--vac-glass-blur);
   backdrop-filter: var(--vac-glass-blur);
-  box-shadow: inset 0 1px 0 var(--vac-glass-highlight), 0 6px 24px rgba(0, 0, 0, 0.32);
+  box-shadow: inset 0 1px 0 var(--vac-glass-highlight), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 6px 24px rgba(0, 0, 0, 0.32);
   line-height: 28px;
+  gap: 0; justify-content: flex-start;
 }
+/* 四个页签等宽（与字体无关）：外框内边距因此在首/尾项上与上下完全一致；「…」按内容宽度 */
+.app-nav.glass-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) { width: 92px; padding-inline: 0; text-align: center; }
+.app-nav.glass-nav > .ant-menu-overflow-item-rest { min-width: 44px; text-align: center; padding-inline: 12px; }
 .app-nav.glass-nav > .ant-menu-item,
-.app-nav.glass-nav > .ant-menu-submenu { top: 0; margin: 0 1px; border-radius: var(--vac-radius); transition: background-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease), color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease); }
+.app-nav.glass-nav > .ant-menu-submenu { position: relative; z-index: 1; top: 0; margin: 0; padding-inline: 14px; border-radius: 999px; transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease); }
 .app-nav.glass-nav > .ant-menu-item:active { transform: scale(0.97); }
 .app-nav.glass-nav > .ant-menu-item::after,
 .app-nav.glass-nav > .ant-menu-submenu::after { display: none; }
 .app-nav.glass-nav > .ant-menu-item:hover,
 .app-nav.glass-nav > .ant-menu-submenu:hover { background: rgba(255, 255, 255, 0.08); }
-/* 当前页：玻璃高亮（蓝色调半透明 + 内侧高光 + 轻微浮起） */
+/* 选中项本身不再画底色：由滑块承担（滑块在选中项之下、文字之上不遮挡） */
 .app-nav.glass-nav > .ant-menu-item-selected,
-.app-nav.glass-nav > .ant-menu-submenu-selected {
-  background: linear-gradient(180deg, rgba(64, 150, 255, 0.55), rgba(22, 119, 255, 0.38)) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 2px 10px rgba(22, 119, 255, 0.35);
-  color: #fff !important;
-}
+.app-nav.glass-nav > .ant-menu-submenu-selected,
+.app-nav.glass-nav > .ant-menu-item-selected:hover,
+.app-nav.glass-nav > .ant-menu-submenu-selected:hover { background: transparent !important; color: #fff !important; }
 .app-nav.glass-nav > .ant-menu-item-selected .anticon,
 .app-nav.glass-nav > .ant-menu-submenu-selected .anticon { color: #fff; }
 .app-nav.glass-nav > .ant-menu-item:focus-visible,
 .app-nav.glass-nav > .ant-menu-submenu:focus-visible,
-.app-nav.glass-nav .ant-menu-submenu-title:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
+.app-nav.glass-nav .ant-menu-submenu-title:focus-visible { outline: 2px solid #69b1ff; outline-offset: 1px; }
 .app-nav.glass-nav:focus-visible { outline: 2px solid #69b1ff; outline-offset: 3px; }
-/* 「资源管理」页签保持胶囊形（和零指定）；其余页签仍是小圆角 */
-.app-nav.glass-nav > .ant-menu-item.nav-capsule { border-radius: 999px; padding-inline: 16px; margin-inline-end: 3px; }
-/* 「…」折叠弹层 */
-.app-nav-popup > .ant-menu {
+
+/* 液态玻璃滑块：半透明蓝色玻璃 + 背景模糊/饱和 + 顶缘高光 + 底部内阴影 + 镜面高光斜层 + 细亮边 */
+.app-nav.glass-nav::before {
+  content: ''; position: absolute; z-index: 0; display: block; pointer-events: none;
+  top: var(--nav-pad); bottom: var(--nav-pad); left: 0; width: var(--nav-thumb-w, 0px);
+  transform: translateX(var(--nav-thumb-x, 0px)) scaleY(1);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background:
+    radial-gradient(120% 140% at 18% -20%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.10) 38%, transparent 60%),
+    linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.16) 46%, transparent 54%),
+    linear-gradient(180deg, rgba(86, 160, 255, 0.60) 0%, rgba(22, 104, 220, 0.72) 100%);
+  -webkit-backdrop-filter: blur(12px) saturate(200%) brightness(1.12);
+  backdrop-filter: blur(12px) saturate(200%) brightness(1.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -7px 12px rgba(10, 60, 160, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 3px 10px rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(22, 119, 255, 0.28);
+  opacity: 0;
+}
+.app-nav.glass-nav[data-thumb='on']::before { opacity: 1; }
+/* 弹簧式滑动（过冲曲线）；宽度略慢于位移，移动途中自然产生拉伸，并在移动中轻微压扁 */
+.app-nav.glass-nav[data-thumb='on'][data-thumb-anim='1']::before {
+  transition:
+    transform 260ms cubic-bezier(0.34, 1.45, 0.5, 1),
+    width 320ms cubic-bezier(0.34, 1.2, 0.5, 1),
+    opacity var(--vac-dur) var(--vac-ease);
+}
+.app-nav.glass-nav[data-thumb-moving='1']::before { animation: vac-thumb-squash 260ms cubic-bezier(0.4, 0, 0.2, 1); }
+@keyframes vac-thumb-squash {
+  0% { transform: translateX(var(--nav-thumb-x, 0px)) scaleY(1); }
+  35% { transform: translateX(var(--nav-thumb-x, 0px)) scaleY(0.9); }
+  100% { transform: translateX(var(--nav-thumb-x, 0px)) scaleY(1); }
+}
+
+/* 「…」折叠弹层：同样的胶囊玻璃外观 */
+.app-nav-popup .ant-menu-sub.ant-menu-vertical {
+  padding: 4px !important;
   border: 1px solid var(--vac-glass-edge);
-  border-radius: var(--vac-radius-window) !important;
+  border-radius: 22px !important;
   background: rgba(36, 38, 46, 0.62) !important;
   -webkit-backdrop-filter: var(--vac-glass-blur);
   backdrop-filter: var(--vac-glass-blur);
   box-shadow: inset 0 1px 0 var(--vac-glass-highlight), var(--vac-glass-shadow) !important;
 }
-.app-nav-popup .ant-menu-item { border-radius: var(--vac-radius); }
-.app-nav-popup .ant-menu-item-selected { background: linear-gradient(180deg, rgba(64, 150, 255, 0.55), rgba(22, 119, 255, 0.38)) !important; color: #fff !important; }
+.app-nav-popup .ant-menu-item { border-radius: 999px !important; margin: 0 !important; width: 100% !important; padding-inline: 16px !important; }
+.app-nav-popup .ant-menu-item + .ant-menu-item { margin-top: 2px !important; }
+.app-nav-popup .ant-menu-item-selected {
+  background:
+    radial-gradient(120% 140% at 18% -20%, rgba(255, 255, 255, 0.5) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(86, 160, 255, 0.60), rgba(22, 104, 220, 0.72)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -6px 10px rgba(10, 60, 160, 0.35);
+  color: #fff !important;
+}
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; }
+  .glass, .app-nav.glass-nav, .app-nav-popup .ant-menu-sub.ant-menu-vertical { background: #2a2c33 !important; }
+  .app-nav.glass-nav::before { background: #1668dc; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .glass, .app-nav.glass-nav, .app-nav-popup > .ant-menu { background: #2a2c33 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .app-nav.glass-nav > .ant-menu-item-selected, .app-nav-popup .ant-menu-item-selected { background: #1668dc !important; }
+  .glass, .app-nav.glass-nav, .app-nav-popup .ant-menu-sub.ant-menu-vertical { background: #2a2c33 !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .app-nav.glass-nav::before { background: #1668dc; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .app-nav-popup .ant-menu-item-selected { background: #1668dc !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-nav.glass-nav::before { transition: none !important; animation: none !important; }
 }
 
 /* ---------- 项目面板：只保留省略号布局约束，以及被 antd List 置空后补回的键盘焦点框（antd 焦点线宽 + colorPrimary）---------- */

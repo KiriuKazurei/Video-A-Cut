@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
@@ -81,6 +81,48 @@ export default function App() {
   const siderBorder = `1px solid ${token.colorBorderSecondary}`;
   const { route, navigate } = useWorkspaceRoute();
   const { workspace } = route;
+
+  // 顶部页签的液态玻璃滑块：量出选中项（或选中的「…」）相对页签组的 left/width，写成 CSS 变量；
+  // 滑块本身是 .app-nav::before（见 styles.css），无需额外 DOM；窗口/字体/折叠变化时自动重新量。
+  const navWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wrap = navWrapRef.current;
+    const nav = wrap?.querySelector<HTMLElement>('.app-nav');
+    if (!wrap || !nav) return;
+    let last = '';
+    let timer: number | undefined;
+    const measure = () => {
+      const target = [...nav.querySelectorAll<HTMLElement>(':scope > .ant-menu-item-selected, :scope > .ant-menu-submenu-selected')]
+        .find((el) => el.style.position !== 'absolute' && el.offsetWidth > 0);
+      if (!target) { nav.removeAttribute('data-thumb'); return; }
+      const box = nav.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
+      const x = Math.round((rect.left - box.left - nav.clientLeft) * 100) / 100;
+      const w = Math.round(rect.width * 100) / 100;
+      const key = `${x}:${w}`;
+      if (key === last) return;
+      const first = last === '';
+      last = key;
+      nav.style.setProperty('--nav-thumb-x', `${x}px`);
+      nav.style.setProperty('--nav-thumb-w', `${w}px`);
+      if (first) {
+        nav.setAttribute('data-thumb', 'on');
+        // 首次定位不做滑动动画，下一帧再开启
+        requestAnimationFrame(() => requestAnimationFrame(() => nav.setAttribute('data-thumb-anim', '1')));
+      } else {
+        nav.setAttribute('data-thumb-moving', '1');
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => nav.removeAttribute('data-thumb-moving'), 280);
+      }
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(nav);
+    const mutate = new MutationObserver(measure);
+    mutate.observe(nav, { subtree: true, attributes: true, attributeFilter: ['class', 'style'], childList: true });
+    void document.fonts?.ready.then(measure);
+    return () => { resize.disconnect(); mutate.disconnect(); window.clearTimeout(timer); };
+  }, []);
 
   // Phase 4: 全局键盘快捷键与帮助面板
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
@@ -184,16 +226,16 @@ export default function App() {
         </div>
         
         {/* 工作区导航：资源、编辑、导出、TTS + 右侧设置 */}
-        <div className="app-nav-wrap">
+        <div className="app-nav-wrap" ref={navWrapRef}>
           <Menu 
             className="app-nav glass-nav" 
             mode="horizontal" 
             aria-label="工作区" 
+            overflowedIndicatorPopupClassName="app-nav-popup"
             selectedKeys={[workspace]}
             onClick={({ key }) => navigate({ workspace: key as WorkspaceId })}
             items={WORKSPACES.filter(w => w.id !== 'settings').map((item) => ({
               key: item.id, 
-              className: item.id === 'resources' ? 'nav-capsule' : undefined,
               icon: WORKSPACE_ICONS[item.id], 
               title: item.description,
               label: <span data-workspace={item.id} aria-current={workspace === item.id ? 'page' : undefined}>{item.label}</span>
