@@ -1,0 +1,13 @@
+{
+  "data_directory": "E:/VideoAutoCutData",
+  "resource_root": "E:/Apps/VideoAutoCut/runtime",
+  "control_binary": "E:/Apps/VideoAutoCut/control-plane.exe",
+  "python": "python",
+  "node": "node",
+  "ffmpeg": "ffmpeg",
+  "ffprobe": "ffprobe",
+  "desktop_origin": "http://tauri.localhost",
+  "ingest_roots": [
+    { "root_id": "recordings", "name": "原始录像", "path": "E:/Data/Videos/Rec" }
+  ]
+}

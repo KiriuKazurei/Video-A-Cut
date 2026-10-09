@@ -13,6 +13,7 @@ import {
 import { usePreview } from './Monitor';
 import { Timeline, type TimelineClip } from './Timeline';
 import { ValueSelect } from './ui';
+import { desktopCommand, isDesktop } from '../desktop';
 
 const PAGE = 50;
 const stateText: Record<string, string> = {
@@ -72,7 +73,11 @@ export function IngestRegister({ onSelect }: { onSelect: (id: string) => void })
   return (
     <Card size="small" className="ingest-register" aria-labelledby="ingest-register-title" style={{ height: '100%' }}
       title={<span id="ingest-register-title">登记原始录像</span>}
-      extra={roots.data?.configured && <Badge status={online > 0 ? 'success' : 'warning'} text={`导入 Worker ${online > 0 ? `${online} 个在线` : '未在线'}`} />}>
+      extra={<Space>{isDesktop() && <Button disabled={busy || !roots.data?.configured} onClick={() => {
+        void desktopCommand<{root_id: string; relative_path: string} | null>('select_recording').then(file => {
+          if (file) { setRootId(file.root_id); setRelative(file.relative_path); }
+        }).catch(e => setError(String(e)));
+      }}>选择录像文件</Button>}{roots.data?.configured && <Badge status={online > 0 ? 'success' : 'warning'} text={`导入 Worker ${online > 0 ? `${online} 个在线` : '未在线'}`} />}</Space>}>
       <Hint>只能从管理员配置的录像根目录选择文件；原始文件不会被修改，系统先复制快照再处理。登记后到「粗剪」页开始导入与切分。</Hint>
       {roots.isPending && <Spin size="small" />}
       {roots.isError && <Alert type="error" showIcon message={`读取导入配置失败：${message(roots.error)}`} />}

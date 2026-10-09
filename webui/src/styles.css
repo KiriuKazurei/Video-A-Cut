@@ -12,6 +12,11 @@
  *  - prefers-reduced-transparency 或不支持 backdrop-filter 时退化为不透明面板。
  */
 
+.desktop-runtime-shell { height: 100vh; display: flex; flex-direction: column; }
+.desktop-runtime-bar { flex: none; }
+.desktop-runtime-content { flex: 1; min-height: 0; }
+.desktop-runtime-content .app-shell { height: 100%; min-height: 0; }
+
 :root {
   --vac-bg: #1c1d21;
   --vac-hairline: rgba(255, 255, 255, 0.07);

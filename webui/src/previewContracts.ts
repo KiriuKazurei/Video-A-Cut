@@ -1,3 +1,4 @@
+import { apiURL } from './runtimeUrl.ts';
 /** Shared protocol and preview client. */
 import type { PreviewStartRequest, PreviewView, PreviewList } from '../../contracts/mp4-preview/v1/contracts';
 export type * from '../../contracts/mp4-preview/v1/contracts';
@@ -14,7 +15,7 @@ export const previewQueryKey = (assetID: string, runID: string, revisionID: stri
   ['mp4Previews', assetID, runID, revisionID] as const;
 
 export const previewFileURL = (previewID: string, fileKey: string, download = false) =>
-  `/api/previews/${encodeURIComponent(previewID)}/files/${encodeURIComponent(fileKey)}${download ? '?download=1' : ''}`;
+  apiURL(`/api/previews/${encodeURIComponent(previewID)}/files/${encodeURIComponent(fileKey)}${download ? '?download=1' : ''}`);
 
 /** Original SRT burns and each ASS style hash are different products, even on one revision. */
 export function previewProductKey(view: { subtitle_variant_id?: string; style_sha256?: string }): string {
@@ -87,7 +88,7 @@ export function createPreviewSource(view: PreviewView): {
 }
 
 async function previewFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(apiURL(path), {
     ...init,
     headers: { Accept: 'application/json', ...init.headers }
   });

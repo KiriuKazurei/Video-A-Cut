@@ -1,3 +1,4 @@
+import { apiURL } from './runtimeUrl.ts';
 import type { ReviewView, WorkflowRun } from './types';
 import type { PreviewSource } from './components/Monitor';
 
@@ -40,7 +41,7 @@ export function createWorkflowPreview(review: ReviewView | undefined, target: Pr
   const owner = workflowPreviewContext(review.run)!;
   return {
     kind: 'image',
-    src: `/api/workflows/${encodeURIComponent(owner.runId)}/evidence/${encodeURIComponent(file.key)}?revision_id=${encodeURIComponent(owner.revisionId)}`,
+    src: apiURL(`/api/workflows/${encodeURIComponent(owner.runId)}/evidence/${encodeURIComponent(file.key)}?revision_id=${encodeURIComponent(owner.revisionId)}`),
     workflowContext: owner, evidenceKey: file.key, evidenceSha: file.sha256, target,
     title: line ? `解说 ${line.id}` : scene?.label || sceneId || '场景',
     meta: line ? `${line.start ?? '?'}s – ${line.end ?? '?'}s · 来源 ${scene?.label || sceneId || '未提供'}`

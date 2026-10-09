@@ -7,6 +7,7 @@ import zhCN from 'antd/locale/zh_CN';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import App from './App';
+import { DesktopRuntime } from './components/DesktopRuntime';
 import { appTheme } from './theme';
 import './styles.css';
 
@@ -22,7 +23,7 @@ createRoot(document.getElementById('root')!).render(
     <ConfigProvider locale={zhCN} theme={appTheme} button={{ autoInsertSpace: false }}>
       <AntApp>
         <QueryClientProvider client={queryClient}>
-          <App />
+          <DesktopRuntime><App /></DesktopRuntime>
         </QueryClientProvider>
       </AntApp>
     </ConfigProvider>

@@ -1,3 +1,4 @@
+import { apiURL } from './runtimeUrl.ts';
 import type {
   AcceptanceRecord,
   Asset,
@@ -32,7 +33,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(apiURL(path), {
     ...init,
     headers: { Accept: 'application/json', ...init.headers }
   });
@@ -60,7 +61,7 @@ export const api = {
   ttsPreview: (id: string) => request<TtsPreview>(`/api/tts/preview-jobs/${encodeURIComponent(id)}`),
   startTtsPreview: (text: string, settings: TtsSettings) => request<TtsPreview>('/api/tts/preview-jobs', json('POST', { text, settings, idempotency_key: crypto.randomUUID() })),
   cancelTtsPreview: (id: string) => request<TtsPreview>(`/api/tts/preview-jobs/${encodeURIComponent(id)}/cancel`, json('POST', {})),
-  ttsAudioURL: (id: string, download = false) => `/api/tts/preview-jobs/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
+  ttsAudioURL: (id: string, download = false) => apiURL(`/api/tts/preview-jobs/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`),
   diagnoseProvider: (provider: ProcessingProvider, operation: 'test' | 'models', apiKey: string, signal?: AbortSignal) =>
     request<ProviderDiagnostic>(`/api/providers/${operation}`, { ...json('POST', { provider, ...(apiKey ? { api_key: apiKey } : {}) }), signal }),
   listProfiles: () => request<ProcessingProfile[]>('/api/processing-profiles?limit=50'),
@@ -132,13 +133,13 @@ export const ingestApi = {
     request<{ run: IngestRun }>(`${runPath(run)}/retry`, json('POST', { expected_version: expectedVersion, stage, idempotency_key: key() }))
 };
 
-export const ingestFileURL = (run: string, fileKey: string) => `${runPath(run)}/files/${encodeURIComponent(fileKey)}`;
+export const ingestFileURL = (run: string, fileKey: string) => apiURL(`${runPath(run)}/files/${encodeURIComponent(fileKey)}`);
 
 export const deliveryFileURL = (id: string, key: string, download = false) =>
-  `/api/assets/${encodeURIComponent(id)}/files/${encodeURIComponent(key)}${download ? '?download=1' : ''}`;
+  apiURL(`/api/assets/${encodeURIComponent(id)}/files/${encodeURIComponent(key)}${download ? '?download=1' : ''}`);
 
 export const deliveryZipURL = (id: string) =>
-  `/api/assets/${encodeURIComponent(id)}/delivery.zip`;
+  apiURL(`/api/assets/${encodeURIComponent(id)}/delivery.zip`);
 
 export const previewApi: PreviewClient = {
   start: (runID: string, body: PreviewStartRequest) =>

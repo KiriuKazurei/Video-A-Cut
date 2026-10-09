@@ -212,7 +212,7 @@ func (a *app) listenHTTP() error {
 	}
 	a.httpLn = ln
 	a.httpRequests = newRequestTracker()
-	handler := api.New(a.svc).Handler()
+	handler := api.New(a.svc).HandlerWithOrigin(a.cfg.DesktopOrigin)
 	if a.cfg.WebRoot != "" {
 		handler, err = sameOriginWebHandler(a.cfg.WebRoot, handler)
 		if err != nil {
@@ -533,6 +533,7 @@ func (a *app) selfcheck(ctx context.Context) error {
 // not serving — and the message on stderr is what says which.
 func main() {
 	configPath, dbPath := registerFlags(flag.CommandLine)
+	desktop := flag.Bool("desktop", false, "emit desktop readiness and accept shutdown on stdin")
 	flag.Parse()
 
 	a, err := startup(*configPath, *dbPath)
@@ -549,6 +550,17 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	if *desktop {
+		if a.httpLn == nil {
+			fmt.Fprintln(os.Stderr, "control plane: desktop mode requires an HTTP listener")
+			os.Exit(1)
+		}
+		if err := desktopReady(os.Stdout, a.httpLn.Addr().String()); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		go desktopInput(os.Stdin, cancel)
+	}
 
 	// A termination signal is not a failure: it is how the process is
 	// meant to stop, so it exits 0 without an error on stderr. Anything

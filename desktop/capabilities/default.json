@@ -1,0 +1,6 @@
+{
+  "identifier": "main-window",
+  "description": "Only the local main window can use desktop commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

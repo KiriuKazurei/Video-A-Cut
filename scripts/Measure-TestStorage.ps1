@@ -13,6 +13,7 @@ function Add-TestStoragePath([string]$Path) {
     }
 }
 Add-TestStoragePath (Join-Path $testRepoRoot '.run-data')
+foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $testRepoRoot 'workers') -Directory -Recurse -Force -Filter '.run-data') { Add-TestStoragePath $entry.FullName }
 $testRunBytes = [long](($testFiles.Values | Measure-Object -Sum).Sum)
 foreach ($testRelative in @(
     'workers/python/tests', 'workers/python/scripts', 'workers/node/timeline-cli/test',
@@ -23,6 +24,16 @@ foreach ($testRelative in @(
 foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $testRepoRoot 'control-plane') -File -Recurse -Filter '*_test.go') { Add-TestStoragePath $entry.FullName }
 foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $testRepoRoot 'webui') -File -Filter '*.mjs') { Add-TestStoragePath $entry.FullName }
 foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $testRepoRoot 'workers/python') -File -Recurse -Filter '*.pyc') { Add-TestStoragePath $entry.FullName }
+if (Test-Path -LiteralPath (Join-Path $testRepoRoot 'desktop/src')) {
+    Add-TestStoragePath (Join-Path $testRepoRoot 'desktop/src')
+    foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $testRepoRoot 'build/desktop/debug/deps') -File -Filter 'video_auto_cut_desktop-*.exe' -ErrorAction SilentlyContinue) { Add-TestStoragePath $entry.FullName }
+}
+foreach ($mode in @('debug','release','app-debug','app')) {
+    $runtimePython = Join-Path $testRepoRoot "build/desktop/$mode/runtime/workers/python"
+    if (Test-Path -LiteralPath $runtimePython) {
+        foreach ($entry in Get-ChildItem -LiteralPath $runtimePython -File -Recurse -Filter '*.pyc') { Add-TestStoragePath $entry.FullName }
+    }
+}
 $testTotal = [long](($testFiles.Values | Measure-Object -Sum).Sum)
 $testReport = [ordered]@{
     label=$Label; time=(Get-Date -Format o); limit_bytes=524288000

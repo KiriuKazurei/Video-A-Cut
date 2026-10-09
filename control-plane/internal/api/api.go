@@ -87,6 +87,7 @@ const (
 // server sees one error shape from day one and a later task only replaces the
 // response behind the status.
 func (s *Server) routes() {
+	s.mux.HandleFunc("GET /api/runtime/activity", s.runtimeActivity)
 	s.ttsRoutes()
 	s.mux.HandleFunc("POST /api/providers/{operation}", s.diagnoseProvider)
 	s.mux.HandleFunc("GET /api/processing-profiles", s.listProfiles)
@@ -170,14 +171,48 @@ func (s *Server) Handler() http.Handler { return localRequestGate(wrapJSONErrors
 // retained for command-line clients; browser requests must match the exact
 // scheme and authority of the loopback request.
 func localRequestGate(next http.Handler) http.Handler {
+	return localRequestGateWithOrigin(next, "")
+}
+
+// HandlerWithOrigin keeps the local Host/JSON gate and trusts one configured UI.
+func (s *Server) HandlerWithOrigin(origin string) http.Handler {
+	return localRequestGateWithOrigin(wrapJSONErrors(s.mux), origin)
+}
+
+func localRequestGateWithOrigin(next http.Handler, desktopOrigin string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isLoopbackAuthority(r.Host) {
 			writeError(w, http.StatusForbidden, codeForbidden, "request Host must be a loopback address")
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" && !sameOriginRequest(origin, r) {
+		origin := r.Header.Get("Origin")
+		trustedDesktop := desktopOrigin != "" && origin == desktopOrigin
+		if origin != "" && !sameOriginRequest(origin, r) && !trustedDesktop {
 			writeError(w, http.StatusForbidden, codeForbidden, "cross-origin requests are not allowed")
 			return
+		}
+		if trustedDesktop {
+			w.Header().Set("Access-Control-Allow-Origin", desktopOrigin)
+			w.Header().Add("Vary", "Origin")
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Content-Disposition")
+			if r.Method == http.MethodOptions {
+				method := r.Header.Get("Access-Control-Request-Method")
+				if !strings.Contains("|GET|HEAD|POST|PATCH|PUT|DELETE|", "|"+method+"|") || method == "" {
+					writeError(w, http.StatusForbidden, codeForbidden, "preflight method is not allowed")
+					return
+				}
+				for _, header := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
+					h := strings.ToLower(strings.TrimSpace(header))
+					if h != "" && h != "content-type" && h != "accept" && h != "range" {
+						writeError(w, http.StatusForbidden, codeForbidden, "preflight header is not allowed")
+						return
+					}
+				}
+				w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PATCH, PUT, DELETE")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Range")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 		}
 		if requestHasJSONBody(r) {
 			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))

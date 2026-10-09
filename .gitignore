@@ -1,5 +1,8 @@
 # Build artifacts
 /build/
+/desktop/target/
+/desktop/gen/
+/desktop/binaries/
 # All local runtime state, test evidence, caches, credentials and media
 /.run-data/
 *.exe
@@ -39,6 +42,7 @@ Thumbs.db
 .hermes/
 
 # Development documents stay local, except the frontend API handoff.
+/desktop/desktop.local.json
 /docs/*
 !/docs/前端接口清单与重构交接.md
 !/docs/frontend-api-inventory.json

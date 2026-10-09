@@ -1,3 +1,4 @@
+import { apiURL } from './runtimeUrl.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ConnectionStatus } from './types';
@@ -144,7 +145,7 @@ export function useEvents(
   useEffect(() => {
     if (stoppedRef.current) return undefined;
 
-    const source = new EventSource(url);
+    const source = new EventSource(apiURL(url));
     activeSourceRef.current = source;
     let closed = false;
 

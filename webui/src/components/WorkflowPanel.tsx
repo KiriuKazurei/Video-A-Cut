@@ -1,3 +1,4 @@
+import { apiURL } from '../runtimeUrl.ts';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,7 +29,7 @@ export interface RunSelection {
 }
 
 export const evidenceURL = (runId: string, key: string, revisionId: string) =>
-  `/api/workflows/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(key)}?revision_id=${encodeURIComponent(revisionId)}`;
+  apiURL(`/api/workflows/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(key)}?revision_id=${encodeURIComponent(revisionId)}`);
 
 /** 同一组查询键供编辑页、导出页复用，React Query 自动去重（API-28、30、31、39）。 */
 export function useWorkflowData(assetId: string, selection: RunSelection) {
@@ -244,7 +245,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
       {runs.isSuccess && !current && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此资产还没有内容流程，暂无可验收的导出。" />}
       {current && <>
         <Space wrap>
-          {ready ? <Button type="primary" icon={<DownloadOutlined />} href={`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`}>下载此版本交付 ZIP</Button>
+          {ready ? <Button type="primary" icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`)}>下载此版本交付 ZIP</Button>
             : <Typography.Text type="secondary">流程到达 ready_for_acceptance 后才提供此版本 ZIP（当前 {current.status} / {current.stage}）。</Typography.Text>}
           <Button disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要</Button>
         </Space>

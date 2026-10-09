@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -84,6 +85,9 @@ type Config struct {
 	// process then runs the workers only, which is the documented headless
 	// deployment where nothing on this host serves the WebUI.
 	HttpAddr string
+	// DesktopOrigin is the single explicitly trusted desktop frontend origin.
+	// Empty retains the browser-only same-origin policy.
+	DesktopOrigin string
 	// DeliveryRoot confines human preview and package downloads. Empty disables
 	// file delivery until an operator explicitly chooses a directory.
 	DeliveryRoot string
@@ -157,6 +161,13 @@ func Load(path string) (Config, error) {
 // with. Each violation wraps ErrInvalid and names both the field and the
 // offending value, so a log line is enough to find the line to fix.
 func (c Config) Validate() error {
+	if c.DesktopOrigin != "" {
+		u, err := url.Parse(c.DesktopOrigin)
+		if err != nil || u.Scheme != "http" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" ||
+			(u.Host != "tauri.localhost" && !validHTTPAddr(u.Host)) || u.Host == "" {
+			return fmt.Errorf("config: desktop_origin must be an exact HTTP desktop/loopback origin: %w", ErrInvalid)
+		}
+	}
 	if c.TTSWorkerDir != "" && !filepath.IsAbs(c.TTSWorkerDir) {
 		return fmt.Errorf("config: tts_worker_dir must be absolute: %w", ErrInvalid)
 	}
@@ -236,7 +247,7 @@ func validHTTPAddr(addr string) bool {
 // quoted number, which is exactly the class of mistake the file is there to
 // make impossible.
 func apply(cfg *Config, raw map[string]any) error {
-	for key, target := range map[string]*string{"tts_python": &cfg.TTSPython, "tts_worker_dir": &cfg.TTSWorkerDir} {
+	for key, target := range map[string]*string{"tts_python": &cfg.TTSPython, "tts_worker_dir": &cfg.TTSWorkerDir, "desktop_origin": &cfg.DesktopOrigin} {
 		if value, ok := raw[key]; ok {
 			text, ok := value.(string)
 			if !ok {

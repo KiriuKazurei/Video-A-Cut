@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Video Auto Cut",
+  "version": "0.1.1",
+  "identifier": "io.kiriukazurei.video-auto-cut",
+  "build": {
+    "frontendDist": "../webui/dist",
+    "devUrl": "http://127.0.0.1:5173"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Video Auto Cut",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:*; media-src 'self' blob: http://127.0.0.1:*; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "externalBin": [
+      "binaries/control-plane"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../workers/node/export-worker/src/": "runtime/workers/node/export-worker/src/",
+      "../workers/node/timeline-cli/src/": "runtime/workers/node/timeline-cli/src/",
+      "../workers/node/timeline-cli/adapters/": "runtime/workers/node/timeline-cli/adapters/",
+      "../workers/node/timeline-cli/node_modules/": "runtime/workers/node/timeline-cli/node_modules/",
+      "../contracts/": "runtime/contracts/",
+      "../scripts/runtime_state.py": "runtime/scripts/runtime_state.py",
+      "../configs/phase6/profile.builtin.example.json": "runtime/default-profile.json",
+      "../workers/python/vac_worker/*.py": "runtime/workers/python/vac_worker/",
+      "../workers/python/vac_worker/ingest/*.py": "runtime/workers/python/vac_worker/ingest/",
+      "binaries/control-plane-x86_64-pc-windows-msvc.exe.runtime.json": "control-plane.exe.runtime.json"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      },
+      "nsis": {
+        "displayLanguageSelector": false,
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhFNkI2NjFBODJBM0Y1NApSV1JVUHlxb1liYm1DSWxkRHgyekphdVh2TlB4R1h1Z2MrQ2F1bHgvSVR3RnBTdnBHbHc5di94Ygo=",
+      "endpoints": [
+        "https://github.com/KiriuKazurei/Video-A-Cut/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
