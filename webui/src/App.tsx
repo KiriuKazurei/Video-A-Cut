@@ -194,9 +194,10 @@ export default function App() {
     assetCount: assets.data?.length ?? 0,
     route,
     ingestRuns: rawAsset ? ingestRuns.data : undefined,
-    // 未加载 = undefined；加载成功但没有流程 = null；出错时保守视为未知
-    workflow: !selected ? null : workflowData.runs.isSuccess ? (workflowData.current ?? null) : undefined
-  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.current]);
+    // 未加载 = undefined；加载成功但没有流程 = null；查询失败走 workflowError（下一步可点「重新加载」）
+    workflow: !selected ? null : workflowData.runs.isSuccess ? (workflowData.current ?? null) : workflowData.runs.isError ? null : undefined,
+    workflowError: selected && workflowData.runs.isError ? (workflowData.runs.error?.message || '网络或服务异常') : undefined
+  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.runs.isError, workflowData.runs.error, workflowData.current]);
 
   // 跳转并把目标分区滚动到视野内、聚焦（保持当前资产不变；路由不变时也会聚焦）
   const [focusTick, setFocusTick] = useState(0);
@@ -411,6 +412,7 @@ export default function App() {
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}
             onGo={goTo}
+            onRetryWorkflow={() => { void workflowData.runs.refetch(); }}
             onNavigate={navigate}
             extra={useSidebar && !independentWorkspace ? (
               <div className="sider-toggles">

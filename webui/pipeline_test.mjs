@@ -55,6 +55,16 @@ test('workflow loading is never treated as done', () => {
   for (const id of ['prepare', 'generate', 'review', 'delivery']) assert.equal(st(r, id).status, 'unknown');
 });
 
+test('workflow query failure offers a clickable reload instead of stuck reading', () => {
+  const r = run({ asset: asset(), workflow: null, workflowError: 'network down' });
+  assert.equal(r.next.label, '重新加载流程状态');
+  assert.equal(r.next.action, 'retry-workflow');
+  assert.equal(r.next.disabledReason, undefined);
+  assert.match(r.next.hint, /network down/);
+  assert.equal(st(r, 'prepare').status, 'error');
+  assert.match(st(r, 'prepare').reason, /network down/);
+});
+
 test('workflow states map to generate / review / delivery', () => {
   const table = [
     [wf('running', 'recognize'), '查看生成进度', 'generate', { generate: 'active', review: 'blocked', delivery: 'blocked', prepare: 'done' }],

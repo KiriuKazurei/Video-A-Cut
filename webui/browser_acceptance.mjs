@@ -13,7 +13,14 @@ const J=JSON.stringify;
 const VIS=`(e=>!!e&&e.getClientRects().length>0&&e.checkVisibility({visibilityProperty:true}))`;
 const click=async(text,scope='body')=>{const expr=`[...document.querySelectorAll(${J(scope)}+' button')].find(b=>b.textContent.includes(${J(text)})&&!b.disabled&&${VIS}(b))`;await wait(`!!(${expr})`);await evaluate(`(${expr}).click()`);};
 const clickSel=async selector=>{const expr=`[...document.querySelectorAll(${J(selector)})].find(${VIS})`;await wait(`!!(${expr})`);await evaluate(`(${expr}).click()`);};
-const clickAsset=async id=>clickSel(`.asset-list [data-asset-id="${id}"]`);
+const clickAsset=async id=>{
+ if(!await evaluate(`[...document.querySelectorAll('.asset-list [data-asset-id]')].some(${VIS})`)){
+  // 窄屏：项目面板在抽屉里
+  const btn=`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('项目')&&${VIS}(b))`;
+  if(await evaluate(`!!(${btn})`)){await evaluate(`(${btn}).click()`);await wait(`[...document.querySelectorAll('.asset-list [data-asset-id]')].some(${VIS})`);}
+ }
+ await clickSel(`.asset-list [data-asset-id="${id}"]`);
+};
 const input=async(selector,value)=>{const expr=`[...document.querySelectorAll(${J(selector)})].find(${VIS})`;await wait(`!!(${expr})`);await evaluate(`(()=>{const e=${expr};const p=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,${J(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);await new Promise(r=>setTimeout(r,80));};
 // antd Select：在可见且未禁用的选择器上按下鼠标展开，再点下拉层中 data-value 对应的选项。
 const pick=async(selector,value)=>{
@@ -25,16 +32,55 @@ const pick=async(selector,value)=>{
  await evaluate(`(${option}).closest('.ant-select-item-option').click()`);
  await wait(`![...document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')].some(${VIS})`);
 };
-const openTab=async(text,scope='body')=>{const expr=`[...document.querySelectorAll(${J(scope)}+' [role=tab]')].find(t=>t.textContent.includes(${J(text)})&&${VIS}(t))`;await wait(`!!(${expr})`);await evaluate(`(${expr}).click()`);await wait(`(${expr}).getAttribute('aria-selected')==='true'`);};
+const openTab=async(text,scope='body')=>{const find=`[...document.querySelectorAll(${J(scope)}+' [role=tab], '+${J(scope)}+' .ant-tabs-tab, '+${J(scope)}+' .ant-card-head .ant-tabs-tab')].find(t=>t.textContent.includes(${J(text)})&&${VIS}(t))`;await wait(`!!(${find})`);await evaluate(`(${find}).click()`);await wait(`(()=>{const t=${find};return !!t&&(t.getAttribute('aria-selected')==='true'||t.classList.contains('ant-tabs-tab-active'))})()`);};
 const http=async(path,body)=>{const response=await fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body&&JSON.stringify(body)});const value=await response.json();if(!response.ok)throw Error(JSON.stringify(value));return value;};
-// 顶部 antd Menu：窄屏时多出的页签折叠进「…」子菜单，先展开它再点；切换后断言目标页可见、其它页全部隐藏。
-const openPage=async page=>{
- const item=`[...document.querySelectorAll('.app-nav [data-page="${page}"], .ant-menu-submenu-popup [data-page="${page}"]')].find(${VIS})`;
- if(!await evaluate(`!!(${item})`))await clickSel('.app-nav .ant-menu-overflow-item-rest .ant-menu-submenu-title');
- await wait(`!!(${item})`);await evaluate(`(${item}).click()`);
- await wait(`location.hash==='#/${page}'&&${VIS}(document.querySelector('[data-page-view="${page}"]'))&&[...document.querySelectorAll('[data-page-view]')].every(v=>v.dataset.pageView==='${page}'||!${VIS}(v))`);
- await wait(`![...document.querySelectorAll('.ant-menu-submenu-popup')].some(${VIS})`).catch(()=>{});
+// 五工作区路由：resources | editing/{import|content|review} | export/{delivery|acceptance|tasks} | settings/{profiles|providers|preparation|logs} | tts
+// 兼容旧六页名：import/assembly→editing/import，prepare→settings/preparation，edit→editing/content，export→export/delivery，monitor→export/tasks
+const LEGACY_ROUTE = { import: 'editing/import', assembly: 'editing/import', prepare: 'settings/preparation', edit: 'editing/content', export: 'export/delivery', monitor: 'export/tasks' };
+const SECTION_LABEL = {
+  editing: { import: '导入与粗剪', content: '内容编辑', review: '审查' },
+  export: { delivery: '交付', acceptance: '人工验收', tasks: '任务监控' },
+  settings: { profiles: '处理预设', providers: '服务商接入', preparation: '运行准备', logs: '日志与诊断' }
 };
+const openWorkspace = async (ws) => {
+  if (ws === 'settings') {
+    // 设置在页头右侧独立按钮，不在玻璃页签组里
+    const btn = `[...document.querySelectorAll('.app-header-right button')].find(b=>b.textContent.trim()==='设置'&&${VIS}(b))`;
+    await wait(`!!(${btn})`); await evaluate(`(${btn}).click()`);
+  } else {
+    const item = `[...document.querySelectorAll('.app-nav [data-workspace="${ws}"], .ant-menu-submenu-popup [data-workspace="${ws}"]')].find(${VIS})`;
+    if (!await evaluate(`!!(${item})`)) await clickSel('.app-nav .ant-menu-overflow-item-rest .ant-menu-submenu-title');
+    await wait(`!!(${item})`); await evaluate(`(${item}).click()`);
+  }
+  await wait(`!!([...document.querySelectorAll('[data-page-view="${ws}"]')].find(v=>!v.hidden&&${VIS}(v)))&&[...document.querySelectorAll('[data-page-view]')].every(v=>v.dataset.pageView==='${ws}'||v.hidden||!${VIS}(v))`);
+};
+const openSection = async (ws, section) => {
+  if (!section) return;
+  const label = SECTION_LABEL[ws]?.[section];
+  if (!label) throw Error('unknown section '+ws+'/'+section);
+  if (ws === 'settings') {
+    // 宽屏：左侧菜单；窄屏：顶部分段
+    const menu = `[...document.querySelectorAll('.settings-workspace .ant-menu-item')].find(i=>i.textContent.includes(${J(label)})&&${VIS}(i))`;
+    const seg = `[...document.querySelectorAll('.settings-workspace .ant-segmented-item')].find(i=>i.textContent.includes(${J(label)})&&${VIS}(i))`;
+    if (await evaluate(`!!(${menu})`)) await evaluate(`(${menu}).click()`);
+    else { await wait(`!!(${seg})`); await evaluate(`(${seg}).click()`); }
+  } else {
+    const tab = `[...document.querySelectorAll('[data-page-view="${ws}"]:not([hidden]) [role=tab]')].find(t=>t.textContent.includes(${J(label)})&&${VIS}(t))`;
+    await wait(`!!(${tab})`); await evaluate(`(${tab}).click()`); await wait(`(${tab}).getAttribute('aria-selected')==='true'`);
+  }
+};
+const openPage = async (route) => {
+  route = LEGACY_ROUTE[route] || route;
+  const [ws, section] = route.split('/');
+  await openWorkspace(ws);
+  await openSection(ws, section);
+  const want = `#/${ws}${section ? '/' + section : ''}`;
+  await wait(`location.hash===${J(want)}||location.hash.startsWith(${J('#'+ '/' + ws)})`);
+  // 仅目标工作区可见（分区由 Tabs/Menu 切换，同工作区内其它分区可能仍挂载但不可见）
+  await wait(`[...document.querySelectorAll('[data-page-view]')].every(v=>v.dataset.pageView==='${ws}'||v.hidden||!${VIS}(v))`);
+  await wait(`![...document.querySelectorAll('.ant-menu-submenu-popup')].some(${VIS})`).catch(()=>{});
+};
+
 // 记录视口内任何越过右边缘的可见元素（被祖先 overflow 裁掉的不算）；任何一条都判失败。
 const PAGE_OVERFLOW=`(()=>{const cw=document.documentElement.clientWidth;const clipped=e=>{for(let p=e.parentElement;p&&p!==document.body;p=p.parentElement){const s=getComputedStyle(p);if(s.overflowX!=='visible'&&p.getBoundingClientRect().right<=cw+1)return true;}return false;};return [...document.querySelectorAll('body *')].filter(e=>{const b=e.getBoundingClientRect();return b.width>0&&b.height>0&&b.right>cw+1&&e.checkVisibility({opacityProperty:true,visibilityProperty:true})&&!clipped(e)}).slice(0,12).map(e=>({tag:e.tagName,class:String(e.className).slice(0,80),right:Math.round(e.getBoundingClientRect().right),text:e.textContent.slice(0,60)}))})()`;
 // 改变视口后等布局稳定再测：antd Menu 在 ResizeObserver 回调后约 100ms 内把放不下的页签折叠进「…」，测的是稳定状态而非拖拽过程中的瞬时帧。
@@ -45,11 +91,11 @@ const pageSweep=async()=>{
  for(const width of [375,1280]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
   await settle();
-  for(const page of ['import','assembly','prepare','edit','export','monitor']){
+  for(const page of ['resources','editing/import','editing/content','editing/review','export/delivery','export/acceptance','export/tasks','settings/profiles','settings/preparation','tts']){
    await openPage(page);await new Promise(r=>setTimeout(r,250));
    const row=await evaluate(`({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,pageOverflow:${PAGE_OVERFLOW}})`);
    row.page=page;row.pass=row.scrollWidth<=width&&row.pageOverflow.length===0;report.pages.push(row);
-   if(width===375){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${output}/${mode}-page-${page}-${width}.png`,Buffer.from(shot.data,'base64'));}
+   if(width===375){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`${output}/${mode}-page-${page.replaceAll('/','-')}-${width}.png`,Buffer.from(shot.data,'base64'));}
   }
  }
 };
@@ -65,10 +111,10 @@ const layouts=async(stage)=>{
  }
 };
 try{
- await send('Page.enable');await send('Runtime.enable');await send('Page.navigate',{url:base+'/'});
+ await send('Page.enable');await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:1600,height:1000,deviceScaleFactor:1,mobile:false}); await send('Page.navigate',{url:base+'/'});
  const asset=mode==='failed'?'phase7_failure':mode==='paging'?'phase7_cancel':'phase7_synthetic';
- // 前端按工作流分页：导入/切分在「粗剪」页，场景与解说审查在「编辑」页，预检在「准备」页。
- const workspacePage=mode==='scene'||mode==='draft'?'edit':mode==='governance'?'prepare':'assembly';
+ // 五工作区：导入/切分在编辑/导入与粗剪；场景与解说审查在编辑/审查；运行准备在设置/运行准备。
+ const workspacePage=mode==='scene'||mode==='draft'?'editing/review':mode==='governance'?'resources':'editing/import';
  await clickAsset(asset);await openPage(workspacePage);
  if(mode==='probe'){
   await wait(`!!document.querySelector('.ingest-analysis')`);
@@ -175,28 +221,35 @@ try{
    if(tasks.tasks.some(t=>['pending','queued','running'].includes(t.status)))throw Error('unapproved edit started work');
    report.actions.push('revoke stops downstream; approve then edit clears approvals and queues no work');
   }
-  await send('Page.reload');await clickAsset(asset);
+  await send('Page.reload');await clickAsset(asset);await openPage('editing/review');
   await wait(`document.querySelector('${scope}').textContent.includes('awaiting_review')`);
   report.actions.push('review state survives reload; historical export untouched');
  }else if(mode==='governance'){
+  // 属性面板只在资源/编辑/导出工作区；运行准备在设置。两边来回切。
   const scope='[aria-labelledby="detail-title"]';
   await click('锁定',scope);await wait(`document.querySelector('${scope}').textContent.includes('解锁')`);
+  await openPage('settings/preparation');
   await pick('.preparation-panel .select-saved-profile','browser_fixture');await click('加载版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已加载 browser_fixture')`);
   await click('检查运行条件','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：资产须可见且未锁定')`);
+  await openPage('resources');await clickAsset(asset);
   await click('解锁',scope);await wait(`!document.querySelector('${scope}').textContent.includes('解锁')`);
-  await click('设为 Agent 不可见',scope);await click('检查运行条件','.preparation-panel');
+  await click('设为 Agent 不可见',scope);
+  await openPage('settings/preparation');
+  await click('检查运行条件','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：资产须可见且未锁定')`);
+  await openPage('resources');await clickAsset(asset);
   await click('设为 Agent 可见',scope);
+  await openPage('settings/preparation');
   await wait(`[...document.querySelectorAll('.preparation-panel button')].find(b=>b.textContent.includes('启动此版本')).disabled`);
   report.actions.push('lock and visibility changes block preflight; mismatched preparation/absent workers cannot start');
   const profile=(await http('/api/processing-profiles/browser_fixture/revisions/1')).profile;
   profile.profile_id='external_ui_fixture';profile.content_mode='configured';profile.tts_voice='Nonexistent acceptance voice';
   for(const role of ['vision','narration']) profile[role]={adapter:role,api_format:'openai',endpoint:'https://acceptance.invalid/v1',model:'unavailable',token_env:'VAC_ACCEPTANCE_NOT_SET'};
   await http('/api/processing-profiles',{profile,expected_revision:0,idempotency_key:crypto.randomUUID()});
-  await click('刷新快照');
-  await send('Page.reload');await clickAsset(asset);
+  await click('刷新');
+  await send('Page.reload');await openPage('resources');await clickAsset(asset);await openPage('settings/preparation');
   await pick('.preparation-panel .select-saved-profile','external_ui_fixture');await click('加载版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已加载 external_ui_fixture')`);
   await click('检查运行条件','.preparation-panel');
@@ -222,7 +275,7 @@ try{
   report.actions.push('actual final delivery ZIP downloaded');
   await click('断开');await click('立即重连');await wait(`document.body.textContent.includes('事件流已连接')`);
   await pageSweep();
-  report.actions.push('every page reached through the top menu (overflow submenu at 375px); only the active page is visible; no page overflows');
+  report.actions.push('every workspace/section reached through top nav + secondary tabs/menus (overflow submenu at 375px); only the active workspace is visible; no page overflows');
  }
  if(report.layout.some(r=>!r.pass))throw Error('responsive overflow: '+JSON.stringify(report.layout.filter(r=>!r.pass)));
  if(report.pages.some(r=>!r.pass))throw Error('page overflow: '+JSON.stringify(report.pages.filter(r=>!r.pass)));

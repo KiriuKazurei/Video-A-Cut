@@ -35,7 +35,10 @@ npm run dev
 
 视觉：全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`，主色、圆角、控件尺寸保持默认）。整体模仿 Premiere：布局、容器、页头页脚共用同一底色 `#1c1d21`（`src/theme.ts` 里的 `colorBgBase/colorBgLayout/colorBgContainer`），中间工作区不用色块分隔，只留细线。顶部页签和展示窗口使用液态玻璃（ui-ux-pro-max「Spatial UI (VisionOS)」：半透明填充、`backdrop-filter: blur(40px) saturate(180%)`、内侧高光描边、深度阴影）：六个页签放在玻璃胶囊里，当前页是蓝色调玻璃高亮（白字），窄屏的「…」折叠弹层同样材质；监视器与短片预览窗口是玻璃边框。左右侧栏是 antd `Layout.Sider`：纯色底（`lightSiderBg` = `colorBgContainer`，无渐变、无透明、无 `backdrop-filter`）、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里，不继承中间工作区的组件级覆写，按钮、搜索框、列表与选中项（`controlItemBgActive`）、卡片、描述表、标签、提示框都是 antd 默认暗色外观，`styles.css` 不对侧栏内部写外观样式。页面不设环境光层，唯一的光晕在页头中央玻璃页签背后，不延伸到侧栏。系统开启「减少透明度」或浏览器不支持 `backdrop-filter` 时退化为不透明面板，「减少动态效果」时关闭过渡。`src/styles.css` 只保留布局、媒体尺寸、时间线轨道和玻璃材质。
 
-浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）经由顶部菜单进入页面（窄屏时先展开折叠子菜单），并断言只有目标页可见；点击、输入和下拉选择都只作用于可见元素，隐藏页里的同名控件不会被点到。任意宽度下只要有可见元素越过视口右边缘（`pageOverflow`）即判失败。
+浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）已对齐五工作区路由：
+`#/resources`、`#/editing/{import|content|review}`、`#/export/{delivery|acceptance|tasks}`、`#/settings/{profiles|providers|preparation|logs}`、`#/tts`（仍接受旧六页别名）。
+经由顶部工作区页签（设置走页头按钮）+ 二级 Tabs/菜单进入分区；窄屏时先展开折叠子菜单或「项目」抽屉；断言只有目标工作区可见。点击、输入和下拉选择都只作用于可见元素。任意宽度下只要有可见元素越过视口右边缘（`pageOverflow`）即判失败。
+本机跑法见 `/workspace/vac-demo/run_browser_tests.py`（八种模式）与 `run_provider_test.py`。
 
 `control-plane/control.json` 示例（路径须换成本机绝对路径）：
 
@@ -51,6 +54,6 @@ npm run dev
 
 ## 统一导航与「下一步」（Stage 3a）
 
-- `src/pipeline.ts`：纯函数，从资产 / 导入运行 / 内容流程的真实状态推导五个阶段（导入与粗剪 → 准备 → 生成 → 审查 → 交付）的状态、推荐的「下一步」，以及位置面包屑。单元测试：`node pipeline_test.mjs`。
+- `src/pipeline.ts`：纯函数，从资产 / 导入运行 / 内容流程的真实状态推导五个阶段（导入与粗剪 → 准备 → 生成 → 审查 → 交付）的状态、推荐的「下一步」，以及位置面包屑。单元测试需 Node 22 的类型剥离：`node --experimental-strip-types pipeline_test.mjs`（`navigation_smoke.mjs` 同理可用 Playwright）。
 - 页头阶段条（`PipelineStepper`）与页内位置条（`ContextBar`：面包屑 + 下一步）共用这份推导；编辑 / 导出 / 设置的二级菜单用同一阶段模型显示状态点。路由与深链不变。
 - 导航冒烟：`PLAYWRIGHT_CORE=<playwright-core/index.mjs> CHROME=<chrome> node navigation_smoke.mjs http://127.0.0.1:8816 [截图目录]`（连 `vite` 开发服务器可同时检查 React 的 DOM 嵌套警告）。

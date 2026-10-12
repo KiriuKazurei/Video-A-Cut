@@ -33,21 +33,65 @@ const labeled = async (scope, label, value) => {
   const info = await evaluate(`(()=>{const f=${fieldOf(scope, label)};f.dataset.testField=f.dataset.testField||Math.random().toString(36).slice(2);return {id:f.dataset.testField,select:!!f.querySelector('.ant-select')}})()`);
   if (info.select) await pick(`[data-test-field="${info.id}"]`, value); else await input(`[data-test-field="${info.id}"] input`, value);
 };
-// 顶部 antd Menu：窄屏时折叠进「…」子菜单的页签先展开再点；切换后断言目标页可见、其它页全部隐藏。
-const openPage = async (page) => {
-  const item = `[...document.querySelectorAll('.app-nav [data-page="${page}"], .ant-menu-submenu-popup [data-page="${page}"]')].find(${VIS})`;
-  if (!await evaluate(`!!(${item})`)) await clickSel('.app-nav .ant-menu-overflow-item-rest .ant-menu-submenu-title');
-  await wait(`!!(${item})`); await evaluate(`(${item}).click()`);
-  await wait(`location.hash==='#/${page}'&&${VIS}(document.querySelector('[data-page-view="${page}"]'))&&[...document.querySelectorAll('[data-page-view]')].every(v=>v.dataset.pageView==='${page}'||!${VIS}(v))`);
+// 五工作区路由：resources | editing/{import|content|review} | export/{delivery|acceptance|tasks} | settings/{profiles|providers|preparation|logs} | tts
+// 兼容旧六页名：import/assembly→editing/import，prepare→settings/preparation，edit→editing/content，export→export/delivery，monitor→export/tasks
+const LEGACY_ROUTE = { import: 'editing/import', assembly: 'editing/import', prepare: 'settings/preparation', edit: 'editing/content', export: 'export/delivery', monitor: 'export/tasks' };
+const SECTION_LABEL = {
+  editing: { import: '导入与粗剪', content: '内容编辑', review: '审查' },
+  export: { delivery: '交付', acceptance: '人工验收', tasks: '任务监控' },
+  settings: { profiles: '处理预设', providers: '服务商接入', preparation: '运行准备', logs: '日志与诊断' }
 };
+const openWorkspace = async (ws) => {
+  if (ws === 'settings') {
+    // 设置在页头右侧独立按钮，不在玻璃页签组里
+    const btn = `[...document.querySelectorAll('.app-header-right button')].find(b=>b.textContent.trim()==='设置'&&${VIS}(b))`;
+    await wait(`!!(${btn})`); await evaluate(`(${btn}).click()`);
+  } else {
+    const item = `[...document.querySelectorAll('.app-nav [data-workspace="${ws}"], .ant-menu-submenu-popup [data-workspace="${ws}"]')].find(${VIS})`;
+    if (!await evaluate(`!!(${item})`)) await clickSel('.app-nav .ant-menu-overflow-item-rest .ant-menu-submenu-title');
+    await wait(`!!(${item})`); await evaluate(`(${item}).click()`);
+  }
+  await wait(`!!([...document.querySelectorAll('[data-page-view="${ws}"]')].find(v=>!v.hidden&&${VIS}(v)))&&[...document.querySelectorAll('[data-page-view]')].every(v=>v.dataset.pageView==='${ws}'||v.hidden||!${VIS}(v))`);
+};
+const openSection = async (ws, section) => {
+  if (!section) return;
+  const label = SECTION_LABEL[ws]?.[section];
+  if (!label) throw Error('unknown section '+ws+'/'+section);
+  if (ws === 'settings') {
+    // 宽屏：左侧菜单；窄屏：顶部分段
+    const menu = `[...document.querySelectorAll('.settings-workspace .ant-menu-item')].find(i=>i.textContent.includes(${J(label)})&&${VIS}(i))`;
+    const seg = `[...document.querySelectorAll('.settings-workspace .ant-segmented-item')].find(i=>i.textContent.includes(${J(label)})&&${VIS}(i))`;
+    if (await evaluate(`!!(${menu})`)) await evaluate(`(${menu}).click()`);
+    else { await wait(`!!(${seg})`); await evaluate(`(${seg}).click()`); }
+  } else {
+    const tab = `[...document.querySelectorAll('[data-page-view="${ws}"]:not([hidden]) [role=tab]')].find(t=>t.textContent.includes(${J(label)})&&${VIS}(t))`;
+    await wait(`!!(${tab})`); await evaluate(`(${tab}).click()`); await wait(`(${tab}).getAttribute('aria-selected')==='true'`);
+  }
+};
+const openPage = async (route) => {
+  route = LEGACY_ROUTE[route] || route;
+  const [ws, section] = route.split('/');
+  await openWorkspace(ws);
+  await openSection(ws, section);
+  const want = `#/${ws}${section ? '/' + section : ''}`;
+  await wait(`location.hash===${J(want)}||location.hash.startsWith(${J('#'+ '/' + ws)})`);
+  // 仅目标工作区可见（分区由 Tabs/Menu 切换，同工作区内其它分区可能仍挂载但不可见）
+  await wait(`[...document.querySelectorAll('[data-page-view]')].every(v=>v.dataset.pageView==='${ws}'||v.hidden||!${VIS}(v))`);
+  await wait(`![...document.querySelectorAll('.ant-menu-submenu-popup')].some(${VIS})`).catch(()=>{});
+};
+
 // 任何越过视口右边缘的可见元素（被祖先 overflow 裁掉的不算）都判失败。
 const PAGE_OVERFLOW = `(()=>{const cw=document.documentElement.clientWidth;const clipped=e=>{for(let p=e.parentElement;p&&p!==document.body;p=p.parentElement){const s=getComputedStyle(p);if(s.overflowX!=='visible'&&p.getBoundingClientRect().right<=cw+1)return true;}return false;};return [...document.querySelectorAll('body *')].filter(e=>{const b=e.getBoundingClientRect();return b.width>0&&b.height>0&&b.right>cw+1&&e.checkVisibility({opacityProperty:true,visibilityProperty:true})&&!clipped(e)}).slice(0,12).map(e=>({tag:e.tagName,class:String(e.className).slice(0,80),right:Math.round(e.getBoundingClientRect().right),text:e.textContent.slice(0,70)}))})()`;
 const report = { engineering: 'pending', human_acceptance: 'pending', driver: 'real headless Chromium CDP; visible-element interaction only', actions: [], layout: [] };
 try {
-  await send('Page.enable'); await send('Runtime.enable'); await send('Page.navigate', { url: base + '/' });
-  await clickSel('.asset-list [data-asset-id="phase7_synthetic"]'); await openPage('prepare');
+  await send('Page.enable'); await send('Runtime.enable'); await send('Emulation.setDeviceMetricsOverride',{width:1600,height:1000,deviceScaleFactor:1,mobile:false}); await send('Page.navigate', { url: base + '/' });
+  const ensureAssetList=async()=>{if(!await evaluate(`[...document.querySelectorAll('.asset-list [data-asset-id]')].some(${VIS})`)){const btn=`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('项目')&&${VIS}(b))`;if(await evaluate(`!!(${btn})`)){await evaluate(`(${btn}).click()`);await wait(`[...document.querySelectorAll('.asset-list [data-asset-id]')].some(${VIS})`);}}};
+  await ensureAssetList(); await clickSel('.asset-list [data-asset-id="phase7_synthetic"]');
+  // 处理预设：新建并切到已配置模型；服务商接入：配置 vision/narration
+  await openPage('settings/profiles');
   await click('新建预设', '.preparation-panel');
   await labeled('.preparation-panel', '内容模式', 'configured');
+  await openPage('settings/providers');
   for (const format of ['openai', 'anthropic', 'gemini']) {
     await labeled(vision, 'API 格式', format);
     await labeled(vision, 'API 基础地址', mock);

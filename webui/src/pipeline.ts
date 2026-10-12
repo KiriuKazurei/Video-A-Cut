@@ -42,6 +42,8 @@ export interface NextStep {
   disabledReason?: string;
   /** 一句话说明（提示文字） */
   hint: string;
+  /** 点击时触发的特殊动作（不走路由）：retry-workflow = 重新请求内容流程列表 */
+  action?: 'retry-workflow';
 }
 
 export interface PipelineInput {
@@ -52,6 +54,8 @@ export interface PipelineInput {
   ingestRuns?: readonly IngestRun[];
   /** undefined = 尚未加载；null = 已加载且没有流程 */
   workflow?: WorkflowRun | null;
+  /** 内容流程查询失败时的错误文案；有值时下一步改为可点的「重新加载」 */
+  workflowError?: string;
 }
 
 export const STAGE_LABEL: Record<StageId, string> = { import: '导入与粗剪', prepare: '准备', generate: '生成', review: '审查', delivery: '交付' };
@@ -118,6 +122,12 @@ export function derivePipeline(input: PipelineInput): { stages: StageInfo[]; nex
   if (!asset) {
     stat.prepare = { status: 'blocked', text: '需要资产', reason: '还没有资产：先到「导入与粗剪」登记录像或导入交付包' };
     stat.generate = { status: 'blocked', text: '需要资产', reason: '还没有资产' };
+  } else if (input.workflowError && imp.status === 'done') {
+    const why = `内容流程读取失败：${input.workflowError}`;
+    stat.prepare = { status: 'error', text: '流程状态读取失败', reason: why };
+    stat.generate = { status: 'error', text: '流程状态读取失败', reason: why };
+    stat.review = { status: 'error', text: '流程状态读取失败', reason: why };
+    stat.delivery = { status: 'error', text: '流程状态读取失败', reason: why };
   } else if (workflow === undefined && imp.status === 'done') {
     stat.prepare = { status: 'unknown', text: '正在读取流程状态' };
     stat.generate = { status: 'unknown', text: '正在读取流程状态' };
@@ -201,6 +211,15 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
     }
   }
   // 2) 内容流程
+  if (input.workflowError) {
+    return {
+      label: '重新加载流程状态',
+      stage: null,
+      hint: `内容流程读取失败：${input.workflowError}。可点击重新加载，或到「运行准备」检查预设。`,
+      action: 'retry-workflow',
+      target: STAGE_TARGET.prepare // 备用：若调用方不处理 action，仍可跳到运行准备
+    };
+  }
   if (workflow === undefined) return { label: '下一步', stage: null, hint: '正在读取流程状态', disabledReason: '正在读取内容流程状态…' };
   const restart = (label: string, hint: string): NextStep => {
     const block = prepareBlock(asset);
