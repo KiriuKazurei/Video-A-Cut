@@ -81,12 +81,13 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                     selection={selection}
                     data={workflowData}
                     onGoExport={() => navigate({ workspace: 'export', exportSection: 'delivery' })}
+                    onGoTasks={() => navigate({ workspace: 'export', exportSection: 'tasks' })}
                     monitor={
                       <Monitor 
                         label="节目" 
                         preview={visibleProgramPreview}
                         emptyTitle="节目监视器"
-                        emptyHint="点击场景证据、时间线片段或解说的「在监视器预览」查看画面。" 
+                        emptyHint="单击时间线片段或审查卡片预览画面；证据缩略图可点进节目监视器。" 
                       />
                     }
                   />
@@ -105,12 +106,13 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                     selection={selection}
                     data={workflowData}
                     onGoExport={() => navigate({ workspace: 'export', exportSection: 'delivery' })}
+                    onGoTasks={() => navigate({ workspace: 'export', exportSection: 'tasks' })}
                     monitor={
                       <Monitor 
                         label="节目" 
                         preview={visibleProgramPreview}
                         emptyTitle="节目监视器"
-                        emptyHint="点击场景证据或解说预览画面。" 
+                        emptyHint="单击时间线片段或审查卡片预览画面。" 
                       />
                     }
                   />

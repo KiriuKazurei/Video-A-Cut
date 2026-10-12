@@ -78,9 +78,9 @@ export function PreparationPanel({
   };
   const blockers=report.data?.checks.filter(c=>c.status==='blocked')??[];
   const blockerTip=blockers.slice(0,3).map(c=>c.message).join('；')||'运行条件未满足';
-  const hasGovBlock=blockers.some(c=>c.code==='asset_governance');
+  const hasGovBlock=blockers.some(c=>c.code==='asset_governance'||c.code.startsWith('role_'));
   const hasConsentBlock=blockers.some(c=>c.code==='external_authorization');
-  const hasWorkerBlock=blockers.some(c=>c.code.startsWith('worker_')||c.code.startsWith('role_'));
+  const hasWorkerBlock=blockers.some(c=>c.code.startsWith('worker_'));
   const hasIngestBlock=blockers.some(c=>c.code.startsWith('ingest_')||c.code==='input_ready'||c.code==='controlled_edl');
 
   // 顶层公共预设选择工具栏
@@ -132,7 +132,7 @@ export function PreparationPanel({
           </List.Item>}/>
           {!report.data.can_start&&(
             <Space wrap size={[8,8]}>
-              {hasGovBlock&&<Button onClick={()=>onNavigate?.({workspace:'resources'})}>去资源管理调整治理</Button>}
+              {hasGovBlock&&<Button onClick={()=>onNavigate?.({workspace:'resources'})}>去资源管理调整可见性/角色</Button>}
               {hasConsentBlock&&canConsent&&<Button onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,true))}>授权此版本向外部服务发送取样</Button>}
               {hasWorkerBlock&&<Button onClick={()=>onNavigate?.({workspace:'settings',settingsCategory:'providers'})}>查看服务商接入</Button>}
               {hasIngestBlock&&<Button onClick={()=>onNavigate?.({workspace:'editing',editingSection:'import'})}>去导入与粗剪</Button>}

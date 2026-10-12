@@ -1,11 +1,11 @@
 import { apiURL } from '../runtimeUrl.ts';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, Col, Collapse, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Row, Space, Spin, Steps, Tag, Typography
+  Alert, Button, Card, Col, Collapse, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Row, Space, Spin, Steps, Tag, Tooltip, Typography
 } from 'antd';
 import type { StepProps } from 'antd';
-import { DownloadOutlined, RightOutlined } from '@ant-design/icons';
+import { CopyOutlined, DownloadOutlined, RightOutlined } from '@ant-design/icons';
 import { api } from '../api';
 import type { ReviewView, WorkflowRun } from '../types';
 import { usePreview } from './Monitor';
@@ -55,26 +55,76 @@ function useWorkflowAction() {
   return { invoke: (fn: () => Promise<unknown>) => action.mutate(fn), busy: action.isPending, failure };
 }
 
+const statusColor = (status?: string) => status === 'succeeded' || status === 'ready_for_acceptance' ? 'success'
+  : status === 'failed' || status === 'cancelled' ? 'error' : status === 'running' || status === 'claimed' ? 'processing' : status === 'awaiting_review' ? 'warning' : 'default';
+const stepStatus = (status?: string): StepProps['status'] => status === 'succeeded' ? 'finish'
+  : status === 'failed' || status === 'cancelled' ? 'error' : status === 'running' || status === 'claimed' ? 'process' : 'wait';
+const decisionColor = (decision?: string) => decision === 'confirmed' ? 'success' : decision === 'rejected' ? 'error' : 'processing';
+
+const STATUS_ZH: Record<string, string> = {
+  created: '已创建', running: '生成中', claimed: '执行中', awaiting_review: '等待审查',
+  ready_for_acceptance: '待验收', succeeded: '已成功', failed: '失败', cancelled: '已取消'
+};
+const STAGE_ZH: Record<string, string> = {
+  recognize: '识别', sort: '排序', scene_review: '场景审查', narrate: '撰稿',
+  draft_review: '解说审查', tts: '配音', subtitle: '字幕', mix: '混音', export: '导出', acceptance: '验收'
+};
+const TASK_ZH: Record<string, string> = {
+  succeeded: '已成功', failed: '失败', cancelled: '已取消', running: '运行中', claimed: '已领取',
+  pending: '等待中', queued: '排队中', invalidated: '已失效'
+};
+const shortId = (id?: string) => {
+  if (!id) return '—';
+  return id.length <= 14 ? id : `${id.slice(0, 8)}…${id.slice(-4)}`;
+};
+const copyText = async (text: string) => {
+  try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
+};
+
 function RunPicker({ runs, run, selection, busy }: { runs: WorkflowRun[] | undefined; run: WorkflowRun | undefined; selection: RunSelection; busy: boolean }) {
   return <Flex gap={8} align="flex-end" wrap className="run-picker">
     <Form.Item label="流程历史" layout="vertical" style={{ marginBottom: 0, flex: '1 1 260px', minWidth: 0 }}>
       <ValueSelect<string> className="select-workflow-run" aria-label="流程历史" value={run?.run_id} placeholder="暂无流程"
-        onChange={v => selection.setRunId(v)} options={(runs ?? []).map(r => ({ value: r.run_id, label: `${r.run_id} · ${r.status}` }))} />
+        onChange={v => selection.setRunId(v)} options={(runs ?? []).map(r => ({ value: r.run_id, label: `${shortId(r.run_id)} · ${STATUS_ZH[r.status] ?? r.status}` }))} />
     </Form.Item>
     <Button disabled={busy || selection.offset === 0} onClick={() => { selection.setOffset(Math.max(0, selection.offset - PAGE)); selection.setRunId(''); }}>较新流程</Button>
     <Button disabled={busy || (runs?.length ?? 0) < PAGE} onClick={() => { selection.setOffset(selection.offset + PAGE); selection.setRunId(''); }}>较早流程</Button>
   </Flex>;
 }
 
-const statusColor = (status?: string) => status === 'succeeded' || status === 'ready_for_acceptance' ? 'success'
-  : status === 'failed' || status === 'cancelled' ? 'error' : status === 'running' || status === 'claimed' ? 'processing' : 'default';
-const stepStatus = (status?: string): StepProps['status'] => status === 'succeeded' ? 'finish'
-  : status === 'failed' || status === 'cancelled' ? 'error' : status === 'running' || status === 'claimed' ? 'process' : 'wait';
-const decisionColor = (decision?: string) => decision === 'confirmed' ? 'success' : decision === 'rejected' ? 'error' : 'processing';
+/** 水平流程条：点击切换 run（复用现有 listWorkflows + setRunId）。 */
+function RunStrip({ runs, currentId, busy, onSelect }: { runs: WorkflowRun[] | undefined; currentId?: string; busy: boolean; onSelect: (id: string) => void }) {
+  if (!runs?.length) return null;
+  return (
+    <div className="run-strip" role="list" aria-label="流程一览">
+      {runs.map((r, i) => {
+        const active = r.run_id === currentId;
+        return (
+          <button type="button" key={r.run_id} role="listitem" disabled={busy}
+            className={`run-chip${active ? ' is-active' : ''}`}
+            aria-current={active ? 'true' : undefined}
+            title={`${r.run_id} · ${r.status} / ${r.stage}`}
+            onClick={() => onSelect(r.run_id)}>
+            <span className="run-chip-ord">{i + 1}</span>
+            <Tag color={statusColor(r.status)} bordered={false}>{STATUS_ZH[r.status] ?? r.status}</Tag>
+            <span className="run-chip-meta">{STAGE_ZH[r.stage] ?? r.stage}</span>
+            <span className="run-chip-id">{shortId(r.run_id)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** 编辑页：内容流程、阶段、序列时间线、场景审查与解说改稿（API-28~38）。 */
 type WorkflowData = ReturnType<typeof useWorkflowData>;
-interface WorkflowPanelProps { assetId: string; selection: RunSelection; monitor: ReactNode; onGoExport?: () => void }
+interface WorkflowPanelProps {
+  assetId: string;
+  selection: RunSelection;
+  monitor: ReactNode;
+  onGoExport?: () => void;
+  onGoTasks?: () => void;
+}
 
 export function WorkflowPanel({ data, ...props }: WorkflowPanelProps & { data?: WorkflowData }) {
   return data ? <WorkflowContent {...props} data={data} /> : <QueriedWorkflowPanel {...props} />;
@@ -85,16 +135,22 @@ function QueriedWorkflowPanel(props: WorkflowPanelProps) {
   return <WorkflowContent {...props} data={data} />;
 }
 
-function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: WorkflowPanelProps & { data: WorkflowData }) {
+function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, data }: WorkflowPanelProps & { data: WorkflowData }) {
   const [mode, setMode] = useState<'configured' | 'builtin'>('configured');
   const [note, setNote] = useState('');
   const [focused, setFocused] = useState<{ key: string; owner: ReturnType<typeof workflowPreviewContext> } | null>(null);
   const [tab, setTab] = useState<'scenes' | 'narration' | null>(null);
+  const [copied, setCopied] = useState(false);
   const preview = usePreview();
   const { runs, run, snapshot, review, current } = data;
   const owner = workflowPreviewContext(current);
   const focus = review.data && samePreviewContext(focused?.owner, owner) ? focused?.key : null;
   useEffect(() => { setFocused(null); setTab(null); }, [assetId, current?.run_id, current?.current_revision_id]);
+  useEffect(() => {
+    if (!focus) return;
+    const el = document.querySelector<HTMLElement>(`.workflow-card[data-focus-key="${CSS.escape(focus)}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [focus]);
   const { invoke, busy, failure } = useWorkflowAction();
   const sceneGate = current?.stage === 'scene_review' && current.status === 'awaiting_review';
   const draftGate = current?.stage === 'draft_review' && current.status === 'awaiting_review';
@@ -103,6 +159,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: Work
   const lines = review.data?.narration ?? [];
   const evidence = review.data?.evidence_files ?? [];
   const activeTab = tab ?? (current?.stage === 'draft_review' || (lines.length > 0 && current?.stage !== 'scene_review') ? 'narration' : 'scenes');
+  const generating = current && (current.status === 'running' || current.status === 'created' || current.status === 'claimed');
 
   const showScene = (scene: Scene, key?: string) => {
     setFocused({ key: `scene:${scene.scene_id}`, owner }); setTab('scenes');
@@ -111,6 +168,11 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: Work
   const showLine = (line: Line) => {
     setFocused({ key: `line:${line.id}`, owner }); setTab('narration');
     preview(line.id ? createWorkflowPreview(review.data, { kind: 'line', id: line.id }) : null);
+  };
+  const cardActivate = (e: MouseEvent, fn: () => void) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('button, input, textarea, .ant-select, a, .ant-input-number')) return;
+    fn();
   };
 
   const ordered = [...scenes].map((scene, index) => ({ scene, index })).sort((a, b) => (a.scene.sequence_rank ?? a.index) - (b.scene.sequence_rank ?? b.index));
@@ -129,8 +191,11 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: Work
   const lineClips: TimelineClip[] = timed.map(line => ({ id: line.id ?? `${line.start}`, start: line.start!, end: line.end!, label: line.text || line.id || '解说',
     tone: line.approved_hash ? 'ok' : 'audio', active: focus === `line:${line.id}`, onSelect: () => showLine(line), title: `${line.start}s – ${line.end}s · ${line.approved_hash ? '已批准' : '未批准'} · ${line.text}` }));
 
+  const revisionId = current?.current_revision_id ?? '';
+  const doCopy = () => { void copyText(revisionId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
+
   return <Card className="workflow-panel" aria-labelledby="workflow-title" title={<span id="workflow-title">内容流程与审查</span>}
-    extra={current && <Tag color={statusColor(current.status)}>{current.status}</Tag>}>
+    extra={current && <Tag color={statusColor(current.status)}>{STATUS_ZH[current.status] ?? current.status}</Tag>}>
     <Flex vertical gap={12}>
       <Flex gap={8} align="flex-end" wrap className="workflow-toolbar">
         <Form.Item label="内容模式" layout="vertical" style={{ marginBottom: 0, width: 180 }}>
@@ -140,21 +205,42 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: Work
         <Button type="primary" disabled={busy} title="通用入口；固定预设流程请在「准备」页通过预检后启动" onClick={() => invoke(async () => { const created = await api.startWorkflow(assetId, crypto.randomUUID(), mode); selection.setOffset(0); selection.setRunId(created.run_id); })}>启动新流程</Button>
         <div style={{ flex: '1 1 360px', minWidth: 0 }}><RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} /></div>
       </Flex>
-      <Typography.Text type="secondary">先核对画面证据，再批准解说。固定预设流程建议在「准备」页预检后启动；builtin 只是工程回归，不代表真实识别。</Typography.Text>
+      <Typography.Text type="secondary">先核对画面证据，再批准解说。单击时间线或审查卡片可在节目监视器预览。固定预设流程建议在「准备」页预检后启动。</Typography.Text>
       {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
       {(failure || runs.error || review.error || snapshot.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || review.error || snapshot.error)} />}
-      {runs.isSuccess && !current && <Empty description="此资产还没有内容流程。可在「准备」页检查运行条件后启动固定预设流程。" />}
+      {runs.isSuccess && !current && <Empty description="此资产还没有内容流程。可在「准备」页核对运行条件后启动固定预设流程。" />}
       {current && <>
+        <div className="workflow-status-strip">
+          <Flex gap={8} align="center" wrap>
+            <Tag color={statusColor(current.status)}>{STATUS_ZH[current.status] ?? current.status}</Tag>
+            <Tag color={sceneGate || draftGate ? 'warning' : 'default'}>{STAGE_ZH[current.stage] ?? current.stage}</Tag>
+            {sceneGate && <Tag color="warning">等待场景确认</Tag>}
+            {draftGate && <Tag color="warning">等待解说批准</Tag>}
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{current.status} / {current.stage}</Typography.Text>
+            <span className="revision-chip" title={revisionId}>
+              修订 <Typography.Text code>{shortId(revisionId)}</Typography.Text>
+              <Tooltip title={copied ? '已复制' : '复制完整修订 ID'}>
+                <Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制修订 ID" onClick={doCopy} />
+              </Tooltip>
+            </span>
+            {snapshot.data?.profile_binding && (
+              <Tag bordered={false}>{snapshot.data.profile_binding.profile_id} · v{snapshot.data.profile_binding.revision}</Tag>
+            )}
+          </Flex>
+          <RunStrip runs={runs.data} currentId={current.run_id} busy={runs.isFetching || busy} onSelect={id => selection.setRunId(id)} />
+        </div>
         <div className="edit-stage">
           <div className="edit-stage-monitor">{monitor}</div>
           <Card size="small" className="review-panel" activeTabKey={activeTab} onTabChange={(key) => setTab(key as 'scenes' | 'narration')}
             tabList={[{ key: 'scenes', label: `场景证据 (${scenes.length})` }, { key: 'narration', label: `解说草稿 (${lines.length})` }]}
-            tabBarExtraContent={<Tag bordered={false}>{sceneGate ? '等待场景确认' : draftGate ? '等待解说批准' : current.stage}</Tag>}>
+            tabBarExtraContent={<Tag bordered={false}>{sceneGate ? '等待场景确认' : draftGate ? '等待解说批准' : (STAGE_ZH[current.stage] ?? current.stage)}</Tag>}>
             <Spin spinning={review.isLoading || (review.isFetching && !review.data)}>
               <div className="review-scroll" role="tabpanel" id="review-scenes" hidden={activeTab !== 'scenes'}>
                 {!scenes.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="识别完成后显示场景与证据。" />}
                 {review.data?.scenes?.map(scene => <Card size="small" key={scene.scene_id}
+                  data-focus-key={`scene:${scene.scene_id}`}
                   className={`workflow-card scene-card${focus === `scene:${scene.scene_id}` ? ' is-focused' : ''}`}
+                  onClick={e => cardActivate(e, () => showScene(scene))}
                   title={<Typography.Text strong className="scene-title">{scene.label} · {scene.decision || '待确认'}</Typography.Text>}
                   extra={<Tag color={decisionColor(scene.decision)}>{scene.decision || '待确认'}</Tag>}>
                   <Typography.Text type="secondary">置信度：{scene.confidence ?? '未提供'}；模型/方法：{scene.model_version || scene.method || '未提供'}</Typography.Text>
@@ -174,32 +260,42 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: Work
               <div className="review-scroll" role="tabpanel" id="review-narration" hidden={activeTab !== 'narration'}>
                 {!lines.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="场景确认、排序后生成草稿。" />}
                 {review.data?.narration?.map(line => <Card size="small" key={line.id}
-                  className={`workflow-card narration-card${focus === `line:${line.id}` ? ' is-focused' : ''}`}>
+                  data-focus-key={`line:${line.id}`}
+                  className={`workflow-card narration-card${focus === `line:${line.id}` ? ' is-focused' : ''}`}
+                  onClick={e => cardActivate(e, () => showLine(line))}>
                   <DraftEdit key={`${review.data!.revision.revision_id}-${line.id}`} line={line} scenes={scenes} disabled={busy || !['draft_review', 'acceptance'].includes(current.stage)} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), narration_id: line.id, ...fields }))} />
                   <Flex align="center" gap={8} wrap style={{ margin: '8px 0' }}>
                     <Tag color={line.approved_hash ? 'success' : 'default'}>{line.approved_hash ? '当前版本已批准' : '当前版本未批准'}</Tag>
                     <Typography.Text type="secondary" style={{ overflowWrap: 'anywhere' }}>来源场景 {line.source_scene_id || '未提供'}</Typography.Text>
+                    {focus === `line:${line.id}` && <Tag color="warning" bordered={false}>正在节目监视器</Tag>}
                   </Flex>
                   <Space wrap>
                     <Button type="primary" disabled={busy || !draftGate || Boolean(line.approved_hash)} onClick={() => invoke(() => api.approveNarration(current.run_id, { ...context(), narration_id: line.id! }))}>批准当前版本</Button>
                     <Button danger disabled={busy || current.status === 'cancelled'} onClick={() => invoke(() => api.revokeWorkflowNarration(current.run_id, line.id!, current.version))}>撤销并停止下游</Button>
-                    <Button onClick={() => showLine(line)}>在监视器预览</Button>
+                    <Button type="link" size="small" onClick={() => showLine(line)}>节目监视器</Button>
                   </Space>
                 </Card>)}
               </div>
             </Spin>
           </Card>
         </div>
+        <div className="timeline-legend" aria-label="时间线图例">
+          <span><i className="legend-swatch tone-video" />场景待确认</span>
+          <span><i className="legend-swatch tone-ok" />已确认 / 已批准</span>
+          <span><i className="legend-swatch tone-bad" />已退回</span>
+          <span><i className="legend-swatch tone-audio" />解说未批准</span>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>单击片段 → 聚焦卡片并载入节目监视器</Typography.Text>
+        </div>
         <Timeline label="序列时间线" duration={seqEnd > 0 ? seqEnd : Math.max(1, ordered.length)} formatTick={seqEnd > 0 ? (v) => `${Math.round(v * 10) / 10}s` : undefined}
-          caption={seqEnd > 0 ? `解说时间轴（秒）· 场景时间窗由所属解说推得 · 点击片段在节目监视器查看证据` : '尚无解说时间：场景按 sequence_rank 等宽显示顺序'}
-          tracks={[{ id: 'V1', name: '场景', hint: '颜色：蓝=待确认 绿=已确认 红=已退回', clips: sceneClips }, { id: 'A1', name: '解说', hint: '绿=当前版本已批准', clips: lineClips }]}
+          caption={seqEnd > 0 ? `解说时间轴（秒）· 场景时间窗由所属解说推得` : '尚无解说时间：场景按 sequence_rank 等宽显示顺序'}
+          tracks={[{ id: 'V1', name: '场景', hint: '蓝=待确认 绿=已确认 红=已退回', clips: sceneClips }, { id: 'A1', name: '解说', hint: '绿=已批准 青=未批准', clips: lineClips }]}
           emptyText="识别完成后在此显示场景与解说" />
         <Card size="small" title="流程状态与阶段" className="edit-status">
           <Flex vertical gap={12}>
             <Descriptions size="small" column={{ xs: 1, sm: 2, xl: 4 }} items={[
               { key: 'status', label: '状态 / 阶段', children: `${current.status} / ${current.stage}` },
               { key: 'revision', label: '修订', children: <Typography.Text code style={{ overflowWrap: 'anywhere' }}>{current.current_revision_id}</Typography.Text> },
-              { key: 'mode', label: '内容模式', children: current.content_mode },
+              { key: 'mode', label: '内容模式', children: current.content_mode === 'builtin' ? 'builtin 工程回归' : current.content_mode === 'configured' ? '已配置模型' : current.content_mode },
               { key: 'profile', label: '处理预设', children: snapshot.data?.profile_binding ? `${snapshot.data.profile_binding.profile_id} / v${snapshot.data.profile_binding.revision}` : '未绑定' }
             ]} />
             {current.blocked_reason && <Alert type="info" showIcon message={current.blocked_reason} />}
@@ -211,14 +307,25 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, data }: Work
               <Button danger disabled={busy || ['cancelled', 'ready_for_acceptance'].includes(current.status) || !note.trim()} onClick={() => invoke(() => api.cancelWorkflow(current.run_id, current.version, note))}>取消流程</Button>
               <Button disabled={busy || current.status !== 'failed'} onClick={() => invoke(() => api.retryWorkflow(current.run_id, current.version, current.stage, crypto.randomUUID()))}>重试失败阶段</Button>
               {current.status === 'ready_for_acceptance' && onGoExport && <Button type="primary" ghost icon={<RightOutlined />} iconPosition="end" onClick={onGoExport}>前往导出与验收</Button>}
+              {generating && onGoTasks && <Button ghost icon={<RightOutlined />} iconPosition="end" onClick={onGoTasks}>查看生成任务</Button>}
             </Flex>
             {snapshot.data?.stages.length ? <Steps size="small" className="stage-pipeline" aria-label="阶段任务" responsive
               items={snapshot.data.stages.map(s => {
                 const task = snapshot.data?.tasks?.find(t => t.task_id === s.task_id);
                 const pct = Math.round((task?.progress ?? 0) * 100);
-                return { key: s.task_id, status: stepStatus(task?.status),
-                  title: <span title={`${s.task_id}${task?.message ? ' · ' + task.message : ''}`} style={s.invalidated ? { textDecoration: 'line-through' } : undefined}>{s.stage}</span>,
-                  description: <>{task?.status || '读取中'} · {pct}%<br />回收 {task?.attempts ?? 0} 次{s.invalidated ? ' · 已失效' : s.output_revision_id ? ' · 已交付' : ''}</> };
+                const st = task?.status;
+                const stZh = TASK_ZH[st ?? ''] ?? st ?? '读取中';
+                const mark = s.invalidated ? '已失效' : s.output_revision_id ? '已交付' : '';
+                return {
+                  key: s.task_id,
+                  status: s.invalidated ? 'error' : stepStatus(st),
+                  title: <span title={`${s.task_id}${task?.message ? ' · ' + task.message : ''}`} className={s.invalidated ? 'stage-invalidated' : undefined}>{s.stage}</span>,
+                  description: <span className={`stage-desc${s.invalidated ? ' is-invalidated' : ''}${s.output_revision_id && !s.invalidated ? ' is-delivered' : ''}`}>
+                    {stZh} · {pct}%
+                    {mark ? <> · <Tag color={s.invalidated ? 'error' : 'success'} bordered={false} style={{ marginInlineEnd: 0 }}>{mark}</Tag></> : null}
+                    <br />回收 {task?.attempts ?? 0} 次
+                  </span>
+                };
               })} /> : null}
           </Flex>
         </Card>
