@@ -64,7 +64,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                       preview={sourceAssetId === assetId ? sourcePreview : null}
                       compact 
                       emptyTitle="源监视器"
-                      emptyHint="切分完成后点击候选片段或时间线片段查看缩略图；短片生成后在此播放。" 
+                      emptyHint="单击时间线或缩略图预览；双击时间线片段加入/移出已选；短片生成后点击卡片在此播放。" 
                     />
                   </div>
                   <IngestRegister onSelect={onSelect} />

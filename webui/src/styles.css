@@ -684,3 +684,20 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .stage-dot.is-todo { border-color: #69b1ff; }
 [data-nav-anchor]:focus { outline: none; }
 [data-nav-anchor]:focus-visible { outline: 2px solid #69b1ff; outline-offset: 2px; }
+
+/* 时间线：已选对勾、焦点；短片卡激活态 */
+.timeline-clip.is-picked .timeline-clip-mark {
+  position: absolute; top: 1px; right: 3px; font-size: 9px; line-height: 1; opacity: 0.95;
+  pointer-events: none;
+}
+.timeline-clip { transition: box-shadow var(--vac-dur) var(--vac-ease), filter var(--vac-dur) var(--vac-ease); }
+button.timeline-clip:hover { filter: brightness(1.08); }
+button.timeline-clip:active { transform: scale(0.99); }
+.segment-item.is-focused { outline: 2px solid rgba(22, 119, 255, 0.55); outline-offset: 1px; }
+.ready-clip { cursor: pointer; transition: border-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease); }
+.ready-clip.is-active { border-color: #1677ff !important; box-shadow: 0 0 0 1px #1677ff; }
+.ready-clip:focus-within { outline: 2px solid #69b1ff; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .timeline-clip, .ready-clip { transition: none !important; }
+  button.timeline-clip:active { transform: none; }
+}

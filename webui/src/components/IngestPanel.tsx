@@ -346,28 +346,55 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
   const total = page.data?.total ?? view.segments!.count;
   const preview = usePreview();
   const [focusId, setFocusId] = useState<string | null>(null);
-  const show = (it: SegmentItem) => {
+  /** 聚焦片段：同步时间线与缩略图高亮，并送到源监视器。 */
+  const show = (it: { segment_id: string; start_us: number; end_us: number; thumbnail_key?: string }) => {
     setFocusId(it.segment_id);
-    if (it.thumbnail_key) preview({ kind: 'image', src: ingestFileURL(run.run_id, it.thumbnail_key), title: it.segment_id,
-      meta: `${usToClock(it.start_us)} – ${usToClock(it.end_us)}`, note: '候选片段缩略图（源素材取样，非成片）' });
-    else preview(null);
+    const meta = `${usToClock(it.start_us)} – ${usToClock(it.end_us)}`;
+    if (it.thumbnail_key) {
+      preview({
+        kind: 'image', src: ingestFileURL(run.run_id, it.thumbnail_key), title: it.segment_id, meta,
+        note: '候选片段缩略图（源素材取样，非成片）'
+      });
+    } else {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#121316"/><text x="50%" y="48%" fill="#8c8c8c" font-size="18" text-anchor="middle" dominant-baseline="middle">${it.segment_id}</text><text x="50%" y="58%" fill="#595959" font-size="12" text-anchor="middle">无缩略图</text></svg>`;
+      preview({ kind: 'image', src: 'data:image/svg+xml,' + encodeURIComponent(svg), title: it.segment_id, meta, note: '无缩略图 · 仍可在时间线选中与编辑' });
+    }
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`.segment-list [data-segment-id="${CSS.escape(it.segment_id)}"]`);
+      el?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+  };
+  const focusPicked = (id: string, startUs: number, endUs: number) => {
+    const knownItem = known.get(id);
+    if (knownItem) show(knownItem);
+    else show({ segment_id: id, start_us: startUs, end_us: endUs });
   };
   const durationUs = view.probe!.duration_us;
   const candidateClips: TimelineClip[] = (page.data?.items ?? []).map((it) => ({
-    id: it.segment_id, start: it.start_us, end: it.end_us, label: it.segment_id, tone: picked.has(it.segment_id) ? 'selected' : 'candidate',
+    id: it.segment_id, start: it.start_us, end: it.end_us, label: it.segment_id,
+    tone: picked.has(it.segment_id) ? 'selected' : 'candidate',
     title: `${it.segment_id} · ${usToClock(it.start_us)} – ${usToClock(it.end_us)} · ${reasonText[it.reason]}`,
-    active: focusId === it.segment_id, onSelect: () => show(it)
+    active: focusId === it.segment_id, picked: picked.has(it.segment_id),
+    onSelect: () => show(it),
+    onToggle: busy ? undefined : () => toggle(it)
   }));
   const selectedClips: TimelineClip[] = typeof segments === 'string' ? [] : segments.map((it) => ({
-    id: it.segment_id, start: it.start_us, end: it.end_us, label: it.segment_id, tone: 'video',
-    title: `${it.segment_id} · ${usToClock(it.start_us)} – ${usToClock(it.end_us)}`
+    id: it.segment_id, start: it.start_us, end: it.end_us, label: it.segment_id, tone: 'video' as const,
+    title: `${it.segment_id} · ${usToClock(it.start_us)} – ${usToClock(it.end_us)}`,
+    active: focusId === it.segment_id, picked: true,
+    onSelect: () => focusPicked(it.segment_id, it.start_us, it.end_us),
+    onToggle: busy ? undefined : () => {
+      const item = known.get(it.segment_id);
+      if (item) toggle(item);
+      else setPicked((prev) => { const next = new Map(prev); next.delete(it.segment_id); return next; });
+    }
   }));
 
   return <Flex vertical gap={12} className="ingest-review">
     <Timeline label="源时间线" duration={durationUs} formatTick={tickClock}
-      caption={`本页候选 ${page.data?.items.length ?? 0} 个 · 已选 ${picked.size} 段 · 点击候选在源监视器查看缩略图`}
-      tracks={[{ id: 'C', name: '候选', hint: '当前页的自动候选片段', clips: candidateClips },
-        { id: 'V1', name: '已选', hint: '将保存为选择版本的完整列表（含跨页与拆分片段）', clips: selectedClips }]}
+      caption={`本页候选 ${page.data?.items.length ?? 0} · 已选 ${picked.size} · 单击预览 · 双击加入/移出已选`}
+      tracks={[{ id: 'C', name: '候选', hint: '单击预览；双击或 Ctrl/⌘+单击加入/移出已选', clips: candidateClips },
+        { id: 'V1', name: '已选', hint: '单击预览；双击移出已选', clips: selectedClips }]}
       emptyText="当前分析版本暂无候选片段" />
     <Typography.Title level={5} style={{ margin: 0 }}>候选片段（{total} 个，方法 {view.segments!.method_version}，已选 {picked.size}）</Typography.Title>
     {page.isError && <Alert type="error" showIcon role="alert" message={message(page.error)} />}
@@ -375,7 +402,7 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
       <Row gutter={[12, 12]} className="segment-list">{page.data?.items.map((it) => {
         const draft = picked.get(it.segment_id);
         return <Col key={it.segment_id} xs={24} md={12} xxl={8}>
-          <Card size="small" className={`segment-item${draft ? ' is-selected' : ''}`} styles={{ body: { padding: 8 } }}>
+          <Card size="small" data-segment-id={it.segment_id} className={`segment-item${draft ? ' is-selected' : ''}${focusId === it.segment_id ? ' is-focused' : ''}`} styles={{ body: { padding: 8 } }}>
             <div className="segment-row">
               <button type="button" className={`segment-thumb${focusId === it.segment_id ? ' is-active' : ''}`} onClick={() => show(it)} aria-label={`在源监视器查看 ${it.segment_id}`}>
                 {it.thumbnail_key ? <img src={ingestFileURL(run.run_id, it.thumbnail_key)} alt={`${it.segment_id} 缩略图`} loading="lazy" /> : <span className="segment-thumb-missing">无缩略图</span>}
@@ -456,18 +483,30 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
 function ReadyFiles({ view }: { view: IngestRunView }) {
   const media = view.files.filter((k) => k.startsWith('media_'));
   const preview = usePreview();
-  const open = (k: string) => preview({ kind: 'video', src: ingestFileURL(view.run.run_id, k), title: k.slice('media_'.length), meta: `导入运行 ${view.run.run_id}`, note: '已生成短片（EDL 包媒体）' });
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const open = (k: string) => {
+    setFocusKey(k);
+    preview({ kind: 'video', src: ingestFileURL(view.run.run_id, k), title: k.slice('media_'.length), meta: `导入运行 ${view.run.run_id}`, note: '已生成短片（EDL 包媒体）' });
+  };
   useEffect(() => { if (media[0]) open(media[0]); }, [view.run.run_id, media[0]]);
   return <div className="ingest-ready">
     <Alert type="success" showIcon style={{ marginBottom: 12 }} message={`已生成 ${media.length} 个短片，资产已切换为 EDL 包，可到「准备」页启动内容流程。内容质量仍需人工验收。`} />
+    <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>点击短片卡片在源监视器播放；卡片内播放器仍可本地试听。</Typography.Paragraph>
     <Row gutter={[12, 12]}>{media.map((k) => <Col key={k} xs={24} sm={12} xxl={8}>
-      <Card size="small" styles={{ body: { padding: 8 } }}>
-        <video className="ready-video" controls preload="metadata" src={ingestFileURL(view.run.run_id, k)} />
+      <Card size="small" className={`ready-clip${focusKey === k ? ' is-active' : ''}`} styles={{ body: { padding: 8 } }}
+        onClick={() => open(k)}>
+        <video className="ready-video" controls preload="metadata" src={ingestFileURL(view.run.run_id, k)}
+          onClick={(e) => e.stopPropagation()} />
         <Flex justify="space-between" align="center" gap={8} style={{ marginTop: 6 }}>
           <Typography.Text code ellipsis>{k.slice('media_'.length)}</Typography.Text>
-          <Button size="small" onClick={() => open(k)}>送到源监视器</Button>
+          <Button type="link" size="small" aria-pressed={focusKey === k}
+            aria-label={`在源监视器播放 ${k.slice('media_'.length)}`}
+            onClick={(e) => { e.stopPropagation(); open(k); }}>
+            {focusKey === k ? '正在源监视器' : '源监视器'}
+          </Button>
         </Flex>
       </Card>
     </Col>)}</Row>
   </div>;
 }
+

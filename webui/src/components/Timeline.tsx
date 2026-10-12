@@ -8,9 +8,9 @@ import {
 import { useResizable } from '../hooks/useResizable';
 
 /**
- * 只读的时间线示意：按轨道把片段画在统一标尺上，点击片段把它送到监视器。
- * 所有编辑（选择、边界、拆分合并、排序、改稿）仍走各面板的表单并由服务端校验，
- * 时间线本身不提交任何数据。轨道渲染没有对应的 antd 组件，颜色取自 antd 令牌。
+ * 时间线示意：按轨道把片段画在统一标尺上。
+ * 单击片段 → 聚焦并送到源监视器；双击或 Ctrl/⌘+单击 → 加入/移出选择版本（回调仍走现有 pick API）。
+ * 边界拆分合并等仍走下方表单并由服务端校验。轨道渲染没有对应的 antd 组件，颜色取自 antd 令牌。
  *
  * Phase 3 增强：
  * - 支持高度可拖拽调整 (160px ~ 500px)，双击还原默认 260px
@@ -26,7 +26,12 @@ export interface TimelineClip {
   tone: ClipTone;
   title?: string;
   active?: boolean;
+  /** 单击 / Enter：聚焦并送到监视器 */
   onSelect?: () => void;
+  /** 双击 / Ctrl·⌘+单击：加入或移出选择版本（仍走现有 pick API） */
+  onToggle?: () => void;
+  /** 已在选择版本中（候选轨上显示对勾提示） */
+  picked?: boolean;
 }
 
 export interface TimelineTrack {
@@ -205,28 +210,45 @@ export function Timeline({ label, duration, tracks, formatTick, caption, emptyTe
                     ? `0 0 0 2px ${token.colorBgContainer}, 0 0 0 4px ${token.colorWarning}`
                     : undefined
                 };
-                const className = `timeline-clip tone-${clip.tone}${clip.active ? ' is-active' : ''}`;
-                return clip.onSelect ? (
+                const className = `timeline-clip tone-${clip.tone}${clip.active ? ' is-active' : ''}${clip.picked ? ' is-picked' : ''}`;
+                const tip = [
+                  clip.title ?? clip.label,
+                  clip.onToggle ? (clip.picked ? '双击或 Ctrl/⌘+单击：移出已选' : '双击或 Ctrl/⌘+单击：加入已选') : undefined
+                ].filter(Boolean).join(' · ');
+                if (!clip.onSelect && !clip.onToggle) {
+                  return (
+                    <span key={clip.id} className={className} style={style} title={tip}>
+                      <span>{clip.label}</span>
+                    </span>
+                  );
+                }
+                return (
                   <button
                     key={clip.id}
                     type="button"
                     className={className}
                     style={style}
-                    title={clip.title ?? clip.label}
+                    title={tip}
                     aria-pressed={Boolean(clip.active)}
-                    onClick={clip.onSelect}
+                    aria-label={`${clip.label}${clip.picked ? '（已选）' : ''}${clip.active ? '，当前焦点' : ''}`}
+                    data-clip-id={clip.id}
+                    onClick={(event) => {
+                      if ((event.metaKey || event.ctrlKey) && clip.onToggle) {
+                        event.preventDefault();
+                        clip.onToggle();
+                        return;
+                      }
+                      clip.onSelect?.();
+                    }}
+                    onDoubleClick={(event) => {
+                      if (!clip.onToggle) return;
+                      event.preventDefault();
+                      clip.onToggle();
+                    }}
                   >
                     <span>{clip.label}</span>
+                    {clip.picked && <span className="timeline-clip-mark" aria-hidden="true">✓</span>}
                   </button>
-                ) : (
-                  <span
-                    key={clip.id}
-                    className={className}
-                    style={style}
-                    title={clip.title ?? clip.label}
-                  >
-                    <span>{clip.label}</span>
-                  </span>
                 );
               })}
             </div>
