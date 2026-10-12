@@ -35,7 +35,7 @@ let n = 0; const ok = (m) => console.log(`ok ${++n} ${m}`);
 
 // 1) 五个工作区的面包屑形态一致；深链与旧路径仍可用
 for (const [h, want] of [['#/resources', ['资源管理', '_selfcheck']], ['#/editing/review', ['编辑', '审查', '_selfcheck']], ['#/export/tasks', ['导出', '任务监控', '_selfcheck']],
-  ['#/settings/preparation', ['设置', '运行准备', '_selfcheck']], ['#/settings/logs', ['设置', '日志与诊断']], ['#/tts', ['TTS', '声音调控台']], ['#/import', ['编辑', '导入与粗剪', '_selfcheck']], ['#/monitor', ['导出', '任务监控', '_selfcheck']]]) {
+  ['#/settings/preparation', ['设置', '运行准备', '_selfcheck']], ['#/settings/logs', ['设置', '日志与诊断']], ['#/settings/status', ['设置', '状态监控']], ['#/tts', ['TTS', '声音调控台']], ['#/import', ['编辑', '导入与粗剪', '_selfcheck']], ['#/monitor', ['导出', '任务监控', '_selfcheck']]]) {
   await load(h);
   assert.deepEqual(await crumbs(), want, h);
   assert.equal(await page.locator('.context-bar h1').count(), 1);

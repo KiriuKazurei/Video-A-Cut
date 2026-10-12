@@ -8,7 +8,7 @@ import { SECTION_STAGE } from '../pipeline';
 import { StageDot } from '../components/PipelineContext';
 import { PreparationPanel } from '../components/PreparationPanel';
 import AuditLogViewer from '../components/AuditLogViewer';
-import { ConnectionStatusBar } from '../components/ConnectionStatusBar';
+import { StatusMonitor } from '../components/StatusMonitor';
 
 interface SettingsWorkspaceProps {
   route: RouteState;
@@ -25,6 +25,7 @@ interface SettingsWorkspaceProps {
     reconnect: () => void;
     disconnect: () => void;
   };
+  controlPlane: UseQueryResult<Asset[], Error>;
 }
 
 /**
@@ -33,7 +34,7 @@ interface SettingsWorkspaceProps {
  * P2-02 修复：单实例常驻保活，分类切换草稿不丢失
  * P1-04 修复：响应式自适应，小屏下转为顶部分类切换，消除宽度坍缩
  */
-export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, connection, events }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, connection, events, controlPlane }: SettingsWorkspaceProps) {
   const { settingsCategory = 'profiles' } = route;
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md; // < 768px
@@ -95,20 +96,13 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
             <Card 
               title="日志与诊断" 
               bordered={false}
-              extra={
-                <ConnectionStatusBar
-                  status={connection}
-                  retryCount={events.retryCount}
-                  maxRetries={events.maxRetries}
-                  retryExhausted={events.retryExhausted}
-                  nextRetryLabel={events.nextRetryLabel}
-                  onReconnect={events.reconnect}
-                  onDisconnect={events.disconnect}
-                />
-              }
             >
               <AuditLogViewer />
             </Card>
+          )}
+
+          {settingsCategory === 'status' && (
+            <StatusMonitor connection={connection} events={events} controlPlane={controlPlane} audit={audit} />
           )}
         </Layout.Content>
       </Layout>

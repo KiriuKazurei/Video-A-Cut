@@ -40,7 +40,7 @@ const LEGACY_ROUTE = { import: 'editing/import', assembly: 'editing/import', pre
 const SECTION_LABEL = {
   editing: { import: '导入与粗剪', content: '内容编辑', review: '审查' },
   export: { delivery: '交付', acceptance: '人工验收', tasks: '任务监控' },
-  settings: { profiles: '处理预设', providers: '服务商接入', preparation: '运行准备', logs: '日志与诊断' }
+  settings: { profiles: '处理预设', providers: '服务商接入', preparation: '运行准备', logs: '日志与诊断', status: '状态监控' }
 };
 const openWorkspace = async (ws) => {
   if (ws === 'settings') {
@@ -87,11 +87,12 @@ const PAGE_OVERFLOW=`(()=>{const cw=document.documentElement.clientWidth;const c
 const settle=async()=>{await new Promise(r=>setTimeout(r,400));await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');};
 const report={mode,human_acceptance:'pending',driver:'real Chromium CDP; DOM interaction restricted to visible elements of the active page',layout:[],pages:[],actions:[]};
 // 窄屏到宽屏逐页检查：经由顶部菜单（含折叠子菜单）进入每一页，任何越界都判失败。
+const sse=async(action,state)=>{await openPage('settings/status');await click(action,'.status-monitor');await wait(`document.querySelector('.status-monitor [data-status=sse]')?.dataset.state==='${state}'`);};
 const pageSweep=async()=>{
  for(const width of [375,1280]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
   await settle();
-  for(const page of ['resources','editing/import','editing/content','editing/review','export/delivery','export/acceptance','export/tasks','settings/profiles','settings/preparation','tts']){
+  for(const page of ['resources','editing/import','editing/content','editing/review','export/delivery','export/acceptance','export/tasks','settings/profiles','settings/preparation','settings/status','tts']){
    await openPage(page);await new Promise(r=>setTimeout(r,250));
    const row=await evaluate(`({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,pageOverflow:${PAGE_OVERFLOW}})`);
    row.page=page;row.pass=row.scrollWidth<=width&&row.pageOverflow.length===0;report.pages.push(row);
@@ -124,14 +125,14 @@ try{
   await input('.ingest-analysis input[aria-label="终点"]','00:17.000');
   await pick('.ingest-analysis .select-audio-stream',2);
   await layouts('probe-form');
-  await click('断开');await wait(`document.body.textContent.includes('事件流已断开')`);
+  await sse('断开','disconnected');await openPage('editing/import');
   const runs=await http(`/api/assets/${asset}/ingest-runs`),view=await http('/api/ingest-runs/'+runs[0].run_id);
   await http(`/api/ingest-runs/${runs[0].run_id}/analysis-plans`,{expected_version:view.run.version,video_stream_index:0,game_audio_stream_index:1,source_range_us:[0,17000000],segmentation:{method:'scene_change',threshold:.3,min_segment_us:2000000,max_segment_us:60000000},idempotency_key:crypto.randomUUID()});
   await click('开始切分','.ingest-analysis');
   await wait(`document.querySelector('.ingest-panel').textContent.includes('版本已变化')`);
   report.actions.push('real version conflict refreshes the panel');
   await click('取消导入','.ingest-panel');await wait(`document.querySelector('.ingest-run').textContent.includes('已取消')`);
-  await click('立即重连');await wait(`document.body.textContent.includes('事件流已连接')`);
+  await sse('立即重连','connected');
   report.actions.push('queued cancel and SSE reconnect');
  }else if(mode==='segment'||mode==='paging'){
   const count=mode==='paging'?50:4;await wait(`document.querySelectorAll('.segment-list .segment-item').length===${count}`);
@@ -271,7 +272,7 @@ try{
   const zip=await fetch(base+`/api/workflows/${run.run_id}/delivery.zip`),bytes=new Uint8Array(await zip.arrayBuffer());
   if(!zip.ok||bytes[0]!==80||bytes[1]!==75)throw Error('ZIP download failed');
   report.actions.push('actual final delivery ZIP downloaded');
-  await click('断开');await click('立即重连');await wait(`document.body.textContent.includes('事件流已连接')`);
+  await sse('断开','disconnected');await sse('立即重连','connected');
   await pageSweep();
   report.actions.push('every workspace/section reached through top nav + secondary tabs/menus (overflow submenu at 375px); only the active workspace is visible; no page overflows');
  }

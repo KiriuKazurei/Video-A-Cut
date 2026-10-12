@@ -9,7 +9,6 @@ import { api, ingestApi } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
 import { useEvents } from './useEvents';
 import { refreshSnapshot } from './queryRefresh';
-import { ConnectionStatusBar } from './components/ConnectionStatusBar';
 import { MediaBin } from './components/MediaBin';
 import { Inspector } from './components/Inspector';
 import { WorkspacePage } from './components/WorkspacePage';
@@ -229,11 +228,6 @@ export default function App() {
     navigate({ workspace: 'editing', editingSection: 'review' });
   };
   
-  const connectionText = connection === 'connected' ? '事件流已连接'
-    : connection === 'connecting' ? '正在连接事件流'
-    : connection === 'disconnected' ? '事件流已断开 · 显示最近快照'
-    : connection === 'error' ? '事件流连接失败 · 显示最近快照'
-    : `事件流重连中（${events.retryCount}/${events.maxRetries}）· 显示最近快照`;
 
   // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
   const useSidebar = screens.xl;
@@ -344,13 +338,6 @@ export default function App() {
             </>
           )}
           
-          <Badge 
-            className="app-connection" 
-            role="status" 
-            aria-live="polite"
-            status={connection === 'connected' ? 'success' : connection === 'connecting' || connection === 'reconnecting' ? 'processing' : 'error'}
-            text={connectionText} 
-          />
           
           <Button 
             size="small"
@@ -465,6 +452,7 @@ export default function App() {
               audit={audit}
               connection={connection}
               events={events}
+              controlPlane={assets}
             />
           </WorkspacePage>
         </Layout.Content>
@@ -517,15 +505,6 @@ export default function App() {
       </Drawer>
 
       <Layout.Footer className="app-footer">
-        <ConnectionStatusBar
-          status={connection}
-          retryCount={events.retryCount}
-          maxRetries={events.maxRetries}
-          retryExhausted={events.retryExhausted}
-          nextRetryLabel={events.nextRetryLabel}
-          onReconnect={events.reconnect}
-          onDisconnect={events.disconnect}
-        />
         <Typography.Text type="secondary" className="app-footer-meta">
           {workspace === 'tts' ? '独立文本试听 · TTS' : `${selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · ${current.label}`}
         </Typography.Text>
