@@ -1,12 +1,13 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {api} from '../api';
 import type {ProcessingProfile} from '../preparation';
 import {ProviderEditor} from './ProviderEditor';
 import {TtsTemplateBindingEditor} from './TtsTemplateBindingEditor';
-import {Alert,Button,Card,Col,Flex,Form,Input,InputNumber,List,Row,Space,Tag,Typography,theme} from 'antd';
+import {Alert,Button,Card,Col,Flex,Form,Input,InputNumber,List,Row,Space,Tag,Tooltip,Typography,theme} from 'antd';
 import {CheckCircleOutlined,ExclamationCircleOutlined,LockOutlined,QuestionCircleOutlined} from '@ant-design/icons';
 import type {WorkflowRun} from '../types';
+import type {RouteState} from '../navigation';
 import {ValueSelect} from './ui';
 
 const initial:ProcessingProfile={schema_version:1,profile_id:'local_regression',revision:0,name:'本地工程回归',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'Microsoft Huihui Desktop',export_target:'premiere'};
@@ -17,32 +18,70 @@ const checkLabel={passed:'已满足',not_checked:'未检查',blocked:'受阻'} a
 export function PreparationPanel({
   assetId,
   onStarted,
-  activeSection = 'all'
+  activeSection = 'all',
+  onNavigate
 }: {
   assetId: string;
   onStarted?: (run: WorkflowRun) => void;
   activeSection?: 'profiles' | 'providers' | 'preparation' | 'all';
+  /** 跳到修复页（资源治理 / 服务商 / 预设保存等），由设置工作区注入。 */
+  onNavigate?: (partial: Partial<RouteState>) => void;
 }) {
   const client=useQueryClient();
   const {token}=theme.useToken();
   const [draft,setDraft]=useState<ProcessingProfile>(initial);
   const [selected,setSelected]=useState('');
   const [version,setVersion]=useState(0);
-  const [requested,setRequested]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const profiles=useQuery({queryKey:['processing-profiles'],queryFn:api.listProfiles});
-  const report=useQuery({queryKey:['prepared',assetId,draft.profile_id,draft.revision],queryFn:()=>api.preparedPreflight(assetId,draft.profile_id,draft.revision),enabled:requested&&draft.revision>0,refetchInterval:requested?15000:false});
+  const unsaved=notice.startsWith('有未保存');
+  const autoCheck=Boolean(assetId)&&draft.revision>0&&!unsaved;
+  const report=useQuery({
+    queryKey:['prepared',assetId,draft.profile_id,draft.revision],
+    queryFn:()=>api.preparedPreflight(assetId,draft.profile_id,draft.revision),
+    enabled:autoCheck,
+    refetchInterval:autoCheck?15000:false
+  });
+  // 进入运行准备分区或资产变化时主动刷新预检（治理状态可能已变）
+  const prepFocus=activeSection==='preparation'||activeSection==='all';
+  useEffect(()=>{if(prepFocus&&autoCheck)void report.refetch()},[prepFocus,autoCheck,assetId,draft.profile_id,draft.revision]);
   const refresh=async()=>{await Promise.all(['processing-profiles','prepared','workflows','assets','audit'].map(k=>client.invalidateQueries({queryKey:[k]})))};
   const action=useMutation({mutationFn:(fn:()=>Promise<unknown>)=>fn(),onSuccess:async()=>{setError('');await refresh()},onError:e=>{setError(e instanceof Error?e.message:'操作失败');void refresh()}});
   const busy=action.isPending;
-  const unsaved=notice.startsWith('有未保存');
   const canConsent=draft.revision>0&&!unsaved&&(externalEndpoint(draft.vision.endpoint)||externalEndpoint(draft.narration.endpoint)||externalEndpoint(draft.tts_template?.settings?.endpoint));
-  const edit=(next:ProcessingProfile)=>{setDraft(next);setRequested(false);setNotice('有未保存修改，请先保存新版本')};
+  const edit=(next:ProcessingProfile)=>{setDraft(next);setNotice('有未保存修改，请先保存新版本')};
   const changeMode=(mode:'builtin'|'configured')=>edit({...draft,content_mode:mode,vision:mode==='builtin'?{adapter:'builtin'}:{adapter:'vision',api_format:'openai',endpoint:'https://api.openai.com/v1',model:'',token_env:'VAC_VISION_TOKEN'},narration:mode==='builtin'?{adapter:'builtin'}:{adapter:'narration',api_format:'openai',endpoint:'https://api.openai.com/v1',model:'',token_env:'VAC_NARRATION_TOKEN'}});
   const sampling=(patch:Partial<ProcessingProfile['sampling']>)=>edit({...draft,sampling:{...draft.sampling,...patch}});
-  const save=()=>action.mutate(async()=>{const saved=await api.saveProfile({...draft,revision:draft.revision+1},draft.revision);setDraft(saved);setSelected(saved.profile_id);setRequested(false);setNotice(`已保存 v${saved.revision}`)});
+  const save=()=>action.mutate(async()=>{const saved=await api.saveProfile({...draft,revision:draft.revision+1},draft.revision);setDraft(saved);setSelected(saved.profile_id);setNotice(`已保存 v${saved.revision}`)});
   const fetchError=error||(profiles.error instanceof Error?profiles.error.message:report.error instanceof Error?report.error.message:profiles.error||report.error?'读取失败':'');
+  const startFlow=()=>action.mutate(async()=>{
+    const run=await api.startPrepared(assetId,draft.profile_id,draft.revision,report.data!.expected_asset_version!);
+    setNotice('已启动固定预设流程，请到「编辑」页审查证据和草稿');
+    onStarted?.(run);
+  });
+  const goSave=()=>{
+    if(activeSection==='all'){
+      document.querySelector<HTMLElement>('[data-nav-anchor="profile-save"]')?.focus();
+      document.querySelector<HTMLElement>('[data-nav-anchor="profile-save"]')?.scrollIntoView({block:'center',behavior:'smooth'});
+      return;
+    }
+    onNavigate?.({workspace:'settings',settingsCategory:'profiles'});
+    // 分区切换后聚焦保存
+    requestAnimationFrame(()=>{
+      setTimeout(()=>{
+        const el=document.querySelector<HTMLElement>('[data-nav-anchor="profile-save"]');
+        el?.scrollIntoView({block:'center',behavior:'smooth'});
+        el?.focus();
+      },80);
+    });
+  };
+  const blockers=report.data?.checks.filter(c=>c.status==='blocked')??[];
+  const blockerTip=blockers.slice(0,3).map(c=>c.message).join('；')||'运行条件未满足';
+  const hasGovBlock=blockers.some(c=>c.code==='asset_governance');
+  const hasConsentBlock=blockers.some(c=>c.code==='external_authorization');
+  const hasWorkerBlock=blockers.some(c=>c.code.startsWith('worker_')||c.code.startsWith('role_'));
+  const hasIngestBlock=blockers.some(c=>c.code.startsWith('ingest_')||c.code==='input_ready'||c.code==='controlled_edl');
 
   // 顶层公共预设选择工具栏
   const profilePicker = (
@@ -54,29 +93,62 @@ export function PreparationPanel({
       <Form.Item label="历史版本（0 为当前）" layout="vertical" style={{marginBottom:0,width:150}}>
         <InputNumber aria-label="历史版本" style={{width:'100%'}} min={0} step={1} precision={0} value={version} onChange={v=>setVersion(Number(v??0))}/>
       </Form.Item>
-      <Button disabled={busy||!selected} onClick={()=>action.mutate(async()=>{const p=await api.getProfile(selected,version);setDraft(p.profile);setRequested(false);setNotice(`已加载 ${p.profile.profile_id} / v${p.profile.revision}`)})}>加载版本</Button>
-      <Button disabled={busy} onClick={()=>{setDraft({...initial,profile_id:'profile_'+Date.now()});setRequested(false);setNotice('新预设尚未保存')}}>新建预设</Button>
+      <Button disabled={busy||!selected} onClick={()=>action.mutate(async()=>{const p=await api.getProfile(selected,version);setDraft(p.profile);setNotice(`已加载 ${p.profile.profile_id} / v${p.profile.revision}`)})}>加载版本</Button>
+      <Button disabled={busy} onClick={()=>{setDraft({...initial,profile_id:'profile_'+Date.now()});setNotice('新预设尚未保存')}}>新建预设</Button>
     </Flex>
   );
 
-  // 运行条件侧边栏
-  const conditionsCard = (
-    <Card size="small" className="prep-side" title="运行条件" aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}>
-      <Flex vertical gap={10}>
-        <Typography.Text type="secondary">以服务端预检的 can_start 与逐项检查为准；阻断也会以 HTTP 200 返回。</Typography.Text>
-        <Button block disabled={busy||draft.revision<1||unsaved} onClick={()=>{setRequested(true);void report.refetch()}}>检查运行条件</Button>
-        <Button block disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,true))}>授权此版本向外部服务发送取样</Button>
-        <Button block danger disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,false))}>撤销此版本外发许可</Button>
-        {report.isFetching&&<Typography.Text type="secondary" role="status">正在核对环境和资产…</Typography.Text>}
-        {!requested&&<Typography.Text type="secondary">保存或加载一个预设版本后，点击“检查运行条件”。</Typography.Text>}
-        {requested&&report.data&&<>
-          <Alert type={report.data.can_start?'success':'warning'} showIcon message={`预设 v${report.data.profile_revision}：${report.data.can_start?'运行条件满足':'尚不可运行'}`}/>
+  const saveButtons=(
+    <Space wrap>
+      <Button type="primary" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button>
+      <Typography.Text type="secondary">已保存版本不可覆盖，每次保存生成 v{draft.revision+1}。</Typography.Text>
+    </Space>
+  );
+
+  // 一步式运行准备：自动预检 + 单一就绪卡片 + 主 CTA
+  const readinessCard = (
+    <Card size="small" className="prep-readiness" title="运行就绪" aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}
+      extra={autoCheck?<Button size="small" disabled={busy||report.isFetching} onClick={()=>void report.refetch()} loading={report.isFetching&&!!report.data}>重新检查</Button>:null}>
+      <Flex vertical gap={12} className="prep-readiness-body">
+        <Typography.Text type="secondary">加载已保存预设后自动预检；以服务端 can_start 与逐项检查为准（阻断也会以 HTTP 200 返回）。</Typography.Text>
+        {!assetId&&<Alert type="info" showIcon message="请先在左侧项目面板选择资产，再核对运行条件。"/>}
+        {assetId&&draft.revision<1&&!unsaved&&<Alert type="info" showIcon message="请先加载或保存一个预设版本，将自动检查运行条件。"/>}
+        {unsaved&&(
+          <Alert type="warning" showIcon message="有未保存修改"
+            description="预检只对已保存的不可变版本生效。请先保存新版本，再自动核对运行条件。"
+            action={<Button type="primary" size="small" onClick={goSave}>先保存新版本</Button>}/>
+        )}
+        {autoCheck&&report.isFetching&&!report.data&&<Typography.Text type="secondary" role="status">正在核对环境和资产…</Typography.Text>}
+        {autoCheck&&report.data&&<>
+          <Alert
+            type={report.data.can_start?'success':'warning'}
+            showIcon
+            message={`预设 v${report.data.profile_revision}：${report.data.can_start?'运行条件满足，可以启动':'尚不可运行'}`}
+            description={!report.data.can_start&&blockers.length?`主要阻断：${blockerTip}`:undefined}
+          />
           <List size="small" className="check-list" dataSource={report.data.checks} renderItem={c=><List.Item key={c.code} className={`check-${c.status}`}>
             <List.Item.Meta avatar={c.status==='passed'?<CheckCircleOutlined style={{color:token.colorSuccess}}/>:c.status==='blocked'?<LockOutlined style={{color:token.colorWarning}}/>:c.status==='not_checked'?<QuestionCircleOutlined/>:<ExclamationCircleOutlined/>}
               title={<span style={{fontWeight:400}}>{checkLabel[c.status]??c.status}：{c.message}</span>} description={<Typography.Text code style={{fontSize:12}}>{c.code}</Typography.Text>}/>
           </List.Item>}/>
-          <Button type="primary" block disabled={busy||report.isFetching||!report.data.can_start} onClick={()=>action.mutate(async()=>{const run=await api.startPrepared(assetId,draft.profile_id,draft.revision,report.data!.expected_asset_version!);setRequested(false);setNotice('已启动固定预设流程，请到「编辑」页审查证据和草稿');onStarted?.(run)})}>启动此版本流程</Button>
+          {!report.data.can_start&&(
+            <Space wrap size={[8,8]}>
+              {hasGovBlock&&<Button onClick={()=>onNavigate?.({workspace:'resources'})}>去资源管理调整治理</Button>}
+              {hasConsentBlock&&canConsent&&<Button onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,true))}>授权此版本向外部服务发送取样</Button>}
+              {hasWorkerBlock&&<Button onClick={()=>onNavigate?.({workspace:'settings',settingsCategory:'providers'})}>查看服务商接入</Button>}
+              {hasIngestBlock&&<Button onClick={()=>onNavigate?.({workspace:'editing',editingSection:'import'})}>去导入与粗剪</Button>}
+            </Space>
+          )}
+          <Tooltip title={report.data.can_start?undefined:blockerTip}>
+            <span style={{display:'block',width:'100%'}}>
+              <Button type="primary" block disabled={busy||report.isFetching||!report.data.can_start||unsaved} onClick={startFlow}>启动此版本流程</Button>
+            </span>
+          </Tooltip>
         </>}
+        <Space wrap>
+          <Button disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,true))}>授权此版本向外部服务发送取样</Button>
+          <Button danger disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,false))}>撤销此版本外发许可</Button>
+        </Space>
+        <Typography.Text type="secondary" style={{fontSize:12}}>外发授权为可选项：仅当预设指向外部端点时需要；不阻塞 builtin 工程回归。</Typography.Text>
       </Flex>
     </Card>
   );
@@ -89,15 +161,16 @@ export function PreparationPanel({
       <Typography.Text type="secondary">
         {activeSection === 'profiles' && '配置预设基础参数、取样与声音，保存为不可变版本。'}
         {activeSection === 'providers' && '为当前预设配置画面识别与中文解说模型服务商。'}
-        {activeSection === 'preparation' && (assetId ? `正在为资产 ${assetId} 预检运行条件并启动。` : '运行准备绑定具体资产，请在左侧项目面板选择资产。')}
-        {activeSection === 'all' && '保存预设后检查实际 Worker 能力，再启动固定版本。工程回归仍需人工内容验收。'}
+        {activeSection === 'preparation' && (assetId ? `正在为资产 ${assetId} 自动预检；条件满足时可一步启动。` : '运行准备绑定具体资产，请在左侧项目面板选择资产。')}
+        {activeSection === 'all' && '保存预设后自动预检实际 Worker 能力，再启动固定版本。工程回归仍需人工内容验收。'}
       </Typography.Text>
       
       {profilePicker}
       {(activeSection === 'profiles' || activeSection === 'all') && <TtsTemplateBindingEditor binding={draft.tts_template} onChange={binding=>edit({...draft,tts_template:binding})}/>}
       {fetchError&&<Alert type="error" showIcon role="alert" message={fetchError}/>}
       {busy&&<Typography.Text type="secondary" role="status">正在处理…</Typography.Text>}
-      {notice&&<Alert type={unsaved?'warning':'info'} showIcon role="status" message={notice}/>}
+      {notice&&!unsaved&&<Alert type="info" showIcon role="status" message={notice}/>}
+      {unsaved&&activeSection!=='preparation'&&<Alert type="warning" showIcon role="status" message={notice}/>}
 
       {/* 1. profiles: 处理预设 */}
       {activeSection === 'profiles' && (
@@ -116,7 +189,7 @@ export function PreparationPanel({
             <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
             <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
           </Row>
-          <Space wrap><Button type="primary" htmlType="submit">保存新版本</Button><Typography.Text type="secondary">已保存版本不可覆盖，每次保存生成 v{draft.revision+1}。</Typography.Text></Space>
+          {saveButtons}
         </Form>
       )}
 
@@ -133,25 +206,20 @@ export function PreparationPanel({
           </div>
           {draft.content_mode==='configured'?<Flex vertical gap={12} style={{marginBottom:16}}>{(['vision','narration'] as const).map(key=><ProviderEditor key={key} role={key} provider={draft[key]} disabled={busy} onChange={provider=>edit({...draft,[key]:provider})}/>)}</Flex>
             :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用任何服务商；点击上方按钮切换为“已配置模型”后可配置画面识别与中文解说服务。"/>}
-          <Space wrap><Button type="primary" htmlType="submit">保存新版本</Button><Typography.Text type="secondary">服务商修改从属于当前预设，保存生成 v{draft.revision+1}。</Typography.Text></Space>
+          <Space wrap><Button type="primary" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button><Typography.Text type="secondary">服务商修改从属于当前预设，保存生成 v{draft.revision+1}。</Typography.Text></Space>
         </Form>
       )}
 
-      {/* 3. preparation: 运行准备 */}
+      {/* 3. preparation: 运行准备 — 一步式就绪卡片为主 */}
       {activeSection === 'preparation' && (
-        <Row gutter={[16,16]}>
-          <Col xs={24} md={12}>
-            <Card size="small" title="预设概要" bordered>
-              <Typography.Paragraph><strong>预设：</strong>{draft.name} ({draft.profile_id}) · v{draft.revision}</Typography.Paragraph>
-              <Typography.Paragraph><strong>模式：</strong>{draft.content_mode === 'builtin' ? 'builtin 工程回归' : '已配置模型'}</Typography.Paragraph>
-              <Typography.Paragraph><strong>取样帧数：</strong>{draft.sampling.max_frames} 帧 · 声音：{draft.tts_voice}</Typography.Paragraph>
-              {unsaved && <Alert type="warning" showIcon message="预设存在未保存修改，请先到「处理预设」分类保存版本后再运行条件预检。" />}
-            </Card>
-          </Col>
-          <Col xs={24} md={12}>
-            {conditionsCard}
-          </Col>
-        </Row>
+        <Flex vertical gap={12}>
+          <Card size="small" title="当前预设" bordered className="prep-summary">
+            <Typography.Paragraph style={{marginBottom:4}}><strong>预设：</strong>{draft.name} ({draft.profile_id}) · {draft.revision>0?`v${draft.revision}`:'未保存'}</Typography.Paragraph>
+            <Typography.Paragraph style={{marginBottom:4}}><strong>模式：</strong>{draft.content_mode === 'builtin' ? 'builtin 工程回归' : '已配置模型'}</Typography.Paragraph>
+            <Typography.Paragraph style={{marginBottom:0}}><strong>取样帧数：</strong>{draft.sampling.max_frames} 帧 · 声音：{draft.tts_voice}</Typography.Paragraph>
+          </Card>
+          {readinessCard}
+        </Flex>
       )}
 
       {/* 4. all: 完整并排展示（默认与向后兼容） */}
@@ -175,11 +243,11 @@ export function PreparationPanel({
                 <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
                 <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
               </Row>
-              <Space wrap><Button type="primary" htmlType="submit">保存新版本</Button><Typography.Text type="secondary">已保存版本不可覆盖，每次保存生成 v{draft.revision+1}。</Typography.Text></Space>
+              {saveButtons}
             </Form>
           </Col>
           <Col xs={24} xl={8}>
-            {conditionsCard}
+            {readinessCard}
           </Col>
         </Row>
       )}

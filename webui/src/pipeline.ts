@@ -226,7 +226,7 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
     const onPrepare = route.workspace === 'settings' && route.settingsCategory === 'preparation';
     return go('prepare', onPrepare ? '开始生成' : label, hint, block ? { disabledReason: block } : undefined);
   };
-  if (!workflow) return restart('去运行准备', '选择处理预设、检查运行条件并启动内容流程');
+  if (!workflow) return restart('去运行准备', '选择处理预设、核对运行条件并启动内容流程');
   switch (workflow.status) {
     case 'created':
     case 'running': return go('generate', '查看生成进度', `内容流程正在生成（${workflow.status} / ${workflow.stage}）`);

@@ -87,6 +87,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
               assetId={asset?.asset_id ?? ''} 
               onStarted={onStarted} 
               activeSection={isProfileCategory ? settingsCategory : 'profiles'}
+              onNavigate={navigate}
             />
           </div>
 

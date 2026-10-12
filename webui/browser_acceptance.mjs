@@ -231,13 +231,12 @@ try{
   await openPage('settings/preparation');
   await pick('.preparation-panel .select-saved-profile','browser_fixture');await click('加载版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已加载 browser_fixture')`);
-  await click('检查运行条件','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：资产须可见且未锁定')`);
   await openPage('resources');await clickAsset(asset);
   await click('解锁',scope);await wait(`!document.querySelector('${scope}').textContent.includes('解锁')`);
   await click('设为 Agent 不可见',scope);
   await openPage('settings/preparation');
-  await click('检查运行条件','.preparation-panel');
+  await click('重新检查','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：资产须可见且未锁定')`);
   await openPage('resources');await clickAsset(asset);
   await click('设为 Agent 可见',scope);
@@ -252,7 +251,6 @@ try{
   await send('Page.reload');await openPage('resources');await clickAsset(asset);await openPage('settings/preparation');
   await pick('.preparation-panel .select-saved-profile','external_ui_fixture');await click('加载版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已加载 external_ui_fixture')`);
-  await click('检查运行条件','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：外部端点需该版本明确许可')`);
   await click('授权此版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已满足：外部端点需该版本明确许可')`);

@@ -701,3 +701,13 @@ button.timeline-clip:active { transform: scale(0.99); }
   .timeline-clip, .ready-clip { transition: none !important; }
   button.timeline-clip:active { transform: none; }
 }
+
+/* 运行准备一步式就绪卡片 */
+.prep-readiness { border-radius: var(--vac-radius) !important; transition: border-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease); }
+.prep-readiness .check-list .ant-list-item { transition: background-color var(--vac-dur-fast) var(--vac-ease); border-radius: var(--vac-radius); }
+.prep-readiness .check-blocked { background: rgba(250, 173, 20, 0.06); }
+.prep-readiness .check-passed { }
+.prep-summary { border-radius: var(--vac-radius) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .prep-readiness, .prep-readiness .check-list .ant-list-item { transition: none !important; }
+}
