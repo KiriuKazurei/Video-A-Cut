@@ -2,7 +2,7 @@ import { apiURL } from '../runtimeUrl.ts';
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, Col, Collapse, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Row, Space, Spin, Steps, Tag, Tooltip, Typography
+  Alert, Button, Card, Col, Collapse, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Popconfirm, Row, Space, Spin, Steps, Tag, Tooltip, Typography
 } from 'antd';
 import type { StepProps } from 'antd';
 import { CopyOutlined, DownloadOutlined, RightOutlined } from '@ant-design/icons';
@@ -251,6 +251,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
                     <figcaption><Typography.Text type="secondary" style={{ fontSize: 12 }}>源时间 {f.timestamp} 秒</Typography.Text></figcaption>
                   </figure>)}</div>
                   <SceneEdit key={`${review.data!.revision.revision_id}-${scene.scene_id}`} scene={scene} disabled={busy || !(sceneGate || current.stage === 'acceptance')} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), scene_id: scene.scene_id, ...fields }))} />
+                  {focus === `scene:${scene.scene_id}` && <Tag color="warning" bordered={false} style={{ marginBottom: 8 }}>正在节目监视器</Tag>}
                   <Space wrap>
                     <Button type="primary" disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'confirmed', note }))}>确认此场景</Button>
                     <Button danger disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'rejected', note }))}>退回场景</Button>
@@ -319,7 +320,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
                 return {
                   key: s.task_id,
                   status: s.invalidated ? 'error' : stepStatus(st),
-                  title: <span title={`${s.task_id}${task?.message ? ' · ' + task.message : ''}`} className={s.invalidated ? 'stage-invalidated' : undefined}>{s.stage}</span>,
+                  title: <span title={`${s.task_id}${task?.message ? ' · ' + task.message : ''}`} className={s.invalidated ? 'stage-invalidated' : undefined}>{STAGE_ZH[s.stage] ?? s.stage}</span>,
                   description: <span className={`stage-desc${s.invalidated ? ' is-invalidated' : ''}${s.output_revision_id && !s.invalidated ? ' is-delivered' : ''}`}>
                     {stZh} · {pct}%
                     {mark ? <> · <Tag color={s.invalidated ? 'error' : 'success'} bordered={false} style={{ marginInlineEnd: 0 }}>{mark}</Tag></> : null}
@@ -344,35 +345,84 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
     const link = document.createElement('a'); link.href = url; link.download = 'acceptance-summary.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const ready = current?.status === 'ready_for_acceptance';
+  const revisionId = current?.current_revision_id ?? '';
+  const latestFor = (item: string) => acceptance.data?.filter(r => r.check_item === item && r.export_revision_id === revisionId).at(-1);
+  const remaining = checks.filter(([item]) => latestFor(item)?.result !== 'passed');
+  const passedCount = checks.length - remaining.length;
+  const recordOne = (item: string, result: 'passed' | 'failed') =>
+    invoke(() => api.recordAcceptance(current!.run_id, { expected_version: current!.version, check_item: item, result, note: note.trim() || undefined }));
+  const passRemaining = () => invoke(async () => {
+    // 每条记录会使 run.version +1，批量须递增 expected_version（无 bulk API）
+    let version = current!.version;
+    for (const [item] of remaining) {
+      await api.recordAcceptance(current!.run_id, { expected_version: version, check_item: item, result: 'passed', note: note.trim() || undefined });
+      version += 1;
+    }
+  });
+
   return <Card size="small" className="acceptance-panel" aria-labelledby="acceptance-title" title={<span id="acceptance-title">流程交付与人工验收</span>}
-    extra={current && <Tag color={statusColor(current.status)}>{current.status}</Tag>}>
+    extra={current && <Tag color={statusColor(current.status)}>{STATUS_ZH[current.status] ?? current.status}</Tag>}>
     <Flex vertical gap={12}>
       <RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} />
       {(failure || runs.error || acceptance.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || acceptance.error)} />}
       {runs.isSuccess && !current && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此资产还没有内容流程，暂无可验收的导出。" />}
       {current && <>
+        <div className="acceptance-revision-strip">
+          <Flex gap={8} align="center" wrap>
+            <Tag color={ready ? 'success' : 'default'}>{ready ? '验收开放' : '验收未开放'}</Tag>
+            <Typography.Text>导出版本 <Typography.Text code>{shortId(revisionId)}</Typography.Text></Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }} title={revisionId}>{revisionId}</Typography.Text>
+            <Tag bordered={false}>{passedCount}/{checks.length} 已通过</Tag>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{current.status} / {current.stage}</Typography.Text>
+          </Flex>
+        </div>
         <Space wrap>
           {ready ? <Button type="primary" icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`)}>下载此版本交付 ZIP</Button>
             : <Typography.Text type="secondary">流程到达 ready_for_acceptance 后才提供此版本 ZIP（当前 {current.status} / {current.stage}）。</Typography.Text>}
           <Button disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要</Button>
+          <Popconfirm
+            title="将剩余未通过项全部记为通过？"
+            description={`共 ${remaining.length} 项会依次调用 recordAcceptance（每条独立写入），失败项备注不会强制填写。`}
+            disabled={busy || !ready || remaining.length === 0}
+            onConfirm={() => passRemaining()}
+            okText="全部通过"
+            cancelText="取消"
+          >
+            <Button type="primary" ghost disabled={busy || !ready || remaining.length === 0}>全部通过剩余 ({remaining.length})</Button>
+          </Popconfirm>
         </Space>
-        <Typography.Text type="secondary">导出修订 <Typography.Text code>{current.current_revision_id}</Typography.Text>。请完成对应检查后明确记录结果；旧修订的通过记录不会沿用到当前修订。</Typography.Text>
-        <Form.Item label="验收备注（记录失败时必填）" layout="vertical" style={{ marginBottom: 0 }}>
+        <Typography.Text type="secondary">请完成对应检查后明确记录结果；旧修订的通过记录不会沿用到当前修订。失败须填写备注。</Typography.Text>
+        <Form.Item label="验收备注（记录失败时必填；批量通过可选）" layout="vertical" style={{ marginBottom: 0 }}>
           <Input aria-label="验收备注" value={note} onChange={e => setNote(e.target.value)} placeholder="保留异常时间点或问题描述" />
         </Form.Item>
         {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
         <List size="small" bordered className="acceptance-list" dataSource={[...checks]} renderItem={([item, label]) => {
-          const row = acceptance.data?.filter(r => r.check_item === item && r.export_revision_id === current.current_revision_id).at(-1);
-          return <List.Item key={item} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
+          const row = latestFor(item);
+          const state = row?.result === 'passed' ? 'passed' : row?.result === 'failed' ? 'failed' : 'pending';
+          return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
             disabled={busy || !ready || (result === 'failed' && !note.trim())}
-            onClick={() => invoke(() => api.recordAcceptance(current.run_id, { expected_version: current.version, check_item: item, result, note }))}>{result === 'passed' ? '记录通过' : '记录失败'}</Button>)}>
-            <List.Item.Meta title={label} description={row ? <Tag color={row.result === 'passed' ? 'success' : row.result === 'failed' ? 'error' : 'default'}>
-              {row.result === 'passed' ? '通过' : row.result === 'failed' ? '失败' : row.result} · {row.actor}</Tag> : <Tag>待人工验收</Tag>} />
+            onClick={() => recordOne(item, result)}>{result === 'passed' ? '记录通过' : '记录失败'}</Button>)}>
+            <List.Item.Meta
+              title={<Flex gap={8} align="center" wrap><span>{label}</span><Typography.Text code style={{ fontSize: 11 }}>{item}</Typography.Text></Flex>}
+              description={row
+                ? <Space size={4} wrap>
+                    <Tag color={state === 'passed' ? 'success' : state === 'failed' ? 'error' : 'default'}>{state === 'passed' ? '通过' : state === 'failed' ? '失败' : row.result}</Tag>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.actor}</Typography.Text>
+                    {row.note && <Typography.Text type="secondary" style={{ fontSize: 12 }}>· {row.note}</Typography.Text>}
+                  </Space>
+                : <Tag>待人工验收</Tag>} />
           </List.Item>;
         }} />
         <Collapse size="small" items={[{ key: 'history', label: `历史人工验收记录（按修订保留，${acceptance.data?.length ?? 0} 条）`,
           children: <List size="small" dataSource={acceptance.data ?? []} locale={{ emptyText: '暂无记录' }} renderItem={r => <List.Item key={r.id}>
-            <Typography.Text style={{ overflowWrap: 'anywhere' }}>{r.created_at} · <Typography.Text code>{r.export_revision_id}</Typography.Text> · {r.check_item}：{r.result} · {r.actor}{r.note && <><br /><Typography.Text type="secondary">{r.note}</Typography.Text></>}</Typography.Text>
+            <Flex gap={8} wrap align="center" style={{ width: '100%' }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.created_at}</Typography.Text>
+              <Typography.Text code style={{ fontSize: 11 }}>{shortId(r.export_revision_id)}</Typography.Text>
+              <Tag bordered={false}>{checks.find(c => c[0] === r.check_item)?.[1] ?? r.check_item}</Tag>
+              <Tag color={r.result === 'passed' ? 'success' : r.result === 'failed' ? 'error' : 'default'}>{r.result === 'passed' ? '通过' : r.result === 'failed' ? '失败' : r.result}</Tag>
+              <Typography.Text type="secondary">{r.actor}</Typography.Text>
+              {r.note && <Typography.Text type="secondary" style={{ flex: '1 1 100%' }}>{r.note}</Typography.Text>}
+            </Flex>
           </List.Item>} /> }]} />
       </>}
     </Flex>

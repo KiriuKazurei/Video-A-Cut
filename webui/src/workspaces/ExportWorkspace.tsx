@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Col, Flex, Form, Input, Row, Tabs, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Card, Col, Empty, Flex, Form, Input, List, Row, Tabs, Tag, Typography } from 'antd';
 import { useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, CreateTask, Task } from '../types';
 import { parseDependsOn } from '../types';
@@ -16,8 +16,18 @@ import { DeliveryVariantPanel } from '../components/DeliveryVariantPanel';
 import { isCurrentMp4, previewApi, previewFileURL, previewQueryKey } from '../previewContracts';
 import { TaskOrchestrator } from '../components/TaskOrchestrator';
 import { errorText, ValueSelect } from '../components/ui';
+import { fetchTasksByIds } from '../api';
+import { MAX_TASK_LOOKUPS, taskIdsFromAudit, taskStatusLabel } from '../components/governanceModel';
 
 const TASK_TYPES = ['recognize', 'sort', 'narrate', 'tts', 'subtitle', 'mix', 'export', 'preview'];
+
+const taskTagColor = (status?: string) =>
+  status === 'succeeded' ? 'success'
+    : status === 'failed' || status === 'cancelled' ? 'error'
+      : status === 'running' || status === 'claimed' ? 'processing'
+        : status === 'queued' || status === 'paused' ? 'warning' : 'default';
+
+const shortId = (id: string) => (id.length <= 16 ? id : `${id.slice(0, 10)}…${id.slice(-4)}`);
 
 interface ExportWorkspaceProps {
   route: RouteState;
@@ -45,6 +55,8 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
   const [agentRole, setAgentRole] = useState('recognizer');
   const [dependsOn, setDependsOn] = useState('');
   const [manualInputTaskId, setManualInputTaskId] = useState('');
+  /** 本会话创建成功的任务 ID（无按资产列任务 API 时的补充来源）。 */
+  const [sessionTaskIds, setSessionTaskIds] = useState<string[]>([]);
 
   const playable = (files.data ?? []).filter((file) => file.playable);
   const assetId = asset?.asset_id;
@@ -53,7 +65,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
   const defaultFilePreview: PreviewSource = asset && selectedFile ? filePreview(asset.asset_id, selectedFile) : null;
 
   const [activeMp4Preview, setActiveMp4Preview] = useState<PreviewSource | null>(null);
-  const { current } = useWorkflowData(asset?.asset_id ?? '', selection);
+  const { current, snapshot } = useWorkflowData(asset?.asset_id ?? '', selection);
 
   const owner = { assetId: assetId ?? '', runId: current?.run_id ?? '', revisionId: current?.current_revision_id ?? '' };
   const mp4s = useQuery({
@@ -87,6 +99,57 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
     };
   }, []);
 
+  // 已知任务 ID：流程快照 tasks + 审计 task.create + 本会话创建 + 当前观察
+  const workflowTaskIds = useMemo(
+    () => (snapshot.data?.tasks ?? []).map((t) => t.task_id).filter(Boolean),
+    [snapshot.data?.tasks]
+  );
+  const auditTaskIds = useMemo(
+    () => taskIdsFromAudit(audit.data ?? []).slice(0, MAX_TASK_LOOKUPS),
+    [audit.data]
+  );
+  const lookupIds = useMemo(() => {
+    const ids = [...workflowTaskIds, ...auditTaskIds, ...sessionTaskIds];
+    if (watchedTaskId) ids.push(watchedTaskId);
+    return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  }, [workflowTaskIds, auditTaskIds, sessionTaskIds, watchedTaskId]);
+
+  const linkedTasks = useQuery({
+    queryKey: ['export-task-pick', assetId, lookupIds.join('\0')],
+    queryFn: async () => {
+      if (lookupIds.length === 0) return { tasks: [] as Awaited<ReturnType<typeof fetchTasksByIds>>['tasks'], failed: [] as Awaited<ReturnType<typeof fetchTasksByIds>>['failed'] };
+      return fetchTasksByIds(lookupIds);
+    },
+    enabled: Boolean(assetId) && lookupIds.length > 0,
+    staleTime: 10_000
+  });
+
+  const pickList = useMemo(() => {
+    const byId = new Map<string, { task_id: string; asset_id: string; status: string; progress: number; type: string; agent_role: string; updated_at: string; source: string }>();
+    for (const t of snapshot.data?.tasks ?? []) {
+      if (!assetId || t.asset_id === assetId || !t.asset_id) {
+        byId.set(t.task_id, {
+          task_id: t.task_id,
+          asset_id: t.asset_id || assetId || '',
+          status: t.status,
+          progress: t.progress,
+          type: t.type,
+          agent_role: t.agent_role,
+          updated_at: t.updated_at,
+          source: '流程'
+        });
+      }
+    }
+    for (const t of linkedTasks.data?.tasks ?? []) {
+      if (assetId && t.asset_id !== assetId) continue;
+      const prev = byId.get(t.task_id);
+      if (!prev || Date.parse(t.updated_at) >= Date.parse(prev.updated_at)) {
+        byId.set(t.task_id, { ...t, source: prev?.source === '流程' ? '流程' : '审计' });
+      }
+    }
+    return [...byId.values()].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  }, [snapshot.data?.tasks, linkedTasks.data?.tasks, assetId]);
+
   const preview: PreviewSource = validMp4 ?? defaultFilePreview;
 
   const handleSelectFile = (key: string) => {
@@ -107,6 +170,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
     }, {
       onSuccess: (created) => {
         setDependsOn('');
+        setSessionTaskIds((prev) => (prev.includes(created.task_id) ? prev : [created.task_id, ...prev]));
         onWatchTask?.(created.task_id);
       }
     });
@@ -226,7 +290,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                         <Input.Search
                           className="task-watch-input"
                           aria-label="按任务 ID 观察已有任务"
-                          placeholder="按任务 ID 观察已有任务"
+                          placeholder="按任务 ID 观察（备用）"
                           value={manualInputTaskId}
                           onChange={(e) => setManualInputTaskId(e.target.value)}
                           onSearch={(val) => {
@@ -237,10 +301,55 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                       </Flex>
                     </Form>
                     <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-                      手动创建单任务，绑定当前选中的资产；前置任务须属于同一资产。服务端按 ID 跟踪观察。
-                    </Typography.Paragraph>
+                      控制面无「按资产列任务」接口；下方列表由流程快照任务、审计 task.create + GET /api/tasks/{'{id}'}、本会话创建合并而来。仍可用 ID 观察作为备用。</Typography.Paragraph>
                     {createTask.isError && (
                       <Alert style={{ marginTop: 12 }} type="error" showIcon message={`任务创建失败：${errorText(createTask.error)}`} />
+                    )}
+                  </Card>
+
+                  <Card size="small" className="task-pick-list" title="已知任务" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>{asset ? `${pickList.length} 条` : '未选资产'}</Typography.Text>}>
+                    {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请先选择资产以列出关联任务。" />}
+                    {asset && linkedTasks.isFetching && pickList.length === 0 && <Typography.Text type="secondary">正在根据审计与流程快照读取任务…</Typography.Text>}
+                    {asset && !linkedTasks.isFetching && pickList.length === 0 && (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已知任务。可创建任务，或在上方用 ID 观察。" />
+                    )}
+                    {asset && pickList.length > 0 && (
+                      <List
+                        size="small"
+                        className="task-pick-rows"
+                        dataSource={pickList}
+                        renderItem={(row) => {
+                          const active = row.task_id === watchedTaskId;
+                          return (
+                            <List.Item
+                              className={`task-pick-row${active ? ' is-active' : ''}`}
+                              onClick={() => onWatchTask?.(row.task_id)}
+                              actions={[
+                                <Button key="watch" type={active ? 'primary' : 'link'} size="small" onClick={(e) => { e.stopPropagation(); onWatchTask?.(row.task_id); }}>
+                                  {active ? '观察中' : '观察'}
+                                </Button>
+                              ]}
+                            >
+                              <List.Item.Meta
+                                title={
+                                  <Flex gap={8} align="center" wrap>
+                                    <Typography.Text code style={{ fontSize: 12 }}>{shortId(row.task_id)}</Typography.Text>
+                                    <Tag color={taskTagColor(row.status)}>{taskStatusLabel(row.status)}</Tag>
+                                    <Tag bordered={false}>{row.type}</Tag>
+                                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>{row.source}</Typography.Text>
+                                  </Flex>
+                                }
+                                description={
+                                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                                    {row.agent_role} · {Math.round((row.progress ?? 0) * 100)}% · {row.updated_at}
+                                    <span title={row.task_id}> · {row.task_id}</span>
+                                  </Typography.Text>
+                                }
+                              />
+                            </List.Item>
+                          );
+                        }}
+                      />
                     )}
                   </Card>
 

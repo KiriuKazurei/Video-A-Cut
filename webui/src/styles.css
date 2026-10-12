@@ -738,3 +738,15 @@ button.timeline-clip:active { transform: scale(0.99); }
 @media (prefers-reduced-motion: reduce) {
   .workflow-status-strip, .run-chip, .workflow-card { transition: none !important; }
 }
+
+/* ---------- 导出·验收与任务（s3f） ---------- */
+.acceptance-revision-strip { padding: 8px 10px; border: 1px solid var(--vac-hairline); border-radius: var(--vac-radius); background: rgba(0,0,0,0.16); }
+.acceptance-list .acceptance-row { transition: background-color var(--vac-dur-fast) var(--vac-ease); border-radius: var(--vac-radius); }
+.acceptance-list .acceptance-row.is-passed { background: rgba(73,170,25,0.06); }
+.acceptance-list .acceptance-row.is-failed { background: rgba(220,68,70,0.06); }
+.task-pick-list .task-pick-row { cursor: pointer; border-radius: var(--vac-radius); transition: background-color var(--vac-dur) var(--vac-ease), box-shadow var(--vac-dur) var(--vac-ease); }
+.task-pick-list .task-pick-row:hover { background: rgba(255,255,255,0.04); }
+.task-pick-list .task-pick-row.is-active { background: rgba(22,119,255,0.1); box-shadow: inset 3px 0 0 #1677ff; }
+@media (prefers-reduced-motion: reduce) {
+  .acceptance-list .acceptance-row, .task-pick-list .task-pick-row { transition: none !important; }
+}
