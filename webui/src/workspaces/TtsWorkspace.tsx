@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Flex, Form, Grid, Input, InputNumber, List, Popconfirm, Segmented, Slider, Space, Tag, Typography } from 'antd';
-import { DownloadOutlined, PlayCircleOutlined, ReloadOutlined, SaveOutlined, SoundOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { api } from '../api';
 import { DEFAULT_TTS_SETTINGS, TTS_MOODS, currentTtsPreview, ttsDraftError, ttsDraftKey, ttsInstruction, type TtsSettings, type TtsTemplate } from '../ttsContracts';
 import { ValueSelect, errorText } from '../components/ui';
-import { TtsWaveform } from '../components/TtsWaveform';
+import { TtsPlayer } from '../components/TtsPlayer';
 
 const SAMPLE_TEXT = '欢迎来到声音调控台。调整音色、语速和语气，找到适合你的表达方式。';
 const stateLabels = { queued: '等待生成', running: '正在合成', succeeded: '试听已生成', failed: '生成失败', cancelled: '已取消' };
@@ -134,13 +134,18 @@ export function TtsWorkspace({ active }: { active: boolean }) {
           </Form>
           <div className="tts-player-panel">
             {result && <Flex gap={8} wrap><Tag color={result.status === 'failed' ? 'error' : result.status === 'succeeded' ? 'success' : 'processing'}>{stateLabels[result.status]}</Tag>
-              {result.status === 'succeeded' && <Tag color={current ? 'blue' : 'warning'}>{result.expired ? '缓存已过期' : current ? '当前配置' : '旧配置试听'}</Tag>}
+              {result.status === 'succeeded' && <Tag color={result.expired ? 'default' : current ? 'blue' : 'warning'}>{result.expired ? '缓存已过期' : current ? '当前配置' : '旧配置试听'}</Tag>}
               {!!result.duration_seconds && <Typography.Text type="secondary">{result.duration_seconds.toFixed(2)} 秒 · 48 kHz · 双声道</Typography.Text>}</Flex>}
             {result?.message && <Alert role="status" showIcon type={result.status === 'failed' ? 'error' : 'info'} message={result.message} />}
-            <TtsWaveform url={audioURL} />
-            {audioURL && <><audio ref={audio} controls src={audioURL} aria-label="TTS 试听播放器" preload="metadata" />
-              <Space wrap><Button onClick={() => { if (audio.current) { audio.current.currentTime = 0; void audio.current.play().catch(() => setNotice('请使用播放器上的播放按钮。')); } }}>从头重听</Button>
-                <Button icon={<DownloadOutlined />} href={api.ttsAudioURL(result!.job_id, true)}>下载 WAV</Button></Space></>}
+            {result?.expired && result.status === 'succeeded' && <Alert showIcon type="warning" message="缓存已过期，请重新生成试听后再播放。" />}
+            <TtsPlayer
+              url={audioURL}
+              settings={settings}
+              configCurrent={!!current}
+              downloadHref={audioURL ? api.ttsAudioURL(result!.job_id, true) : undefined}
+              audioRefExternal={audio}
+              onPlayBlocked={msg => setNotice(msg)}
+            />
           </div>
           <Form layout="vertical" className="tts-save-form">
             <Form.Item label="模板名称"><Input aria-label="TTS 模板名称" value={name} maxLength={100} onChange={e => { setName(e.target.value); setDirty(true); }} /></Form.Item>
@@ -171,8 +176,11 @@ export function TtsWorkspace({ active }: { active: boolean }) {
           <div className="tts-fader-bank">
             <Fader label="语速" vertical={!!screens.lg} value={settings.engine === 'sapi' ? settings.sapi_rate : settings.speed} min={settings.engine === 'sapi' ? -10 : .5} max={settings.engine === 'sapi' ? 10 : 2} step={settings.engine === 'sapi' ? 1 : .05} reset={settings.engine === 'sapi' ? 0 : 1} suffix={settings.engine === 'sapi' ? 'SAPI 等级' : '倍速'} onChange={v => edit(settings.engine === 'sapi' ? { sapi_rate: v } : { speed: v })} />
             <Fader label="音量" vertical={!!screens.lg} value={settings.volume} min={.1} max={settings.engine === 'sapi' ? 1 : 2} step={.05} reset={1} suffix="倍增益" onChange={volume => edit({ volume })} />
-            <Fader label="音调" vertical={!!screens.lg} value={settings.pitch_semitones} min={-12} max={12} step={1} reset={0} suffix="半音 · 后期移调" disabled={!cap?.pitch_available} onChange={pitch_semitones => edit({ pitch_semitones })} />
+            <Fader label="音调" vertical={!!screens.lg} value={settings.pitch_semitones} min={-12} max={12} step={1} reset={0} suffix="半音 · 仅生成" disabled={!cap?.pitch_available} onChange={pitch_semitones => edit({ pitch_semitones })} />
           </div>
+          <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
+            语速与音量推子会即时改变当前试听播放（不重新生成）。音调无法实时移调，仅在下次「生成试听」时烘焙。
+          </Typography.Paragraph>
           {!cap?.pitch_available && <Typography.Paragraph type="secondary">当前移调能力不可用；需要 FFmpeg rubberband 滤镜。</Typography.Paragraph>}
           <Form.Item label="语气预设"><ValueSelect<number> aria-label="TTS 语气" disabled={settings.engine === 'sapi'} value={mood} style={{ width: '100%' }} options={TTS_MOODS.map((m, i) => ({ value: i, label: m.label }))} onChange={v => { setMood(v); edit({ instruction: ttsInstruction(v, custom) }); }} /></Form.Item>
           <Form.Item label="自定义表达指令" help={settings.engine === 'sapi' ? 'SAPI 不支持模型语气控制' : '语气由模型理解，效果以试听为准。'}>

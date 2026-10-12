@@ -57,3 +57,16 @@ export function ttsDraftError(text: string, s: TtsSettings, requireText = true):
   if (s.engine === 'stepfun' && (!s.endpoint?.trim() || !s.token_env?.trim())) return '请填写服务地址和凭证变量';
   return '';
 }
+
+/** 实时试听语速：StepFun speed 直接映射；SAPI rate（−10…10）按约 10%/级近似为 playbackRate。 */
+export function ttsLivePlaybackRate(s: TtsSettings): number {
+  if (s.engine === 'sapi') {
+    return Math.min(2, Math.max(0.5, 1 + s.sapi_rate * 0.1));
+  }
+  return Math.min(2, Math.max(0.5, s.speed));
+}
+
+/** 实时试听音量增益（可 >1，由 Web Audio GainNode 施加；元素自身 volume 固定为 1）。 */
+export function ttsLiveVolumeGain(s: TtsSettings): number {
+  return Math.min(2, Math.max(0, s.volume));
+}
