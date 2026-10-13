@@ -12,7 +12,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:unit": "node --test test_suite.mjs desktop_test.mjs tts_test.mjs && node --experimental-strip-types --test pipeline_test.mjs",
-    "test:pipeline": "node --experimental-strip-types --test pipeline_test.mjs"
+    "test:pipeline": "node --experimental-strip-types --test pipeline_test.mjs",
+    "test:browser-tts": "echo 'Run: python3 /workspace/vac-demo/run_browser_tests.py tts' && python3 /workspace/vac-demo/run_browser_tests.py tts"
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",

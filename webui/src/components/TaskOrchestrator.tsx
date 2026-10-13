@@ -106,7 +106,7 @@ export function TaskOrchestrator({
   const title = <span id="orchestrator-title">任务编排控制台</span>;
   if (!taskId) {
     return <Card size="small" aria-labelledby="orchestrator-title" title={title}>
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未派发任务。创建任务后可在此观察状态、进度与失败原因，并手动刷新任务状态。" />
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有任务。创建后可在此查看进度与失败原因，并手动刷新。" />
     </Card>;
   }
 
@@ -141,7 +141,7 @@ export function TaskOrchestrator({
             { key: 'attempts', label: '回收次数', children: resolved?.attempts ?? 0 }
           ]} />
           <Flex gap={12} align="center" wrap aria-live="polite">
-            <Typography.Text type="secondary" style={{ flex: '1 1 260px' }}>状态机由服务端接管，客户端仅做观察：租约到期会自动重排，达到回收上限或前置任务失败时服务端判定失败，原因见上方消息与审计日志。</Typography.Text>
+            <Typography.Text type="secondary" style={{ flex: '1 1 260px' }}>进度由服务端更新：租约到期会自动重排；失败原因见上方消息与运行日志。</Typography.Text>
             <Button onClick={refresh}>刷新任务状态</Button>
           </Flex>
         </>}

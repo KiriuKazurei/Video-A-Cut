@@ -37,7 +37,7 @@ npm run dev
 浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）已对齐五工作区路由：
 `#/resources`、`#/editing/{import|content|review}`、`#/export/{delivery|acceptance|tasks}`、`#/settings/{profiles|providers|preparation|logs|status}`、`#/tts`（仍接受旧六页别名）。
 经由顶部工作区页签（设置走页头按钮）+ 二级 Tabs/菜单进入分区；窄屏时先展开折叠子菜单或「项目」抽屉；断言只有目标工作区可见。点击、输入和下拉选择都只作用于可见元素。任意宽度下只要有可见元素越过视口右边缘（`pageOverflow`）即判失败。
-本机跑法见 `/workspace/vac-demo/run_browser_tests.py`（八种模式）与 `run_provider_test.py`。
+本机跑法见 `/workspace/vac-demo/run_browser_tests.py`（probe/segment/paging/failed/ready/scene/draft/governance/**tts**）与 `run_provider_test.py`。TTS 模式用页面内 fetch mock，不依赖本机 SAPI。也可 `npm run test:browser-tts`。
 
 `control-plane/control.json` 示例（路径须换成本机绝对路径）：
 

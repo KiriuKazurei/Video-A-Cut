@@ -44,7 +44,7 @@ const CHECK_LABELS: Record<string, string> = {
   workflow_status: '工作流状态',
   export_revision: '导出版本',
   governance: '治理权限',
-  worker_capability: 'Worker 就绪'
+  worker_capability: '渲染服务就绪'
 };
 
 /**
@@ -344,7 +344,7 @@ export function PreviewPanel({
                         {inProgressPreview.status === 'queued'
                           ? '预览任务排队中…'
                           : inProgressPreview.status === 'claimed'
-                            ? 'Worker 已领取，准备环境中…'
+                            ? '渲染服务已领取，正在准备…'
                             : '成片渲染合成中…'}
                       </Typography.Text>
                       <Tag color="processing">{inProgressPreview.status}</Tag>
