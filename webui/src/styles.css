@@ -532,7 +532,8 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
 .tts-playbar-transport { width: 100%; }
 .tts-playbar-scrub { flex: 1 1 160px; min-width: 120px; max-width: 420px; }
 .tts-playbar-clock { font-variant-numeric: tabular-nums; font-size: 12px; color: rgba(255,255,255,0.7); min-width: 5.5em; }
-.tts-playbar .is-muted { opacity: 0.55; }
+.tts-playbar .is-muted { opacity: 1; color: #ff7875; border-color: rgba(255, 120, 117, 0.45); }
+.tts-playbar .is-muted .anticon { color: #ff7875; }
 .tts-waveform { height: 120px; border: 1px solid var(--vac-hairline); border-radius: var(--vac-radius); display: flex; align-items: center; justify-content: center; color: var(--vac-muted, rgba(255,255,255,.68)); padding: 8px; transition: border-color var(--vac-dur) var(--vac-ease); }
 .tts-waveform.is-interactive:hover { border-color: rgba(255,255,255,0.28); }
 .tts-waveform svg { width: 100%; height: 100%; fill: #69b1ff; }

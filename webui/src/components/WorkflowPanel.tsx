@@ -347,16 +347,28 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
   const ready = current?.status === 'ready_for_acceptance';
   const revisionId = current?.current_revision_id ?? '';
   const latestFor = (item: string) => acceptance.data?.filter(r => r.check_item === item && r.export_revision_id === revisionId).at(-1);
-  const remaining = checks.filter(([item]) => latestFor(item)?.result !== 'passed');
-  const passedCount = checks.length - remaining.length;
+  /** 仅 pending 算剩余；已 failed 不再被批量通过扫入（避免把失败项悄悄改成通过）。 */
+  const remaining = checks.filter(([item]) => {
+    const r = latestFor(item)?.result;
+    return r !== 'passed' && r !== 'failed';
+  });
+  const passedCount = checks.filter(([item]) => latestFor(item)?.result === 'passed').length;
+  const failedCount = checks.filter(([item]) => latestFor(item)?.result === 'failed').length;
   const recordOne = (item: string, result: 'passed' | 'failed') =>
     invoke(() => api.recordAcceptance(current!.run_id, { expected_version: current!.version, check_item: item, result, note: note.trim() || undefined }));
   const passRemaining = () => invoke(async () => {
-    // 每条记录会使 run.version +1，批量须递增 expected_version（无 bulk API）
+    // 每条记录会使 run.version +1，批量须递增 expected_version（无 bulk API）；中途失败保留已写入项并报告进度
     let version = current!.version;
-    for (const [item] of remaining) {
-      await api.recordAcceptance(current!.run_id, { expected_version: version, check_item: item, result: 'passed', note: note.trim() || undefined });
-      version += 1;
+    let written = 0;
+    const total = remaining.length;
+    try {
+      for (const [item] of remaining) {
+        await api.recordAcceptance(current!.run_id, { expected_version: version, check_item: item, result: 'passed', note: note.trim() || undefined });
+        version += 1;
+        written += 1;
+      }
+    } catch (err) {
+      throw new Error(`批量通过中断：已写入 ${written}/${total} 项。${errorText(err)}`);
     }
   });
 
@@ -373,6 +385,8 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
             <Typography.Text>导出版本 <Typography.Text code>{shortId(revisionId)}</Typography.Text></Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }} title={revisionId}>{revisionId}</Typography.Text>
             <Tag bordered={false}>{passedCount}/{checks.length} 已通过</Tag>
+            {failedCount > 0 && <Tag color="error" bordered={false}>{failedCount} 已失败</Tag>}
+            <Tag bordered={false}>{remaining.length} 待验收</Tag>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>{current.status} / {current.stage}</Typography.Text>
           </Flex>
         </div>
@@ -381,8 +395,8 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
             : <Typography.Text type="secondary">流程到达 ready_for_acceptance 后才提供此版本 ZIP（当前 {current.status} / {current.stage}）。</Typography.Text>}
           <Button disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要</Button>
           <Popconfirm
-            title="将剩余未通过项全部记为通过？"
-            description={`共 ${remaining.length} 项会依次调用 recordAcceptance（每条独立写入），失败项备注不会强制填写。`}
+            title="将剩余待验收项全部记为通过？"
+            description={`共 ${remaining.length} 项 pending 会依次写入（已失败 ${failedCount} 项不会被改写）。每条独立调用；中途出错会保留已写入项并提示进度。`}
             disabled={busy || !ready || remaining.length === 0}
             onConfirm={() => passRemaining()}
             okText="全部通过"

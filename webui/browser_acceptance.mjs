@@ -7,7 +7,7 @@ let seq=0;const pending=new Map();
 ws.onmessage=e=>{const r=JSON.parse(e.data),p=pending.get(r.id);if(p){pending.delete(r.id);r.error?p.reject(Error(r.error.message)):p.resolve(r.result);}};
 const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
-const wait=async expr=>{for(let i=0;i<120;i++){if(await evaluate(expr))return;await new Promise(r=>setTimeout(r,150));}throw Error('DOM wait failed: '+expr);};
+const wait=async expr=>{for(let i=0;i<120;i++){try{if(await evaluate(expr))return;}catch(_){/* 过渡期 DOM/表达式瞬时异常（如 null.textContent）不中断轮询 */}await new Promise(r=>setTimeout(r,150));}throw Error('DOM wait failed: '+expr);};
 const J=JSON.stringify;
 // 页面全部保持挂载、只隐藏：所有交互都只认「当前可见」的元素，隐藏页里的同名按钮不会被点到。
 const VIS=`(e=>!!e&&e.getClientRects().length>0&&e.checkVisibility({visibilityProperty:true}))`;
@@ -199,11 +199,11 @@ try{
    const changed=after.scenes.find(s=>s.scene_id===before.scenes[0].scene_id);
    if(changed.label!=='修订场景验收'||changed.sequence_rank!==1)throw Error('scene edit/order not persisted');
    await click('退回场景',scope);
-   await wait(`document.querySelector('${scope} .scene-title').textContent.includes('rejected')`);
+   await wait(`document.querySelector('${scope} .scene-title')?.textContent.includes('rejected')`);
    after=await http(path+'/review');
    if(after.run.stage!=='scene_review')throw Error('rejected scene advanced');
    await click('确认此场景',scope);
-   await wait(`document.querySelector('${scope} .scene-title').textContent.includes('confirmed')`);
+   await wait(`document.querySelector('${scope} .scene-title')?.textContent.includes('confirmed')`);
    report.actions.push('scene label/order saved; rejection keeps review gate closed; correction can be confirmed');
   }else{
    await click('撤销并停止下游',scope);

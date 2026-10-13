@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { Button, Flex, Slider, Tag, Tooltip, Typography } from 'antd';
-import { DownloadOutlined, PauseCircleOutlined, PlayCircleOutlined, SoundOutlined } from '@ant-design/icons';
+import { DownloadOutlined, AudioMutedOutlined, PauseCircleOutlined, PlayCircleOutlined, SoundOutlined } from '@ant-design/icons';
 import type { TtsSettings } from '../ttsContracts';
 import { ttsLivePlaybackRate, ttsLiveVolumeGain } from '../ttsContracts';
 import { TtsWaveform, formatClock, playbarKeyToggle } from './TtsWaveform';
@@ -196,12 +196,14 @@ export function TtsPlayer({ url, settings, configCurrent, downloadHref, audioRef
         </div>
         <Tooltip title={muted ? '取消静音' : '静音'}>
           <Button
-            icon={<SoundOutlined />}
+            icon={muted ? <AudioMutedOutlined /> : <SoundOutlined />}
             type={muted ? 'default' : 'text'}
+            danger={muted}
             aria-label={muted ? '取消静音' : '静音'}
             aria-pressed={muted}
             onClick={() => setMuted(m => !m)}
             className={muted ? 'is-muted' : undefined}
+            data-testid="tts-mute"
           />
         </Tooltip>
         {downloadHref && (

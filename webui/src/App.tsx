@@ -164,6 +164,20 @@ export default function App() {
 
   const selected = assets.data?.find((item) => item.asset_id === selectedId) ?? assets.data?.[0];
   const assetId = selected?.asset_id ?? '';
+
+  // G4：切换资产时清空观察任务，避免串看上一资产的 task SSE/详情
+  const watchedAssetRef = useRef(assetId);
+  useEffect(() => {
+    if (watchedAssetRef.current !== assetId) {
+      watchedAssetRef.current = assetId;
+      setWatchedTaskId(null);
+    }
+  }, [assetId]);
+  useEffect(() => {
+    if (task.data && assetId && task.data.asset_id !== assetId) {
+      setWatchedTaskId(null);
+    }
+  }, [task.data, assetId]);
   
   // 编辑页与导出页共享同一资产下选中的内容流程
   const selection = useMemo<RunSelection>(() => {
