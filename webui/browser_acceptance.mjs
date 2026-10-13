@@ -469,6 +469,18 @@ try{
   const zip=await fetch(base+`/api/workflows/${run.run_id}/delivery.zip`),bytes=new Uint8Array(await zip.arrayBuffer());
   if(!zip.ok||bytes[0]!==80||bytes[1]!==75)throw Error('ZIP download failed');
   report.actions.push('actual final delivery ZIP downloaded');
+  // S4e：交付/验收路径挂载白话「检查摘要」（哈希仅在详细信息）
+  await openPage('export/acceptance');
+  await wait(`!!document.querySelector('.evidence-summary-card')`);
+  await wait(`document.querySelector('.evidence-summary-card')?.textContent.includes('检查摘要')`);
+  await wait(`!!document.querySelector('.evidence-summary-next')`);
+  const digestText = await evaluate(`document.querySelector('.evidence-summary-card')?.innerText || ''`);
+  const beforeDetails = digestText.split('详细信息')[0] || '';
+  if (/sha256|fingerprint|input_sha/i.test(beforeDetails)) throw Error('evidence summary leaked hash jargon outside details: '+beforeDetails.slice(0,200));
+  report.actions.push('acceptance evidence summary visible in plain language');
+  await openPage('export/delivery');
+  await wait(`!!document.querySelector('.evidence-summary-card')||!!document.querySelector('.delivery-readiness')`);
+  report.actions.push('delivery path shows readiness or evidence summary');
   await sse('断开','disconnected');await sse('立即重连','connected');
   await pageSweep();
   report.actions.push('every workspace/section reached through top nav + secondary tabs/menus (overflow submenu at 375px); only the active workspace is visible; no page overflows');

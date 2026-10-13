@@ -198,7 +198,7 @@ export function PreviewPanel({
       extra={
         query.data?.revision_id ? (
           <Tag color="cyan" style={{ marginInlineEnd: 0 }}>
-            导出版本: {query.data.revision_id}
+            已有导出版本
           </Tag>
         ) : undefined
       }
@@ -251,8 +251,8 @@ export function PreviewPanel({
           <Alert
             type="info"
             showIcon
-            message="前置条件未满足：暂无可导出的成片版本"
-            description="当前工作流尚未成功完成导出（无 output_revision）。请先在「编辑」或「交付」流程中完成导出任务，不可变导出版就绪后即可生成 MP4 预览。"
+            message="还不能生成预览"
+            description="请先完成内容生成与导出。导出完成后，即可在此生成可播放的预览成片。"
           />
         )}
 

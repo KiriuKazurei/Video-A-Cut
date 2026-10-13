@@ -772,3 +772,15 @@ button.timeline-clip:active { transform: scale(0.99); }
   .app-quick-actions { padding-right: 4px; margin-right: 2px; }
   .app-header .ant-btn-sm { padding-inline: 8px; }
 }
+
+
+/* S4e · R1 检查摘要（交付 / 人工验收） */
+.evidence-summary-card { border-radius: var(--vac-radius); }
+.evidence-summary-card .ant-card-head { min-height: 40px; }
+.evidence-summary-list { background: rgba(0,0,0,0.12); border-radius: var(--vac-radius); border: 1px solid var(--vac-hairline); }
+.evidence-summary-row { padding: 8px 10px !important; }
+.evidence-summary-row.is-ready { border-left: 2px solid #49aa19; }
+.evidence-summary-row.is-blocked { border-left: 2px solid #dc4446; }
+.evidence-summary-row.is-busy { border-left: 2px solid #1668dc; }
+.evidence-summary-row.is-missing { border-left: 2px solid #d89614; }
+.delivery-readiness { border-radius: var(--vac-radius); }

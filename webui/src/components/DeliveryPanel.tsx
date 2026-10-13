@@ -94,6 +94,11 @@ export function DeliveryPanel({ asset, files, selectedFile, onSelectFile }: {
           action={<Button size="small" onClick={() => void files.refetch()}>重试</Button>} />}
         {files.isSuccess && files.data.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此资产尚无已登记产物。完成内容流程或在「导入」页导入交付包后会出现在这里。" />}
         {files.data && files.data.length > 0 && <>
+          <Alert type="success" showIcon className="delivery-readiness"
+            message={playable.length ? '成片文件已就绪' : '已有登记文件'}
+            description={playable.length
+              ? '可在上方预览可播放文件，或下载 ZIP 整包。需要勾选验收时请打开「人工验收」。'
+              : '可下载单文件或 ZIP。可播放预览生成后会出现在列表中。'} />
           <Space wrap className="delivery-actions">
             <Button type="primary" icon={<DownloadOutlined />} href={deliveryZipURL(asset.asset_id)}>下载资产交付 ZIP</Button>
             {asset.status === 'exported' && <Button disabled={reopened.isPending} aria-describedby="reopen-hint" onClick={() => reopened.mutate(asset.asset_id)}>
@@ -111,7 +116,8 @@ export function DeliveryPanel({ asset, files, selectedFile, onSelectFile }: {
             actions={[
               ...(file.playable ? [<Button key="preview" size="small" type={selectedFile?.key === file.key ? 'primary' : 'default'} onClick={() => onSelectFile(file.key)}>预览</Button>] : []),
               <Typography.Link key="download" href={deliveryFileURL(asset.asset_id, file.key, true)} download>下载</Typography.Link>]}>
-            <List.Item.Meta avatar={icon(file.mime)} title={file.name} description={<span style={{ overflowWrap: 'anywhere' }}>{file.key} · {sizeText(file.size)}</span>} />
+            <List.Item.Meta avatar={icon(file.mime)} title={file.name}
+              description={<span>{file.mime} · {sizeText(file.size)}{file.playable ? ' · 可预览' : ''}</span>} />
           </List.Item>} />
           <Typography.Text type="secondary">ZIP 保留原目录结构。若解压到新位置后 Premiere 提示媒体离线，请用“链接媒体”定位解压目录中的文件；包内附有操作说明。</Typography.Text>
         </>}

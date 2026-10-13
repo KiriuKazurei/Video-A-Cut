@@ -6,12 +6,15 @@ import {
 } from 'antd';
 import type { StepProps } from 'antd';
 import { CopyOutlined, DownloadOutlined, RightOutlined } from '@ant-design/icons';
-import { api } from '../api';
+import { api, previewApi, previewQueryKey } from '../api';
 import type { ReviewView, WorkflowRun } from '../types';
 import { usePreview } from './Monitor';
 import { Timeline, type TimelineClip } from './Timeline';
 import { ValueSelect } from './ui';
 import { createWorkflowPreview, latestWorkflowRun, reviewMatchesCurrent, samePreviewContext, workflowPreviewContext } from '../previewContext';
+import { EvidenceSummaryCard } from './EvidenceSummaryCard';
+import { previewProductKey } from '../previewContracts';
+import { buildEvidenceDigest } from '../evidenceSummary';
 
 const checks = [['content_fidelity', '内容是否正确'], ['evidence_trace', '画面与素材是否对得上'], ['browser', '浏览器里能否正常操作'], ['premiere', '能否导入 Premiere'], ['cuts_fps', '切点与帧率是否正常'], ['subtitle_audio_duck', '字幕、旁白与压低是否正常']] as const;
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请刷新后重试';
@@ -340,20 +343,71 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
   const [note, setNote] = useState('');
   const { runs, run, snapshot, acceptance, current } = useWorkflowData(assetId, selection);
   const { invoke, busy, failure } = useWorkflowAction();
-  const downloadSummary = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ run_id: current!.run_id, asset_id: assetId, content_mode: current!.content_mode, current_revision_id: current!.current_revision_id, profile_binding: snapshot.data?.profile_binding ?? null, records: acceptance.data ?? [] }, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'acceptance-summary.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
   const ready = current?.status === 'ready_for_acceptance';
   const revisionId = current?.current_revision_id ?? '';
+  const runId = current?.run_id ?? '';
+
+  const previewList = useQuery({
+    queryKey: previewQueryKey(assetId, runId, revisionId),
+    queryFn: () => previewApi.list(runId),
+    enabled: Boolean(assetId && runId)
+  });
+  const deliveryFiles = useQuery({
+    queryKey: ['deliveryFiles', assetId],
+    queryFn: () => api.listDeliveryFiles(assetId),
+    enabled: Boolean(assetId)
+  });
+
+  const downloadSummary = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({
+      run_id: current!.run_id,
+      asset_id: assetId,
+      content_mode: current!.content_mode,
+      current_revision_id: current!.current_revision_id,
+      profile_binding: snapshot.data?.profile_binding ?? null,
+      records: acceptance.data ?? [],
+      preview: previewList.data ?? null,
+      delivery_file_count: deliveryFiles.data?.length ?? 0
+    }, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'acceptance-summary.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const latestFor = (item: string) => acceptance.data?.filter(r => r.check_item === item && r.export_revision_id === revisionId).at(-1);
   /** 仅 pending 算剩余；已 failed 不再被批量通过扫入（避免把失败项悄悄改成通过）。 */
   const remaining = checks.filter(([item]) => {
     const r = latestFor(item)?.result;
     return r !== 'passed' && r !== 'failed';
   });
-  const passedCount = checks.filter(([item]) => latestFor(item)?.result === 'passed').length;
   const failedCount = checks.filter(([item]) => latestFor(item)?.result === 'failed').length;
+
+  const srtPreviews = (previewList.data?.previews ?? []).filter(p => previewProductKey(p) === 'srt');
+  const playablePreview = srtPreviews.find(p => p.status === 'succeeded' && !p.invalidated && p.revision_id === revisionId);
+  const previewBusy = srtPreviews.some(p => (p.status === 'queued' || p.status === 'claimed' || p.status === 'running') && p.revision_id === revisionId && !p.invalidated);
+  const blockedHint = previewList.data?.checks?.filter(c => c.status === 'blocked').map(c => c.message).filter(Boolean).join('；') || undefined;
+  const mp4Art = playablePreview?.artifacts?.find(a => a.key === 'mp4' || a.kind === 'preview');
+
+  const digest = buildEvidenceDigest({
+    workflowStatus: current?.status,
+    workflowStage: current?.stage,
+    revisionId: revisionId || undefined,
+    runId: runId || undefined,
+    checkResults: checks.map(([item, label]) => ({ item, label, result: latestFor(item)?.result })),
+    preview: {
+      hasPlayable: Boolean(playablePreview),
+      inProgress: previewBusy,
+      canStart: previewList.data?.can_start,
+      blockedHint,
+      previewId: playablePreview?.preview_id,
+      inputSha256: playablePreview?.input_sha256,
+      mp4Sha256: mp4Art?.sha256
+    },
+    delivery: {
+      fileCount: deliveryFiles.data?.length ?? 0,
+      hasPlayable: (deliveryFiles.data ?? []).some(f => f.playable)
+    },
+    packageDownloadReady: ready
+  });
+
   const recordOne = (item: string, result: 'passed' | 'failed') =>
     invoke(() => api.recordAcceptance(current!.run_id, { expected_version: current!.version, check_item: item, result, note: note.trim() || undefined }));
   const passRemaining = () => invoke(async () => {
@@ -379,19 +433,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
       {(failure || runs.error || acceptance.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || acceptance.error)} />}
       {runs.isSuccess && !current && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这个素材还没有可验收的成片。请先完成「运行准备」并生成内容。" />}
       {current && <>
-        <Alert type="info" showIcon className="acceptance-guide"
-          message={ready ? '检查预览，没问题就点「通过」' : '当前还不能验收'}
-          description={ready
-            ? '建议先在「交付」里看预览或下载成片包。六项检查都通过后即可收工；有问题点「不通过」并写下原因。'
-            : '等流程完成生成并开放验收后，即可在此勾选通过。'} />
-        <div className="acceptance-revision-strip">
-          <Flex gap={8} align="center" wrap>
-            <Tag color={ready ? 'success' : 'default'}>{ready ? '可以验收' : '尚未开放'}</Tag>
-            <Tag bordered={false}>{passedCount}/{checks.length} 已通过</Tag>
-            {failedCount > 0 && <Tag color="error" bordered={false}>{failedCount} 未通过</Tag>}
-            <Tag bordered={false}>{remaining.length} 待确认</Tag>
-          </Flex>
-        </div>
+        <EvidenceSummaryCard digest={digest} />
         <Space wrap>
           {ready ? <Button type="primary" icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`)}>下载成片包</Button>
             : <Typography.Text type="secondary">成片包将在开放验收后提供。</Typography.Text>}
@@ -405,6 +447,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
           >
             <Button type="primary" ghost disabled={busy || !ready || remaining.length === 0}>全部通过剩余 ({remaining.length})</Button>
           </Popconfirm>
+          <Button size="small" disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要</Button>
         </Space>
         <Form.Item label="备注（点「不通过」时必填）" layout="vertical" style={{ marginBottom: 0 }}>
           <Input aria-label="验收备注" value={note} onChange={e => setNote(e.target.value)} placeholder="例如：第 12 秒切点不准" />
@@ -427,12 +470,6 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
           </List.Item>;
         }} />
         <Collapse size="small" items={[
-          { key: 'details', label: '详细信息（版本号与技术摘要）',
-            children: <Flex vertical gap={8}>
-              <Typography.Text type="secondary">导出修订 <Typography.Text code>{revisionId || '—'}</Typography.Text></Typography.Text>
-              <Typography.Text type="secondary">流程状态 {current.status} / {current.stage}</Typography.Text>
-              <Button size="small" disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要 JSON</Button>
-            </Flex> },
           { key: 'history', label: `历史记录（${acceptance.data?.length ?? 0} 条）`,
           children: <List size="small" dataSource={acceptance.data ?? []} locale={{ emptyText: '暂无记录' }} renderItem={r => <List.Item key={r.id}>
             <Flex gap={8} wrap align="center" style={{ width: '100%' }}>
@@ -448,6 +485,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
     </Flex>
   </Card>;
 }
+
 
 function SceneEdit({ scene, disabled, save }: { scene: Scene; disabled: boolean; save: (fields: Record<string, unknown>) => void }) {
   const [label, setLabel] = useState(scene.label || ''); const [rank, setRank] = useState<number | null>(scene.sequence_rank ?? null);
