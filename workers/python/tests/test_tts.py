@@ -72,7 +72,7 @@ class TransportTest(unittest.TestCase):
 class AudioTest(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'requires installed Windows SAPI')
     def test_real_sapi_fixed_profile_narration_and_subtitle(self):
-        from test_stages import make_source
+        from tests.test_stages import make_source
         from vac_worker.tts import capabilities
         from vac_worker.worker import Config
         from vac_worker.preparation import configured_task
@@ -114,7 +114,7 @@ class AudioTest(unittest.TestCase):
             self.assertAlmostEqual(result['duration_seconds'],2,delta=.03)
 
     def test_formal_narration_uses_shared_synthesis_and_final_duration(self):
-        from test_stages import make_source
+        from tests.test_stages import make_source
         with tempfile.TemporaryDirectory() as tmp, patch('vac_worker.tts.synthesize_raw',side_effect=lambda text,out,*a,**kw:out.write_bytes(tone(.75))) as synth:
             root=Path(tmp);src=root/'src';edl=make_source(src)
             edl['narration']=[dict(id='nar_001',text='审核后的文本',start=0,end=1.5)]
