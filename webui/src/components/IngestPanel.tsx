@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Badge, Button, Card, Checkbox, Col, Collapse, Empty, Flex, Form, Input, InputNumber, List,
+  Alert, Button, Card, Checkbox, Col, Collapse, Empty, Flex, Form, Input, InputNumber, List,
   Progress, Row, Space, Spin, Tag, Typography
 } from 'antd';
 import { api, ApiError, ingestApi, ingestFileURL } from '../api';
@@ -69,21 +69,19 @@ export function IngestRegister({ onSelect }: { onSelect: (id: string) => void })
     });
   }
 
-  const online = roots.data?.ingesters.length ?? 0;
   return (
     <Card size="small" className="ingest-register" aria-labelledby="ingest-register-title" style={{ height: '100%' }}
       title={<span id="ingest-register-title">登记原始录像</span>}
-      extra={<Space>{isDesktop() && <Button disabled={busy || !roots.data?.configured} onClick={() => {
+      extra={isDesktop() ? <Button disabled={busy || !roots.data?.configured} onClick={() => {
         void desktopCommand<{root_id: string; relative_path: string} | null>('select_recording').then(file => {
           if (file) { setRootId(file.root_id); setRelative(file.relative_path); }
         }).catch(e => setError(String(e)));
-      }}>选择录像文件</Button>}{roots.data?.configured && <Badge status={online > 0 ? 'success' : 'warning'} text={`导入 Worker ${online > 0 ? `${online} 个在线` : '未在线'}`} />}</Space>}>
+      }}>选择录像文件</Button> : undefined}>
       <Hint>只能从管理员配置的录像根目录选择文件；原始文件不会被修改，系统先复制快照再处理。登记后到「粗剪」页开始导入与切分。</Hint>
       {roots.isPending && <Spin size="small" />}
       {roots.isError && <Alert type="error" showIcon message={`读取导入配置失败：${message(roots.error)}`} />}
       {roots.data && !roots.data.configured && <Alert type="warning" showIcon message="控制面未配置 ingest_roots，导入功能不可用。" />}
       {roots.data?.configured && <>
-        <p role="status" className="sr-only">本机导入 Worker：{online > 0 ? `${online} 个在线` : '未在线（导入任务会排队等待）'}</p>
         <Form layout="vertical" className="ingest-form" onFinish={register} disabled={busy}>
           <Row gutter={12}>
             <Col xs={24} sm={12}><Form.Item label="录像根目录">
@@ -131,7 +129,9 @@ export function IngestPanel({ asset }: { asset?: Asset }) {
   useLayoutEffect(() => { preview(null); }, [asset?.asset_id, current?.run_id, preview]);
   const active = runs.data?.some((r) => ACTIVE_STATES.includes(r.state));
   const [cleanupBlocked, setCleanupBlocked] = useState(false);
+  const [workerHint, setWorkerHint] = useState(false);
   const busy = action.isPending;
+  const online = roots.data?.ingesters.filter((i) => i.online !== false).length ?? roots.data?.ingesters.length ?? 0;
 
   function allow(a: Asset) {
     const agents = [...new Set([...(a.allowed_agents ?? []), 'ingester'])];
@@ -141,23 +141,31 @@ export function IngestPanel({ asset }: { asset?: Asset }) {
   return (
     <Card className="ingest-panel" aria-labelledby="ingest-title" title={<span id="ingest-title">原始录像导入与自动切分</span>}
       extra={current && <Tag color={stateColor[current.state]}>{stateText[current.state] ?? current.state} · {stageText[current.stage] ?? current.stage}</Tag>}>
-      <Hint>切分建议需要人工审查后才会生成短片；时间均为原录像坐标的整数微秒。</Hint>
+      <Hint>系统会先给出切分建议，你确认选段后再生成短片。</Hint>
       <Flex vertical gap={12}>
         {error && <Alert type="error" showIcon role="alert" message={error} />}
+        {workerHint && online === 0 && (
+          <Alert type="info" showIcon closable onClose={() => setWorkerHint(false)}
+            message="本机自动导入服务暂时不在线，任务会排队等待。"
+            description="一般用户无需处理。若长时间无进展，可到「设置 › 状态监控」查看导入服务状态。" />
+        )}
         {busy && <Typography.Text type="secondary" role="status">正在处理…</Typography.Text>}
         {!asset && <Empty description="在左侧项目面板选择一项原始录像资产。" />}
         {asset && !raw && <Alert type="info" showIcon message={`资产 ${asset.asset_id} 是 EDL 包，不需要粗剪切分；可直接到「准备」页检查运行条件。`} />}
 
         {asset && raw && <>
           <Typography.Title level={5} style={{ margin: 0 }}>资产 {asset.asset_id}</Typography.Title>
-          {!allowsIngester(asset) && <Alert type="warning" showIcon message="该资产尚未允许本机导入 Worker 处理（需可见、未锁定且允许 ingester）。"
-            action={<Button size="small" type="primary" disabled={busy} onClick={() => allow(asset)}>允许本机导入 Worker 处理</Button>} />}
+          {!allowsIngester(asset) && <Alert type="warning" showIcon message="此素材尚未允许自动导入（需在属性里设为可见、未锁定，并允许导入）。"
+            action={<Button size="small" type="primary" disabled={busy} onClick={() => allow(asset)}>允许自动导入</Button>} />}
           {sources.isError && <Alert type="error" showIcon role="alert" message={message(sources.error)} />}
           <List size="small" bordered className="ingest-list" dataSource={sources.data ?? []} loading={sources.isPending}
             locale={{ emptyText: '尚未登记源文件' }}
             renderItem={(s) => <List.Item key={s.source_id}
               actions={[<Button key="start" disabled={busy || active || cleanupBlocked || !allowsIngester(asset)}
-                onClick={() => action.mutate(() => ingestApi.start(asset.asset_id, s))}>开始导入</Button>]}>
+                onClick={() => {
+                  if (online === 0) setWorkerHint(true);
+                  action.mutate(() => ingestApi.start(asset.asset_id, s));
+                }}>开始导入</Button>]}>
               <List.Item.Meta title={<span style={{ overflowWrap: 'anywhere' }}>{s.relative_path}</span>}
                 description={`${(s.size_bytes / 1048576).toFixed(1)} MiB · ${s.has_snapshot ? '已有快照' : '未复制'}`} />
             </List.Item>} />

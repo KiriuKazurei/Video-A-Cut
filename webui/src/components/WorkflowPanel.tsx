@@ -13,7 +13,7 @@ import { Timeline, type TimelineClip } from './Timeline';
 import { ValueSelect } from './ui';
 import { createWorkflowPreview, latestWorkflowRun, reviewMatchesCurrent, samePreviewContext, workflowPreviewContext } from '../previewContext';
 
-const checks = [['content_fidelity', '内容忠实度'], ['evidence_trace', '证据追溯'], ['browser', '浏览器操作'], ['premiere', 'Premiere 导入'], ['cuts_fps', '切点与帧率'], ['subtitle_audio_duck', '字幕、音频与压低']] as const;
+const checks = [['content_fidelity', '内容是否正确'], ['evidence_trace', '画面与素材是否对得上'], ['browser', '浏览器里能否正常操作'], ['premiere', '能否导入 Premiere'], ['cuts_fps', '切点与帧率是否正常'], ['subtitle_audio_duck', '字幕、旁白与压低是否正常']] as const;
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请刷新后重试';
 const PAGE = 20;
 
@@ -205,7 +205,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
         <Button type="primary" disabled={busy} title="通用入口；固定预设流程请在「准备」页通过预检后启动" onClick={() => invoke(async () => { const created = await api.startWorkflow(assetId, crypto.randomUUID(), mode); selection.setOffset(0); selection.setRunId(created.run_id); })}>启动新流程</Button>
         <div style={{ flex: '1 1 360px', minWidth: 0 }}><RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} /></div>
       </Flex>
-      <Typography.Text type="secondary">先核对画面证据，再批准解说。单击时间线或审查卡片可在节目监视器预览。固定预设流程建议在「准备」页预检后启动。</Typography.Text>
+      <Typography.Text type="secondary">先看画面、确认场景，再批准解说。点时间线或卡片可在监视器预览。建议在「设置 › 运行准备」检查条件后再启动流程。</Typography.Text>
       {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
       {(failure || runs.error || review.error || snapshot.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || review.error || snapshot.error)} />}
       {runs.isSuccess && !current && <Empty description="此资产还没有内容流程。可在「准备」页核对运行条件后启动固定预设流程。" />}
@@ -232,11 +232,11 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
         <div className="edit-stage">
           <div className="edit-stage-monitor">{monitor}</div>
           <Card size="small" className="review-panel" activeTabKey={activeTab} onTabChange={(key) => setTab(key as 'scenes' | 'narration')}
-            tabList={[{ key: 'scenes', label: `场景证据 (${scenes.length})` }, { key: 'narration', label: `解说草稿 (${lines.length})` }]}
+            tabList={[{ key: 'scenes', label: `场景画面 (${scenes.length})` }, { key: 'narration', label: `解说文稿 (${lines.length})` }]}
             tabBarExtraContent={<Tag bordered={false}>{sceneGate ? '等待场景确认' : draftGate ? '等待解说批准' : (STAGE_ZH[current.stage] ?? current.stage)}</Tag>}>
             <Spin spinning={review.isLoading || (review.isFetching && !review.data)}>
               <div className="review-scroll" role="tabpanel" id="review-scenes" hidden={activeTab !== 'scenes'}>
-                {!scenes.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="识别完成后显示场景与证据。" />}
+                {!scenes.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="识别完成后会在这里列出场景画面。" />}
                 {review.data?.scenes?.map(scene => <Card size="small" key={scene.scene_id}
                   data-focus-key={`scene:${scene.scene_id}`}
                   className={`workflow-card scene-card${focus === `scene:${scene.scene_id}` ? ' is-focused' : ''}`}
@@ -372,31 +372,32 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
     }
   });
 
-  return <Card size="small" className="acceptance-panel" aria-labelledby="acceptance-title" title={<span id="acceptance-title">流程交付与人工验收</span>}
+  return <Card size="small" className="acceptance-panel" aria-labelledby="acceptance-title" title={<span id="acceptance-title">人工验收</span>}
     extra={current && <Tag color={statusColor(current.status)}>{STATUS_ZH[current.status] ?? current.status}</Tag>}>
     <Flex vertical gap={12}>
       <RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} />
       {(failure || runs.error || acceptance.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || acceptance.error)} />}
-      {runs.isSuccess && !current && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此资产还没有内容流程，暂无可验收的导出。" />}
+      {runs.isSuccess && !current && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这个素材还没有可验收的成片。请先完成「运行准备」并生成内容。" />}
       {current && <>
+        <Alert type="info" showIcon className="acceptance-guide"
+          message={ready ? '检查预览，没问题就点「通过」' : '当前还不能验收'}
+          description={ready
+            ? '建议先在「交付」里看预览或下载成片包。六项检查都通过后即可收工；有问题点「不通过」并写下原因。'
+            : '等流程完成生成并开放验收后，即可在此勾选通过。'} />
         <div className="acceptance-revision-strip">
           <Flex gap={8} align="center" wrap>
-            <Tag color={ready ? 'success' : 'default'}>{ready ? '验收开放' : '验收未开放'}</Tag>
-            <Typography.Text>导出版本 <Typography.Text code>{shortId(revisionId)}</Typography.Text></Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }} title={revisionId}>{revisionId}</Typography.Text>
+            <Tag color={ready ? 'success' : 'default'}>{ready ? '可以验收' : '尚未开放'}</Tag>
             <Tag bordered={false}>{passedCount}/{checks.length} 已通过</Tag>
-            {failedCount > 0 && <Tag color="error" bordered={false}>{failedCount} 已失败</Tag>}
-            <Tag bordered={false}>{remaining.length} 待验收</Tag>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{current.status} / {current.stage}</Typography.Text>
+            {failedCount > 0 && <Tag color="error" bordered={false}>{failedCount} 未通过</Tag>}
+            <Tag bordered={false}>{remaining.length} 待确认</Tag>
           </Flex>
         </div>
         <Space wrap>
-          {ready ? <Button type="primary" icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`)}>下载此版本交付 ZIP</Button>
-            : <Typography.Text type="secondary">流程到达 ready_for_acceptance 后才提供此版本 ZIP（当前 {current.status} / {current.stage}）。</Typography.Text>}
-          <Button disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要</Button>
+          {ready ? <Button type="primary" icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`)}>下载成片包</Button>
+            : <Typography.Text type="secondary">成片包将在开放验收后提供。</Typography.Text>}
           <Popconfirm
-            title="将剩余待验收项全部记为通过？"
-            description={`共 ${remaining.length} 项 pending 会依次写入（已失败 ${failedCount} 项不会被改写）。每条独立调用；中途出错会保留已写入项并提示进度。`}
+            title="把剩下未确认的项都记为通过？"
+            description={`将写入 ${remaining.length} 项（已标「未通过」的 ${failedCount} 项不会改动）。中途出错会保留已写入的项。`}
             disabled={busy || !ready || remaining.length === 0}
             onConfirm={() => passRemaining()}
             okText="全部通过"
@@ -405,9 +406,8 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
             <Button type="primary" ghost disabled={busy || !ready || remaining.length === 0}>全部通过剩余 ({remaining.length})</Button>
           </Popconfirm>
         </Space>
-        <Typography.Text type="secondary">请完成对应检查后明确记录结果；旧修订的通过记录不会沿用到当前修订。失败须填写备注。</Typography.Text>
-        <Form.Item label="验收备注（记录失败时必填；批量通过可选）" layout="vertical" style={{ marginBottom: 0 }}>
-          <Input aria-label="验收备注" value={note} onChange={e => setNote(e.target.value)} placeholder="保留异常时间点或问题描述" />
+        <Form.Item label="备注（点「不通过」时必填）" layout="vertical" style={{ marginBottom: 0 }}>
+          <Input aria-label="验收备注" value={note} onChange={e => setNote(e.target.value)} placeholder="例如：第 12 秒切点不准" />
         </Form.Item>
         {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
         <List size="small" bordered className="acceptance-list" dataSource={[...checks]} renderItem={([item, label]) => {
@@ -415,29 +415,35 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
           const state = row?.result === 'passed' ? 'passed' : row?.result === 'failed' ? 'failed' : 'pending';
           return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
             disabled={busy || !ready || (result === 'failed' && !note.trim())}
-            onClick={() => recordOne(item, result)}>{result === 'passed' ? '记录通过' : '记录失败'}</Button>)}>
+            onClick={() => recordOne(item, result)}>{result === 'passed' ? '通过' : '不通过'}</Button>)}>
             <List.Item.Meta
-              title={<Flex gap={8} align="center" wrap><span>{label}</span><Typography.Text code style={{ fontSize: 11 }}>{item}</Typography.Text></Flex>}
+              title={<span>{label}</span>}
               description={row
                 ? <Space size={4} wrap>
-                    <Tag color={state === 'passed' ? 'success' : state === 'failed' ? 'error' : 'default'}>{state === 'passed' ? '通过' : state === 'failed' ? '失败' : row.result}</Tag>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.actor}</Typography.Text>
-                    {row.note && <Typography.Text type="secondary" style={{ fontSize: 12 }}>· {row.note}</Typography.Text>}
+                    <Tag color={state === 'passed' ? 'success' : state === 'failed' ? 'error' : 'default'}>{state === 'passed' ? '通过' : state === 'failed' ? '未通过' : row.result}</Tag>
+                    {row.note && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.note}</Typography.Text>}
                   </Space>
-                : <Tag>待人工验收</Tag>} />
+                : <Tag>待确认</Tag>} />
           </List.Item>;
         }} />
-        <Collapse size="small" items={[{ key: 'history', label: `历史人工验收记录（按修订保留，${acceptance.data?.length ?? 0} 条）`,
+        <Collapse size="small" items={[
+          { key: 'details', label: '详细信息（版本号与技术摘要）',
+            children: <Flex vertical gap={8}>
+              <Typography.Text type="secondary">导出修订 <Typography.Text code>{revisionId || '—'}</Typography.Text></Typography.Text>
+              <Typography.Text type="secondary">流程状态 {current.status} / {current.stage}</Typography.Text>
+              <Button size="small" disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要 JSON</Button>
+            </Flex> },
+          { key: 'history', label: `历史记录（${acceptance.data?.length ?? 0} 条）`,
           children: <List size="small" dataSource={acceptance.data ?? []} locale={{ emptyText: '暂无记录' }} renderItem={r => <List.Item key={r.id}>
             <Flex gap={8} wrap align="center" style={{ width: '100%' }}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.created_at}</Typography.Text>
               <Typography.Text code style={{ fontSize: 11 }}>{shortId(r.export_revision_id)}</Typography.Text>
               <Tag bordered={false}>{checks.find(c => c[0] === r.check_item)?.[1] ?? r.check_item}</Tag>
-              <Tag color={r.result === 'passed' ? 'success' : r.result === 'failed' ? 'error' : 'default'}>{r.result === 'passed' ? '通过' : r.result === 'failed' ? '失败' : r.result}</Tag>
-              <Typography.Text type="secondary">{r.actor}</Typography.Text>
+              <Tag color={r.result === 'passed' ? 'success' : r.result === 'failed' ? 'error' : 'default'}>{r.result === 'passed' ? '通过' : r.result === 'failed' ? '未通过' : r.result}</Tag>
               {r.note && <Typography.Text type="secondary" style={{ flex: '1 1 100%' }}>{r.note}</Typography.Text>}
             </Flex>
-          </List.Item>} /> }]} />
+          </List.Item>} /> }
+        ]} />
       </>}
     </Flex>
   </Card>;

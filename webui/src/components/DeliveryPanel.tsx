@@ -47,7 +47,7 @@ export function DeliveryImport({ onImported }: { onImported: (assetId: string) =
   });
   return (
     <Card size="small" className="delivery-import" aria-labelledby="delivery-import-title" title={<span id="delivery-import-title">导入交付包</span>}>
-      <Typography.Paragraph type="secondary">从控制面配置的交付根目录导入 CLI 产物。这里只输入相对目录，文件由 Go 校验 delivery-manifest.json 后登记为新资产。</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">如果你已有导出好的成片包，可在此登记为新素材。填写相对目录即可，系统会自动校验。</Typography.Paragraph>
       <Form layout="vertical" className="delivery-import-form" onFinish={() => { if (assetID.trim() && packageDir.trim()) imported.mutate(); }}>
         <Form.Item label="新资产 ID" htmlFor="delivery-asset-id">
           <Input id="delivery-asset-id" required value={assetID} onChange={(event) => setAssetID(event.target.value)} placeholder="例如：clip_001" />

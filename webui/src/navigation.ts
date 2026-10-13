@@ -57,14 +57,14 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
 ];
 
 export const EDITING_SECTIONS: readonly EditingSectionDef[] = [
-  { id: 'import', label: '导入与粗剪', description: '登记录像、交付包导入、探测切分、选段与生成短片' },
-  { id: 'content', label: '内容编辑', description: '流程选择、场景标签、解说修订、序列时间线' },
+  { id: 'import', label: '导入与粗剪', description: '登记录像、自动切分、选段并生成短片' },
+  { id: 'content', label: '内容编辑', description: '查看生成进度、调整场景与解说' },
   { id: 'review', label: '审查', description: '场景确认、解说批准、流程控制' }
 ];
 
 export const EXPORT_SECTIONS: readonly ExportSectionDef[] = [
-  { id: 'delivery', label: '交付', description: '节目预览、文件下载、资产 ZIP、重开素材' },
-  { id: 'acceptance', label: '人工验收', description: '六项验收、备注记录、历史修订' },
+  { id: 'delivery', label: '交付', description: '预览成片、下载文件、导入已有成片包' },
+  { id: 'acceptance', label: '人工验收', description: '检查预览并逐项通过或标出问题' },
   { id: 'tasks', label: '任务监控', description: '流程阶段、任务派发、失败重试、审计索引' }
 ];
 
@@ -73,7 +73,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategoryDef[] = [
   { id: 'providers', label: '服务商接入', description: '识别/解说服务、模型发现、连接测试' },
   { id: 'preparation', label: '运行准备', description: '资产/预设选择、条件预检、外发授权、启动流程' },
   { id: 'logs', label: '日志与诊断', description: '审计记录、刷新快照' },
-  { id: 'status', label: '状态监控', description: '控制面、事件流与工作进程状态' }
+  { id: 'status', label: '状态监控', description: '系统连接与本机服务状态（技术人员）' }
 ];
 
 const DEFAULT_WORKSPACE: WorkspaceId = 'resources';

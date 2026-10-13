@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Col, Empty, Flex, Form, Input, List, Row, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Collapse, Empty, Flex, Form, Input, List, Row, Tabs, Tag, Typography } from 'antd';
 import { useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, CreateTask, Task } from '../types';
 import { parseDependsOn } from '../types';
@@ -193,8 +193,8 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                       <Monitor 
                         label="节目" 
                         preview={preview} 
-                        emptyTitle={asset ? '暂无可播放的交付文件或成片预览' : '未选择资产'}
-                        emptyHint="资产登记交付产物或生成 MP4 预览后，可在监视器中进行成片检查、试听与人工验收。"
+                        emptyTitle={asset ? '还没有可预览的成片' : '请先选择素材'}
+                        emptyHint="生成或导入成片后，可在这里预览、试听，再到「人工验收」勾选通过。"
                       />
                       <PreviewPanel
                         asset={asset}
@@ -229,10 +229,13 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                 <Flex vertical gap={16}>
                   <Card 
                     size="small" 
-                    title={<span id="task-title">任务派发</span>} 
+                    title={<span id="task-title">任务</span>} 
                     aria-labelledby="task-title"
-                    extra={<Tag>{asset ? asset.asset_id : '未选择资产'}</Tag>}
+                    extra={<Tag>{asset ? asset.asset_id : '未选择素材'}</Tag>}
                   >
+                    <Alert type="info" showIcon style={{ marginBottom: 12 }}
+                      message="一般跟着顶部「下一步」走即可"
+                      description="启动流程后，相关任务会出现在下方。多数情况不必手动创建。" />
                     <Form layout="vertical" onFinish={handleCreateTask}>
                       <Row gutter={12}>
                         <Col xs={24} md={6}>
@@ -274,8 +277,8 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                           style={{ marginBottom: 12 }}
                           type="info"
                           showIcon
-                          message="合成成片 MP4 预览请使用上方的‘生成 MP4 预览’专用功能"
-                          description="通用任务派发不建议手动分派 preview。合成成片 MP4 预览依赖当前不可变导出版的 EDL、Manifest 及最终三轨音频 stems，请前往「交付」标签页的 MP4 预览面板使用专用入口。"
+                          message="成片预览请用「交付」页的专用按钮"
+                          description="不要在这里手动创建 preview 任务。请到「交付」里使用「生成 MP4 预览」。"
                         />
                       )}
                       <Flex className="task-actions" wrap gap={8} align="center">
@@ -290,28 +293,32 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                         <Input.Search
                           className="task-watch-input"
                           aria-label="按任务 ID 观察已有任务"
-                          placeholder="按任务 ID 观察（备用）"
+                          placeholder="用任务编号查看进度（可选）"
                           value={manualInputTaskId}
                           onChange={(e) => setManualInputTaskId(e.target.value)}
                           onSearch={(val) => {
                             if (val.trim()) onWatchTask?.(val.trim());
                           }}
-                          enterButton="观察"
+                          enterButton="查看"
                         />
                       </Flex>
                     </Form>
-                    <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-                      控制面无「按资产列任务」接口；下方列表由流程快照任务、审计 task.create + GET /api/tasks/{'{id}'}、本会话创建合并而来。仍可用 ID 观察作为备用。</Typography.Paragraph>
+                    <Collapse size="small" style={{ marginTop: 12 }} items={[{
+                      key: 'tech', label: '详细说明（技术人员）',
+                      children: <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                        控制面暂无「按资产列任务」接口；列表由流程快照、操作记录中的 task.create 与本会话创建合并。也可用任务编号查看进度。
+                      </Typography.Paragraph>
+                    }]} />
                     {createTask.isError && (
                       <Alert style={{ marginTop: 12 }} type="error" showIcon message={`任务创建失败：${errorText(createTask.error)}`} />
                     )}
                   </Card>
 
-                  <Card size="small" className="task-pick-list" title="已知任务" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>{asset ? `${pickList.length} 条` : '未选资产'}</Typography.Text>}>
-                    {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请先选择资产以列出关联任务。" />}
-                    {asset && linkedTasks.isFetching && pickList.length === 0 && <Typography.Text type="secondary">正在根据审计与流程快照读取任务…</Typography.Text>}
+                  <Card size="small" className="task-pick-list" title="当前相关任务" extra={<Typography.Text type="secondary" style={{ fontSize: 12 }}>{asset ? `${pickList.length} 条` : '未选资产'}</Typography.Text>}>
+                    {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请先在左侧选择素材。" />}
+                    {asset && linkedTasks.isFetching && pickList.length === 0 && <Typography.Text type="secondary">正在读取任务列表…</Typography.Text>}
                     {asset && !linkedTasks.isFetching && pickList.length === 0 && (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已知任务。可创建任务，或在上方用 ID 观察。" />
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有任务。通常在「运行准备」启动流程后会出现在这里。" />
                     )}
                     {asset && pickList.length > 0 && (
                       <List
@@ -326,7 +333,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                               onClick={() => onWatchTask?.(row.task_id)}
                               actions={[
                                 <Button key="watch" type={active ? 'primary' : 'link'} size="small" onClick={(e) => { e.stopPropagation(); onWatchTask?.(row.task_id); }}>
-                                  {active ? '观察中' : '观察'}
+                                  {active ? '查看中' : '查看进度'}
                                 </Button>
                               ]}
                             >

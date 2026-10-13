@@ -290,7 +290,7 @@ export default function App() {
         </div>
 
         {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
-        {screens.xl && workspace !== 'tts' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
+        {/* ≥1600 才放阶段条，避免 1280–1440 挤掉「设置」 */}{screens.xxl && workspace !== 'tts' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
         
         <div className="app-header-right">
           {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
@@ -312,18 +312,17 @@ export default function App() {
               />}
 
               {screens.xl && (
-                <>
-                  <Tooltip title="查看审计与诊断日志">
+                  <Tooltip title="查看运行日志（设置 › 日志与诊断）">
                     <Button
                       type="text"
                       size="small"
                       icon={<FileSearchOutlined />}
                       onClick={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })}
+                      aria-label="查看运行日志"
                     >
-                      查看日志
+                      {screens.xxl ? '查看日志' : null}
                     </Button>
                   </Tooltip>
-                </>
               )}
             </div>
           )}
@@ -367,6 +366,7 @@ export default function App() {
 
           <Button
             size="small"
+            className="app-settings-btn"
             type={workspace === 'settings' ? 'primary' : 'default'}
             icon={<SettingOutlined />}
             onClick={() => navigate({ workspace: 'settings' })}

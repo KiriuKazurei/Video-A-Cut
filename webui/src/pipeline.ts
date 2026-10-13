@@ -229,13 +229,13 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
   if (!workflow) return restart('去运行准备', '选择处理预设、核对运行条件并启动内容流程');
   switch (workflow.status) {
     case 'created':
-    case 'running': return go('generate', '查看生成进度', `内容流程正在生成（${workflow.status} / ${workflow.stage}）`);
+    case 'running': return go('generate', '查看生成进度', '正在生成内容，可在编辑页查看进度');
     case 'failed': return go('review', '查看失败并重试', stat.generate.reason ?? '流程失败');
     case 'cancelled': return restart('重新启动流程', '上次流程已取消，可重新运行准备');
     case 'awaiting_review':
       return go('review', workflow.stage === 'scene_review' ? '去确认场景' : workflow.stage === 'draft_review' ? '去批准解说' : '去审查', stat.review.text);
     case 'ready_for_acceptance':
-      return asset.status === 'exported' ? go('delivery', '查看交付结果', '已导出：下载文件或补充验收') : go('delivery', '去交付与验收', '审查完成：预览、下载并做人工验收');
+      return asset.status === 'exported' ? go('delivery', '查看交付结果', '成片已导出：可下载或继续验收') : go('delivery', '去交付与验收', '生成完成：先看预览，没问题就在验收页点通过');
     default: return { label: '下一步', stage: null, hint: `流程状态 ${workflow.status} / ${workflow.stage}`, disabledReason: `无法判断下一步：流程状态为 ${workflow.status} / ${workflow.stage}` };
   }
 }

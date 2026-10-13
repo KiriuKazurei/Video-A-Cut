@@ -4,7 +4,7 @@ import {api} from '../api';
 import type {ProcessingProfile} from '../preparation';
 import {ProviderEditor} from './ProviderEditor';
 import {TtsTemplateBindingEditor} from './TtsTemplateBindingEditor';
-import {Alert,Button,Card,Col,Flex,Form,Input,InputNumber,List,Row,Space,Tag,Tooltip,Typography,theme} from 'antd';
+import {Alert,Button,Card,Col,Collapse,Flex,Form,Input,InputNumber,List,Row,Space,Tag,Tooltip,Typography,theme} from 'antd';
 import {CheckCircleOutlined,ExclamationCircleOutlined,LockOutlined,QuestionCircleOutlined} from '@ant-design/icons';
 import type {WorkflowRun} from '../types';
 import type {RouteState} from '../navigation';
@@ -57,7 +57,7 @@ export function PreparationPanel({
   const fetchError=error||(profiles.error instanceof Error?profiles.error.message:report.error instanceof Error?report.error.message:profiles.error||report.error?'读取失败':'');
   const startFlow=()=>action.mutate(async()=>{
     const run=await api.startPrepared(assetId,draft.profile_id,draft.revision,report.data!.expected_asset_version!);
-    setNotice('已启动固定预设流程，请到「编辑」页审查证据和草稿');
+    setNotice('已开始生成。请到「编辑」页确认场景并批准解说。');
     onStarted?.(run);
   });
   const goSave=()=>{
@@ -107,10 +107,10 @@ export function PreparationPanel({
 
   // 一步式运行准备：自动预检 + 单一就绪卡片 + 主 CTA
   const readinessCard = (
-    <Card size="small" className="prep-readiness" title="运行就绪" aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}
+    <Card size="small" className="prep-readiness" title="下一步：检查并开始" aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}
       extra={autoCheck?<Button size="small" disabled={busy||report.isFetching} onClick={()=>void report.refetch()} loading={report.isFetching&&!!report.data}>重新检查</Button>:null}>
       <Flex vertical gap={12} className="prep-readiness-body">
-        <Typography.Text type="secondary">加载已保存预设后自动预检；以服务端 can_start 与逐项检查为准（阻断也会以 HTTP 200 返回）。</Typography.Text>
+        <Typography.Text type="secondary">选好预设后会自动检查能否开始。条件满足时，点下方按钮即可启动。</Typography.Text>
         {!assetId&&<Alert type="info" showIcon message="请先在左侧项目面板选择资产，再核对运行条件。"/>}
         {assetId&&draft.revision<1&&!unsaved&&<Alert type="info" showIcon message="请先加载或保存一个预设版本，将自动检查运行条件。"/>}
         {unsaved&&(
@@ -123,13 +123,15 @@ export function PreparationPanel({
           <Alert
             type={report.data.can_start?'success':'warning'}
             showIcon
-            message={`预设 v${report.data.profile_revision}：${report.data.can_start?'运行条件满足，可以启动':'尚不可运行'}`}
-            description={!report.data.can_start&&blockers.length?`主要阻断：${blockerTip}`:undefined}
+            message={report.data.can_start?'可以开始生成':'还不能开始'}
+            description={!report.data.can_start&&blockers.length?`还差：${blockerTip}`:report.data.can_start?'点击下方按钮开始。生成过程可在「编辑」页查看。':undefined}
           />
-          <List size="small" className="check-list" dataSource={report.data.checks} renderItem={c=><List.Item key={c.code} className={`check-${c.status}`}>
-            <List.Item.Meta avatar={c.status==='passed'?<CheckCircleOutlined style={{color:token.colorSuccess}}/>:c.status==='blocked'?<LockOutlined style={{color:token.colorWarning}}/>:c.status==='not_checked'?<QuestionCircleOutlined/>:<ExclamationCircleOutlined/>}
-              title={<span style={{fontWeight:400}}>{checkLabel[c.status]??c.status}：{c.message}</span>} description={<Typography.Text code style={{fontSize:12}}>{c.code}</Typography.Text>}/>
-          </List.Item>}/>
+          <Collapse size="small" defaultActiveKey={report.data.can_start ? [] : ['checks']} items={[{ key: 'checks', label: '查看检查明细', children:
+            <List size="small" className="check-list" dataSource={report.data.checks} renderItem={c=><List.Item key={c.code} className={`check-${c.status}`}>
+              <List.Item.Meta avatar={c.status==='passed'?<CheckCircleOutlined style={{color:token.colorSuccess}}/>:c.status==='blocked'?<LockOutlined style={{color:token.colorWarning}}/>:c.status==='not_checked'?<QuestionCircleOutlined/>:<ExclamationCircleOutlined/>}
+                title={<span style={{fontWeight:400}}>{checkLabel[c.status]??c.status}：{c.message}</span>}/>
+            </List.Item>}/>
+          }]} />
           {!report.data.can_start&&(
             <Space wrap size={[8,8]}>
               {hasGovBlock&&<Button onClick={()=>onNavigate?.({workspace:'resources'})}>去资源管理调整可见性/角色</Button>}
@@ -140,7 +142,7 @@ export function PreparationPanel({
           )}
           <Tooltip title={report.data.can_start?undefined:blockerTip}>
             <span style={{display:'block',width:'100%'}}>
-              <Button type="primary" block disabled={busy||report.isFetching||!report.data.can_start||unsaved} onClick={startFlow}>启动此版本流程</Button>
+              <Button type="primary" block disabled={busy||report.isFetching||!report.data.can_start||unsaved} onClick={startFlow}>开始生成</Button>
             </span>
           </Tooltip>
         </>}
@@ -161,8 +163,8 @@ export function PreparationPanel({
       <Typography.Text type="secondary">
         {activeSection === 'profiles' && '配置预设基础参数、取样与声音，保存为不可变版本。'}
         {activeSection === 'providers' && '为当前预设配置画面识别与中文解说模型服务商。'}
-        {activeSection === 'preparation' && (assetId ? `正在为资产 ${assetId} 自动预检；条件满足时可一步启动。` : '运行准备绑定具体资产，请在左侧项目面板选择资产。')}
-        {activeSection === 'all' && '保存预设后自动预检实际 Worker 能力，再启动固定版本。工程回归仍需人工内容验收。'}
+        {activeSection === 'preparation' && (assetId ? '确认条件后即可开始生成。' : '请先在左侧选择要处理的素材。')}
+        {activeSection === 'all' && '保存预设后会自动检查能否运行；开始生成后请在编辑页确认内容。'}
       </Typography.Text>
       
       {profilePicker}

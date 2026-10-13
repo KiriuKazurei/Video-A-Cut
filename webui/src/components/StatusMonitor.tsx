@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Badge, Button, Card, List, Space, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, ingestApi } from '../api';
 import type { ConnectionStatus } from '../types';
 import { DEFAULT_TTS_SETTINGS } from '../ttsContracts';
 
@@ -14,9 +14,7 @@ interface StatusMonitorProps {
     retryCount: number; maxRetries: number; retryExhausted: boolean; nextRetryLabel: string | null;
     reconnect: () => void; disconnect: () => void;
   };
-  /** 资产列表查询：其成败即控制面 HTTP 是否可达。 */
   controlPlane: UseQueryResult<unknown, Error>;
-  /** 审计查询：审计接口可用性。 */
   audit: UseQueryResult<unknown, Error>;
 }
 
@@ -36,16 +34,19 @@ function queryState(q: UseQueryResult<unknown, Error>, ok: string, bad: string):
 
 interface Row { key: string; title: string; tone: Tone; label: string; description: string; extra?: ReactNode }
 
-/** 状态监控：集中展示后端系统状态。主界面不再常驻这些指示，普通用户无需关心。 */
+/** 状态监控：后端/系统状态集中于此，主流程界面不常驻展示。 */
 export function StatusMonitor({ connection, events, controlPlane, audit }: StatusMonitorProps) {
   const queryClient = useQueryClient();
-  // 与 TtsWorkspace 同一 queryKey 形态：['tts-capabilities', tokenEnv]
   const tokenEnv = (DEFAULT_TTS_SETTINGS.token_env || 'VAC_TTS_TOKEN').trim() || 'VAC_TTS_TOKEN';
   const controlPlaneDown = controlPlane.isError;
   const tts = useQuery({
     queryKey: ['tts-capabilities', tokenEnv],
     queryFn: () => api.ttsCapabilities(tokenEnv),
-    // 控制面不可达时不拉 TTS，避免展示陈旧缓存文案
+    enabled: !controlPlaneDown
+  });
+  const ingestRoots = useQuery({
+    queryKey: ['ingest', 'roots'],
+    queryFn: ingestApi.roots,
     enabled: !controlPlaneDown
   });
   const sse = SSE_STATE[connection];
@@ -56,28 +57,48 @@ export function StatusMonitor({ connection, events, controlPlane, audit }: Statu
     : tts.isPending ? { tone: 'processing', label: '检测中' }
     : tts.data?.runtime_ready && tts.data?.media_ready ? { tone: 'success', label: '就绪' } : { tone: 'warning', label: '未就绪' };
   const ttsDescription = controlPlaneDown
-    ? '控制面不可达，暂不查询 TTS 运行环境（避免显示过期缓存）。'
-    : (tts.data?.message || 'TTS 工作进程的运行时与媒体转码依赖是否就绪。');
+    ? '控制面不可达，暂不查询语音试听运行环境。'
+    : (tts.data?.message || '语音试听所需的运行环境是否就绪。');
+
+  let ingestState: { tone: Tone; label: string };
+  let ingestDescription: string;
+  if (controlPlaneDown) {
+    ingestState = { tone: 'default', label: '未检测' };
+    ingestDescription = '控制面不可达，暂不查询本机导入服务。';
+  } else if (ingestRoots.isError) {
+    ingestState = { tone: 'error', label: '不可达' };
+    ingestDescription = '无法读取导入配置。';
+  } else if (ingestRoots.isPending) {
+    ingestState = { tone: 'processing', label: '检测中' };
+    ingestDescription = '正在读取本机导入服务状态…';
+  } else if (!ingestRoots.data?.configured) {
+    ingestState = { tone: 'default', label: '未配置' };
+    ingestDescription = '控制面未配置录像根目录时，本机导入不可用。';
+  } else {
+    const n = ingestRoots.data.ingesters.filter((i) => i.online !== false).length;
+    ingestState = n > 0 ? { tone: 'success', label: `${n} 个在线` } : { tone: 'warning', label: '暂无在线' };
+    ingestDescription = '负责把录像拷入工作区并自动切分的本机服务。离线时任务会排队。';
+  }
+
   const rows: Row[] = [
     { key: 'control', title: '控制面连接', ...queryState(controlPlane, '可达', '不可达'),
-      description: '本地控制面 HTTP 接口；资产、任务与设置的读写都经过它。' },
+      description: '本地控制服务；素材、任务与设置的读写都经过它。' },
     { key: 'sse', title: '事件流 (SSE)', ...sse,
-      description: '任务进度与状态变化的实时推送；断开时页面改为手动刷新才更新。',
+      description: '任务进度的实时更新；断开后需手动刷新才看到最新状态。',
       extra: <Space size={4} wrap>
         <Tag bordered={false} data-testid="connection-retry">{retry}</Tag>
         {events.retryExhausted && <Tag color="error">已达重试上限</Tag>}
-        {/* 重连中也可点：打断退避并立即重开（useEvents.reconnect） */}
         <Button size="small" disabled={connection === 'connecting'} onClick={events.reconnect}>立即重连</Button>
         <Button size="small" disabled={connection === 'disconnected'} onClick={events.disconnect}>断开</Button>
       </Space> },
-    { key: 'audit', title: '审计日志接口', ...queryState(audit, '可用', '不可用'),
-      description: '记录每次治理与任务操作，用于追溯与诊断。' },
-    { key: 'tts', title: 'TTS 运行环境', ...ttsState,
-      description: ttsDescription }
+    { key: 'ingest', title: '本机导入服务', ...ingestState, description: ingestDescription },
+    { key: 'audit', title: '操作记录接口', ...queryState(audit, '可用', '不可用'),
+      description: '记录治理与任务操作，用于排查问题。' },
+    { key: 'tts', title: '语音试听环境', ...ttsState, description: ttsDescription }
   ];
   return (
     <Card title="状态监控" bordered={false} className="status-monitor"
-      extra={<Button size="small" onClick={() => void queryClient.invalidateQueries({ predicate: (q) => ['assets', 'audit', 'tts-capabilities'].includes(String(q.queryKey[0])) })}>重新检测</Button>}>
+      extra={<Button size="small" onClick={() => void queryClient.invalidateQueries({ predicate: (q) => ['assets', 'audit', 'tts-capabilities', 'ingest'].includes(String(q.queryKey[0])) })}>重新检测</Button>}>
       <List
         dataSource={rows}
         renderItem={(row) => (

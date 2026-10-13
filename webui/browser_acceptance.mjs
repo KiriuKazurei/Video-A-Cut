@@ -186,7 +186,7 @@ try{
  }else if(mode==='scene'||mode==='draft'){
   const scope='[aria-labelledby="workflow-title"]';
   await wait(`!!document.querySelector('${scope} .workflow-card')`);
-  await openTab(mode==='scene'?'场景证据':'解说草稿',scope);
+  await openTab(mode==='scene'?'场景画面':'解说文稿',scope);
   const runs=await http(`/api/assets/${asset}/workflows`),run=runs.find(r=>r.status==='ready_for_acceptance');
   const path='/api/workflows/'+run.run_id;
   const before=await http(path+'/review');
@@ -232,17 +232,17 @@ try{
   await openPage('settings/preparation');
   await pick('.preparation-panel .select-saved-profile','browser_fixture');await click('加载版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已加载 browser_fixture')`);
-  await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：资产须可见且未锁定')`);
+  await wait(`document.querySelector('.preparation-panel').textContent.includes('资产须可见且未锁定')`);
   await openPage('resources');await clickAsset(asset);
   await click('解锁',scope);await wait(`!document.querySelector('${scope}').textContent.includes('解锁')`);
   await click('设为 Agent 不可见',scope);
   await openPage('settings/preparation');
   await click('重新检查','.preparation-panel');
-  await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：资产须可见且未锁定')`);
+  await wait(`document.querySelector('.preparation-panel').textContent.includes('资产须可见且未锁定')`);
   await openPage('resources');await clickAsset(asset);
   await click('设为 Agent 可见',scope);
   await openPage('settings/preparation');
-  await wait(`[...document.querySelectorAll('.preparation-panel button')].find(b=>b.textContent.includes('启动此版本')).disabled`);
+  await wait(`[...document.querySelectorAll('.preparation-panel button')].find(b=>b.textContent.includes('开始生成')).disabled`);
   report.actions.push('lock and visibility changes block preflight; mismatched preparation/absent workers cannot start');
   const profile=(await http('/api/processing-profiles/browser_fixture/revisions/1')).profile;
   profile.profile_id='external_ui_fixture';profile.content_mode='configured';profile.tts_voice='Nonexistent acceptance voice';
@@ -257,7 +257,7 @@ try{
   await wait(`document.querySelector('.preparation-panel').textContent.includes('已满足：外部端点需该版本明确许可')`);
   await click('撤销此版本','.preparation-panel');
   await wait(`document.querySelector('.preparation-panel').textContent.includes('受阻：外部端点需该版本明确许可')`);
-  await wait(`[...document.querySelectorAll('.preparation-panel button')].find(b=>b.textContent.includes('启动此版本')).disabled`);
+  await wait(`[...document.querySelectorAll('.preparation-panel button')].find(b=>b.textContent.includes('开始生成')).disabled`);
   report.actions.push('isolated external consent grant/revoke updates preflight; unavailable voice/credentials/workers never enable start; no external calls');
  }else{
   await wait(`document.querySelectorAll('.ingest-ready video').length===3`);await layouts('ready-preview');

@@ -317,7 +317,8 @@ button.timeline-clip:focus-visible { outline: 2px solid #fff; outline-offset: 1p
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }
   .app-header { flex-wrap: wrap; padding: 8px 12px !important; row-gap: 4px; }
   .app-nav-wrap { order: 3; flex: 1 0 100%; width: 100%; }
-  .app-header-right { margin-left: auto; }
+  .app-header-right { margin-left: auto; flex-shrink: 0; }
+.app-settings-btn { flex-shrink: 0; }
   .workspace { display: flex !important; flex-direction: column !important; width: 100% !important; }
   .stage-main { overflow: visible; padding: 8px !important; width: 100% !important; box-sizing: border-box !important; }
   .workspace-page { width: 100% !important; }
@@ -761,3 +762,13 @@ button.timeline-clip:active { transform: scale(0.99); }
 .status-monitor .status-tag { border-radius: 3px; margin-inline-end: 0; }
 .status-monitor .status-tag .ant-badge-status-text { font-size: 12px; color: inherit; }
 .status-monitor .status-desc { font-size: 12px; }
+
+
+/* S4b：960–1439 收紧页头，保证「设置」不被挤出；勿覆盖 <960 窄屏整行导航规则 */
+@media (min-width: 960px) and (max-width: 1439px) {
+  .app-header { gap: 8px; }
+  .app-brand-text > :last-child { display: none; }
+  .app-nav-wrap { flex: 0 1 400px; min-width: 200px; max-width: 50%; }
+  .app-quick-actions { padding-right: 4px; margin-right: 2px; }
+  .app-header .ant-btn-sm { padding-inline: 8px; }
+}

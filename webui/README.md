@@ -26,16 +26,16 @@ npm run dev
 | 编辑 `#/editing/{import|content|review}` | 导入与粗剪（源监视器 + 源时间线直接选段）· 内容编辑 · 审查 | `API-03~16 · 19 · 28~38 · 42` |
 | 导出 `#/export/{delivery|acceptance|tasks}` | 交付 · 人工验收 · 任务监控 | `API-28 · 30 · 39~41 · 43~49` |
 | TTS `#/tts` | 文本试听、声音调控、模板 | TTS API |
-| 设置 `#/settings/{profiles|providers|preparation|logs}` | 处理预设 · 服务商 · 运行准备 · 日志 | `API-17~21 · 23~26 · 49~50` |
+| 设置 `#/settings/{profiles|providers|preparation|logs|status}` | 处理预设 · 服务商 · 运行准备 · 日志 · **状态监控** | `API-17~21 · 23~26 · 49~50` |
 
 未接入界面的接口：API-02（单资产读取；界面使用列表快照）、API-22（保存预设的别名路由；界面用通用保存 API-20）、API-27（早期基础预检；界面只用固定版本预检 API-25）、API-51/52（旧资产级解说批准/撤销；界面只用流程级解说批准/撤销 API-33/34）。
 
-固定区域：左侧「项目 · 资产」面板（API-01），右侧「属性 · 资产治理」面板（API-03），底部状态栏显示 SSE 连接（API-50，支持 11 种事件含 audit.changed 及断线重连）。监视器只播放受控文件键或证据地址，不把 artifacts 当下载地址。界面组件：`src/navigation.ts`（页面定义）、`src/pages/Pages.tsx`、`src/components/{Monitor,Timeline,MediaBin,Inspector}.tsx`。
+固定区域：左侧「项目 · 资产」面板（API-01），右侧「属性 · 资产治理」面板（API-03）。**系统连接与本机服务状态**集中在「设置 › 状态监控」（含控制面、SSE 事件流、本机导入服务、语音试听环境）；主界面底栏只显示当前资产与工作区，不再常驻 SSE「已连接」指示。监视器只播放受控文件键，不把 artifacts 当下载地址。界面组件：`src/navigation.ts`、`src/workspaces/*`、`src/components/{Monitor,Timeline,StatusMonitor,...}`。
 
 视觉：全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`，主色、圆角、控件尺寸保持默认）。整体模仿 Premiere：布局、容器、页头页脚共用同一底色 `#1c1d21`（`src/theme.ts` 里的 `colorBgBase/colorBgLayout/colorBgContainer`），中间工作区不用色块分隔，只留细线。顶部页签和展示窗口使用液态玻璃（ui-ux-pro-max「Spatial UI (VisionOS)」：半透明填充、`backdrop-filter: blur(40px) saturate(180%)`、内侧高光描边、深度阴影）：五个工作区页签使用玻璃材质（设置在页头右侧按钮，非整页胶囊栏），当前页是蓝色调玻璃高亮（白字），窄屏的「…」折叠弹层同样材质；监视器与短片预览窗口是玻璃边框。左右侧栏是 antd `Layout.Sider`：纯色底（`lightSiderBg` = `colorBgContainer`，无渐变、无透明、无 `backdrop-filter`）、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里，不继承中间工作区的组件级覆写，按钮、搜索框、列表与选中项（`controlItemBgActive`）、卡片、描述表、标签、提示框都是 antd 默认暗色外观，`styles.css` 不对侧栏内部写外观样式。页面不设环境光层，唯一的光晕在页头中央玻璃页签背后，不延伸到侧栏。系统开启「减少透明度」或浏览器不支持 `backdrop-filter` 时退化为不透明面板，「减少动态效果」时关闭过渡。`src/styles.css` 只保留布局、媒体尺寸、时间线轨道和玻璃材质。
 
 浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）已对齐五工作区路由：
-`#/resources`、`#/editing/{import|content|review}`、`#/export/{delivery|acceptance|tasks}`、`#/settings/{profiles|providers|preparation|logs}`、`#/tts`（仍接受旧六页别名）。
+`#/resources`、`#/editing/{import|content|review}`、`#/export/{delivery|acceptance|tasks}`、`#/settings/{profiles|providers|preparation|logs|status}`、`#/tts`（仍接受旧六页别名）。
 经由顶部工作区页签（设置走页头按钮）+ 二级 Tabs/菜单进入分区；窄屏时先展开折叠子菜单或「项目」抽屉；断言只有目标工作区可见。点击、输入和下拉选择都只作用于可见元素。任意宽度下只要有可见元素越过视口右边缘（`pageOverflow`）即判失败。
 本机跑法见 `/workspace/vac-demo/run_browser_tests.py`（八种模式）与 `run_provider_test.py`。
 
