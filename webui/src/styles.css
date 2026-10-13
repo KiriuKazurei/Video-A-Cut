@@ -96,11 +96,15 @@ body { background: var(--vac-bg); }
 .glass-window { border-radius: var(--vac-radius-window) !important; overflow: hidden; }
 .glass-window > .ant-card-head { border-bottom-color: rgba(255, 255, 255, 0.08) !important; }
 
+/* Lucian UX/UI Prompt #039 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#039 */
 /* 顶部页签：整组是玻璃胶囊（外框全圆角，四周等距 4px 内边距），当前页是会滑动的液态玻璃滑块。
    滑块位置由 App.tsx 量出选中项的 left/width 后写入 --nav-thumb-x / --nav-thumb-w；
-   滑块上下各留 4px（= 外框内边距），所以第一个、最后一个页签时也与外框等距。 */
+   滑块上下各留 4px（= 外框内边距），所以第一个、最后一个页签时也与外框等距。
+   动效对齐 #039 Sliding pill：transform/width 同 0.5s spring；视觉仍为 VAC 液态玻璃（非演示黑墨水 pill）。 */
 .app-nav.glass-nav {
   --nav-pad: 4px;
+  --nav-spring: cubic-bezier(.34, 1.45, .64, 1);
+  --nav-ease: cubic-bezier(.2, .8, .2, 1);
   position: relative; isolation: isolate;
   padding: var(--nav-pad);
   border: 1px solid var(--vac-glass-edge);
@@ -118,7 +122,7 @@ body { background: var(--vac-bg); }
 .app-nav.glass-nav > .ant-menu-item, .app-nav.glass-nav > .ant-menu-submenu, .app-nav.glass-nav > .ant-menu-submenu > .ant-menu-submenu-title { height: 32px; line-height: 32px; }
 .app-nav.glass-nav > .ant-menu-overflow-item-rest { min-width: 52px; text-align: center; padding-inline: 12px; }
 .app-nav.glass-nav > .ant-menu-item,
-.app-nav.glass-nav > .ant-menu-submenu { position: relative; z-index: 1; top: 0; margin: 0; padding-inline: 14px; border-radius: 999px; transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease); }
+.app-nav.glass-nav > .ant-menu-submenu { position: relative; z-index: 1; top: 0; margin: 0; padding-inline: 14px; border-radius: 999px; transition: color .35s var(--nav-ease), background-color .35s var(--nav-ease), transform var(--vac-dur-fast) var(--vac-ease); }
 .app-nav.glass-nav > .ant-menu-item:active { transform: scale(0.97); }
 .app-nav.glass-nav > .ant-menu-item::after,
 .app-nav.glass-nav > .ant-menu-submenu::after { display: none; }
@@ -145,7 +149,7 @@ body { background: var(--vac-bg); }
 .app-nav.glass-nav::before {
   content: ''; position: absolute; z-index: 0; display: block; pointer-events: none;
   top: var(--nav-pad); bottom: var(--nav-pad); left: 0; width: var(--nav-thumb-w, 0px);
-  transform: translateX(var(--nav-thumb-x, 0px)) scaleY(1);
+  transform: translateX(var(--nav-thumb-x, 0px));
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.38);
   background:
@@ -163,18 +167,12 @@ body { background: var(--vac-bg); }
   opacity: 0;
 }
 .app-nav.glass-nav[data-thumb='on']::before { opacity: 1; }
-/* 弹簧式滑动（过冲曲线）；宽度略慢于位移，移动途中自然产生拉伸，并在移动中轻微压扁 */
+/* #039：transform 与 width 同 0.5s spring；拉伸来自同步 spring，而非非对称时长；无 squash */
 .app-nav.glass-nav[data-thumb='on'][data-thumb-anim='1']::before {
   transition:
-    transform 260ms cubic-bezier(0.34, 1.45, 0.5, 1),
-    width 320ms cubic-bezier(0.34, 1.2, 0.5, 1),
+    transform .5s var(--nav-spring),
+    width .5s var(--nav-spring),
     opacity var(--vac-dur) var(--vac-ease);
-}
-.app-nav.glass-nav[data-thumb-moving='1']::before { animation: vac-thumb-squash 260ms cubic-bezier(0.4, 0, 0.2, 1); }
-@keyframes vac-thumb-squash {
-  0% { transform: translateX(var(--nav-thumb-x, 0px)) scaleY(1); }
-  35% { transform: translateX(var(--nav-thumb-x, 0px)) scaleY(0.9); }
-  100% { transform: translateX(var(--nav-thumb-x, 0px)) scaleY(1); }
 }
 
 /* 「…」折叠弹层：同样的胶囊玻璃外观 */
@@ -207,6 +205,7 @@ body { background: var(--vac-bg); }
   .app-nav-popup .ant-menu-item-selected { background: #1668dc !important; }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* #039 / VAC：缩减动效时滑块瞬时到位，不跑 0.5s spring */
   .app-nav.glass-nav::before { transition: none !important; animation: none !important; }
 }
 

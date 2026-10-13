@@ -92,7 +92,6 @@ export default function App() {
     const nav = wrap?.querySelector<HTMLElement>('.app-nav');
     if (!wrap || !nav) return;
     let last = '';
-    let timer: number | undefined;
     const measure = () => {
       const target = [...nav.querySelectorAll<HTMLElement>(':scope > .ant-menu-item-selected, :scope > .ant-menu-submenu-selected')]
         .find((el) => el.style.position !== 'absolute' && el.offsetWidth > 0);
@@ -109,12 +108,8 @@ export default function App() {
       nav.style.setProperty('--nav-thumb-w', `${w}px`);
       if (first) {
         nav.setAttribute('data-thumb', 'on');
-        // 首次定位不做滑动动画，下一帧再开启
+        // 首次定位不做滑动动画（对齐 #039 movePill(false)），下一帧再开启 spring
         requestAnimationFrame(() => requestAnimationFrame(() => nav.setAttribute('data-thumb-anim', '1')));
-      } else {
-        nav.setAttribute('data-thumb-moving', '1');
-        window.clearTimeout(timer);
-        timer = window.setTimeout(() => nav.removeAttribute('data-thumb-moving'), 280);
       }
     };
     measure();
@@ -123,7 +118,7 @@ export default function App() {
     const mutate = new MutationObserver(measure);
     mutate.observe(nav, { subtree: true, attributes: true, attributeFilter: ['class', 'style'], childList: true });
     void document.fonts?.ready.then(measure);
-    return () => { resize.disconnect(); mutate.disconnect(); window.clearTimeout(timer); };
+    return () => { resize.disconnect(); mutate.disconnect(); };
   }, []);
 
   // Phase 4: 全局键盘快捷键与帮助面板
