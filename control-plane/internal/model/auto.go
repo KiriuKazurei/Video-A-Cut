@@ -38,6 +38,9 @@ const (
 	AutoDecisionRerun        = "auto_rerun"
 	AutoDecisionUserRevise   = "user_revise"
 	AutoDecisionHalt         = "auto_halt"
+	// AutoDecisionHumanAcceptance records that a person took the run through
+	// acceptance (or it was found accepted) while the overlay was still live.
+	AutoDecisionHumanAcceptance = "human_acceptance"
 )
 
 // Ledger action kinds recorded in auto_actions.
@@ -63,6 +66,9 @@ const (
 	AutoHaltBudget             = "budget"
 	AutoHaltPreviewUnavailable = "preview_unavailable"
 	AutoHaltNarrationRefused   = "narration_refused"
+	// AutoHaltHumanCompleted: a person recorded acceptance on the run, so the
+	// run left the automatic path. The overlay is closed, the hold released.
+	AutoHaltHumanCompleted = "human_completed"
 )
 
 // Reasons an auto run waits for the user (workflow_auto.halt_reason while the

@@ -445,6 +445,7 @@ func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem,
 		return model.AcceptanceRecord{}, fmt.Errorf("service: unknown acceptance item: %w", model.ErrArgument)
 	}
 	var rec model.AcceptanceRecord
+	var closed *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		run, err := s.locked(ctx, tx, runID, version)
 		if err != nil {
@@ -474,11 +475,19 @@ func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem,
 		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()
-		return tx.UpdateWorkflow(ctx, run)
+		if err := tx.UpdateWorkflow(ctx, run); err != nil {
+			return err
+		}
+		// A person who records acceptance takes the run through the last human
+		// gate: a live auto overlay (still working, or waiting for a decision)
+		// is closed in the same transaction, so the asset is not held by it.
+		closed, err = autoHumanCompletedTx(ctx, tx, runID, actor, "acceptance:"+checkItem)
+		return err
 	})
 	if err != nil {
 		return model.AcceptanceRecord{}, err
 	}
+	s.publishAutoPtr(closed)
 	s.publish("acceptance.changed", rec)
 	s.audit(ctx, actor, "acceptance.record", runID, checkItem+"="+result)
 	return rec, nil

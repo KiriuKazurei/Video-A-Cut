@@ -922,15 +922,26 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 // anything done by the auto-reviewer itself. The updated overlay is returned
 // when it changed, so the caller can announce it after the transaction.
 func autoTakeover(ctx context.Context, tx *store.Store, runID, actor, reason, via string) (*model.WorkflowAuto, error) {
-	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, reason, model.AutoDecisionTakeover, via, "auto.takeover")
+	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, reason, model.AutoDecisionTakeover, via, "auto.takeover", false)
+}
+
+// autoHumanCompletedTx closes a live overlay because a person recorded
+// acceptance on its run: the run is in human hands from here, so the overlay
+// becomes halted(human_completed), the delivery hold is released (acceptance is
+// the person's own decision) and both clocks stop. It frees the asset for the
+// next run (Rule A looks only at live overlays). It is not a takeover: nothing
+// the person did is undone. A run that is not auto, or an overlay that is not
+// live, is left alone.
+func autoHumanCompletedTx(ctx context.Context, tx *store.Store, runID, actor, via string) (*model.WorkflowAuto, error) {
+	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, model.AutoHaltHumanCompleted, model.AutoDecisionHumanAcceptance, via, "auto.human_completed", true)
 }
 
 // autoCancelTx records that a person cancelled the workflow of a live auto run.
 func autoCancelTx(ctx context.Context, tx *store.Store, runID, actor, reason string) (*model.WorkflowAuto, error) {
-	return autoOverride(ctx, tx, runID, actor, model.AutoStateCancelled, "", model.AutoDecisionCancelled, "cancel", "auto.cancel")
+	return autoOverride(ctx, tx, runID, actor, model.AutoStateCancelled, "", model.AutoDecisionCancelled, "cancel", "auto.cancel", false)
 }
 
-func autoOverride(ctx context.Context, tx *store.Store, runID, actor, state, reason, kind, via, auditAction string) (*model.WorkflowAuto, error) {
+func autoOverride(ctx context.Context, tx *store.Store, runID, actor, state, reason, kind, via, auditAction string, releaseHold bool) (*model.WorkflowAuto, error) {
 	if actor == model.AutoActor {
 		return nil, nil
 	}
@@ -946,6 +957,9 @@ func autoOverride(ctx context.Context, tx *store.Store, runID, actor, state, rea
 	}
 	now := time.Now().UTC()
 	a.State, a.HaltReason = state, reason
+	if releaseHold {
+		a.DeliveryHold = false
+	}
 	a.PausedAt, a.DecisionDeadlineAt = nil, nil
 	a.AutoVersion++
 	a.UpdatedAt = now

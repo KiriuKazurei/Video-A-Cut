@@ -893,6 +893,10 @@ func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 	now := s.autoNow()
 	switch a.State {
 	case model.AutoStateAwaitingDecision:
+		// A person may have finished the run while it waited for them.
+		if done, err := s.reconcileHumanFinished(ctx, a); done || err != nil {
+			return done, err
+		}
 		if a.DecisionDeadlineAt != nil && now.After(*a.DecisionDeadlineAt) {
 			return true, s.autoHalt(ctx, runID, a.AutoVersion, model.AutoHaltDecisionTimeout)
 		}
@@ -928,9 +932,75 @@ func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 		_, err := s.AutoApproveNarration(ctx, runID, run.Version, a.AutoVersion, run.CurrentRevisionID)
 		return s.afterPolicyStep(ctx, a, err)
 	case run.Status == model.WorkflowReadyAcceptance:
+		if done, err := s.reconcileHumanFinished(ctx, a); done || err != nil {
+			return done, err
+		}
 		return s.stepAcceptance(ctx, a, run)
 	}
 	return false, nil // created or running: a worker owns the next step
+}
+
+// reconcileHumanFinished closes a live overlay whose run a person has already
+// taken to the end: acceptance was recorded for the run's current export, or
+// the run was cancelled while the overlay waited. RecordAcceptance and
+// CancelWorkflow do this in their own transaction; this is the same rule for
+// overlays they did not reach (rows from before the hooks, or a path that does
+// not go through them), so a live overlay can never hold the asset (Rule A)
+// for the rest of its 72 hours. The transition is a no-op for an overlay a
+// person changed since it was read (auto_version), and it never writes for a
+// run that is not finished.
+func (s *Service) reconcileHumanFinished(ctx context.Context, a model.WorkflowAuto) (bool, error) {
+	run, err := s.st.GetWorkflow(ctx, a.RunID)
+	if err != nil {
+		return false, err
+	}
+	var state, reason, kind string
+	switch {
+	case run.Status == model.WorkflowCancelled && a.State == model.AutoStateAwaitingDecision:
+		state, kind = model.AutoStateCancelled, model.AutoDecisionCancelled
+	case run.Status == model.WorkflowReadyAcceptance:
+		recs, err := s.st.ListAcceptance(ctx, a.RunID)
+		if err != nil {
+			return false, err
+		}
+		found := false
+		for _, r := range recs {
+			if r.ExportRevisionID == run.CurrentRevisionID && isHumanActor(r.Actor) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+		state, reason, kind = model.AutoStateHalted, model.AutoHaltHumanCompleted, model.AutoDecisionHumanAcceptance
+	default:
+		return false, nil
+	}
+	var saved model.WorkflowAuto
+	err = s.st.Transaction(ctx, func(tx *store.Store) error {
+		cur, err := tx.GetWorkflowAuto(ctx, a.RunID)
+		if err != nil {
+			return err
+		}
+		if !autoStateLive(cur.State) || cur.AutoVersion != a.AutoVersion {
+			return fmt.Errorf("service: auto run changed: %w", model.ErrConflict)
+		}
+		if err := s.applyAutoTransition(ctx, tx, &cur, autoTransition{state: state, reason: reason, hold: boolPtr(false),
+			kind: kind, basis: map[string]any{"via": "tick", "reason": reason}, audit: "auto.reconcile"}, s.autoNow()); err != nil {
+			return err
+		}
+		saved = cur
+		return nil
+	})
+	if errors.Is(err, model.ErrConflict) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	s.publishAuto(saved)
+	return true, nil
 }
 
 // afterPolicyStep turns the result of an auto approval into driver progress: a
