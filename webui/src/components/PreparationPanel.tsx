@@ -46,14 +46,34 @@ export function PreparationPanel({
   // 进入运行准备分区或资产变化时主动刷新预检（治理状态可能已变）
   const prepFocus=activeSection==='preparation'||activeSection==='all';
   useEffect(()=>{if(prepFocus&&autoCheck)void report.refetch()},[prepFocus,autoCheck,assetId,draft.profile_id,draft.revision]);
-  // quickstart（编辑页「开始生成」入口）：没有选预设时自动载入第一个已保存预设，让用户一进来就能看到能否开始
+  // quickstart（编辑页「开始生成」入口）：卡片上看到的预设就是启动时用的预设。
+  // 1) 没选预设时自动载入第一个已保存预设；2) 下拉一变立刻载入该预设当前版本；3) 预设列表里该预设的版本号变了（例如在设置页保存了 v2）就重新载入。
+  const quick=activeSection==='quickstart';
+  const loadSeq=useRef(0);
+  const [loading,setLoading]=useState(false);
+  const loadDraft=(id:string,rev:number)=>{
+    const seq=++loadSeq.current;
+    setLoading(true);
+    return api.getProfile(id,rev).then(p=>{if(seq!==loadSeq.current)return;setDraft(p.profile);setSelected(p.profile.profile_id);setError('');setNotice('')})
+      .catch(e=>{if(seq===loadSeq.current)setError(e instanceof Error?e.message:'读取预设失败')})
+      .finally(()=>{if(seq===loadSeq.current)setLoading(false)});
+  };
   const autoLoaded=useRef(false);
   useEffect(()=>{
-    if(activeSection!=='quickstart'||autoLoaded.current||draft.revision>0||!profiles.data?.length)return;
+    if(!quick||autoLoaded.current||draft.revision>0||!profiles.data?.length)return;
     autoLoaded.current=true;
-    const first=profiles.data[0];
-    void api.getProfile(first.profile_id,0).then(p=>{setSelected(first.profile_id);setDraft(p.profile)}).catch(()=>{autoLoaded.current=false});
-  },[activeSection,draft.revision,profiles.data]);
+    setSelected(profiles.data[0].profile_id);
+    void loadDraft(profiles.data[0].profile_id,0);
+  },[quick,draft.revision,profiles.data]);
+  const listedRevision=profiles.data?.find(p=>p.profile_id===draft.profile_id)?.revision;
+  useEffect(()=>{
+    if(!quick||loading||draft.revision<1||listedRevision===undefined||listedRevision===draft.revision)return;
+    if(listedRevision<draft.revision){void profiles.refetch();return}  // 列表比 draft 旧：刷新列表，不反复载入
+    void loadDraft(draft.profile_id,0);
+  },[quick,loading,draft.profile_id,draft.revision,listedRevision]);
+  // 安全网：选择器显示的预设/版本必须与已载入的 draft 一致，否则不允许开始
+  const picked=profiles.data?.find(p=>p.profile_id===selected);
+  const pickerMismatch=quick&&(loading||selected!==draft.profile_id||(picked!==undefined&&picked.revision!==draft.revision));
   const refresh=async()=>{await Promise.all(['processing-profiles','prepared','workflows','assets','audit'].map(k=>client.invalidateQueries({queryKey:[k]})))};
   const action=useMutation({mutationFn:(fn:()=>Promise<unknown>)=>fn(),onSuccess:async()=>{setError('');await refresh()},onError:e=>{setError(e instanceof Error?e.message:'操作失败');void refresh()}});
   const busy=action.isPending;
@@ -92,7 +112,17 @@ export function PreparationPanel({
   const hasIngestBlock=blockers.some(c=>c.code.startsWith('ingest_')||c.code==='input_ready'||c.code==='controlled_edl');
 
   // 顶层公共预设选择工具栏
-  const profilePicker = (
+  const quickPicker = (
+    <Flex gap={8} align="flex-end" wrap className="profile-picker profile-picker-quick">
+      <Form.Item label="处理预设" layout="vertical" style={{marginBottom:0,flex:'1 1 240px',minWidth:0}}>
+        <ValueSelect<string> className="select-saved-profile" aria-label="已保存预设" value={selected} loading={loading} disabled={busy}
+          onChange={v=>{setSelected(v);setVersion(0);if(v)void loadDraft(v,0)}}
+          options={[{value:'',label:'选择预设'},...(profiles.data??[]).map(p=>({value:p.profile_id,label:`${p.name} · v${p.revision}`}))]}/>
+      </Form.Item>
+      <Button type="link" className="quickstart-advanced" onClick={()=>onNavigate?.({workspace:'settings',settingsCategory:'profiles'})}>高级：到设置页管理预设</Button>
+    </Flex>
+  );
+  const profilePicker = quick ? quickPicker : (
     <Flex gap={8} align="flex-end" wrap className="profile-picker">
       <Form.Item label="已保存预设" layout="vertical" style={{marginBottom:0,flex:'1 1 240px',minWidth:0}}>
         <ValueSelect<string> className="select-saved-profile" aria-label="已保存预设" value={selected} onChange={v=>{setSelected(v);setVersion(0)}}
@@ -108,7 +138,7 @@ export function PreparationPanel({
 
   const saveButtons=(
     <Space wrap>
-      <Button type="primary" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button>
+      <Button type="primary" className="vac-cta" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button>
       <Typography.Text type="secondary">已保存版本不可覆盖，每次保存生成 v{draft.revision+1}。</Typography.Text>
     </Space>
   );
@@ -124,7 +154,7 @@ export function PreparationPanel({
         {unsaved&&(
           <Alert type="warning" showIcon message="有未保存修改"
             description="自动检查（预检）只对已保存的版本生效。请先保存新版本，再自动核对运行条件。"
-            action={<Button type="primary" size="small" onClick={goSave}>先保存新版本</Button>}/>
+            action={<Button type="primary" size="small" className="vac-cta" onClick={goSave}>先保存新版本</Button>}/>
         )}
         {autoCheck&&report.isFetching&&!report.data&&<Typography.Text type="secondary" role="status">正在核对环境和资产…</Typography.Text>}
         {autoCheck&&report.data&&<>
@@ -148,9 +178,9 @@ export function PreparationPanel({
               {hasIngestBlock&&<Button onClick={()=>onNavigate?.({workspace:'editing',editingSection:'import'})}>去导入与粗剪</Button>}
             </Space>
           )}
-          <Tooltip title={report.data.can_start?undefined:blockerTip}>
+          <Tooltip title={pickerMismatch?'正在载入所选预设的最新版本，请稍候':report.data.can_start?undefined:blockerTip}>
             <span style={{display:'block',width:'100%'}}>
-              <Button type="primary" block className="vac-cta" disabled={busy||report.isFetching||!report.data.can_start||unsaved} onClick={startFlow}>开始生成</Button>
+              <Button type="primary" block className="vac-cta" disabled={busy||report.isFetching||!report.data.can_start||unsaved||pickerMismatch} onClick={startFlow}>开始生成</Button>
             </span>
           </Tooltip>
         </>}
@@ -223,7 +253,7 @@ export function PreparationPanel({
           </div>
           {draft.content_mode==='configured'?<Flex vertical gap={12} style={{marginBottom:16}}>{(['vision','narration'] as const).map(key=><ProviderEditor key={key} role={key} provider={draft[key]} disabled={busy} onChange={provider=>edit({...draft,[key]:provider})}/>)}</Flex>
             :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用任何服务商；点击上方按钮切换为“已配置模型”后可配置画面识别与中文解说服务。"/>}
-          <Space wrap><Button type="primary" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button><Typography.Text type="secondary">服务商修改从属于当前预设，保存生成 v{draft.revision+1}。</Typography.Text></Space>
+          <Space wrap><Button type="primary" className="vac-cta" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button><Typography.Text type="secondary">服务商修改从属于当前预设，保存生成 v{draft.revision+1}。</Typography.Text></Space>
         </Form>
       )}
 
