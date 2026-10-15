@@ -3,7 +3,7 @@ import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ToolError } from './mcp.mjs';
 import { processPreviewTask, probePreviewCapability } from './preview.mjs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { processDeliveryVariantTask, probeDeliveryVariantCapability } from './delivery-variant.mjs';
 
 /**
@@ -178,6 +178,17 @@ export async function processTask({ client, cfg, task, executionScope, log = () 
     const outputDir = resolve(cfg.deliveryRoot, ...packageRel.split('/'));
     const receipt = { task_id: id, revision_id: taskInput?.revision_id, content_mode: taskInput?.content_mode };
     if(taskInput?.profile_sha256) receipt.profile_sha256=taskInput.profile_sha256;
+    // An auto run's control plane accepts a delivery only if its receipt names the
+    // run's brief hash (as the Python worker's does). The brief itself is never
+    // used by the export; only the hash is echoed, after checking it is the hash of
+    // the brief the task carries.
+    if (taskInput?.auto?.brief) {
+      const declared = taskInput.auto.brief_sha256;
+      if (typeof taskInput.auto.brief !== 'string' || declared !== createHash('sha256').update(taskInput.auto.brief, 'utf8').digest('hex')) {
+        throw new WorkerFailure('brief does not match its sha256');
+      }
+      receipt.brief_sha256 = declared;
+    }
     const attachProfileMetadata = async () => {
       if (!taskInput?.processing_profile) return;
       await writeFile(join(outputDir, 'processing-profile.json'), JSON.stringify({profile:taskInput.processing_profile, profile_sha256:taskInput.profile_sha256}, null, 2));

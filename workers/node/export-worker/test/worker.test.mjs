@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { ToolError, createClient } from '../src/mcp.mjs';
 import { loadConfig, processTask, runLoop, resolveUnderRoot, WorkerFailure } from '../src/worker.mjs';
 
@@ -117,7 +118,7 @@ test('unsafe ids and wrong type are refused', async () => {
   const dir = await root();
   for (const t of [{ ...task, type: 'tts' }, { ...task, asset_id: '..' }, { ...task, task_id: 'a/b' }]) {
     const client = fakeClient({});
-    const r = await processTask({ client, cfg: baseCfg(dir), task: t, log: () => {}, runCliImpl: async () => {} });
+    const r = await processTask({ client, cfg: baseCfg(dir), task: t, log: () => {}, runCliImpl: async ({ outputDir }) => { await mkdir(outputDir, { recursive: true }); } });
     assert.equal(r.outcome, 'failed');
   }
 });
@@ -128,7 +129,7 @@ test('expired lease abandons without fail_task', async () => {
     get_asset: () => ({ asset: { artifacts: { edl: 'src/edl.json' } } }),
     submit_delivery: () => { throw new ToolError('submit_delivery', 'lease_expired: lease lapsed'); }
   });
-  const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async () => {} });
+  const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async ({ outputDir }) => { await mkdir(outputDir, { recursive: true }); } });
   assert.equal(r.outcome, 'abandoned');
   assert.ok(!client.calls.some(([t]) => t === 'fail_task'));
 });
@@ -183,4 +184,38 @@ test('idle capability heartbeat retries a transient disconnect', async () => {
     const result=await runLoop({client,cfg:{...baseCfg(await root()),profileSHA256:'a'.repeat(64),token:'test',pollIntervalMs:1},signal:new AbortController().signal,log:()=>{},once:true});
     assert.equal(result.outcome,'idle');assert.equal(beats,3);assert.equal(claims,1);
   }finally{Date.now=original}
+});
+
+const briefHash = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+
+test('an auto run delivery receipt echoes the brief hash, and only then', async () => {
+  const dir = await root();
+  const brief = '团战';
+  const client = fakeClient({ get_task_input: () => ({ versioned: true, revision_id: 'rev1', content_mode: 'configured', edl_path: 'src/edl.json',
+    auto: { brief, brief_sha256: briefHash(brief), round: 0 } }) });
+  const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async ({ outputDir }) => { await mkdir(outputDir, { recursive: true }); } });
+  assert.equal(r.outcome, 'succeeded');
+  const receipt = JSON.parse(await readFile(join(dir, 'deliveries', 'clip', 't1', 'worker-receipt.json'), 'utf8'));
+  assert.deepEqual(receipt, { task_id: 't1', revision_id: 'rev1', content_mode: 'configured', brief_sha256: briefHash(brief) });
+});
+
+test('a run without a brief keeps the old receipt byte for byte', async () => {
+  for (const auto of [undefined, { brief: '', brief_sha256: '', round: 0 }]) {
+    const dir = await root();
+    const client = fakeClient({ get_task_input: () => ({ versioned: true, revision_id: 'rev1', content_mode: 'configured', edl_path: 'src/edl.json', auto }) });
+    const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async ({ outputDir }) => { await mkdir(outputDir, { recursive: true }); } });
+    assert.equal(r.outcome, 'succeeded');
+    const raw = await readFile(join(dir, 'deliveries', 'clip', 't1', 'worker-receipt.json'), 'utf8');
+    assert.equal(raw, '{"task_id":"t1","revision_id":"rev1","content_mode":"configured"}');
+  }
+});
+
+test('a brief whose hash does not match fails the task before the CLI runs', async () => {
+  const dir = await root();
+  const client = fakeClient({ get_task_input: () => ({ versioned: true, revision_id: 'rev1', content_mode: 'configured', edl_path: 'src/edl.json',
+    auto: { brief: '团战', brief_sha256: briefHash('别的') } }) });
+  const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async () => assert.fail('CLI ran') });
+  assert.equal(r.outcome, 'failed');
+  assert.ok(client.calls.some(([name]) => name === 'fail_task'));
+  assert.ok(!JSON.stringify(client.calls).includes('别的'));
 });
