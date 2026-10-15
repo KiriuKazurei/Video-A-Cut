@@ -1,0 +1,131 @@
+{
+  "scorer_version": "v1",
+  "band": "low",
+  "score": 0.752083,
+  "components": [
+    {
+      "name": "recognition",
+      "score": 0.625,
+      "weight": 0.35,
+      "available": true
+    },
+    {
+      "name": "tts_complete",
+      "score": 0.833333,
+      "weight": 0.2,
+      "available": true
+    },
+    {
+      "name": "av_alignment",
+      "score": 0.888889,
+      "weight": 0.3,
+      "available": true
+    },
+    {
+      "name": "pacing",
+      "score": 0.666667,
+      "weight": 0.15,
+      "available": true
+    }
+  ],
+  "brief_coverage": 0,
+  "reasons": [
+    {
+      "code": "low_confidence",
+      "severity": "warn",
+      "value": 0.35,
+      "threshold": 0.6,
+      "improvable": true
+    },
+    {
+      "code": "tts_incomplete",
+      "severity": "fail",
+      "value": 0.833333,
+      "threshold": 1,
+      "improvable": true
+    },
+    {
+      "code": "pacing_out_of_range",
+      "severity": "warn",
+      "value": 41,
+      "threshold": 6,
+      "improvable": true
+    },
+    {
+      "code": "av_misaligned",
+      "severity": "warn",
+      "value": 0.666667,
+      "threshold": 1,
+      "improvable": true
+    },
+    {
+      "code": "item_below_floor",
+      "severity": "warn",
+      "item": "recognition",
+      "value": 0.625,
+      "threshold": 0.7,
+      "improvable": true
+    },
+    {
+      "code": "item_below_floor",
+      "severity": "warn",
+      "item": "tts_complete",
+      "value": 0.833333,
+      "threshold": 1,
+      "improvable": true
+    },
+    {
+      "code": "item_below_floor",
+      "severity": "warn",
+      "item": "av_alignment",
+      "value": 0.888889,
+      "threshold": 0.9,
+      "improvable": true
+    },
+    {
+      "code": "item_below_floor",
+      "severity": "warn",
+      "item": "pacing",
+      "value": 0.666667,
+      "threshold": 0.7,
+      "improvable": true
+    },
+    {
+      "code": "brief_low_coverage",
+      "severity": "warn",
+      "value": 0,
+      "threshold": 0.6,
+      "improvable": true
+    }
+  ],
+  "improvable": true,
+  "facts": {
+    "scenes": 6,
+    "lines": 6,
+    "lines_with_audio": 5,
+    "confidence_mean": 0.625,
+    "confidence_min": 0.35,
+    "max_pace": 41,
+    "subtitle_fit": 1,
+    "audio_fit": 0.666667,
+    "edl_duration_seconds": 12,
+    "preview_duration_seconds": 12,
+    "duration_deviation_seconds": 0,
+    "brief_keywords": 2,
+    "brief_provided": true
+  },
+  "thresholds": {
+    "high_score_min": 0.85,
+    "medium_score_min": 0.6,
+    "recognition_floor": 0.7,
+    "tts_floor": 1,
+    "av_floor": 0.9,
+    "pacing_floor": 0.7,
+    "scene_confidence_min": 0.6,
+    "brief_coverage_min": 0.6,
+    "pace_min": 2,
+    "pace_max": 6,
+    "duration_tolerance_seconds": 0.025,
+    "window_tolerance_seconds": 0.05
+  }
+}
