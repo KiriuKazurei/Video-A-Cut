@@ -259,6 +259,7 @@ func TestMissingInputsFailSafe(t *testing.T) {
 		"no narration lines":   func(in *Input) { in.Lines = nil },
 		"no preview":           func(in *Input) { in.Preview = nil },
 		"preview without file": func(in *Input) { in.Preview.Media = nil },
+		"no render checks":     func(in *Input) { in.Preview.Checks = nil },
 		"zero-length preview":  func(in *Input) { in.Preview.Media.DurationSeconds = 0 },
 		"unknown EDL length":   func(in *Input) { in.EDLDurationSeconds = 0 },
 		"NaN EDL length":       func(in *Input) { in.EDLDurationSeconds = math.NaN() },

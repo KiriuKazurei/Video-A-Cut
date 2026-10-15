@@ -231,6 +231,11 @@ func Score(in Input, th Thresholds) Result {
 				break
 			}
 		}
+		if len(in.Preview.Checks) == 0 {
+			// The server forces five passed checks into every accepted report;
+			// none at all means the report was not read.
+			missing(ItemAVAlignment)
+		}
 		switch {
 		case in.Preview.Media == nil || !validNumber(in.Preview.Media.DurationSeconds) || in.Preview.Media.DurationSeconds <= 0 ||
 			!validNumber(in.EDLDurationSeconds) || in.EDLDurationSeconds <= 0 || len(in.Lines) == 0:
