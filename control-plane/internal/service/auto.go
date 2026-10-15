@@ -661,11 +661,23 @@ func autoSceneCriteria(scene map[string]any, minConfidence float64, labels map[s
 // and count as satisfied; if any remaining scene fails the criteria nothing is
 // written and an *AutoPolicyError is returned.
 func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, autoVersion int, revisionID string) (model.WorkflowRun, error) {
-	if _, err := s.st.GetWorkflowAuto(ctx, runID); err != nil {
+	a0, err := s.st.GetWorkflowAuto(ctx, runID)
+	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			return model.WorkflowRun{}, fmt.Errorf("service: run %s is not an auto run: %w", runID, model.ErrForbidden)
 		}
 		return model.WorkflowRun{}, err
+	}
+	// A ledger row exists only if the action committed, and rows are never
+	// deleted, so a replay of a committed confirmation is a success whatever
+	// the run has done since (moved on, finished, been revoked). It is decided
+	// before any state, scope, budget or version check, all of which describe
+	// a world the first execution already changed.
+	replayKey := fmt.Sprintf("auto:%s:%d:%s:%s", runID, a0.Round, model.AutoActionSceneConfirm, revisionID)
+	if done, err := s.st.AutoActionExists(ctx, runID, replayKey); err != nil {
+		return model.WorkflowRun{}, err
+	} else if done {
+		return s.st.GetWorkflow(ctx, runID)
 	}
 	// Evidence files are hashed here, before the write lock is taken. The
 	// revision is immutable, and lockRun below proves it is still current.
@@ -691,15 +703,27 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 	var saved model.WorkflowRun
 	var savedAuto model.WorkflowAuto
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
-		run, rev, edl, err := s.lockRun(ctx, tx, runID, version, revisionID)
-		if err != nil {
-			return err
-		}
 		a, err := tx.GetWorkflowAuto(ctx, runID)
 		if err != nil {
 			if errors.Is(err, model.ErrNotFound) {
 				return fmt.Errorf("service: run %s is not an auto run: %w", runID, model.ErrForbidden)
 			}
+			return err
+		}
+		key := fmt.Sprintf("auto:%s:%d:%s:%s", runID, a.Round, model.AutoActionSceneConfirm, revisionID)
+		if done, err := tx.AutoActionExists(ctx, runID, key); err != nil {
+			return err
+		} else if done {
+			// Another call committed the same action after the early check.
+			cur, err := tx.GetWorkflow(ctx, runID)
+			if err != nil {
+				return err
+			}
+			saved = cur
+			return nil
+		}
+		run, rev, edl, err := s.lockRun(ctx, tx, runID, version, revisionID)
+		if err != nil {
 			return err
 		}
 		now := time.Now().UTC()
@@ -714,14 +738,6 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 			return fmt.Errorf("service: auto action budget is spent: %w", model.ErrForbidden)
 		case a.AutoVersion != autoVersion:
 			return fmt.Errorf("service: auto version conflict: %w", model.ErrConflict)
-		}
-		key := fmt.Sprintf("auto:%s:%d:%s:%s", runID, a.Round, model.AutoActionSceneConfirm, revisionID)
-		if done, err := tx.AutoActionExists(ctx, runID, key); err != nil {
-			return err
-		} else if done {
-			saved = run
-			savedAuto = a
-			return nil
 		}
 		if run.Stage != "scene_review" || run.Status != model.WorkflowAwaitingReview {
 			return fmt.Errorf("workflow is not at scene review: %w", model.ErrInvalidState)
@@ -825,8 +841,10 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 	if err != nil {
 		return model.WorkflowRun{}, err
 	}
-	s.publish("review.changed", saved)
-	s.publishAuto(savedAuto)
+	if savedAuto.RunID != "" { // empty on a replay: nothing changed, nothing to announce
+		s.publish("review.changed", saved)
+		s.publishAuto(savedAuto)
+	}
 	return saved, nil
 }
 
