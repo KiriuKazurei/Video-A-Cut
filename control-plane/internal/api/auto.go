@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -10,6 +11,18 @@ import (
 
 // Auto-run endpoints. The actor is always humanActor: an auto run is
 // authorized, decided and revoked by the person at the UI, never by an agent.
+
+// maxAutoIdempotencyKey bounds a client-supplied idempotency key. The key is
+// stored and hashed per scope, so an unbounded one is storage the client
+// controls.
+const maxAutoIdempotencyKey = 128
+
+func checkAutoIdempotencyKey(key string) error {
+	if len(key) > maxAutoIdempotencyKey {
+		return fmt.Errorf("api: idempotency_key is longer than %d bytes: %w", maxAutoIdempotencyKey, model.ErrArgument)
+	}
+	return nil
+}
 
 type autoRunRequest struct {
 	ProfileID            string                   `json:"profile_id"`
@@ -58,6 +71,10 @@ func (s *Server) startAutoRun(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, err)
 		return
 	}
+	if err := checkAutoIdempotencyKey(req.IdempotencyKey); err != nil {
+		writeServiceError(w, err)
+		return
+	}
 	run, auto, err := s.svc.StartAutoRun(r.Context(), humanActor, service.AutoRunRequest{
 		AssetID: r.PathValue("id"), RevisionID: req.RevisionID, ProfileID: req.ProfileID, ProfileRevision: req.Revision,
 		ExpectedAssetVersion: req.ExpectedAssetVersion, Brief: req.Brief, Scope: req.Scope,
@@ -92,6 +109,10 @@ func (s *Server) listAutoReviews(w http.ResponseWriter, r *http.Request) {
 func (s *Server) decideAuto(w http.ResponseWriter, r *http.Request) {
 	var req autoDecisionRequest
 	if err := decodeJSON(w, r, &req); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	if err := checkAutoIdempotencyKey(req.IdempotencyKey); err != nil {
 		writeServiceError(w, err)
 		return
 	}

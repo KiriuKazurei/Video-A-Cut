@@ -296,3 +296,19 @@ func normalizeWorkflowJSON(t *testing.T, body []byte, run model.WorkflowRun) []b
 	}
 	return out
 }
+
+func TestAutoIdempotencyKeyLengthIsCapped(t *testing.T) {
+	srv, p, version := autoAPIFixture(t)
+	notice := noticeHash(t, srv, p)
+	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, strings.Repeat("k", 129))); rec.Code != http.StatusBadRequest {
+		t.Fatalf("129-byte key on start = %d %s, want 400", rec.Code, rec.Body.String())
+	}
+	if rec := postJSON(t, srv, "/api/workflows/run_x/auto/decision", `{"decision":"export","expected_auto_version":1,"idempotency_key":"`+strings.Repeat("d", 129)+`"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("129-byte key on decision = %d %s, want 400", rec.Code, rec.Body.String())
+	}
+	// 128 bytes is accepted, and the refused attempt above left nothing behind.
+	rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, strings.Repeat("k", 128)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("128-byte key on start = %d %s, want 201", rec.Code, rec.Body.String())
+	}
+}
