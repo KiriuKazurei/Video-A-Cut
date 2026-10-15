@@ -63,6 +63,9 @@ type AutoScopeRequest struct {
 	MaxWallSeconds         *int               `json:"max_wall_seconds"`
 	DecisionTimeoutSeconds *int               `json:"decision_timeout_seconds"`
 	Thresholds             map[string]float64 `json:"thresholds"`
+	// RelaxThresholds is the explicit confirmation that thresholds looser than
+	// the defaults are wanted. Without it they are refused.
+	RelaxThresholds bool `json:"relax_thresholds"`
 }
 
 // AutoRunRequest is one authorization to run a prepared workflow unattended.
@@ -232,6 +235,14 @@ func buildAutoScope(req AutoScopeRequest, external bool) (model.AutoScope, error
 	if _, err := autoreview.ResolveThresholds(sc.Thresholds); err != nil {
 		return sc, fmt.Errorf("service: %v: %w", err, model.ErrArgument)
 	}
+	loosened, err := autoreview.CheckOverrides(sc.Thresholds)
+	if err != nil {
+		return sc, fmt.Errorf("service: %v: %w", err, model.ErrArgument)
+	}
+	if len(loosened) > 0 && !req.RelaxThresholds {
+		return sc, fmt.Errorf("service: thresholds %s are looser than the defaults; confirm with relax_thresholds: %w", strings.Join(loosened, ","), model.ErrArgument)
+	}
+	sc.RelaxedThresholds = len(loosened) > 0
 	sc.ExternalEgress = external
 	sc.AutoSceneConfirm, sc.AutoNarrationApprove, sc.AutoPreviewExport = true, true, true
 	return sc, nil
@@ -336,7 +347,8 @@ func (s *Service) insertAutoOverlay(ctx context.Context, tx *store.Store, actor 
 		return err
 	}
 	basis, _ := json.Marshal(map[string]any{"profile_id": overlay.ProfileID, "profile_revision": overlay.ProfileRevision,
-		"notice_sha256": overlay.NoticeSHA256, "brief_sha256": overlay.BriefSHA256, "external_egress": a.scope.ExternalEgress})
+		"notice_sha256": overlay.NoticeSHA256, "brief_sha256": overlay.BriefSHA256, "external_egress": a.scope.ExternalEgress,
+		"thresholds": a.scope.Thresholds, "relaxed_thresholds": a.scope.RelaxedThresholds})
 	if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: run.RunID, Kind: model.AutoDecisionAuthorize, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
 		return err
 	}

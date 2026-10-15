@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -155,5 +156,58 @@ func TestAutoConfirmSceneRequiresStageAndAwaitingReviewStatus(t *testing.T) {
 				t.Fatalf("%d ledger row(s) written", n)
 			}
 		})
+	}
+}
+
+func TestAuthorizationThresholdsHaveHardLimitsAndRelaxationIsConfirmedAndRecorded(t *testing.T) {
+	env := newAutoEnv(t, false)
+	ctx := t.Context()
+	good := env.request(t, "k", "x", false)
+	refuse := func(name string, th map[string]float64, relax bool) {
+		t.Helper()
+		r := good
+		r.Scope.Thresholds, r.Scope.RelaxThresholds = th, relax
+		r.IdempotencyKey = "k-" + name
+		if _, _, err := env.svc.StartAutoRun(ctx, "human:webui", r); !errors.Is(err, model.ErrArgument) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	refuse("loosen without confirmation", map[string]float64{"av_floor": 0.6}, false)
+	refuse("high below 0.8 even confirmed", map[string]float64{"high_score_min": 0.75, "medium_score_min": 0.5}, true)
+	refuse("floor below the hard limit", map[string]float64{"recognition_floor": 0.4}, true)
+	refuse("pace above the hard limit", map[string]float64{"pace_max": 9}, true)
+	if n := count(t, env.svc, `SELECT COUNT(*) FROM workflow_runs`); n != 0 {
+		t.Fatalf("refusals left %d runs", n)
+	}
+	// Stricter needs no confirmation and is not recorded as a relaxation.
+	r := good
+	r.Scope.Thresholds, r.IdempotencyKey = map[string]float64{"high_score_min": 0.95}, "strict"
+	_, view, err := env.svc.StartAutoRun(ctx, "human:webui", r)
+	if err != nil || view.Scope.RelaxedThresholds {
+		t.Fatalf("strict: %v %+v", err, view.Scope)
+	}
+}
+
+func TestRelaxedThresholdsAreRecordedInTheAuthorization(t *testing.T) {
+	env := newAutoEnv(t, false)
+	r := env.request(t, "relaxed", "x", false)
+	r.Scope.Thresholds, r.Scope.RelaxThresholds = map[string]float64{"high_score_min": 0.8, "pace_max": 7}, true
+	run, view, err := env.svc.StartAutoRun(t.Context(), "human:webui", r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.Scope.RelaxedThresholds || view.Scope.Thresholds["pace_max"] != 7 {
+		t.Fatalf("scope = %+v", view.Scope)
+	}
+	var basis string
+	if err := storeOf(t, env.svc).DB().QueryRow(`SELECT basis_json FROM auto_decisions WHERE run_id=? AND kind='authorize'`, run.RunID).Scan(&basis); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(basis, `"relaxed_thresholds":true`) || !strings.Contains(basis, `"pace_max":7`) {
+		t.Fatalf("authorize basis = %s", basis)
+	}
+	got, _ := env.svc.GetAuto(t.Context(), run.RunID)
+	if !got.Scope.RelaxedThresholds {
+		t.Fatalf("stored scope = %+v", got.Scope)
 	}
 }

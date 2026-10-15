@@ -136,3 +136,71 @@ func ResolveThresholds(overrides map[string]float64) (Thresholds, error) {
 	}
 	return t, nil
 }
+
+// Hard limits of the numbers an authorization may set. A person may always
+// make the scorer stricter. Making it looser than DefaultThresholds is a
+// "relaxation": it needs the explicit relax confirmation, and even then it can
+// not go past the limits below. The defaults themselves are not yet validated
+// against real vision output (docs/自动模式设计 §4), which is why the limits
+// are tight and the relaxation is recorded in the authorization.
+type thresholdLimit struct {
+	// tighterIsHigher: a larger value is the stricter one (scores, floors,
+	// minimums). Otherwise a smaller value is stricter (pace_max, tolerances).
+	tighterIsHigher bool
+	// limit is the loosest value allowed even with the relax confirmation:
+	// a lower bound when tighterIsHigher, an upper bound otherwise.
+	limit float64
+}
+
+var thresholdLimits = map[string]thresholdLimit{
+	KeyHighScore:          {true, 0.80},
+	KeyMediumScore:        {true, 0.50},
+	KeyRecognitionFloor:   {true, 0.50},
+	KeyTTSFloor:           {true, 0.80},
+	KeyAVFloor:            {true, 0.50},
+	KeyPacingFloor:        {true, 0.50},
+	KeySceneConfidenceMin: {true, 0.40},
+	KeyBriefCoverageMin:   {true, 0.30},
+	KeyPaceMin:            {true, 1.0},
+	KeyPaceMax:            {false, 8.0},
+	KeyDurationTolerance:  {false, 0.10},
+	KeyWindowTolerance:    {false, 0.20},
+}
+
+// CheckOverrides applies the hard limits to an authorization's thresholds. It
+// returns the keys that are looser than the defaults (sorted), which the
+// caller must refuse unless the person confirmed the relaxation. A value
+// past a hard limit is an error whatever the confirmation says. Unknown keys
+// and out-of-range numbers are ResolveThresholds' to report.
+func CheckOverrides(overrides map[string]float64) ([]string, error) {
+	def, err := ResolveThresholds(nil)
+	if err != nil {
+		return nil, err
+	}
+	var loosened []string
+	for _, f := range thresholdFields {
+		v, ok := overrides[f.key]
+		if !ok {
+			continue
+		}
+		lim := thresholdLimits[f.key]
+		d := *f.ptr(&def)
+		if lim.tighterIsHigher {
+			if v < lim.limit {
+				return nil, fmt.Errorf("autoreview: %s must be at least %g", f.key, lim.limit)
+			}
+			if v < d {
+				loosened = append(loosened, f.key)
+			}
+		} else {
+			if v > lim.limit {
+				return nil, fmt.Errorf("autoreview: %s must be at most %g", f.key, lim.limit)
+			}
+			if v > d {
+				loosened = append(loosened, f.key)
+			}
+		}
+	}
+	sort.Strings(loosened)
+	return loosened, nil
+}

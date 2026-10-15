@@ -820,3 +820,41 @@ func TestNonFiniteDurationsNeverReachTheFacts(t *testing.T) {
 		t.Fatalf("non-finite line/media: %v", err)
 	}
 }
+
+func TestCheckOverridesHardLimitsAndRelaxation(t *testing.T) {
+	ok := func(name string, o map[string]float64, wantLoose ...string) {
+		t.Helper()
+		got, err := CheckOverrides(o)
+		if err != nil || strings.Join(got, ",") != strings.Join(wantLoose, ",") {
+			t.Fatalf("%s: loosened=%v err=%v, want %v", name, got, err, wantLoose)
+		}
+	}
+	bad := func(name string, o map[string]float64) {
+		t.Helper()
+		if _, err := CheckOverrides(o); err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+	}
+	ok("nothing", nil)
+	ok("defaults are not a relaxation", map[string]float64{KeyHighScore: 0.85, KeyPaceMax: 6, KeyTTSFloor: 1})
+	ok("stricter", map[string]float64{KeyHighScore: 0.95, KeyRecognitionFloor: 0.9, KeyPaceMax: 5, KeyWindowTolerance: 0.01})
+	ok("looser needs the flag", map[string]float64{KeyHighScore: 0.80, KeyAVFloor: 0.5, KeyPaceMax: 8}, KeyAVFloor, KeyHighScore, KeyPaceMax)
+	bad("high below 0.8", map[string]float64{KeyHighScore: 0.79})
+	bad("tts floor", map[string]float64{KeyTTSFloor: 0.79})
+	bad("recognition floor", map[string]float64{KeyRecognitionFloor: 0.49})
+	bad("pace above limit", map[string]float64{KeyPaceMax: 8.01})
+	bad("pace min", map[string]float64{KeyPaceMin: 0.9})
+	bad("duration tolerance", map[string]float64{KeyDurationTolerance: 0.11})
+	bad("window tolerance", map[string]float64{KeyWindowTolerance: 0.21})
+	bad("medium", map[string]float64{KeyMediumScore: 0.49})
+	bad("scene confidence", map[string]float64{KeySceneConfidenceMin: 0.39})
+	bad("brief coverage", map[string]float64{KeyBriefCoverageMin: 0.29})
+	bad("pacing floor", map[string]float64{KeyPacingFloor: 0.49})
+	bad("av floor", map[string]float64{KeyAVFloor: 0.49})
+	// Every key has a limit: a new key cannot slip in without one.
+	for _, f := range thresholdFields {
+		if _, ok := thresholdLimits[f.key]; !ok {
+			t.Fatalf("no hard limit for %s", f.key)
+		}
+	}
+}

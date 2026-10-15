@@ -108,6 +108,9 @@ type AutoScope struct {
 	MaxWallSeconds         int                `json:"max_wall_seconds"`
 	DecisionTimeoutSeconds int                `json:"decision_timeout_seconds"`
 	Thresholds             map[string]float64 `json:"thresholds"`
+	// RelaxedThresholds records that the person confirmed thresholds looser
+	// than the defaults. It is part of the authorization the UI must show.
+	RelaxedThresholds bool `json:"relaxed_thresholds"`
 }
 
 // WorkflowAuto is the auto-run overlay of one workflow run.
