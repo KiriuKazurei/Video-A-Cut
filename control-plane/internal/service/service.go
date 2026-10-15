@@ -52,6 +52,11 @@ type Service struct {
 	// early Rule A check and its transaction, the window the in-transaction
 	// check exists for. It is nil outside tests.
 	afterEarlyAutoCheck func()
+
+	// clock is the auto-run clock (deadlines, decision timeouts). nil means
+	// the wall clock; SetClock lets tests move time without sleeping.
+	clock   func() time.Time
+	clockMu sync.RWMutex
 }
 
 // New returns a Service backed by st with no bus attached. SetBus attaches
@@ -127,4 +132,22 @@ func (s *Service) audit(ctx context.Context, actor, action, target, detail strin
 		return
 	}
 	s.publish("audit.changed", map[string]any{})
+}
+
+// SetClock replaces the clock the auto-run driver and its guards read. A nil
+// function restores the wall clock.
+func (s *Service) SetClock(f func() time.Time) {
+	s.clockMu.Lock()
+	s.clock = f
+	s.clockMu.Unlock()
+}
+
+func (s *Service) autoNow() time.Time {
+	s.clockMu.RLock()
+	f := s.clock
+	s.clockMu.RUnlock()
+	if f != nil {
+		return f().UTC()
+	}
+	return time.Now().UTC()
 }

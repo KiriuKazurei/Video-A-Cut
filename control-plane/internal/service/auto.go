@@ -382,6 +382,14 @@ func (s *Service) ListAutoReviews(ctx context.Context, runID string) ([]model.Au
 	return s.st.ListAutoReviews(ctx, runID)
 }
 
+// publishAutoPtr announces an overlay change a hook returned; nil means the
+// hook changed nothing (not an auto run, or no longer live).
+func (s *Service) publishAutoPtr(a *model.WorkflowAuto) {
+	if a != nil {
+		s.publishAuto(*a)
+	}
+}
+
 func (s *Service) publishAuto(a model.WorkflowAuto) {
 	s.publish("auto.changed", map[string]any{"run_id": a.RunID, "state": a.State, "round": a.Round, "auto_version": a.AutoVersion})
 }
@@ -437,7 +445,7 @@ func (s *Service) RevokeAuto(ctx context.Context, actor, runID, reason string, e
 				return err
 			}
 		}
-		now := time.Now().UTC()
+		now := s.autoNow()
 		a.State, a.RevokedBy, a.RevokedAt, a.RevokeReason, a.ConsentAtRevoke = model.AutoStateRevoked, actor, &now, reason, snapshot
 		a.AutoVersion++
 		a.UpdatedAt = now
@@ -513,7 +521,7 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		if a.State != model.AutoStateAwaitingDecision {
 			return fmt.Errorf("service: auto run is %s, not waiting for a decision: %w", a.State, model.ErrInvalidState)
 		}
-		now := time.Now().UTC()
+		now := s.autoNow()
 		kind := model.AutoDecisionUserExport
 		switch decision {
 		case "export":
@@ -726,7 +734,7 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 		if err != nil {
 			return err
 		}
-		now := time.Now().UTC()
+		now := s.autoNow()
 		switch {
 		case a.State != model.AutoStateActive:
 			return fmt.Errorf("service: auto run is %s: %w", a.State, model.ErrForbidden)
@@ -850,26 +858,46 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 
 // autoTakeover halts a live auto run because a person acted on it. It reads
 // and writes the database only, so it can run inside the closure of the human
-// action that caused it. An auto run that is not live is left alone.
-func autoTakeover(ctx context.Context, tx *store.Store, runID, actor, reason, via string) error {
+// action that caused it. An auto run that is not live is left alone, and so is
+// anything done by the auto-reviewer itself. The updated overlay is returned
+// when it changed, so the caller can announce it after the transaction.
+func autoTakeover(ctx context.Context, tx *store.Store, runID, actor, reason, via string) (*model.WorkflowAuto, error) {
+	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, reason, model.AutoDecisionTakeover, via, "auto.takeover")
+}
+
+// autoCancelTx records that a person cancelled the workflow of a live auto run.
+func autoCancelTx(ctx context.Context, tx *store.Store, runID, actor, reason string) (*model.WorkflowAuto, error) {
+	return autoOverride(ctx, tx, runID, actor, model.AutoStateCancelled, "", model.AutoDecisionCancelled, "cancel", "auto.cancel")
+}
+
+func autoOverride(ctx context.Context, tx *store.Store, runID, actor, state, reason, kind, via, auditAction string) (*model.WorkflowAuto, error) {
+	if actor == model.AutoActor {
+		return nil, nil
+	}
 	a, err := tx.GetWorkflowAuto(ctx, runID)
+	if errors.Is(err, model.ErrNotFound) {
+		return nil, nil // not an auto run: nothing to do
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !autoStateLive(a.State) {
-		return nil
+		return nil, nil
 	}
 	now := time.Now().UTC()
-	a.State, a.HaltReason = model.AutoStateHalted, reason
+	a.State, a.HaltReason = state, reason
 	a.PausedAt, a.DecisionDeadlineAt = nil, nil
 	a.AutoVersion++
 	a.UpdatedAt = now
 	if err := tx.UpdateWorkflowAuto(ctx, a); err != nil {
-		return err
+		return nil, err
 	}
 	basis, _ := json.Marshal(map[string]any{"via": via, "reason": reason})
-	if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: runID, Round: a.Round, Kind: model.AutoDecisionTakeover, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
-		return err
+	if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: runID, Round: a.Round, Kind: kind, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
+		return nil, err
 	}
-	return auditTx(ctx, tx, actor, "auto.takeover", runID, via+" "+reason)
+	if err := auditTx(ctx, tx, actor, auditAction, runID, via+" "+reason); err != nil {
+		return nil, err
+	}
+	return &a, nil
 }

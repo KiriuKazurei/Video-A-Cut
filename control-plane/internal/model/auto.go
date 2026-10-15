@@ -32,6 +32,7 @@ const (
 	AutoDecisionUserExport   = "user_export"
 	AutoDecisionUserDiscard  = "user_discard"
 	AutoDecisionTakeover     = "human_takeover"
+	AutoDecisionCancelled    = "workflow_cancelled"
 )
 
 // Ledger action kinds recorded in auto_actions.

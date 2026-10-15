@@ -22,6 +22,8 @@ type autoEnv struct {
 	sha      string
 	deliver  int
 	external bool
+	edl      map[string]any // the EDL of the last recognize delivery
+	briefSHA string         // brief hash of the last started run
 }
 
 func autoProfile(external bool) preparation.Profile {
@@ -86,6 +88,7 @@ func (e *autoEnv) start(t *testing.T, brief string) (model.WorkflowRun, service.
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.briefSHA = view.BriefSHA256
 	return run, view
 }
 
@@ -118,6 +121,7 @@ func (e *autoEnv) recognized(t *testing.T, run model.WorkflowRun, conf [2]float6
 		map[string]any{"scene_id": "scn_1", "index": 0, "label": "团战A", "method": "vision", "confidence": conf[0], "sequence_rank": 0, "evidence_frames": []any{digest}},
 		map[string]any{"scene_id": "scn_2", "index": 1, "label": "团战B", "method": "vision", "confidence": conf[1], "sequence_rank": 1, "evidence_frames": []any{digest}},
 	}
+	e.edl = edl
 	body, _ := json.Marshal(edl)
 	if err := os.WriteFile(edlPath, body, 0o644); err != nil {
 		t.Fatal(err)

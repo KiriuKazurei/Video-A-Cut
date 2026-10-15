@@ -52,6 +52,7 @@ func (s *Service) reopenAsset(ctx context.Context, actor, assetID string, fromSt
 		return model.Asset{}, fmt.Errorf("service: reopen asset %s: package has no edl: %w", assetID, model.ErrInvalidState)
 	}
 	var saved model.Asset
+	var halted *model.WorkflowAuto
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		a, err := tx.GetAsset(ctx, assetID)
 		if err != nil {
@@ -66,7 +67,7 @@ func (s *Service) reopenAsset(ctx context.Context, actor, assetID string, fromSt
 			if fromStart {
 				return fmt.Errorf("asset has auto run %s in progress: %w", liveRun, model.ErrConflict)
 			}
-			if err := autoTakeover(ctx, tx, liveRun, actor, model.AutoHaltHumanTakeover, "reopen"); err != nil {
+			if halted, err = autoTakeover(ctx, tx, liveRun, actor, model.AutoHaltHumanTakeover, "reopen"); err != nil {
 				return err
 			}
 		}
@@ -106,6 +107,7 @@ func (s *Service) reopenAsset(ctx context.Context, actor, assetID string, fromSt
 	if err != nil {
 		return model.Asset{}, fmt.Errorf("service: reopen asset %s: %w", assetID, err)
 	}
+	s.publishAutoPtr(halted)
 	s.publish("asset_updated", cloneAsset(saved))
 	s.audit(ctx, actor, "asset.reopen", assetID, path.Dir(manifest))
 	return cloneAsset(saved), nil

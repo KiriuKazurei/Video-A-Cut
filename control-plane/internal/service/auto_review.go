@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/autoreview"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -83,7 +82,7 @@ func (s *Service) ScoreAutoRun(ctx context.Context, runID, previewID string, aut
 		if err != nil {
 			return err
 		}
-		now := time.Now().UTC()
+		now := s.autoNow()
 		key := fmt.Sprintf("auto:%s:%d:%s:%s", runID, cur.Round, model.AutoActionScore, previewID)
 		if done, err := tx.AutoActionExists(ctx, runID, key); err != nil {
 			return err
