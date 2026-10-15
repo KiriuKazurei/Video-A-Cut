@@ -201,7 +201,7 @@ func (s *Service) StartPreparedWorkflow(ctx context.Context, actor string, in pr
 			return model.WorkflowRun{}, model.ErrInvalidState
 		}
 	}
-	return s.startWorkflow(ctx, actor, in.AssetID, in.RevisionID, in.IdempotencyKey, p.ContentMode, &in)
+	return s.startWorkflow(ctx, actor, in.AssetID, in.RevisionID, in.IdempotencyKey, p.ContentMode, &in, nil)
 }
 func (s *Service) boundProfile(ctx context.Context, st *store.Store, run string) (*preparation.Profile, string, error) {
 	b, e := st.ProfileBinding(ctx, run)

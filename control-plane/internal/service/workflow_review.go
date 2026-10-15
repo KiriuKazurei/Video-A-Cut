@@ -393,6 +393,11 @@ func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem,
 	if result == model.AcceptanceFailed && strings.TrimSpace(note) == "" {
 		return model.AcceptanceRecord{}, model.ErrArgument
 	}
+	// Only a person records acceptance. This is an allow-list, not a refusal of
+	// agent: alone, so system:auto-review and every other prefix are out too.
+	if !isHumanActor(actor) {
+		return model.AcceptanceRecord{}, fmt.Errorf("service: acceptance must be recorded by a human actor: %w", model.ErrForbidden)
+	}
 	if actor == "" || (result != model.AcceptancePassed && result != model.AcceptanceFailed) {
 		return model.AcceptanceRecord{}, fmt.Errorf("service: acceptance result must be passed or failed: %w", model.ErrArgument)
 	}
