@@ -22,6 +22,11 @@ import (
 // awaiting_user_decision(asset_busy) in a transaction of its own.
 var errRerunAssetBusy = errors.New("service: another run holds the asset")
 
+// errAutoBudgetSpent is the refusal every automatic action gives once the action
+// budget is used up. The driver turns it into halted(budget): a spent budget
+// never clears, so retrying the step every tick would only repeat the refusal.
+var errAutoBudgetSpent = fmt.Errorf("service: auto action budget is spent: %w", model.ErrForbidden)
+
 // autoStepsPerTick bounds how many steps one run takes in a single tick, so one
 // busy run cannot hold the loop.
 const autoStepsPerTick = 16
@@ -38,7 +43,7 @@ func autoGuard(a model.WorkflowAuto, inScope bool, autoVersion int, now time.Tim
 	case now.After(a.DeadlineAt):
 		return fmt.Errorf("service: auto run is past its deadline: %w", model.ErrForbidden)
 	case a.ActionsUsed >= a.Scope.MaxActions:
-		return fmt.Errorf("service: auto action budget is spent: %w", model.ErrForbidden)
+		return errAutoBudgetSpent
 	case a.AutoVersion != autoVersion:
 		return fmt.Errorf("service: auto version conflict: %w", model.ErrConflict)
 	}
@@ -854,10 +859,30 @@ func (s *Service) AutoTick(ctx context.Context) error {
 // looked at again next tick.
 func (s *Service) advanceAuto(ctx context.Context, runID string) (bool, error) {
 	progressed, err := s.stepAuto(ctx, runID)
+	if errors.Is(err, errAutoBudgetSpent) {
+		return s.haltBudgetSpent(ctx, runID)
+	}
 	if errors.Is(err, model.ErrConflict) {
 		return false, nil
 	}
 	return progressed, err
+}
+
+// haltBudgetSpent stops a run whose next step the action budget no longer
+// pays for. A run somebody else changed meanwhile is left alone.
+func (s *Service) haltBudgetSpent(ctx context.Context, runID string) (bool, error) {
+	a, err := s.st.GetWorkflowAuto(ctx, runID)
+	if err != nil {
+		return false, err
+	}
+	if a.State != model.AutoStateActive {
+		return false, nil
+	}
+	err = s.autoHalt(ctx, runID, a.AutoVersion, model.AutoHaltBudget)
+	if errors.Is(err, model.ErrConflict) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
@@ -966,8 +991,10 @@ func (s *Service) stepAcceptance(ctx context.Context, a model.WorkflowAuto, run 
 	}
 	if job == nil {
 		_, _, err := s.AutoStartPreview(ctx, run.RunID, run.Version, a.AutoVersion, exportRev)
-		if errors.Is(err, model.ErrInvalidState) {
-			// No worker can render the preview, or the asset is not exported.
+		if errors.Is(err, model.ErrInvalidState) || errors.Is(err, model.ErrNotFound) || errors.Is(err, model.ErrArgument) {
+			// No worker can render the preview, the asset is not exported, or
+			// the export package no longer matches its manifest. None of these
+			// clears by asking again, so the run stops and a person looks.
 			return true, s.autoHalt(ctx, run.RunID, a.AutoVersion, model.AutoHaltPreviewUnavailable)
 		}
 		return err == nil, err

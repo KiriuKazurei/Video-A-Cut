@@ -803,7 +803,7 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 		case now.After(a.DeadlineAt):
 			return fmt.Errorf("service: auto run is past its deadline: %w", model.ErrForbidden)
 		case a.ActionsUsed >= a.Scope.MaxActions:
-			return fmt.Errorf("service: auto action budget is spent: %w", model.ErrForbidden)
+			return errAutoBudgetSpent
 		case a.AutoVersion != autoVersion:
 			return fmt.Errorf("service: auto version conflict: %w", model.ErrConflict)
 		}

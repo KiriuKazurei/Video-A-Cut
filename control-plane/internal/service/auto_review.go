@@ -115,7 +115,7 @@ func (s *Service) ScoreAutoRun(ctx context.Context, runID, previewID string, aut
 		case now.After(cur.DeadlineAt):
 			return fmt.Errorf("service: auto run is past its deadline: %w", model.ErrForbidden)
 		case cur.ActionsUsed >= cur.Scope.MaxActions:
-			return fmt.Errorf("service: auto action budget is spent: %w", model.ErrForbidden)
+			return errAutoBudgetSpent
 		case cur.AutoVersion != autoVersion || cur.Round != a.Round:
 			return fmt.Errorf("service: auto version conflict: %w", model.ErrConflict)
 		}
