@@ -126,9 +126,13 @@ export interface AutoPanelModel {
   canTakeOver: boolean;
 }
 
-export function decisionHeadline(reason: string | undefined): { title: string; description: string } {
+export function decisionHeadline(reason: string | undefined, canExport = true): { title: string; description: string } {
   switch (reason) {
-    case 'exhausted': return { title: '已自动重剪多轮，仍未达到高档', description: '你可以直接导出最近一版，或写下修改意见让 Agent 再剪一次。' };
+    case 'exhausted': return {
+      title: '已自动重剪多轮，仍未达到高档',
+      // 卡在场景识别闸门时没有成片可导出：别再说「可以直接导出」
+      description: canExport ? '你可以直接导出最近一版，或写下修改意见让 Agent 再剪一次。' : '目前还没有可导出的成片。你可以写下修改意见让 Agent 再剪一次，或撤销授权改用分步生成。'
+    };
     case 'asset_busy': return { title: '这个素材已有另一个进行中的任务', description: '先处理那个任务，再回来决定。' };
     default: return { title: '成片已生成，AI 自评为中档，请你决定', description: '直接导出当前这版，或写下修改意见让 Agent 再剪一次。' };
   }
@@ -151,7 +155,7 @@ export function autoPanelModel(a: AutoView, run?: { status?: string; stage?: str
       return { ...base, kind: 'running', alert: 'info', live: true, title: 'Agent 正在自动剪辑', description: '识别、撰稿、配音、字幕和导出都会自动完成，你可以先去做别的。' };
     }
     case 'awaiting_user_decision': {
-      const h = decisionHeadline(a.decision?.reason ?? a.halt_reason);
+      const h = decisionHeadline(a.decision?.reason ?? a.halt_reason, a.decision?.can_export ?? true);
       return { ...base, kind: 'decision', alert: 'warning', live: false, title: h.title, description: h.description };
     }
     case 'completed':

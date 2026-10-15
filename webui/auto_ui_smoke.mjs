@@ -161,6 +161,48 @@ await authBox.uncheck();
 assert.equal(await startBtn.isDisabled(), true, 'unchecking authorization disables start again');
 ok('start is disabled until 全局授权 is ticked (and again after unticking); egress notice with endpoints is shown');
 
+// 新手引导（antd Tour）：有「自动模式」切换的页面多一步介绍，并高亮该切换；没有切换的页面不出现这一步
+{
+  const tp = await context.newPage();
+  const tourTitles = async () => {
+    const titles = [];
+    const root = tp.locator('.ant-tour');
+    await root.waitFor();
+    for (let i = 0; i < 12; i++) {
+      titles.push((await root.locator('.ant-tour-title').innerText()).trim());
+      const next = root.locator('.ant-tour-buttons .ant-btn-primary');
+      if (/完成|结束/.test(await next.innerText()) || /^\s*(完\s*成|结\s*束)\s*$/.test(await next.innerText())) break;
+      await next.click();
+    }
+    return titles;
+  };
+  await tp.goto(`${base}/#/editing/import?tour=1`, { waitUntil: 'domcontentloaded' });
+  await tp.locator('.page:not([hidden]) .start-mode').waitFor();
+  const withAuto = await tourTitles();
+  assert.ok(withAuto.includes('一句话自动模式'), `tour on the start page includes the auto-mode step: ${withAuto}`);
+  assert.equal(withAuto.indexOf('一句话自动模式'), withAuto.indexOf('下一步：不知道做什么就点它') + 1, 'auto-mode step follows 「下一步」');
+  await tp.reload({ waitUntil: 'domcontentloaded' });
+  await tp.locator('.page:not([hidden]) .start-mode').waitFor();
+  await tp.locator('.ant-tour .ant-tour-title').waitFor();
+  for (let i = 0; i < withAuto.indexOf('一句话自动模式'); i++) await tp.locator('.ant-tour .ant-tour-buttons .ant-btn-primary').click();
+  await tp.locator('.ant-tour .ant-tour-title', { hasText: '一句话自动模式' }).waitFor();
+  const target = await tp.locator('.page:not([hidden]) .start-mode').boundingBox();
+  const mask = await tp.locator('.ant-tour-mask').count();
+  assert.ok(target && mask > 0, 'the auto-mode step highlights the 分步生成/自动模式 toggle');
+  await tp.screenshot({ path: path.join(shots, '16-tour-auto-mode-step.png') });
+  await tp.keyboard.press('Escape');
+  await tp.locator('.ant-tour').waitFor({ state: 'detached' });
+  // 没有切换的页面（资源管理）不应有这一步
+  await tp.goto(`${base}/#/resources?tour=1`, { waitUntil: 'domcontentloaded' });
+  await tp.reload({ waitUntil: 'domcontentloaded' });
+  await tp.locator('.ant-tour .ant-tour-title').waitFor();
+  assert.equal(await tp.locator('.page:not([hidden]) .start-mode').count(), 0);
+  const without = await tourTitles();
+  assert.ok(!without.includes('一句话自动模式'), `no auto-mode step without the toggle: ${without}`);
+  await tp.close();
+  ok(`tour: 「一句话自动模式」 step only where the toggle exists (${withAuto.length} steps there, ${without.length} elsewhere)`);
+}
+
 // 本机预设：提示变成「只在本机处理」，仍需授权
 await card.locator('.auto-profile-select').click();
 await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option', { hasText: '本机剪辑' }).click();

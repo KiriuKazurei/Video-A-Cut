@@ -97,7 +97,7 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
         {model.kind === 'decision' && a.decision && (
           <Card size="small" type="inner" className="auto-decision" title={<span>待你确认 <Tag bordered={false}>{a.delivery_hold ? '尚未导出' : '已确认'}</Tag></span>}>
             <Flex vertical gap={12}>
-              <Typography.Text>{decisionHeadline(a.decision.reason).description}</Typography.Text>
+              <Typography.Text>{decisionHeadline(a.decision.reason, a.decision.can_export).description}</Typography.Text>
               {deadline && <Typography.Text type="secondary" className="auto-deadline">请在 {deadline} 前决定；超时会停止，不会自动导出。</Typography.Text>}
               <Space wrap>
                 <Tooltip title={a.decision.can_export ? undefined : '还没有可导出的成片，只能提出修改意见'}>

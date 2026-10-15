@@ -42,6 +42,9 @@ test('panel: decision / done / halted / revoked / cancelled', () => {
   assert.equal(d.canRevoke, true);
   const ex = autoPanelModel(view({ state: 'awaiting_user_decision', halt_reason: 'exhausted', decision: { reason: 'exhausted', can_export: false, can_revise: true } }));
   assert.match(ex.title, /多轮/);
+  assert.doesNotMatch(ex.description, /直接导出/, 'no export promise when can_export=false');
+  assert.match(ex.description, /没有可导出的成片/);
+  assert.match(autoPanelModel(view({ state: 'awaiting_user_decision', decision: { reason: 'exhausted', can_export: true, can_revise: true } })).description, /直接导出/);
   const done = autoPanelModel(view({ state: 'completed' }));
   assert.equal(done.kind, 'done');
   assert.equal(done.canRevoke, false);
