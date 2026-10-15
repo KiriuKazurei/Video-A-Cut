@@ -2,6 +2,8 @@ package queue
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -11,6 +13,10 @@ import (
 // how quickly a finished worker stage is noticed.
 const defaultAutoDriveInterval = 5 * time.Second
 
+// maxAutoBackoff caps how far consecutive tick failures stretch the wait. A
+// database that is down is asked about once a minute, not every five seconds.
+const maxAutoBackoff = time.Minute
+
 // AutoTicker is the part of the service the driver needs.
 type AutoTicker interface {
 	AutoTick(ctx context.Context) error
@@ -18,11 +24,14 @@ type AutoTicker interface {
 
 // AutoDriver periodically advances auto runs. It holds no rules: what a run
 // may do next, the clock, the caps and the transactions all live in
-// service.AutoTick. A tick failure is recorded, never fatal, the same as the
-// Reclaimer and the Archiver: the next tick looks at the same database state.
+// service.AutoTick. A tick failure (an error or a panic) is logged and recorded,
+// never fatal: the next tick looks at the same database state. Consecutive
+// failures stretch the wait up to a minute (see nextWait); the first success
+// restores the normal cadence and clears LastErr.
 type AutoDriver struct {
 	svc   AutoTicker
 	every time.Duration
+	fails int // consecutive failed ticks; only Run's goroutine touches it
 
 	mu      sync.Mutex
 	lastErr error
@@ -42,19 +51,35 @@ func NewAutoDriver(svc AutoTicker, every time.Duration) *AutoDriver {
 // continue at once.
 func (d *AutoDriver) Run(ctx context.Context) error {
 	d.setLastErr(nil)
-	ticker := time.NewTicker(d.every)
-	defer ticker.Stop()
+	d.fails = 0
 	for {
 		d.tick(ctx)
+		timer := time.NewTimer(d.nextWait())
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
-		case <-ticker.C:
+		case <-timer.C:
 		}
 	}
 }
 
-// LastErr returns the most recent tick failure, sticky until the next Run.
+// nextWait is the pause before the next tick: the interval after a success,
+// doubled for each consecutive failure and capped at maxAutoBackoff (never
+// shorter than the interval itself).
+func (d *AutoDriver) nextWait() time.Duration {
+	wait := d.every
+	for i := 0; i < d.fails && wait < maxAutoBackoff; i++ {
+		wait *= 2
+	}
+	if wait > maxAutoBackoff && d.every <= maxAutoBackoff {
+		wait = maxAutoBackoff
+	}
+	return wait
+}
+
+// LastErr returns the failure of the most recent tick, or nil when that tick
+// succeeded.
 func (d *AutoDriver) LastErr() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -62,9 +87,32 @@ func (d *AutoDriver) LastErr() error {
 }
 
 func (d *AutoDriver) tick(ctx context.Context) {
-	if err := d.svc.AutoTick(ctx); err != nil && ctx.Err() == nil {
+	err := d.safeTick(ctx)
+	switch {
+	case ctx.Err() != nil:
+		// Shutting down: a cancelled tick is not a failure.
+	case err != nil:
+		d.fails++
 		d.setLastErr(err)
+		slog.Error("auto driver tick failed", "consecutive_failures", d.fails, "error", err)
+	default:
+		if d.fails > 0 {
+			slog.Info("auto driver recovered", "after_failures", d.fails)
+		}
+		d.fails = 0
+		d.setLastErr(nil)
 	}
+}
+
+// safeTick runs one tick and turns a panic into an error: a bug in one run's
+// step must not take the control plane down with it.
+func (d *AutoDriver) safeTick(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("queue: auto tick panicked: %v", r)
+		}
+	}()
+	return d.svc.AutoTick(ctx)
 }
 
 func (d *AutoDriver) setLastErr(err error) {
