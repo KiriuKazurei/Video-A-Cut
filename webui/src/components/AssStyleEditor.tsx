@@ -348,7 +348,7 @@ export function AssStyleEditor({
     footer={null}
     width="92vw"
     style={{ maxWidth: 1120, top: 16 }}
-    destroyOnClose
+    destroyOnHidden
     title="ASS 样式编辑"
     className="ass-editor-modal"
   >

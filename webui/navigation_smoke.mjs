@@ -7,7 +7,10 @@ const base = process.argv[2] ?? 'http://127.0.0.1:8816';
 const shots = process.argv[3];
 const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox'] });
-const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage();
+const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+// 新手引导：自动化浏览器本身默认不弹（navigator.webdriver），这里再显式写入「已看过」标记，保证脚本不受引导遮罩影响
+await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); } catch { /* ignore */ } });
+const page = await context.newPage();
 const warnings = [];
 page.on('console', (m) => { if (['warning', 'error'].includes(m.type()) && /validateDOMNesting|cannot (be a )?descendant|nested/i.test(m.text())) warnings.push(m.text()); });
 if (shots) fs.mkdirSync(shots, { recursive: true });
@@ -115,5 +118,19 @@ for (const h of ['#/resources', '#/editing/import', '#/editing/review', '#/expor
 }
 assert.deepEqual(warnings, []);
 ok('secondary menus carry stage dots; no nested interactive elements; no nesting warnings');
+
+// 9) 窄窗口（<1600）：阶段条改为位置条里的紧凑下拉，始终显示「第 N/5 步」，并能跳转；新手引导默认不弹
+state.workflow = wf('awaiting_review', 'scene_review');
+await page.setViewportSize({ width: 1280, height: 800 });
+await load('#/editing/import');
+assert.equal(await page.locator('.app-header .pipeline-stepper').count(), 0);
+assert.equal(await page.locator('.pipeline-stepper-compact:visible').count(), 1);
+assert.match(await page.locator('.pipeline-stepper-compact button').innerText(), /第 1\/5 步/);
+assert.equal(await page.locator('.ant-tour').count(), 0);
+await page.locator('.pipeline-stepper-compact button').click();
+await page.locator('.ant-dropdown-menu-item', { hasText: '审查' }).click(); await page.waitForTimeout(500);
+assert.equal(await hash(), '#/editing/review');
+assert.match(await page.locator('.pipeline-stepper-compact button').innerText(), /第 4\/5 步/);
+ok('compact stepper below 1600px shows the current step and navigates');
 await browser.close();
 console.log(`navigation smoke passed (${n} groups)`);

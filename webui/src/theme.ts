@@ -20,6 +20,7 @@ const BASE_TOKEN: ThemeConfig['token'] = {
   borderRadiusSM: 2,
   borderRadiusXS: 2,
   fontSize: 13,
+  fontSizeSM: 12,
   controlHeight: 28,
   controlHeightSM: 24,
   controlHeightLG: 34,
