@@ -57,6 +57,23 @@ await page.keyboard.type('can'); await page.waitForTimeout(400);
 assert.equal(posts.length, 0);
 ok('typing c/a/n in an input does not fire shortcuts');
 
+// 3b) 焦点在按钮上时不触发：停在「退回场景」上按 c/n/a 不会确认场景，也不会移动聚焦；链接同理
+posts.length = 0;
+const reject = visible('button:has-text("退回场景")').first();
+await reject.focus();
+await page.keyboard.press('c'); await page.keyboard.press('a'); await page.keyboard.press('n'); await page.waitForTimeout(400);
+assert.equal(posts.length, 0, 'no request when a button has focus');
+assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'BUTTON');
+assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /退回场景/);
+const focusedBefore = await visible('.workflow-card.is-focused').count();
+await page.keyboard.press('n'); await page.waitForTimeout(200);
+assert.equal(await visible('.workflow-card.is-focused').count(), focusedBefore, 'N does not move focus when a button has focus');
+await page.evaluate(() => { const a = document.createElement('a'); a.href = '#/editing/review'; a.textContent = 'smoke-link'; a.id = 'smoke-link'; document.body.appendChild(a); a.focus(); });
+await page.keyboard.press('c'); await page.waitForTimeout(300);
+assert.equal(posts.length, 0, 'no request when a link has focus');
+await page.evaluate(() => document.getElementById('smoke-link')?.remove());
+ok('shortcuts C/A/N are ignored while a button or link has focus');
+
 // 4) 解说阶段：A 批准当前聚焦（或第一条待批准）解说；非闸口阶段 C 不动作
 state.stage = 'draft_review'; await load('#/editing/review');
 await page.locator('body').click({ position: { x: 5, y: 400 } });

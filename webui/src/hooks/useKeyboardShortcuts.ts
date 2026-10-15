@@ -59,7 +59,8 @@ export function isInteractiveControl(target: EventTarget | null): boolean {
 /** 字母键不会触发按钮/链接的原生行为，所以只在滑块、页签、下拉等会自己吃键盘的控件上让路 */
 function lettersBlocked(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return Boolean(target.closest('.ant-slider, [role="slider"], [role="tab"], [role="combobox"], [role="listbox"], [role="menu"]'));
+  // 焦点在按钮/链接上时也不触发（例如停在「退回场景」上按 C，不能变成确认场景）
+  return Boolean(target.closest('button, a[href], .ant-btn, .ant-slider, [role="slider"], [role="tab"], [role="button"], [role="combobox"], [role="listbox"], [role="menu"]'));
 }
 
 /** 
