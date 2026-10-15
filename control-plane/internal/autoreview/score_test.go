@@ -753,3 +753,40 @@ func TestUnparsableBriefClosesHigh(t *testing.T) {
 		t.Fatalf("band = %s", r.Band)
 	}
 }
+
+// A succeeded preview with no checks is a report nobody read: av_alignment is
+// missing and scores 0 even when the media is valid, and the missing reason
+// appears once whether or not the media is also absent.
+func TestSucceededPreviewWithoutChecksIsMissingNotScored(t *testing.T) {
+	count := func(r Result, code, item string) int {
+		n := 0
+		for _, x := range r.Reasons {
+			if x.Code == code && x.Item == item {
+				n++
+			}
+		}
+		return n
+	}
+	withMedia := perfectInput()
+	withMedia.Preview.Checks = nil
+	r := Score(withMedia, DefaultThresholds())
+	av := component(r, ItemAVAlignment)
+	if av.Available || av.Score != 0 || count(r, CodeInputMissing, ItemAVAlignment) != 1 || r.Band == BandHigh {
+		t.Fatalf("valid media without checks: av=%+v reasons=%v band=%s", av, codes(r), r.Band)
+	}
+	if r.Facts.PreviewDuration != nil || r.Facts.SubtitleFit != nil {
+		t.Fatalf("alignment facts were computed from an unvouched preview: %+v", r.Facts)
+	}
+	neither := perfectInput()
+	neither.Preview.Checks, neither.Preview.Media = nil, nil
+	r = Score(neither, DefaultThresholds())
+	if n := count(r, CodeInputMissing, ItemAVAlignment); n != 1 {
+		t.Fatalf("input_missing:av_alignment appears %d times: %v", n, codes(r))
+	}
+	// Checks present but media unusable: still exactly one.
+	noMedia := perfectInput()
+	noMedia.Preview.Media = nil
+	if n := count(Score(noMedia, DefaultThresholds()), CodeInputMissing, ItemAVAlignment); n != 1 {
+		t.Fatalf("appears %d times", n)
+	}
+}
