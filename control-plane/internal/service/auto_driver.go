@@ -1060,14 +1060,20 @@ func (s *Service) stepAcceptance(ctx context.Context, a model.WorkflowAuto, run 
 		}
 	}
 	if job == nil {
-		_, _, err := s.AutoStartPreview(ctx, run.RunID, run.Version, a.AutoVersion, exportRev)
+		_, created, err := s.AutoStartPreview(ctx, run.RunID, run.Version, a.AutoVersion, exportRev)
 		if errors.Is(err, model.ErrInvalidState) || errors.Is(err, model.ErrNotFound) || errors.Is(err, model.ErrArgument) {
 			// No worker can render the preview, the asset is not exported, or
 			// the export package no longer matches its manifest. None of these
 			// clears by asking again, so the run stops and a person looks.
 			return true, s.autoHalt(ctx, run.RunID, a.AutoVersion, model.AutoHaltPreviewUnavailable)
 		}
-		return err == nil, err
+		if err != nil {
+			return false, err
+		}
+		if !created {
+			return s.previewReusedWithoutJob(ctx, a, run, exportRev)
+		}
+		return true, nil
 	}
 	view, err := s.projectPreviewView(ctx, *job, exportRev)
 	if err != nil {
@@ -1091,4 +1097,25 @@ func (s *Service) stepAcceptance(ctx context.Context, a model.WorkflowAuto, run 
 	}
 	_, err = s.AutoRouteReview(ctx, run.RunID, review.ReviewID, cur.AutoVersion)
 	return err == nil, err
+}
+
+// previewReusedWithoutJob handles the answer "reused, nothing written" that
+// AutoStartPreview gives when this round's request id already names a job.
+// stepAcceptance only asks when it found no usable job, so the job the request
+// names is one it passed over: invalidated (the export was replaced, or the
+// asset reopened). Nothing will ever render it and asking again repeats the same
+// answer on every tick, up to sixteen times each, until the deadline. The run
+// stops with preview_unavailable and a person looks. If a usable job has
+// appeared since (another driver started one), the next tick will find it.
+func (s *Service) previewReusedWithoutJob(ctx context.Context, a model.WorkflowAuto, run model.WorkflowRun, exportRev string) (bool, error) {
+	jobs, err := s.st.ListPreviewJobs(ctx, run.RunID)
+	if err != nil {
+		return false, err
+	}
+	for _, j := range jobs {
+		if !j.Invalidated && j.RevisionID == exportRev {
+			return false, nil
+		}
+	}
+	return true, s.autoHalt(ctx, run.RunID, a.AutoVersion, model.AutoHaltPreviewUnavailable)
 }
