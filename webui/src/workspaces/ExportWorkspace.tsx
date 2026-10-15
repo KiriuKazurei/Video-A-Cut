@@ -12,6 +12,7 @@ import { Monitor, type PreviewSource } from '../components/Monitor';
 import { AcceptancePanel, useWorkflowData } from '../components/WorkflowPanel';
 import { DeliveryPanel, filePreview, useDeliveryFiles } from '../components/DeliveryPanel';
 import { PreviewPanel } from '../components/PreviewPanel';
+import { NoAssetEmpty } from '../components/NoAssetEmpty';
 import { DeliveryVariantPanel } from '../components/DeliveryVariantPanel';
 import { isCurrentMp4, previewApi, previewFileURL, previewQueryKey } from '../previewContracts';
 import { TaskOrchestrator } from '../components/TaskOrchestrator';
@@ -222,7 +223,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
               )}
               
               {section.id === 'acceptance' && !asset && (
-                <Typography.Text type="secondary">请先在左侧项目面板选择资产。</Typography.Text>
+                <NoAssetEmpty navigate={navigate} description="还没有选中素材，没有可验收的成片。" />
               )}
               
               {section.id === 'tasks' && (
@@ -343,7 +344,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                                     <Typography.Text code style={{ fontSize: 12 }}>{shortId(row.task_id)}</Typography.Text>
                                     <Tag color={taskTagColor(row.status)}>{taskStatusLabel(row.status)}</Tag>
                                     <Tag bordered={false}>{row.type}</Tag>
-                                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>{row.source}</Typography.Text>
+                                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.source}</Typography.Text>
                                   </Flex>
                                 }
                                 description={

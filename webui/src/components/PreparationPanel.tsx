@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {api} from '../api';
 import type {ProcessingProfile} from '../preparation';
@@ -23,7 +23,7 @@ export function PreparationPanel({
 }: {
   assetId: string;
   onStarted?: (run: WorkflowRun) => void;
-  activeSection?: 'profiles' | 'providers' | 'preparation' | 'all';
+  activeSection?: 'profiles' | 'providers' | 'preparation' | 'all' | 'quickstart';
   /** 跳到修复页（资源治理 / 服务商 / 预设保存等），由设置工作区注入。 */
   onNavigate?: (partial: Partial<RouteState>) => void;
 }) {
@@ -46,6 +46,14 @@ export function PreparationPanel({
   // 进入运行准备分区或资产变化时主动刷新预检（治理状态可能已变）
   const prepFocus=activeSection==='preparation'||activeSection==='all';
   useEffect(()=>{if(prepFocus&&autoCheck)void report.refetch()},[prepFocus,autoCheck,assetId,draft.profile_id,draft.revision]);
+  // quickstart（编辑页「开始生成」入口）：没有选预设时自动载入第一个已保存预设，让用户一进来就能看到能否开始
+  const autoLoaded=useRef(false);
+  useEffect(()=>{
+    if(activeSection!=='quickstart'||autoLoaded.current||draft.revision>0||!profiles.data?.length)return;
+    autoLoaded.current=true;
+    const first=profiles.data[0];
+    void api.getProfile(first.profile_id,0).then(p=>{setSelected(first.profile_id);setDraft(p.profile)}).catch(()=>{autoLoaded.current=false});
+  },[activeSection,draft.revision,profiles.data]);
   const refresh=async()=>{await Promise.all(['processing-profiles','prepared','workflows','assets','audit'].map(k=>client.invalidateQueries({queryKey:[k]})))};
   const action=useMutation({mutationFn:(fn:()=>Promise<unknown>)=>fn(),onSuccess:async()=>{setError('');await refresh()},onError:e=>{setError(e instanceof Error?e.message:'操作失败');void refresh()}});
   const busy=action.isPending;
@@ -107,7 +115,7 @@ export function PreparationPanel({
 
   // 一步式运行准备：自动预检 + 单一就绪卡片 + 主 CTA
   const readinessCard = (
-    <Card size="small" className="prep-readiness" title="下一步：检查并开始" aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}
+    <Card size="small" className="prep-readiness" title={<span>下一步：检查并开始 <Tooltip title="「运行准备」就是开跑前的自动检查：素材是否对 Agent 可见、预设是否保存、所需服务是否就绪。"><QuestionCircleOutlined style={{fontSize:12,opacity:.65}}/></Tooltip></span>} aria-label="运行条件" data-nav-anchor="prepare-start" tabIndex={-1}
       extra={autoCheck?<Button size="small" disabled={busy||report.isFetching} onClick={()=>void report.refetch()} loading={report.isFetching&&!!report.data}>重新检查</Button>:null}>
       <Flex vertical gap={12} className="prep-readiness-body">
         <Typography.Text type="secondary">选好预设后会自动检查能否开始。条件满足时，点下方按钮即可启动。</Typography.Text>
@@ -115,7 +123,7 @@ export function PreparationPanel({
         {assetId&&draft.revision<1&&!unsaved&&<Alert type="info" showIcon message="请先加载或保存一个预设版本，将自动检查运行条件。"/>}
         {unsaved&&(
           <Alert type="warning" showIcon message="有未保存修改"
-            description="预检只对已保存的不可变版本生效。请先保存新版本，再自动核对运行条件。"
+            description="自动检查（预检）只对已保存的版本生效。请先保存新版本，再自动核对运行条件。"
             action={<Button type="primary" size="small" onClick={goSave}>先保存新版本</Button>}/>
         )}
         {autoCheck&&report.isFetching&&!report.data&&<Typography.Text type="secondary" role="status">正在核对环境和资产…</Typography.Text>}
@@ -142,7 +150,7 @@ export function PreparationPanel({
           )}
           <Tooltip title={report.data.can_start?undefined:blockerTip}>
             <span style={{display:'block',width:'100%'}}>
-              <Button type="primary" block disabled={busy||report.isFetching||!report.data.can_start||unsaved} onClick={startFlow}>开始生成</Button>
+              <Button type="primary" block className="vac-cta" disabled={busy||report.isFetching||!report.data.can_start||unsaved} onClick={startFlow}>开始生成</Button>
             </span>
           </Tooltip>
         </>}
@@ -151,9 +159,16 @@ export function PreparationPanel({
           <Button danger disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,false))}>撤销此版本外发许可</Button>
         </Space>
         <Typography.Text type="secondary" style={{fontSize:12}}>外发授权为可选项：仅当预设指向外部端点时需要；不阻塞 builtin 工程回归。</Typography.Text>
+        <Typography.Text type="secondary" style={{fontSize:12}}>「外发授权」＝ 同意把取样画面/文字发给你配置的外部模型服务；不授权就不会外发。</Typography.Text>
       </Flex>
     </Card>
   );
+
+  if(activeSection==='quickstart')return <Flex vertical gap={12} className="quickstart-panel" data-nav-anchor="quickstart" tabIndex={-1}>
+    {profilePicker}
+    {fetchError&&<Alert type="error" showIcon role="alert" message={fetchError}/>}
+    {readinessCard}
+  </Flex>;
 
   const titleText = activeSection === 'profiles' ? '处理预设' : activeSection === 'providers' ? '服务商接入' : activeSection === 'preparation' ? '运行准备' : '处理预设与运行准备';
 
