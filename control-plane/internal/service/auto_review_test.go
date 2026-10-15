@@ -161,11 +161,15 @@ func (e *scoreEnv) preview(t *testing.T, finish bool) string {
 	e.svc.SetMediaProber(&testProber{media: preview.Media{Width: 1280, Height: 720, FPS: 30, FrameCount: 30, DurationSeconds: 1.0,
 		VideoCodec: "h264", AudioCodec: "aac", SampleRate: 48000, Channels: 2,
 		AudioInterval: &preview.AudioInterval{StartPTS: 0, DurationTS: 48000, TimeBase: "1/48000", StartSeconds: 0, DurationSeconds: 1}}})
-	view, _, err := e.svc.StartPreview(ctx, "human:test", e.run.RunID, preview.StartRequest{
-		RevisionID: e.rev.RevisionID, ExpectedVersion: e.run.Version, PresetID: preview.PresetID, RequestID: "req-score-1"})
+	// The auto-reviewer's own start: a person starting it would take the run over.
+	view, _, err := e.svc.AutoStartPreview(ctx, e.run.RunID, e.run.Version, e.auto(t).AutoVersion, e.rev.RevisionID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Starting the preview is plumbing for these tests: leave the overlay as the
+	// B2 tests were written against, with no action and no version spent.
+	mustExec(t, e.st, `UPDATE workflow_auto SET auto_version = 1, actions_used = 0 WHERE run_id = ?`, e.run.RunID)
+	mustExec(t, e.st, `DELETE FROM auto_actions WHERE run_id = ? AND kind = 'preview'`, e.run.RunID)
 	if !finish {
 		return view.PreviewID
 	}

@@ -281,3 +281,57 @@ func (s *Store) UpsertSceneReviewAuto(ctx context.Context, rev model.SceneReview
 	n, err := res.RowsAffected()
 	return n > 0, err
 }
+
+// GetAutoReview returns one stored review of a run, or ErrNotFound.
+func (s *Store) GetAutoReview(ctx context.Context, runID, reviewID string) (model.AutoReview, error) {
+	var r model.AutoReview
+	var reasons, inputs, thresholds string
+	err := s.q.QueryRowContext(ctx, `SELECT review_id, run_id, round, revision_id, preview_id, scorer_version, score, band,
+  reasons_json, inputs_json, thresholds_json, created_at FROM auto_reviews WHERE run_id = ? AND review_id = ?`, runID, reviewID).
+		Scan(&r.ReviewID, &r.RunID, &r.Round, &r.RevisionID, &r.PreviewID, &r.ScorerVersion, &r.Score, &r.Band,
+			&reasons, &inputs, &thresholds, &r.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.AutoReview{}, fmt.Errorf("store: auto review %s: %w", reviewID, model.ErrNotFound)
+	}
+	if err != nil {
+		return model.AutoReview{}, err
+	}
+	r.Reasons, r.Inputs, r.Thresholds = json.RawMessage(reasons), json.RawMessage(inputs), json.RawMessage(thresholds)
+	return r, nil
+}
+
+// ListLiveAutoRunIDs returns the runs the driver has to look at: active and
+// waiting for a decision, oldest first.
+func (s *Store) ListLiveAutoRunIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT run_id FROM workflow_auto WHERE state IN (?, ?) ORDER BY created_at, run_id`,
+		model.AutoStateActive, model.AutoStateAwaitingDecision)
+	if err != nil {
+		return nil, fmt.Errorf("store: list live auto runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// CountAutoRetries counts the ledger rows of automatic stage retries for one stage.
+func (s *Store) CountAutoRetries(ctx context.Context, runID, stage string) (int, error) {
+	var n int
+	err := s.q.QueryRowContext(ctx, `SELECT COUNT(*) FROM auto_actions WHERE run_id = ? AND kind = ? AND target = ?`,
+		runID, model.AutoActionRetry, stage).Scan(&n)
+	return n, err
+}
+
+// CloseAutoRound stamps the end of a round that has a row. A round without a
+// row (the first one) is left alone.
+func (s *Store) CloseAutoRound(ctx context.Context, runID string, round int, outcome string, at time.Time) error {
+	_, err := s.q.ExecContext(ctx, `UPDATE workflow_auto_rounds SET ended_at = ?, outcome = ?
+  WHERE run_id = ? AND round = ? AND ended_at IS NULL`, at, outcome, runID, round)
+	return err
+}

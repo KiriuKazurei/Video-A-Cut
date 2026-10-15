@@ -322,3 +322,46 @@ func (s *Store) RevisionPackages(ctx context.Context) (map[string]bool, error) {
 	}
 	return out, rows.Err()
 }
+
+// NarrationApprovalRow is one approval with the actor that wrote it.
+type NarrationApprovalRow struct {
+	Hash  string
+	Actor string
+}
+
+// ListNarrationApprovalRows is ListNarrationApprovalIDs with the actor, so the
+// auto-reviewer can tell its own rows from a person's.
+func (s *Store) ListNarrationApprovalRows(ctx context.Context, runID, revisionID string) (map[string]NarrationApprovalRow, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT narration_id, draft_hash, actor FROM workflow_narration_approvals
+  WHERE run_id = ? AND revision_id = ?`, runID, revisionID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]NarrationApprovalRow{}
+	for rows.Next() {
+		var id string
+		var r NarrationApprovalRow
+		if err := rows.Scan(&id, &r.Hash, &r.Actor); err != nil {
+			return nil, err
+		}
+		out[id] = r
+	}
+	return out, rows.Err()
+}
+
+// InsertNarrationApprovalAuto writes an approval for the auto-reviewer. It
+// never replaces a row somebody else wrote: it reports false when a row of
+// another actor is there.
+func (s *Store) InsertNarrationApprovalAuto(ctx context.Context, runID, revisionID, narrationID, hash string, at time.Time) (bool, error) {
+	res, err := s.q.ExecContext(ctx, `INSERT INTO workflow_narration_approvals
+  (run_id, revision_id, narration_id, draft_hash, actor, created_at) VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(run_id, revision_id, narration_id) DO UPDATE SET draft_hash = excluded.draft_hash, actor = excluded.actor, created_at = excluded.created_at
+  WHERE workflow_narration_approvals.actor = ?`,
+		runID, revisionID, narrationID, hash, model.AutoActor, at, model.AutoActor)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}

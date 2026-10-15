@@ -33,12 +33,21 @@ const (
 	AutoDecisionUserDiscard  = "user_discard"
 	AutoDecisionTakeover     = "human_takeover"
 	AutoDecisionCancelled    = "workflow_cancelled"
+	AutoDecisionNarration    = "narration_approve"
+	AutoDecisionRoute        = "auto_route"
+	AutoDecisionRerun        = "auto_rerun"
+	AutoDecisionUserRevise   = "user_revise"
+	AutoDecisionHalt         = "auto_halt"
 )
 
 // Ledger action kinds recorded in auto_actions.
 const (
 	AutoActionSceneConfirm = "scene_confirm"
 	AutoActionScore        = "score"
+	AutoActionPreview      = "preview"
+	AutoActionApprove      = "narration_approve"
+	AutoActionRerun        = "rerun"
+	AutoActionRetry        = "retry"
 )
 
 // Halt reasons recorded in workflow_auto.halt_reason.
@@ -46,6 +55,22 @@ const (
 	AutoHaltUserDiscarded      = "user_discarded"
 	AutoHaltHumanTakeover      = "human_takeover"
 	AutoHaltHumanDecisionClash = "human_decision_conflict"
+	AutoHaltDeadline           = "deadline"
+	AutoHaltDecisionTimeout    = "decision_timeout"
+	AutoHaltNotImprovable      = "not_improvable"
+	AutoHaltStageFailed        = "stage_failed"
+	AutoHaltMaxTTSChars        = "max_tts_chars"
+	AutoHaltBudget             = "budget"
+	AutoHaltPreviewUnavailable = "preview_unavailable"
+	AutoHaltNarrationRefused   = "narration_refused"
+)
+
+// Reasons an auto run waits for the user (workflow_auto.halt_reason while the
+// state is awaiting_user_decision).
+const (
+	AutoWaitMedium    = "medium"
+	AutoWaitExhausted = "exhausted"
+	AutoWaitAssetBusy = "asset_busy"
 )
 
 // AutoFeedbackCodes is the closed set of reason codes a retry may carry back

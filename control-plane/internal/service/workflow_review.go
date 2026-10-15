@@ -341,6 +341,15 @@ func (s *Service) CancelWorkflow(ctx context.Context, actor, runID, reason strin
 }
 
 func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, idemKey string, version int) (model.WorkflowRun, error) {
+	if actor == model.AutoActor {
+		return model.WorkflowRun{}, fmt.Errorf("service: the auto-reviewer retries only through AutoRetryStage: %w", model.ErrForbidden)
+	}
+	return s.retryWorkflow(ctx, actor, runID, failedStage, idemKey, version, nil)
+}
+
+// retryWorkflow is RetryWorkflow with a hook that runs inside the transaction
+// after the stage is queued; the auto-reviewer uses it to charge the ledger.
+func (s *Service) retryWorkflow(ctx context.Context, actor, runID, failedStage, idemKey string, version int, extra func(ctx context.Context, tx *store.Store) error) (model.WorkflowRun, error) {
 	if actor == "" || idemKey == "" {
 		return model.WorkflowRun{}, fmt.Errorf("service: retry workflow: actor and idempotency_key are required: %w", model.ErrArgument)
 	}
@@ -392,6 +401,11 @@ func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, 
 		}
 		if halted, err = autoTakeover(ctx, tx, runID, actor, model.AutoHaltHumanTakeover, "retry"); err != nil {
 			return err
+		}
+		if extra != nil {
+			if err := extra(ctx, tx); err != nil {
+				return err
+			}
 		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()

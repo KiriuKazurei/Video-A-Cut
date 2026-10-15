@@ -170,7 +170,12 @@ func TestTakeoverHumanPreviewStartsOnlyWhenItCreatesAJob(t *testing.T) {
 	if a := e.auto(t); a.State != model.AutoStateActive || a.AutoVersion != 1 {
 		t.Fatalf("a refused start took the run over: %+v", a)
 	}
-	e.preview(t, false) // human:test creates the job
+	e.svc.SetMediaProber(&testProber{media: preview.Media{Width: 1280, Height: 720, FPS: 30, FrameCount: 30, DurationSeconds: 1.0,
+		VideoCodec: "h264", AudioCodec: "aac", SampleRate: 48000, Channels: 2}})
+	if _, created, err := e.svc.StartPreview(t.Context(), "human:test", e.run.RunID, preview.StartRequest{
+		RevisionID: e.rev.RevisionID, ExpectedVersion: e.run.Version, PresetID: preview.PresetID, RequestID: "req-human"}); err != nil || !created {
+		t.Fatalf("human preview: created=%v err=%v", created, err)
+	}
 	a := e.auto(t)
 	if a.State != model.AutoStateHalted || a.HaltReason != model.AutoHaltHumanTakeover || a.AutoVersion != 2 {
 		t.Fatalf("overlay = %+v", a)

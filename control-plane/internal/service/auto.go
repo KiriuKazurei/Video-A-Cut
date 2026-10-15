@@ -500,6 +500,7 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 	scope := "auto.decision:" + runID
 	hash := decision + "|" + feedback + "|" + fmt.Sprint(expectedAutoVersion)
 	var saved model.WorkflowAuto
+	var revised model.WorkflowRun
 	replayed := false
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		if got, _, e := tx.GetIdempotency(ctx, scope, idemKey); e == nil {
@@ -533,7 +534,18 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 			if a.TotalRounds >= a.MaxTotalRounds || a.ActionsUsed >= a.Scope.MaxActions || a.TTSCharsUsed >= a.Scope.MaxTTSChars {
 				return fmt.Errorf("service: no budget left for another round: %w", model.ErrInvalidState)
 			}
-			return fmt.Errorf("service: revise needs the auto rerun driver, which is not available yet: %w", model.ErrInvalidState)
+			// A user's revise costs a round (total_rounds) but not an automatic
+			// one (round), and no action. The wall clock restarts: the pause
+			// that began at the wait ends here.
+			var rerr error
+			revised, rerr = s.applyAutoRerun(ctx, tx, &a, rerunSpec{manual: true, feedback: autoFeedbackJSON(nil, feedback), outcome: "revise"}, now)
+			if errors.Is(rerr, errRerunAssetBusy) {
+				return fmt.Errorf("service: another run holds the asset: %w", model.ErrConflict)
+			}
+			if rerr != nil {
+				return rerr
+			}
+			kind = model.AutoDecisionUserRevise
 		}
 		a.PausedAt, a.DecisionDeadlineAt = nil, nil
 		a.AutoVersion++
@@ -541,7 +553,7 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		if err := tx.UpdateWorkflowAuto(ctx, a); err != nil {
 			return err
 		}
-		basis, _ := json.Marshal(map[string]any{"decision": decision})
+		basis, _ := json.Marshal(map[string]any{"decision": decision, "feedback_chars": utf8.RuneCountInString(feedback)})
 		if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: runID, Round: a.Round, Kind: kind, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
 			return err
 		}
@@ -558,6 +570,9 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		return model.WorkflowRun{}, AutoView{}, err
 	}
 	if !replayed {
+		if revised.RunID != "" {
+			s.publish("workflow.changed", revised)
+		}
 		s.publishAuto(saved)
 	}
 	run, err := s.st.GetWorkflow(ctx, runID)
@@ -602,6 +617,7 @@ func autoRunInput(ctx context.Context, st *store.Store, runID string) (*AutoInpu
 		}
 		in.UserNote = fb.User
 	}
+	in.FeedbackText = autoreview.RenderFeedbackAll(in.Feedback)
 	return in, nil
 }
 
@@ -612,6 +628,10 @@ type AutoInput struct {
 	Round       int                      `json:"round"`
 	Feedback    []model.AutoFeedbackItem `json:"feedback,omitempty"`
 	UserNote    string                   `json:"user_note,omitempty"`
+	// FeedbackText is Feedback rendered through the fixed templates of the
+	// autoreview package. It is produced here from the closed codes, never
+	// stored and never taken from a model.
+	FeedbackText []string `json:"feedback_text,omitempty"`
 }
 
 // ensureNoLiveAuto is Rule A: refuse to start another run, or to reopen the
