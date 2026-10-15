@@ -30,13 +30,14 @@ const (
 	CodePreviewCheck     = "preview_check_failed"
 	CodeDurationMismatch = "duration_mismatch"
 	CodeScoreBelowLow    = "score_below_low"
+	CodeBriefUnparsable  = "brief_unparsable"
 )
 
 // ReasonCodes lists every code the scorer can emit.
 var ReasonCodes = []string{
 	CodeLowConfidence, CodeTTSIncomplete, CodeAVMisaligned, CodePacingOutOfRange, CodeItemBelowFloor,
 	CodeBriefLowCoverage, CodeInputMissing, CodeNoScenes, CodePreviewFailed, CodePreviewCheck,
-	CodeDurationMismatch, CodeScoreBelowLow,
+	CodeDurationMismatch, CodeScoreBelowLow, CodeBriefUnparsable,
 }
 
 // Reason explains part of a band. Item names the component for

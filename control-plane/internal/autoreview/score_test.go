@@ -720,3 +720,36 @@ func TestFromEDLJoinsAndChecksAudioFiles(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+// A brief that produces no keyword cannot pass the coverage gate: HIGH is
+// closed and the reason says why. It never makes a result LOW.
+func TestUnparsableBriefClosesHigh(t *testing.T) {
+	for _, brief := range []string{"战", "a", "!?", " 战 "} {
+		in := perfectInput()
+		in.Brief = brief
+		r := Score(in, DefaultThresholds())
+		if r.Band != BandMedium || !hasCode(r, CodeBriefUnparsable) || hasCode(r, CodeBriefLowCoverage) || r.BriefCoverage != nil || r.Improvable {
+			t.Fatalf("brief %q: %+v", brief, r)
+		}
+		if r.Score != 1 {
+			t.Fatalf("brief %q moved the score to %v", brief, r.Score)
+		}
+	}
+	// No brief at all is still no gate.
+	in := perfectInput()
+	in.Brief = "  "
+	if r := Score(in, DefaultThresholds()); r.Band != BandHigh || hasCode(r, CodeBriefUnparsable) {
+		t.Fatalf("empty brief: %+v", r)
+	}
+	// The code is not a retry hint: it is not in the closed feedback set.
+	if model.AutoFeedbackCodes[CodeBriefUnparsable] {
+		t.Fatal("brief_unparsable must not be fed back to the model")
+	}
+	// A low input with an unparsable brief stays LOW.
+	low := perfectInput()
+	low.Brief = "战"
+	low.Preview = &Preview{Status: "failed"}
+	if r := Score(low, DefaultThresholds()); r.Band != BandLow {
+		t.Fatalf("band = %s", r.Band)
+	}
+}

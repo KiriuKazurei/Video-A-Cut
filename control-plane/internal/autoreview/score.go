@@ -310,6 +310,13 @@ func Score(in Input, th Thresholds) Result {
 			if round6(cov) < th.BriefCoverageMin {
 				warn(CodeBriefLowCoverage, true, num(cov), num(th.BriefCoverageMin))
 			}
+		} else {
+			// A brief was given but yields no keyword (one Han character, only
+			// punctuation): the coverage gate cannot be evaluated. A gate that
+			// cannot run does not pass, so HIGH is closed. A rerun cannot fix
+			// the brief, hence not improvable; the result is MEDIUM and the
+			// person decides.
+			warn(CodeBriefUnparsable, false, nil, nil)
 		}
 	}
 
