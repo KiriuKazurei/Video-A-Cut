@@ -142,6 +142,92 @@ class ContentError(ValueError):
     """Provider output is missing, unsafe, or inconsistent with the timeline."""
 
 
+MAX_BRIEF_CHARS = 2000
+AUTO_FEEDBACK_CODES = frozenset({
+    "low_confidence", "tts_incomplete", "av_misaligned", "pacing_out_of_range",
+    "item_below_floor", "brief_low_coverage", "scene_criteria_failed",
+})
+
+
+@dataclass(frozen=True)
+class AutoContext:
+    """The auto-run part of a task input, validated.
+
+    brief and note are untrusted user text and only ever travel as JSON data
+    fields. feedback is a tuple of fixed reason codes with optional numbers; no
+    model or worker text can be part of it.
+    """
+    brief: str
+    brief_sha256: str
+    feedback: tuple = ()
+    note: str = ""
+
+
+def _checked_text(value: Any, what: str) -> str:
+    # Messages never include the text itself, so a brief cannot leak through an error.
+    if not isinstance(value, str):
+        raise ContentError(f"{what} must be a string")
+    if len(value) > MAX_BRIEF_CHARS:
+        raise ContentError(f"{what} exceeds {MAX_BRIEF_CHARS} characters")
+    for ch in value:
+        if ch != "\n" and (ord(ch) < 32 or 127 <= ord(ch) < 160):
+            raise ContentError(f"{what} contains control characters")
+    return value
+
+
+def _checked_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ContentError("feedback numbers must be finite numbers")
+    return value
+
+
+def validate_auto(auto: Any) -> "AutoContext | None":
+    """Validate the task input's auto block; None for a run that is not an auto run."""
+    if auto is None:
+        return None
+    if not isinstance(auto, dict):
+        raise ContentError("auto input must be an object")
+    brief = _checked_text(auto.get("brief", ""), "brief")
+    declared = auto.get("brief_sha256", "")
+    actual = hashlib.sha256(brief.encode("utf-8")).hexdigest() if brief else ""
+    if declared != actual:
+        raise ContentError("brief does not match its sha256")
+    feedback = []
+    raw = auto.get("feedback") or []
+    if not isinstance(raw, list) or len(raw) > 16:
+        raise ContentError("feedback must be a short list of reason codes")
+    for item in raw:
+        if not isinstance(item, dict) or set(item) - {"code", "value", "threshold"}:
+            raise ContentError("feedback items may only hold code, value and threshold")
+        if item.get("code") not in AUTO_FEEDBACK_CODES:
+            raise ContentError("feedback code is not in the fixed set")
+        entry = {"code": item["code"]}
+        for key in ("value", "threshold"):
+            number = _checked_number(item.get(key))
+            if number is not None:
+                entry[key] = number
+        feedback.append(entry)
+    note = _checked_text(auto.get("user_note", ""), "user note")
+    return AutoContext(brief=brief, brief_sha256=declared, feedback=tuple(feedback), note=note)
+
+
+def auto_request_fields(auto: "AutoContext | None") -> dict:
+    """Extra request-body data fields; empty when there is nothing to add, so a
+    run without a brief or feedback produces the same bytes as before."""
+    fields: dict = {}
+    if auto is None:
+        return fields
+    if auto.brief:
+        fields["user_brief"] = auto.brief
+    if auto.feedback:
+        fields["revise_feedback"] = [dict(item) for item in auto.feedback]
+    if auto.note:
+        fields["revise_note"] = auto.note
+    return fields
+
+
 @dataclass(frozen=True)
 class ClipEvidence:
     index: int
@@ -226,6 +312,7 @@ class VisionContentProvider:
         timeout_seconds: float = 30.0,
         model: str = "default",
         opener: Any = None,
+        auto: "AutoContext | None" = None,
     ) -> None:
         if not isinstance(allow_external, bool):
             raise TypeError(f"allow_external must be a bool, got {type(allow_external).__name__}")
@@ -235,6 +322,7 @@ class VisionContentProvider:
         self.timeout_seconds = float(timeout_seconds)
         self.model = model
         self._opener = opener or urllib.request.urlopen
+        self._auto_fields = auto_request_fields(auto)
 
     def recognize(self, clips: Sequence[ClipEvidence]) -> list[SceneDecision]:
         if not self.allow_external:
@@ -278,6 +366,7 @@ class VisionContentProvider:
         body = json.dumps({
             "model": self.model,
             "clips": clip_payloads,
+            **self._auto_fields,
         }).encode("utf-8")
 
         headers = {
@@ -389,6 +478,7 @@ class NarrationContentProvider:
         timeout_seconds: float = 30.0,
         model: str = "default",
         opener: Any = None,
+        auto: "AutoContext | None" = None,
     ) -> None:
         if not isinstance(allow_external, bool):
             raise TypeError(f"allow_external must be a bool, got {type(allow_external).__name__}")
@@ -398,6 +488,7 @@ class NarrationContentProvider:
         self.timeout_seconds = float(timeout_seconds)
         self.model = model
         self._opener = opener or urllib.request.urlopen
+        self._auto_fields = auto_request_fields(auto)
 
     def recognize(self, clips: Sequence[ClipEvidence]) -> Sequence[SceneDecision]:
         raise ContentError("recognition is not implemented for NarrationContentProvider")
@@ -431,6 +522,7 @@ class NarrationContentProvider:
         body = json.dumps({
             "model": self.model,
             "clips": clip_payloads,
+            **self._auto_fields,
         }).encode("utf-8")
 
         headers = {

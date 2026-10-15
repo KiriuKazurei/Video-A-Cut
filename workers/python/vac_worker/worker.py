@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .mcp import Client, ToolError, TransportError
-from .content import make_content_provider
+from .content import make_content_provider, validate_auto
 from .sampling import SamplingLimits
 from .stages import STAGES, StageContext, StageFailure, Tools
 
@@ -233,7 +233,10 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
                 edl_rel = (asset.get("artifacts") or {}).get("edl")
             edl_path = resolve_under_root(cfg.delivery_root, edl_rel)
             target = cfg.delivery_root.joinpath(*out_rel.split("/"))
+            auto_ctx = validate_auto(task_input.get("auto"))
             receipt = {"task_id": task_id, "revision_id": task_input.get("revision_id"), "content_mode": task_input.get("content_mode")}
+            if auto_ctx is not None and auto_ctx.brief:
+                receipt['brief_sha256'] = auto_ctx.brief_sha256
             if task_input.get('profile_sha256'):
                 receipt['profile_sha256']=task_input['profile_sha256']
             if target.exists():
@@ -257,9 +260,12 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
             work_dir = staging / ".work"
             work_dir.mkdir(parents=True, exist_ok=True)
 
+            provider_config = dict(cfg.content_provider_config)
+            if auto_ctx is not None and cfg.content_provider != "builtin":
+                provider_config["auto"] = auto_ctx
             ctx = StageContext(edl=edl, source_dir=edl_path.parent, out_dir=staging,
                                tools=Tools(ffmpeg=cfg.ffmpeg, ffprobe=cfg.ffprobe, timeout=cfg.tool_timeout),
-                               progress=progress, content_provider=make_content_provider(cfg.content_provider, **cfg.content_provider_config),
+                               progress=progress, content_provider=make_content_provider(cfg.content_provider, **provider_config),
                                work_dir=work_dir, sampling_limits=cfg.sampling_limits,
                                 tts_auto_approve=cfg.tts_auto_approve, narration_approvals=approvals, tts_voice=cfg.tts_voice,
                                 tts_settings=cfg.tts_settings)
