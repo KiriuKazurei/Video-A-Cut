@@ -157,10 +157,7 @@ func newScoreEnv(t *testing.T, confidence any, brief string) *scoreEnv {
 func (e *scoreEnv) preview(t *testing.T, finish bool) string {
 	t.Helper()
 	ctx := t.Context()
-	registerValidCapability(t, e.svc, "agent-exp-1")
-	e.svc.SetMediaProber(&testProber{media: preview.Media{Width: 1280, Height: 720, FPS: 30, FrameCount: 30, DurationSeconds: 1.0,
-		VideoCodec: "h264", AudioCodec: "aac", SampleRate: 48000, Channels: 2,
-		AudioInterval: &preview.AudioInterval{StartPTS: 0, DurationTS: 48000, TimeBase: "1/48000", StartSeconds: 0, DurationSeconds: 1}}})
+	e.prepPreview(t)
 	// The auto-reviewer's own start: a person starting it would take the run over.
 	view, _, err := e.svc.AutoStartPreview(ctx, e.run.RunID, e.run.Version, e.auto(t).AutoVersion, e.rev.RevisionID)
 	if err != nil {
@@ -173,10 +170,29 @@ func (e *scoreEnv) preview(t *testing.T, finish bool) string {
 	if !finish {
 		return view.PreviewID
 	}
+	e.finishPreview(t, view.PreviewID)
+	return view.PreviewID
+}
+
+// prepPreview registers a capable export worker and a matching media prober.
+func (e *scoreEnv) prepPreview(t *testing.T) {
+	t.Helper()
+	registerValidCapability(t, e.svc, "agent-exp-1")
+	e.svc.SetMediaProber(&testProber{media: preview.Media{Width: 1280, Height: 720, FPS: 30, FrameCount: 30, DurationSeconds: 1.0,
+		VideoCodec: "h264", AudioCodec: "aac", SampleRate: 48000, Channels: 2,
+		AudioInterval: &preview.AudioInterval{StartPTS: 0, DurationTS: 48000, TimeBase: "1/48000", StartSeconds: 0, DurationSeconds: 1}}})
+}
+
+// finishPreview plays the export worker: claims the preview and delivers a
+// matching one-second report.
+func (e *scoreEnv) finishPreview(t *testing.T, previewID string) {
+	t.Helper()
+	ctx := t.Context()
+	registerValidCapability(t, e.svc, "agent-exp-1")
 	if _, err := e.svc.ClaimForExecution(ctx, "agent-exp-1", "exporter", time.Now().Add(time.Minute), previewClaimOptions("agent-exp-1")); err != nil {
 		t.Fatal(err)
 	}
-	job, err := e.st.GetPreviewJob(ctx, view.PreviewID)
+	job, err := e.st.GetPreviewJob(ctx, previewID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +201,6 @@ func (e *scoreEnv) preview(t *testing.T, finish bool) string {
 	if err := e.svc.SubmitPreviewScoped(ctx, previewTestScope(t, e.svc, "agent-exp-1", job.TaskID), filepath.ToSlash(dir)); err != nil {
 		t.Fatalf("SubmitPreview: %v", err)
 	}
-	return view.PreviewID
 }
 
 // setThresholds rewrites the stored scope the way a narrowing would leave it.

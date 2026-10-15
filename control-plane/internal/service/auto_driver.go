@@ -173,12 +173,12 @@ func autoNarrationCode(edl map[string]any, confirmed map[string]bool, skip map[s
 		switch {
 		case strings.TrimSpace(text) == "" || strings.ContainsAny(text, "\r\n"):
 			code = firstCode(code, autoreview.CodeItemBelowFloor)
-		case float64(utf8.RuneCountInString(text))/(end-start) > paceMax:
-			code = firstCode(code, autoreview.CodePacingOutOfRange)
-		case label == "" || labels[scene] != label || !confirmed[scene]:
-			code = firstCode(code, autoreview.CodeItemBelowFloor)
 		case autoNarrationBanned(text):
 			code = firstCode(code, autoreview.CodeItemBelowFloor)
+		case label == "" || labels[scene] != label || !confirmed[scene]:
+			code = firstCode(code, autoreview.CodeItemBelowFloor)
+		case float64(utf8.RuneCountInString(text))/(end-start) > paceMax:
+			code = firstCode(code, autoreview.CodePacingOutOfRange)
 		}
 	}
 	sort.Slice(wins, func(i, j int) bool { return wins[i].start < wins[j].start })
