@@ -285,6 +285,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                       <Flex className="task-actions" wrap gap={8} align="center">
                         <Button 
                           type="primary" 
+                          className="vac-cta"
                           htmlType="submit" 
                           disabled={!asset || taskType === 'preview'}
                           loading={createTask.isPending}

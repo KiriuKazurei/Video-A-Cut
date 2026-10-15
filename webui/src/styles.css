@@ -789,6 +789,8 @@ button.timeline-clip:active { transform: scale(0.99); }
 /* ---------- Stage A · 人体工学与清晰度 ---------- */
 /* 主要操作按钮的点击热区不小于 32px（时间线等密集控件不动） */
 .vac-cta, .next-step-btn { min-height: 32px; }
+/* 不用 .ant-btn-sm 的 24px：带 vac-cta 的小按钮（通过 / 不通过等）也保持 32px 热区 */
+.ant-btn.vac-cta { min-height: 32px; }
 .jargon-hint { cursor: help; color: rgba(255, 255, 255, 0.62); white-space: nowrap; }
 .jargon-hint:hover { color: #fff; }
 /* 技术性状态原文（如 awaiting_review / scene_review）只保留在 DOM 里供自动化与排障，不占普通用户的视线 */
@@ -811,3 +813,10 @@ button.timeline-clip:active { transform: scale(0.99); }
   .context-actions { flex-wrap: wrap; margin-left: auto; }
 }
 @media (max-width: 480px) { .stage-compact-count { display: none; } }
+
+/* 紧凑阶段条下拉：状态图标与文字之间留出间距 */
+.stage-menu .ant-dropdown-menu-item { display: flex; align-items: center; gap: 10px; }
+.stage-menu .ant-dropdown-menu-title-content { flex: 1; display: flex; align-items: center; justify-content: space-between; }
+.profile-picker-quick .quickstart-advanced { padding-inline: 4px; height: 32px; color: rgba(255, 255, 255, 0.62); }
+/* 行内 <code>（antd 默认 85% ≈ 11px）不小于 12px */
+body code, body .ant-typography code { font-size: 12px; }

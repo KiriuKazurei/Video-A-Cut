@@ -31,7 +31,7 @@ function CompactStepper({ stages, onGo }: PipelineStepperProps) {
   if (!cur) return null;
   return (
     <nav className="pipeline-stepper pipeline-stepper-compact" aria-label="流程阶段" data-tour="stepper">
-      <Dropdown trigger={['click']} placement="bottomLeft" menu={{
+      <Dropdown trigger={['click']} placement="bottomLeft" overlayClassName="stage-menu" menu={{
         items: stages.map((s) => ({
           key: s.id,
           icon: <StatusGlyph status={s.status} />,

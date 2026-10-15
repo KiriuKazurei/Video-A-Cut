@@ -191,7 +191,7 @@ export function MonitorPage({ page, asset, audit, task, watchedTaskId, createTas
                     onChange={(event) => setDependsOn(event.target.value)} />
                 </Form.Item></Col>
               </Row>
-              <Button type="primary" htmlType="submit" disabled={!asset} loading={createTask.isPending}>创建任务</Button>
+              <Button type="primary" className="vac-cta" htmlType="submit" disabled={!asset} loading={createTask.isPending}>创建任务</Button>
             </Form>
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>手动创建单任务，不是启动完整内容流程的替代入口。任务绑定当前选中的资产；前置任务须属于同一资产。服务端没有任务列表、单任务取消/重试/暂停接口，这里按 ID 跟踪。</Typography.Paragraph>
             {createTask.isError && <Alert style={{ marginTop: 12 }} type="error" showIcon message={`任务创建失败：${errorText(createTask.error)}`} />}

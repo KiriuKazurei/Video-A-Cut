@@ -252,7 +252,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
           <ValueSelect<'configured' | 'builtin'> className="select-content-mode" aria-label="内容模式" value={mode} onChange={setMode}
             options={[{ value: 'configured', label: '已配置模型' }, { value: 'builtin', label: 'builtin 工程回归' }]} />
         </Form.Item>
-        <Button type="primary" disabled={busy} title="通用入口；固定预设流程请在「准备」页通过预检后启动" onClick={() => invoke(async () => { const created = await api.startWorkflow(assetId, crypto.randomUUID(), mode); selection.setOffset(0); selection.setRunId(created.run_id); })}>启动新流程</Button>
+        <Button type="primary" className="vac-cta" disabled={busy} title="通用入口；固定预设流程请在「准备」页通过预检后启动" onClick={() => invoke(async () => { const created = await api.startWorkflow(assetId, crypto.randomUUID(), mode); selection.setOffset(0); selection.setRunId(created.run_id); })}>启动新流程</Button>
         </>}
         <div style={{ flex: '1 1 360px', minWidth: 0 }}><RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} /></div>
       </Flex>
@@ -265,7 +265,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
         action={<Button size="small" disabled={sceneGate ? !pendingScenes.length : !pendingLines.length} onClick={() => { jumpNext(); }}>跳到下一个 (N)</Button>} />}
       {!isReview && current && (sceneGate || draftGate) && onGoReview && <Alert type="warning" showIcon className="review-todo"
         message={sceneGate ? '流程在等待场景确认' : '流程在等待解说批准'}
-        action={<Button size="small" type="primary" onClick={onGoReview}>去审查</Button>} />}
+        action={<Button type="primary" className="vac-cta" onClick={onGoReview}>去审查</Button>} />}
       {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
       {(failure || runs.error || review.error || snapshot.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || review.error || snapshot.error)} />}
       {runs.isSuccess && !current && <Empty description="此资产还没有生成内容。先到「导入与粗剪」完成导入，再点「开始生成」。">
@@ -515,7 +515,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
         <List size="small" bordered className="acceptance-list" dataSource={[...checks]} renderItem={([item, label]) => {
           const row = latestFor(item);
           const state = row?.result === 'passed' ? 'passed' : row?.result === 'failed' ? 'failed' : 'pending';
-          return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
+          return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" className="vac-cta" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
             disabled={busy || !ready || (result === 'failed' && !note.trim())}
             onClick={() => recordOne(item, result)}>{result === 'passed' ? '通过' : '不通过'}</Button>)}>
             <List.Item.Meta
