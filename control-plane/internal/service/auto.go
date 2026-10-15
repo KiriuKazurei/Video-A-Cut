@@ -15,6 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/autoreview"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preparation"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
@@ -224,6 +225,12 @@ func buildAutoScope(req AutoScopeRequest, external bool) (model.AutoScope, error
 			return sc, fmt.Errorf("service: invalid threshold %q: %w", k, model.ErrArgument)
 		}
 		sc.Thresholds[k] = v
+	}
+	// The scorer is the only reader of these numbers. Reject at authorization
+	// what it would reject at scoring time (unknown key, out of range, an
+	// inverted band or pace window) instead of discovering it after the export.
+	if _, err := autoreview.ResolveThresholds(sc.Thresholds); err != nil {
+		return sc, fmt.Errorf("service: %v: %w", err, model.ErrArgument)
 	}
 	sc.ExternalEgress = external
 	sc.AutoSceneConfirm, sc.AutoNarrationApprove, sc.AutoPreviewExport = true, true, true

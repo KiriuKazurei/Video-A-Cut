@@ -245,6 +245,9 @@ func TestStartAutoRunValidatesBriefScopeAndNotice(t *testing.T) {
 		"three rounds":      func(r *service.AutoRunRequest) { n := 3; r.Scope.MaxRounds = &n },
 		"zero actions":      func(r *service.AutoRunRequest) { n := 0; r.Scope.MaxActions = &n },
 		"bad threshold key": func(r *service.AutoRunRequest) { r.Scope.Thresholds = map[string]float64{"Bad Key": 1} },
+		"unknown threshold": func(r *service.AutoRunRequest) { r.Scope.Thresholds = map[string]float64{"nope": 0.5} },
+		"inverted bands":    func(r *service.AutoRunRequest) { r.Scope.Thresholds = map[string]float64{"high_score_min": 0.5} },
+		"floor above one":   func(r *service.AutoRunRequest) { r.Scope.Thresholds = map[string]float64{"av_floor": 1.5} },
 		"total below rounds": func(r *service.AutoRunRequest) {
 			a, b := 2, 1
 			r.Scope.MaxRounds, r.Scope.MaxTotalRounds = &a, &b
