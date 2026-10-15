@@ -99,3 +99,20 @@ func (e *scoreEnv) allowRevise(t *testing.T) {
 	body, _ := json.Marshal(a.Scope)
 	mustExec(t, e.st, `UPDATE workflow_auto SET scope_json = ? WHERE run_id = ?`, string(body), e.run.RunID)
 }
+
+// Revising sends the run back to recognize and invalidates the export the hold
+// was about, so the hold must not outlive the decision.
+func TestDecideAutoReviseClearsTheHold(t *testing.T) {
+	e := newScoreEnv(t, 0.9, "团战")
+	e.preview(t, true)
+	mustExec(t, e.st, `UPDATE workflow_auto SET state = 'awaiting_user_decision', halt_reason = 'medium', delivery_hold = 1 WHERE run_id = ?`, e.run.RunID)
+	e.allowRevise(t)
+	a := e.auto(t)
+	_, out, err := e.svc.DecideAuto(t.Context(), "human:webui", e.run.RunID, "revise", "节奏再快一点", a.AutoVersion, "k-revise")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.State != model.AutoStateActive || out.DeliveryHold || out.Decision != nil || out.Delivery.Delivered {
+		t.Fatalf("revise = %+v", out)
+	}
+}

@@ -583,6 +583,9 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 				return rerr
 			}
 			kind = model.AutoDecisionUserRevise
+			// The export that was held is invalidated by the rerun: there is
+			// nothing left to confirm until the new pass is scored.
+			a.DeliveryHold = false
 		}
 		a.PausedAt, a.DecisionDeadlineAt = nil, nil
 		a.AutoVersion++
