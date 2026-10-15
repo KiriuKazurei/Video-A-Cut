@@ -204,7 +204,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
       {usable.length > 1 && (
         <Flex vertical gap={4}>
           <Typography.Text strong>使用预设</Typography.Text>
-          <ValueSelect<string> aria-label="自动剪辑预设" style={{ maxWidth: 360 }} value={profile?.profile_id} onChange={v => { setPicked(v); setAuthorized(false); }}
+          <ValueSelect<string> className="auto-profile-select" aria-label="自动剪辑预设" style={{ maxWidth: 360 }} value={profile?.profile_id} onChange={v => { setPicked(v); setAuthorized(false); }}
             options={usable.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
         </Flex>
       )}
