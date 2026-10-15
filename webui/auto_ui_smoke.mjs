@@ -296,7 +296,9 @@ setAuto(baseAuto({ auto_version: 9, state: 'completed', latest_review: review('h
 await page.waitForFunction(() => /AI 自评：高档/.test(document.querySelector('.page:not([hidden]) .auto-progress')?.textContent ?? ''));
 assert.equal(await doneCount(), 7, 'all seven phases finished');
 await shot('10-high-auto-export-done');
-assert.equal(await card.locator('.start-mode').count(), 1, 'start form is available again after the run ends');
+assert.equal(await card.locator('.start-mode').count(), 0, 'after the run ends only the result is shown');
+await card.locator('button.auto-restart').click();
+await card.locator('.start-mode').waitFor();
 ok('HIGH/done: all 7 phases finished; 720p download (labelled 预览规格) + delivery package link; 「AI 自评≠人工验收」');
 
 // 8) 耗尽：不能导出，只能改意见

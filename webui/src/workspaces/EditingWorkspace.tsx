@@ -32,12 +32,17 @@ function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
   const pick = (m: StartMode) => { setMode(m); try { localStorage.setItem(START_MODE_KEY, m); } catch { /* 隐私模式：本次会话内有效即可 */ } };
   const auto = useAutoView(run?.run_id);
   const live = autoPolling(auto.data?.state);
+  // 自动流程已结束（完成/停止/撤销/取消）：默认只看结果，需要时再展开「重新生成」。
+  const ended = Boolean(auto.data) && !live;
+  const [showForm, setShowForm] = useState(false);
+  useEffect(() => { setShowForm(false); }, [run?.run_id]);
   const goReview = () => navigate({ workspace: 'editing', editingSection: 'review' });
   return (
     <Card size="small" className="quickstart-card" title="开始生成" data-nav-anchor="quickstart-card" tabIndex={-1}
       extra={<span className="quickstart-extra">{mode === 'auto' ? '写一句要求，Agent 自动剪辑并导出' : '自动完成识别、撰稿、配音与字幕，随后进入审查'}</span>}>
       <AutoRunProgress run={run} onGoReview={goReview} />
-      {!live && (
+      {ended && !showForm && <Button type="link" className="auto-restart" style={{ paddingInline: 0, marginTop: 8 }} onClick={() => setShowForm(true)}>重新生成…</Button>}
+      {!live && (!ended || showForm) && (
         <div className={auto.data ? 'auto-after-progress' : undefined}>
           <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={pick}
             options={[{ value: 'manual', label: '分步生成' }, { value: 'auto', label: '自动模式' }]} />
