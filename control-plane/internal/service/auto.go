@@ -770,6 +770,9 @@ func (s *Service) AutoConfirmScene(ctx context.Context, runID string, version, a
 
 	var saved model.WorkflowRun
 	var savedAuto model.WorkflowAuto
+	if s.beforeAutoTx != nil {
+		s.beforeAutoTx()
+	}
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		a, err := tx.GetWorkflowAuto(ctx, runID)
 		if err != nil {

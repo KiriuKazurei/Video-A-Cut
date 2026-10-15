@@ -237,3 +237,51 @@ func TestAutoReviewInsertAndLookupByPreview(t *testing.T) {
 		t.Fatalf("list %+v %v", list, err)
 	}
 }
+
+// The narration upsert for the auto-reviewer is conditional in SQL, not only in
+// the service: a person's approval row is never replaced by it, whatever the
+// hash, and the auto-reviewer's own row may be refreshed.
+func TestInsertNarrationApprovalAutoNeverOverwritesAHuman(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+	run := autoFixture(t, s, "a2", "r2")
+	now := time.Now().UTC().Truncate(time.Second)
+	rows := func() map[string]store.NarrationApprovalRow {
+		t.Helper()
+		got, err := s.ListNarrationApprovalRows(ctx, run.RunID, run.CurrentRevisionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if err := s.InsertNarrationApproval(ctx, run.RunID, run.CurrentRevisionID, "human", "h1", "human:webui", now); err != nil {
+		t.Fatal(err)
+	}
+	for _, hash := range []string{"h1", "other"} { // the same text and different text
+		if applied, err := s.InsertNarrationApprovalAuto(ctx, run.RunID, run.CurrentRevisionID, "human", hash, now); err != nil || applied {
+			t.Fatalf("auto replaced a person's approval (hash %s): applied=%v err=%v", hash, applied, err)
+		}
+	}
+	if got := rows()["human"]; got.Actor != "human:webui" || got.Hash != "h1" {
+		t.Fatalf("the person's row changed: %+v", got)
+	}
+	if applied, err := s.InsertNarrationApprovalAuto(ctx, run.RunID, run.CurrentRevisionID, "fresh", "f1", now); err != nil || !applied {
+		t.Fatalf("new row: applied=%v err=%v", applied, err)
+	}
+	if applied, err := s.InsertNarrationApprovalAuto(ctx, run.RunID, run.CurrentRevisionID, "fresh", "f2", now); err != nil || !applied {
+		t.Fatalf("auto may refresh its own row: applied=%v err=%v", applied, err)
+	}
+	if got := rows()["fresh"]; got.Actor != model.AutoActor || got.Hash != "f2" {
+		t.Fatalf("refreshed row = %+v", got)
+	}
+	// A person may still overwrite the auto-reviewer's row: the person wins.
+	if err := s.InsertNarrationApproval(ctx, run.RunID, run.CurrentRevisionID, "fresh", "f3", "human:webui", now); err != nil {
+		t.Fatal(err)
+	}
+	if applied, err := s.InsertNarrationApprovalAuto(ctx, run.RunID, run.CurrentRevisionID, "fresh", "f4", now); err != nil || applied {
+		t.Fatalf("auto replaced a person's overwrite: applied=%v err=%v", applied, err)
+	}
+	if got := rows()["fresh"]; got.Actor != "human:webui" || got.Hash != "f3" {
+		t.Fatalf("row = %+v", got)
+	}
+}

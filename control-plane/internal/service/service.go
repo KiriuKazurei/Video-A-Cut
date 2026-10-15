@@ -52,6 +52,17 @@ type Service struct {
 	// early Rule A check and its transaction, the window the in-transaction
 	// check exists for. It is nil outside tests.
 	afterEarlyAutoCheck func()
+	// beforePreviewTx runs in startPreview after every pre-transaction reuse
+	// check missed and before the transaction opens: the window in which another
+	// start can create the job. nil outside tests.
+	beforePreviewTx func()
+	// beforeAutoTx runs in AutoConfirmScene and AutoApproveNarration between the
+	// early replay check and the transaction, the window the in-transaction
+	// replay check exists for. nil outside tests.
+	beforeAutoTx func()
+	// encodeJSON encodes the stored facts of a review; nil means json.Marshal.
+	// Tests replace it to prove a failed encoding writes nothing.
+	encodeJSON func(any) ([]byte, error)
 	// afterScoreCollect runs between ScoreAutoRun's file reads and its
 	// transaction; tests use it to change the world in that gap.
 	afterScoreCollect func()

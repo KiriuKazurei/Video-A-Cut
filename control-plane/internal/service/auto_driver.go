@@ -256,6 +256,9 @@ func (s *Service) AutoApproveNarration(ctx context.Context, runID string, versio
 	var saved model.WorkflowRun
 	var savedAuto model.WorkflowAuto
 	clashed := false
+	if s.beforeAutoTx != nil {
+		s.beforeAutoTx()
+	}
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		a, err := tx.GetWorkflowAuto(ctx, runID)
 		if err != nil {

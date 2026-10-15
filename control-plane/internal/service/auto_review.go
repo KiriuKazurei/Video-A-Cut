@@ -73,11 +73,11 @@ func (s *Service) ScoreAutoRun(ctx context.Context, runID, previewID string, aut
 	// A review is stored with the numbers that explain it. If they cannot be
 	// encoded nothing is written: an empty "{}" would be a review nobody can
 	// explain.
-	reasons, err := json.Marshal(res.Reasons)
+	reasons, err := s.marshalReview(res.Reasons)
 	if err != nil {
 		return model.AutoReview{}, fmt.Errorf("service: encode review reasons: %w", err)
 	}
-	inputs, err := json.Marshal(map[string]any{
+	inputs, err := s.marshalReview(map[string]any{
 		"components": res.Components, "facts": res.Facts, "brief_coverage": res.BriefCoverage,
 		"improvable": res.Improvable, "preview_status": col.input.Preview.Status,
 		"feedback_template_version": autoreview.FeedbackTemplateVersion,
@@ -85,7 +85,7 @@ func (s *Service) ScoreAutoRun(ctx context.Context, runID, previewID string, aut
 	if err != nil {
 		return model.AutoReview{}, fmt.Errorf("service: encode review inputs: %w", err)
 	}
-	thresholds, err := json.Marshal(res.Thresholds)
+	thresholds, err := s.marshalReview(res.Thresholds)
 	if err != nil {
 		return model.AutoReview{}, fmt.Errorf("service: encode review thresholds: %w", err)
 	}
@@ -273,4 +273,13 @@ func (s *Service) readPreviewReport(ctx context.Context, previewID string) (prev
 		return preview.Report{}, false
 	}
 	return rep, true
+}
+
+// marshalReview encodes one stored part of a review. It is json.Marshal; the
+// indirection exists so a test can make it fail.
+func (s *Service) marshalReview(v any) ([]byte, error) {
+	if s.encodeJSON != nil {
+		return s.encodeJSON(v)
+	}
+	return json.Marshal(v)
 }

@@ -445,6 +445,9 @@ func (s *Service) startPreview(ctx context.Context, actor, runID string, req pre
 	if err != nil {
 		return preview.View{}, false, err
 	}
+	if s.beforePreviewTx != nil {
+		s.beforePreviewTx()
+	}
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		// Concurrency double check for request_id
 		if dup, e := tx.GetPreviewJobByRequest(ctx, runID, req.RequestID); e == nil {
