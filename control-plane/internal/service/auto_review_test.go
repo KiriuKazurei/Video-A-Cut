@@ -491,3 +491,36 @@ func mustExec(t *testing.T, st *store.Store, query string, args ...any) {
 		t.Fatal(err)
 	}
 }
+
+// An EDL whose clip ends overflow must still produce an explainable, stored
+// review (never an empty inputs document).
+func TestScoreAutoRunOverflowingEDLDurationStoresReadableInputs(t *testing.T) {
+	e := newScoreEnv(t, 0.9, "团战")
+	pid := e.preview(t, true)
+	pkg := filepath.Join(e.root, "exports/clip_pkg")
+	raw, err := os.ReadFile(filepath.Join(pkg, "edl.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var edl map[string]any
+	_ = json.Unmarshal(raw, &edl)
+	edl["video"] = append(edl["video"].([]any), map[string]any{"src": "media/clip.mp4", "in": 0.0, "out": 1.5e308, "timeline_in": 1.5e308})
+	body, _ := json.Marshal(edl)
+	if err := os.WriteFile(filepath.Join(pkg, "edl.json"), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, e.st, `UPDATE revisions SET edl_sha256 = ? WHERE revision_id = ?`, sha(body), e.rev.RevisionID)
+	review, err := e.svc.ScoreAutoRun(t.Context(), e.run.RunID, pid, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inputs struct {
+		Facts autoreview.Facts `json:"facts"`
+	}
+	if err := json.Unmarshal(review.Inputs, &inputs); err != nil || string(review.Inputs) == "{}" || len(review.Inputs) < 20 {
+		t.Fatalf("inputs = %s (%v)", review.Inputs, err)
+	}
+	if inputs.Facts.EDLDurationSeconds != 1 {
+		t.Fatalf("facts = %+v", inputs.Facts)
+	}
+}

@@ -129,7 +129,9 @@ func within(inner, outer Interval, eps float64) bool {
 func Score(in Input, th Thresholds) Result {
 	res := Result{ScorerVersion: ScorerVersion, Thresholds: th, Reasons: []Reason{}, Improvable: true}
 	res.Facts.Scenes, res.Facts.Lines = len(in.Scenes), len(in.Lines)
-	res.Facts.EDLDurationSeconds = round6(in.EDLDurationSeconds)
+	if validNumber(in.EDLDurationSeconds) {
+		res.Facts.EDLDurationSeconds = round6(in.EDLDurationSeconds)
+	}
 	res.Facts.BriefProvided = strings.TrimSpace(in.Brief) != ""
 
 	var reasons []Reason

@@ -94,8 +94,10 @@ func FromEDL(edl map[string]any, exists func(rel string) bool) EDLFacts {
 		in, ok1 := number(v["in"])
 		out, ok2 := number(v["out"])
 		at, ok3 := number(v["timeline_in"])
-		if ok1 && ok2 && ok3 && out > in {
-			f.EDLDurationSeconds = math.Max(f.EDLDurationSeconds, at+(out-in))
+		// A sum that overflows is not a duration; the clip is left out, which
+		// can only make the timeline look shorter and the score lower.
+		if end := at + (out - in); ok1 && ok2 && ok3 && out > in && !math.IsInf(end, 0) && !math.IsNaN(end) {
+			f.EDLDurationSeconds = math.Max(f.EDLDurationSeconds, end)
 		}
 	}
 	return f

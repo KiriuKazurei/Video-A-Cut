@@ -67,13 +67,25 @@ func (s *Service) ScoreAutoRun(ctx context.Context, runID, previewID string, aut
 		return model.AutoReview{}, err
 	}
 	res := autoreview.Score(col.input, th)
-	reasons, _ := json.Marshal(res.Reasons)
-	inputs, _ := json.Marshal(map[string]any{
+	// A review is stored with the numbers that explain it. If they cannot be
+	// encoded nothing is written: an empty "{}" would be a review nobody can
+	// explain.
+	reasons, err := json.Marshal(res.Reasons)
+	if err != nil {
+		return model.AutoReview{}, fmt.Errorf("service: encode review reasons: %w", err)
+	}
+	inputs, err := json.Marshal(map[string]any{
 		"components": res.Components, "facts": res.Facts, "brief_coverage": res.BriefCoverage,
 		"improvable": res.Improvable, "preview_status": col.input.Preview.Status,
 		"feedback_template_version": autoreview.FeedbackTemplateVersion,
 	})
-	thresholds, _ := json.Marshal(res.Thresholds)
+	if err != nil {
+		return model.AutoReview{}, fmt.Errorf("service: encode review inputs: %w", err)
+	}
+	thresholds, err := json.Marshal(res.Thresholds)
+	if err != nil {
+		return model.AutoReview{}, fmt.Errorf("service: encode review thresholds: %w", err)
+	}
 
 	var saved model.AutoReview
 	var savedAuto model.WorkflowAuto

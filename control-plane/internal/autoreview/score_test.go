@@ -790,3 +790,33 @@ func TestSucceededPreviewWithoutChecksIsMissingNotScored(t *testing.T) {
 		t.Fatalf("appears %d times", n)
 	}
 }
+
+// Numbers that are not finite must never reach the stored facts: encoding them
+// fails, and a review that cannot be encoded cannot be stored.
+func TestNonFiniteDurationsNeverReachTheFacts(t *testing.T) {
+	huge := 1.5e308
+	f := FromEDL(map[string]any{"video": []any{
+		map[string]any{"in": 0.0, "out": huge, "timeline_in": huge}, // end overflows to +Inf
+		map[string]any{"in": 0.0, "out": 1.0, "timeline_in": 0.0},
+	}}, nil)
+	if f.EDLDurationSeconds != 1 {
+		t.Fatalf("duration = %v, want the finite clip only", f.EDLDurationSeconds)
+	}
+	for name, d := range map[string]float64{"inf": math.Inf(1), "neg": math.Inf(-1), "nan": math.NaN()} {
+		in := perfectInput()
+		in.EDLDurationSeconds = d
+		r := Score(in, DefaultThresholds())
+		if _, err := json.Marshal(r); err != nil {
+			t.Fatalf("%s: result is not encodable: %v", name, err)
+		}
+		if !hasCode(r, CodeInputMissing) || r.Band == BandHigh {
+			t.Fatalf("%s: band %s reasons %v", name, r.Band, codes(r))
+		}
+	}
+	in := perfectInput()
+	in.Lines[0].Start, in.Lines[0].End = math.NaN(), math.Inf(1)
+	in.Preview.Media.DurationSeconds = math.Inf(1)
+	if _, err := json.Marshal(Score(in, DefaultThresholds())); err != nil {
+		t.Fatalf("non-finite line/media: %v", err)
+	}
+}
