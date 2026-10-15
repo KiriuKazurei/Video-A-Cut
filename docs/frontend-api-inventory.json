@@ -1179,7 +1179,7 @@
       "frontend_function": "无",
       "frontend_ui": "尚未接入（阶段 C）",
       "request": "无",
-      "success_response": "200 {run_id, auto_version, state, halt_reason?, brief, brief_sha256, authorized_by, authorized_at, revoked_*, consent_at_revoke?, consent_granted_by_run, notice_sha256, scope, profile_id, profile_revision, profile_sha256, round, max_rounds, total_rounds, max_total_rounds, actions_used, tts_chars_used, delivery_hold, created_at, updated_at, deadline_at, rounds[], latest_review, decisions[]}",
+      "success_response": "200 {run_id, auto_version, state, halt_reason?, brief, brief_sha256, authorized_by, authorized_at, revoked_*, consent_at_revoke?, consent_granted_by_run, notice_sha256, scope, profile_id, profile_revision, profile_sha256, round, max_rounds, total_rounds, max_total_rounds, actions_used, tts_chars_used, delivery_hold, created_at, updated_at, deadline_at, rounds[], latest_review, decisions[], delivery{delivered, package_ready, preview_id?, preview_status?, preview_is_current, preview_preset, spec: 720p}, decision{reason, can_export, can_revise, deadline_at?}|null, delivery_hold_enforced:false}",
       "behavior": "非 auto run 返回 404；latest_review 在评分器（B2）上线前恒为 null",
       "usage": "后端已提供，前端待接入",
       "backend_handler": "getAuto",
@@ -1214,7 +1214,7 @@
       "frontend_ui": "尚未接入（阶段 C）",
       "request": "JSON：decision(export|revise|discard), expected_auto_version, idempotency_key, feedback?（revise 必填）",
       "success_response": "200 {auto, run}",
-      "behavior": "仅 awaiting_user_decision 可调；export→completed 且 delivery_hold=false；discard→halted(user_discarded)；revise 在重剪驱动（B3）上线前返回 409；auto_version 过期 409；相同 idempotency_key 重放不重复写决策",
+      "behavior": "仅 awaiting_user_decision 可调；export→completed 且 delivery_hold=false（仅当当前 export 的包与 720p 预览都已交付，否则 409）；discard→halted(user_discarded)；revise→按 §6.1 重剪（total_rounds+1，预算不足 409）；auto_version 过期 409；相同 idempotency_key 重放不重复写决策",
       "usage": "后端已提供，前端待接入",
       "backend_handler": "decideAuto",
       "backend_source": {

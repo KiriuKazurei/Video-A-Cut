@@ -674,26 +674,17 @@ func TestDecideAuto(t *testing.T) {
 	if got, _ := env.svc.GetAuto(ctx, run.RunID); got.State != model.AutoStateAwaitingDecision || !got.DeliveryHold {
 		t.Fatalf("a refused decision changed the run: %+v", got)
 	}
-	_, out, err := env.svc.DecideAuto(ctx, "human:webui", run.RunID, "export", "", view.AutoVersion, "d-export")
-	if err != nil {
-		t.Fatal(err)
+	// Nothing was exported for this run, so there is nothing to release; the
+	// release itself is covered by TestDecideAutoExportReleasesTheHold.
+	if _, _, err := env.svc.DecideAuto(ctx, "human:webui", run.RunID, "export", "", view.AutoVersion, "d-export"); !errors.Is(err, model.ErrInvalidState) {
+		t.Fatalf("export without a delivered export: %v", err)
 	}
-	if out.State != model.AutoStateCompleted || out.DeliveryHold || out.AutoVersion != view.AutoVersion+1 {
-		t.Fatalf("export = %+v", out)
+	if got, _ := env.svc.GetAuto(ctx, run.RunID); got.State != model.AutoStateAwaitingDecision || !got.DeliveryHold ||
+		got.Decision == nil || got.Decision.CanExport || got.Delivery.Delivered {
+		t.Fatalf("the refused export changed or misdescribed the run: %+v %+v", got, got.Decision)
 	}
-	_, replay, err := env.svc.DecideAuto(ctx, "human:webui", run.RunID, "export", "", view.AutoVersion, "d-export")
-	if err != nil || replay.AutoVersion != out.AutoVersion {
-		t.Fatalf("replay = %+v %v", replay, err)
-	}
-	exports := 0
-	for _, d := range replay.Decisions {
-		if d.Kind == model.AutoDecisionUserExport && d.Actor == "human:webui" {
-			exports++
-		}
-	}
-	if exports != 1 {
-		t.Fatalf("replay wrote %d export decisions", exports)
-	}
+	var out service.AutoView
+	var err error
 	disc := newAutoEnv(t, false)
 	dr, dv := disc.start(t, "")
 	if _, err := storeOf(t, disc.svc).DB().Exec(`UPDATE workflow_auto SET state='awaiting_user_decision' WHERE run_id=?`, dr.RunID); err != nil {

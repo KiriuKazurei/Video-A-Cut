@@ -88,6 +88,13 @@ type AutoView struct {
 	Rounds       []model.AutoRound    `json:"rounds"`
 	LatestReview *model.AutoReview    `json:"latest_review"`
 	Decisions    []model.AutoDecision `json:"decisions"`
+	// Delivery says what the run has produced (package and 720p preview).
+	Delivery AutoDelivery `json:"delivery"`
+	// Decision is the open question while the run waits for the person.
+	Decision *AutoDecisionPrompt `json:"decision"`
+	// DeliveryHoldEnforced is always false in v1: delivery_hold is a label for
+	// the UI ("待你确认"); delivery.zip and the preview files stay downloadable.
+	DeliveryHoldEnforced bool `json:"delivery_hold_enforced"`
 }
 
 // AutoNoticeView is the fixed disclosure a human must see before authorizing.
@@ -358,7 +365,14 @@ func (s *Service) insertAutoOverlay(ctx context.Context, tx *store.Store, actor 
 // GetAuto returns the auto-run view of a run, or ErrNotFound for a run that
 // is not an auto run.
 func (s *Service) GetAuto(ctx context.Context, runID string) (AutoView, error) {
-	return autoView(ctx, s.st, runID)
+	v, err := autoView(ctx, s.st, runID)
+	if err != nil {
+		return AutoView{}, err
+	}
+	if err := s.fillAutoView(ctx, &v); err != nil {
+		return AutoView{}, err
+	}
+	return v, nil
 }
 
 func autoView(ctx context.Context, st *store.Store, runID string) (AutoView, error) {
@@ -538,6 +552,17 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		kind := model.AutoDecisionUserExport
 		switch decision {
 		case "export":
+			// Releasing the hold means there is something to release: the
+			// package and the 720p preview of the current export. A run that
+			// waits for another reason (the narration was refused before any
+			// export) can be revised or discarded, not exported.
+			d, derr := s.autoDeliveryAt(ctx, tx, runID)
+			if derr != nil {
+				return derr
+			}
+			if !d.Delivered {
+				return fmt.Errorf("service: there is no delivered export to release; revise or discard: %w", model.ErrInvalidState)
+			}
 			a.State, a.DeliveryHold, a.HaltReason = model.AutoStateCompleted, false, ""
 		case "discard":
 			kind = model.AutoDecisionUserDiscard
