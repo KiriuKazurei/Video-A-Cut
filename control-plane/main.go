@@ -46,6 +46,9 @@ const selfcheckAssetID = "_selfcheck"
 // because a cadence is a deployment choice, not a rule about audits.
 const archiveSweepInterval = 24 * time.Hour
 
+// autoDriveInterval is how often live auto runs are advanced.
+const autoDriveInterval = 5 * time.Second
+
 // httpShutdownGrace bounds how long the HTTP surface gets to drain once the
 // process is asked to stop.
 //
@@ -73,6 +76,7 @@ type app struct {
 	bus  *events.Bus
 	recl *queue.Reclaimer
 	arch *queue.Archiver
+	auto *queue.AutoDriver
 	cfg  config.Config
 
 	// httpSrv is the HTTP governance surface, or nil when cfg.HttpAddr is
@@ -165,6 +169,7 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 		bus:  bus,
 		recl: queue.New(svc, leaseInterval(cfg)),
 		arch: queue.NewArchiver(svc, archiveSweepInterval, cfg.AuditRetentionDays, cfg.ArchiveRetentionDays),
+		auto: queue.NewAutoDriver(svc, autoDriveInterval),
 		cfg:  cfg,
 	}
 
@@ -323,7 +328,7 @@ func (a *app) Run(ctx context.Context) error {
 		name string
 		err  error
 	}
-	loopCount := 2
+	loopCount := 3
 	if a.httpSrv != nil {
 		loopCount++
 	}
@@ -339,6 +344,7 @@ func (a *app) Run(ctx context.Context) error {
 	}
 	start("reclaimer", a.recl.Run)
 	start("archiver", a.arch.Run)
+	start("auto-driver", a.auto.Run)
 	if a.httpSrv != nil {
 		start("http", a.serveHTTP)
 	}
