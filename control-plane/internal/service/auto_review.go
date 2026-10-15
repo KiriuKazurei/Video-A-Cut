@@ -66,6 +66,9 @@ func (s *Service) ScoreAutoRun(ctx context.Context, runID, previewID string, aut
 	if err != nil {
 		return model.AutoReview{}, err
 	}
+	if s.afterScoreCollect != nil {
+		s.afterScoreCollect()
+	}
 	res := autoreview.Score(col.input, th)
 	// A review is stored with the numbers that explain it. If they cannot be
 	// encoded nothing is written: an empty "{}" would be a review nobody can

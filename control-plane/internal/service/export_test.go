@@ -17,3 +17,7 @@ func (s *Service) ReopenAssetFromStart(ctx context.Context, actor, assetID strin
 // early Rule A check and its transaction, to reproduce the race the
 // in-transaction check closes.
 func (s *Service) SetAfterEarlyAutoCheck(f func()) { s.afterEarlyAutoCheck = f }
+
+// SetAfterScoreCollect installs a hook that runs between ScoreAutoRun's file
+// reads and its transaction, to reproduce a preview that goes stale in that gap.
+func (s *Service) SetAfterScoreCollect(f func()) { s.afterScoreCollect = f }

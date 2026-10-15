@@ -52,6 +52,9 @@ type Service struct {
 	// early Rule A check and its transaction, the window the in-transaction
 	// check exists for. It is nil outside tests.
 	afterEarlyAutoCheck func()
+	// afterScoreCollect runs between ScoreAutoRun's file reads and its
+	// transaction; tests use it to change the world in that gap.
+	afterScoreCollect func()
 
 	// clock is the auto-run clock (deadlines, decision timeouts). nil means
 	// the wall clock; SetClock lets tests move time without sleeping.

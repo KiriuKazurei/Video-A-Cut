@@ -312,3 +312,22 @@ func TestAutoIdempotencyKeyLengthIsCapped(t *testing.T) {
 		t.Fatalf("128-byte key on start = %d %s, want 201", rec.Code, rec.Body.String())
 	}
 }
+
+// The cap is in bytes, not characters: 43 three-byte characters are 129 bytes.
+func TestAutoIdempotencyKeyLengthCountsBytesNotRunes(t *testing.T) {
+	srv, p, version := autoAPIFixture(t)
+	notice := noticeHash(t, srv, p)
+	for _, n := range []int{43, 64} {
+		key := strings.Repeat("键", n)
+		if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, key)); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%d runes (%d bytes) on start = %d, want 400", n, len(key), rec.Code)
+		}
+		if rec := postJSON(t, srv, "/api/workflows/run_x/auto/decision", `{"decision":"export","expected_auto_version":1,"idempotency_key":"`+key+`"}`); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%d runes on decision = %d, want 400", n, rec.Code)
+		}
+	}
+	key := strings.Repeat("键", 42) // 126 bytes
+	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, key)); rec.Code != http.StatusCreated {
+		t.Fatalf("126-byte multibyte key = %d %s, want 201", rec.Code, rec.Body.String())
+	}
+}
