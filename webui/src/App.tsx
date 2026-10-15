@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined, SoundOutlined
+  CompassOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api, ingestApi } from './api';
 import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
@@ -22,6 +22,8 @@ import { ContextBar } from './components/ContextBar';
 import { PipelineContext } from './components/PipelineContext';
 import { derivePipeline, type StageTarget } from './pipeline';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { AppTour } from './components/AppTour';
+import { markTourSeen, shouldAutoShowTour } from './tour';
 import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
 import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
@@ -123,6 +125,14 @@ export default function App() {
 
   // Phase 4: 全局键盘快捷键与帮助面板
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
+  // 新手引导：首次启动自动弹出一次（自动化浏览器/?tour=0 不弹），页头「新手引导」可随时重开
+  const [tourOpen, setTourOpen] = useState(false);
+  useEffect(() => {
+    if (!shouldAutoShowTour({ storage: window.localStorage, search: window.location.search, hash: window.location.hash, automated: navigator.webdriver })) return;
+    const timer = window.setTimeout(() => setTourOpen(true), 800);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const closeTour = () => { markTourSeen(window.localStorage); setTourOpen(false); };
   useKeyboardShortcuts({
     route,
     navigate,
@@ -272,7 +282,7 @@ export default function App() {
         </div>
         
         {/* 工作区导航：资源、编辑、导出、TTS + 右侧设置 */}
-        <div className="app-nav-wrap" ref={navWrapRef}>
+        <div className="app-nav-wrap" ref={navWrapRef} data-tour="nav">
           <Menu 
             className="app-nav glass-nav" 
             mode="horizontal" 
@@ -290,7 +300,7 @@ export default function App() {
         </div>
 
         {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
-        {/* ≥1600 才放阶段条，避免 1280–1440 挤掉「设置」 */}{screens.xxl && workspace !== 'tts' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
+        {/* ≥1600 在页头放完整阶段条；更窄时改放位置条里的紧凑阶段条（见 ContextBar），避免挤掉「设置」 */}{screens.xxl && workspace !== 'tts' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
         
         <div className="app-header-right">
           {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
@@ -306,7 +316,7 @@ export default function App() {
                   value: a.asset_id,
                   label: `${a.asset_id} (${a.input_kind === 'raw_recording' ? '录像' : '素材'})`
                 }))}
-                style={{ width: screens.sm ? 120 : 90 }}
+                style={{ width: screens.xl ? 120 : 96 }}
                 aria-label="快速切换资产"
                 popupMatchSelectWidth={false}
               />}
@@ -358,10 +368,27 @@ export default function App() {
           <Tooltip title="键盘快捷键速查 (?)">
             <Button
               size="small"
+              className="app-help-btn"
               icon={<QuestionCircleOutlined />}
               onClick={() => setIsShortcutsHelpOpen(true)}
               aria-label="键盘快捷键速查"
             />
+          </Tooltip>
+
+          <Tooltip title="重新查看新手引导：流程与各区域的用法">
+            <Button
+              size="small"
+              className="app-tour-btn"
+              icon={<CompassOutlined />}
+              onClick={() => {
+                // 设置/TTS 页没有侧栏与阶段条，先回到资源管理再开始，引导才讲得清
+                if (workspace === 'settings' || workspace === 'tts') navigate({ workspace: 'resources' });
+                setTourOpen(true);
+              }}
+              aria-label="新手引导"
+            >
+              {screens.xxl ? '新手引导' : null}
+            </Button>
           </Tooltip>
 
           <Button
@@ -410,6 +437,7 @@ export default function App() {
             onGo={goTo}
             onRetryWorkflow={() => { void workflowData.runs.refetch(); }}
             onNavigate={navigate}
+            stepper={!screens.xxl && workspace !== 'tts' ? <PipelineStepper compact stages={pipeline.stages} onGo={goTo} /> : undefined}
             extra={useSidebar && !independentWorkspace ? (
               <div className="sider-toggles">
                 <Button type="text" size="small" icon={leftCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -518,6 +546,8 @@ export default function App() {
           {workspace === 'tts' ? '独立文本试听 · TTS' : `${selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · ${current.label}`}
         </Typography.Text>
       </Layout.Footer>
+
+      <AppTour open={tourOpen} onClose={closeTour} />
 
       {/* Phase 4: 键盘快捷键速查模态框 */}
       <KeyboardShortcutsModal

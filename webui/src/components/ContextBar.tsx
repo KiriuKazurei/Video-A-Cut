@@ -14,6 +14,8 @@ export interface ContextBarProps {
   onNavigate: (route: Partial<RouteState>) => void;
   /** 右端附加控件（侧栏折叠按钮） */
   extra?: ReactNode;
+  /** 窄窗口下放在「下一步」左侧的紧凑流程阶段条 */
+  stepper?: ReactNode;
 }
 
 const hashOf = (r: Partial<RouteState>) => {
@@ -26,7 +28,7 @@ const hashOf = (r: Partial<RouteState>) => {
  * 页内位置条：左侧「工作区 › 分区 › 当前资产」面包屑（每个工作区一致，可点击回到上级），
  * 右侧唯一的主操作「下一步」（由资产与流程的真实状态推导，被阻塞时禁用并写明缺什么）。
  */
-export function ContextBar({ route, assetId, next, onGo, onRetryWorkflow, onNavigate, extra }: ContextBarProps) {
+export function ContextBar({ route, assetId, next, onGo, onRetryWorkflow, onNavigate, extra, stepper }: ContextBarProps) {
   const crumbs = locationCrumbs(route, assetId);
   const blocked = Boolean(next.disabledReason);
   // 当前页 = 最深的“位置”段；资产段只是对象，在非资源页是指向资源管理的链接
@@ -50,12 +52,13 @@ export function ContextBar({ route, assetId, next, onGo, onRetryWorkflow, onNavi
           })}
         </ol>
       </nav>
-      <div className="context-actions">
+      <div className="context-actions" data-tour="next-step">
+        {stepper}
         <span className="next-step-prefix">下一步</span>
         <Tooltip title={next.disabledReason ?? next.hint} placement="bottomRight">
           <span className={`next-step-wrap${blocked ? ' is-blocked' : ''}`} tabIndex={blocked ? 0 : undefined}
             aria-label={blocked ? `下一步（暂不可用）：${next.label}。${next.disabledReason}` : undefined}>
-            <Button key={next.label} className="next-step-btn" type="primary" size="small" disabled={blocked}
+            <Button key={next.label} className="next-step-btn" type="primary" disabled={blocked}
               icon={<RightOutlined />} iconPosition="end" data-next-stage={next.stage ?? ''} data-next-action={next.action ?? ''}
               onClick={() => {
                 if (next.action === 'retry-workflow' && onRetryWorkflow) { onRetryWorkflow(); return; }
