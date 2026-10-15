@@ -59,8 +59,9 @@ export function isInteractiveControl(target: EventTarget | null): boolean {
 /** 字母键不会触发按钮/链接的原生行为，所以只在滑块、页签、下拉等会自己吃键盘的控件上让路 */
 function lettersBlocked(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  // 焦点在按钮/链接上时也不触发（例如停在「退回场景」上按 C，不能变成确认场景）
-  return Boolean(target.closest('button, a[href], .ant-btn, .ant-slider, [role="slider"], [role="tab"], [role="button"], [role="combobox"], [role="listbox"], [role="menu"]'));
+  // 只在「会被字母键误伤」的控件上让路：审查卡片上的操作按钮（确认/退回/批准/撤销…）、链接、滑块、页签、下拉。
+  // 时间线片段等其它按钮点击后焦点会留在上面，此时 C/A/N 仍应可用。
+  return Boolean(target.closest('.workflow-card button, .workflow-card .ant-btn, a[href], .ant-slider, [role="slider"], [role="tab"], [role="combobox"], [role="listbox"], [role="menu"]'));
 }
 
 /** 

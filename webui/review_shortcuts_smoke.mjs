@@ -74,6 +74,18 @@ assert.equal(posts.length, 0, 'no request when a link has focus');
 await page.evaluate(() => document.getElementById('smoke-link')?.remove());
 ok('shortcuts C/A/N are ignored while a button or link has focus');
 
+// 3c) 点击时间线片段（<button>）后焦点留在片段上，C/N 仍然可用；只有审查卡片上的操作按钮才让路
+posts.length = 0;
+await page.locator('.page:not([hidden]) .timeline-clip:visible', { hasText: '场景二' }).first().click(); await page.waitForTimeout(300);
+assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('timeline-clip')), true, 'focus stays on the timeline segment button');
+await page.keyboard.press('n'); await page.waitForTimeout(300);
+assert.match(await visible('.workflow-card.is-focused').innerText(), /场景/);
+await page.locator('.page:not([hidden]) .timeline-clip:visible', { hasText: '场景二' }).first().click(); await page.waitForTimeout(300);
+await page.keyboard.press('c'); await page.waitForTimeout(500);
+const afterClip = posts.find((p) => /scene-reviews/.test(p.url));
+assert.ok(afterClip, 'C works while a timeline segment button has focus'); assert.equal(afterClip.body.decision, 'confirmed');
+ok('C/N still work after clicking a timeline segment button');
+
 // 4) 解说阶段：A 批准当前聚焦（或第一条待批准）解说；非闸口阶段 C 不动作
 state.stage = 'draft_review'; await load('#/editing/review');
 await page.locator('body').click({ position: { x: 5, y: 400 } });
