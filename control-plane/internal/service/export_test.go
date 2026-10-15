@@ -12,3 +12,8 @@ import (
 func (s *Service) ReopenAssetFromStart(ctx context.Context, actor, assetID string) (model.Asset, error) {
 	return s.reopenAsset(ctx, actor, assetID, true)
 }
+
+// SetAfterEarlyAutoCheck installs a hook that runs between startWorkflow's
+// early Rule A check and its transaction, to reproduce the race the
+// in-transaction check closes.
+func (s *Service) SetAfterEarlyAutoCheck(f func()) { s.afterEarlyAutoCheck = f }

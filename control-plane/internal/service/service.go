@@ -47,6 +47,11 @@ type Service struct {
 	controlWait    time.Duration
 	controlWaitSet bool
 	controlHook    func()
+
+	// afterEarlyAutoCheck is a test seam: startWorkflow calls it between the
+	// early Rule A check and its transaction, the window the in-transaction
+	// check exists for. It is nil outside tests.
+	afterEarlyAutoCheck func()
 }
 
 // New returns a Service backed by st with no bus attached. SetBus attaches

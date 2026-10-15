@@ -123,6 +123,9 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 	if err := ensureNoLiveAuto(ctx, s.st, assetID); err != nil {
 		return model.WorkflowRun{}, err
 	}
+	if s.afterEarlyAutoCheck != nil {
+		s.afterEarlyAutoCheck()
+	}
 	if asset.Status == model.AssetStatusExported && prepared == nil {
 		if _, err := s.reopenAsset(ctx, actor, assetID, true); err != nil {
 			return model.WorkflowRun{}, err
@@ -139,10 +142,12 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 			return e
 		}
 		consentGranted := false
+		// Rule A again, atomically, for every start (manual ones included):
+		// an auto run can become live between the early check and here.
+		if e := ensureNoLiveAuto(ctx, tx, assetID); e != nil {
+			return e
+		}
 		if auto != nil {
-			if e := ensureNoLiveAuto(ctx, tx, assetID); e != nil {
-				return e
-			}
 			if auto.grantConsent {
 				// Consent is granted in this transaction, before the preflight
 				// that reads it, so a failed start leaves no consent behind.
