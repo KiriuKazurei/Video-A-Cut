@@ -179,8 +179,8 @@ export function PreparationPanel({
           <Alert
             type={pickerMismatch?'info':report.data.can_start?'success':'warning'}
             showIcon
-            message={pickerMismatch?'正在载入所选预设…':report.data.can_start?'可以开始生成':'还不能开始'}
-            description={pickerMismatch?'载入完成并重新检查后才能开始，确保启动的就是上面选中的预设版本。':!report.data.can_start&&blockers.length?`还差：${blockerTip}`:report.data.can_start?'点击下方按钮开始。生成过程可在「编辑」页查看。':undefined}
+            message={pickerMismatch?(loadError?'暂时无法确认所选预设版本':'正在载入所选预设…'):report.data.can_start?'可以开始生成':'还不能开始'}
+            description={pickerMismatch?(loadError?'请先处理上方的读取失败提示，再开始生成。':'载入完成并重新检查后才能开始，确保启动的就是上面选中的预设版本。'):!report.data.can_start&&blockers.length?`还差：${blockerTip}`:report.data.can_start?'点击下方按钮开始。生成过程可在「编辑」页查看。':undefined}
           />
           <Collapse size="small" defaultActiveKey={report.data.can_start ? [] : ['checks']} items={[{ key: 'checks', label: '查看检查明细', children:
             <List size="small" className="check-list" dataSource={report.data.checks} renderItem={c=><List.Item key={c.code} className={`check-${c.status}`}>
