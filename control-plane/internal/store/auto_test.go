@@ -203,3 +203,37 @@ func TestUpsertSceneReviewAutoNeverOverwritesAHuman(t *testing.T) {
 		t.Fatalf("rows = %+v", got)
 	}
 }
+
+func TestAutoReviewInsertAndLookupByPreview(t *testing.T) {
+	s := mustOpen(t)
+	ctx := context.Background()
+	run := autoFixture(t, s, "a1", "r1")
+	now := time.Now().UTC().Truncate(time.Second)
+	review := func(id string, round int, preview string, at time.Time) model.AutoReview {
+		return model.AutoReview{ReviewID: id, RunID: run.RunID, Round: round, RevisionID: run.CurrentRevisionID, PreviewID: preview,
+			ScorerVersion: "v1", Score: 0.9, Band: "high", Reasons: []byte(`[]`), CreatedAt: at}
+	}
+	if _, err := s.GetAutoReviewForPreview(ctx, run.RunID, 0, "p1"); !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("before insert: %v", err)
+	}
+	if err := s.InsertAutoReview(ctx, review("arv_1", 0, "p1", now)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertAutoReview(ctx, review("arv_1", 0, "p1", now)); err == nil {
+		t.Fatal("a review id is unique")
+	}
+	if err := s.InsertAutoReview(ctx, review("arv_2", 1, "p1", now.Add(time.Second))); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetAutoReviewForPreview(ctx, run.RunID, 0, "p1")
+	if err != nil || got.ReviewID != "arv_1" || string(got.Reasons) != "[]" || string(got.Inputs) != "{}" || string(got.Thresholds) != "{}" || got.Band != "high" {
+		t.Fatalf("got %+v %v", got, err)
+	}
+	if _, err := s.GetAutoReviewForPreview(ctx, run.RunID, 0, "other"); !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("other preview: %v", err)
+	}
+	list, err := s.ListAutoReviews(ctx, run.RunID)
+	if err != nil || len(list) != 2 || list[0].ReviewID != "arv_1" || list[1].ReviewID != "arv_2" {
+		t.Fatalf("list %+v %v", list, err)
+	}
+}

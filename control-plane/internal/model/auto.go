@@ -35,7 +35,10 @@ const (
 )
 
 // Ledger action kinds recorded in auto_actions.
-const AutoActionSceneConfirm = "scene_confirm"
+const (
+	AutoActionSceneConfirm = "scene_confirm"
+	AutoActionScore        = "score"
+)
 
 // Halt reasons recorded in workflow_auto.halt_reason.
 const (
@@ -126,8 +129,8 @@ type AutoRound struct {
 	Outcome        string     `json:"outcome,omitempty"`
 }
 
-// AutoReview is one stored self-assessment. B1 creates the table and reads it;
-// the scorer that writes it arrives in B2.
+// AutoReview is one stored self-assessment, written by the scorer in
+// internal/autoreview. Reasons holds closed codes and numbers only.
 type AutoReview struct {
 	ReviewID      string          `json:"review_id"`
 	RunID         string          `json:"run_id"`

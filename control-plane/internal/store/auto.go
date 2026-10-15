@@ -135,6 +135,54 @@ func (s *Store) ListAutoRounds(ctx context.Context, runID string) ([]model.AutoR
 	return out, rows.Err()
 }
 
+// InsertAutoReview stores one self-assessment. Reviews are append-only.
+func (s *Store) InsertAutoReview(ctx context.Context, r model.AutoReview) error {
+	reasons, inputs, thresholds := string(r.Reasons), string(r.Inputs), string(r.Thresholds)
+	if reasons == "" {
+		reasons = "[]"
+	}
+	if inputs == "" {
+		inputs = "{}"
+	}
+	if thresholds == "" {
+		thresholds = "{}"
+	}
+	_, err := s.q.ExecContext(ctx, `INSERT INTO auto_reviews
+  (review_id, run_id, round, revision_id, preview_id, scorer_version, score, band, reasons_json, inputs_json, thresholds_json, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ReviewID, r.RunID, r.Round, r.RevisionID, r.PreviewID, r.ScorerVersion, r.Score, r.Band, reasons, inputs, thresholds, r.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("store: insert auto review %s: %w", r.ReviewID, err)
+	}
+	return nil
+}
+
+// GetAutoReviewForPreview returns the first review a preview received in a
+// round, or ErrNotFound.
+func (s *Store) GetAutoReviewForPreview(ctx context.Context, runID string, round int, previewID string) (model.AutoReview, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT review_id, run_id, round, revision_id, preview_id, scorer_version, score, band,
+  reasons_json, inputs_json, thresholds_json, created_at FROM auto_reviews
+  WHERE run_id = ? AND round = ? AND preview_id = ? ORDER BY created_at, review_id LIMIT 1`, runID, round, previewID)
+	if err != nil {
+		return model.AutoReview{}, fmt.Errorf("store: get auto review: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return model.AutoReview{}, err
+		}
+		return model.AutoReview{}, fmt.Errorf("store: auto review of preview %s: %w", previewID, model.ErrNotFound)
+	}
+	var r model.AutoReview
+	var reasons, inputs, thresholds string
+	if err := rows.Scan(&r.ReviewID, &r.RunID, &r.Round, &r.RevisionID, &r.PreviewID, &r.ScorerVersion, &r.Score, &r.Band,
+		&reasons, &inputs, &thresholds, &r.CreatedAt); err != nil {
+		return model.AutoReview{}, err
+	}
+	r.Reasons, r.Inputs, r.Thresholds = json.RawMessage(reasons), json.RawMessage(inputs), json.RawMessage(thresholds)
+	return r, nil
+}
+
 func (s *Store) ListAutoReviews(ctx context.Context, runID string) ([]model.AutoReview, error) {
 	rows, err := s.q.QueryContext(ctx, `SELECT review_id, run_id, round, revision_id, preview_id, scorer_version, score, band,
   reasons_json, inputs_json, thresholds_json, created_at FROM auto_reviews WHERE run_id = ? ORDER BY created_at, review_id`, runID)
