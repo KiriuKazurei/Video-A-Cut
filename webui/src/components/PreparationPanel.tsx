@@ -50,13 +50,17 @@ export function PreparationPanel({
   // 1) 没选预设时自动载入第一个已保存预设；2) 下拉一变立刻载入该预设当前版本；3) 预设列表里该预设的版本号变了（例如在设置页保存了 v2）就重新载入。
   const quick=activeSection==='quickstart';
   const loadSeq=useRef(0);
+  const inflight=useRef(false);
+  const failedKey=useRef('');          // 上次失败的「预设@列表版本」；同一个键不再自动重试，避免失败后无限重试
   const [loading,setLoading]=useState(false);
+  const [loadError,setLoadError]=useState('');
   const loadDraft=(id:string,rev:number)=>{
     const seq=++loadSeq.current;
-    setLoading(true);
-    return api.getProfile(id,rev).then(p=>{if(seq!==loadSeq.current)return;setDraft(p.profile);setSelected(p.profile.profile_id);setError('');setNotice('')})
-      .catch(e=>{if(seq===loadSeq.current)setError(e instanceof Error?e.message:'读取预设失败')})
-      .finally(()=>{if(seq===loadSeq.current)setLoading(false)});
+    inflight.current=true;
+    setLoading(true);setLoadError('');
+    return api.getProfile(id,rev).then(p=>{if(seq!==loadSeq.current)return;failedKey.current='';setDraft(p.profile);setSelected(p.profile.profile_id);setError('');setNotice('')})
+      .catch(e=>{if(seq===loadSeq.current)setLoadError(e instanceof Error?e.message:'读取预设失败')})
+      .finally(()=>{if(seq===loadSeq.current){inflight.current=false;setLoading(false)}});
   };
   const autoLoaded=useRef(false);
   useEffect(()=>{
@@ -66,14 +70,21 @@ export function PreparationPanel({
     void loadDraft(profiles.data[0].profile_id,0);
   },[quick,draft.revision,profiles.data]);
   const listedRevision=profiles.data?.find(p=>p.profile_id===draft.profile_id)?.revision;
+  // 列表里该预设的版本与卡片 draft 不同 → 重新载入。用 ref 判断是否在载入、记住失败的版本，
+  // 依赖里不放 loading：失败后 loading 翻转不会再触发这里（否则会每帧重试）。
   useEffect(()=>{
-    if(!quick||loading||draft.revision<1||listedRevision===undefined||listedRevision===draft.revision)return;
+    if(!quick||inflight.current||draft.revision<1||listedRevision===undefined||listedRevision===draft.revision)return;
+    if(selected!==draft.profile_id)return;                 // 用户刚换了预设，由选择器自己载入
     if(listedRevision<draft.revision){void profiles.refetch();return}  // 列表比 draft 旧：刷新列表，不反复载入
+    const key=`${draft.profile_id}@${listedRevision}`;
+    if(failedKey.current===key)return;                      // 这个版本已经失败过：等列表版本/所选预设变化或手动重试
+    failedKey.current=key;
     void loadDraft(draft.profile_id,0);
-  },[quick,loading,draft.profile_id,draft.revision,listedRevision]);
+  },[quick,draft.profile_id,draft.revision,listedRevision,selected]);
+  const retryLoad=()=>{const id=selected||draft.profile_id;if(!id)return;failedKey.current='';void loadDraft(id,0)};
   // 安全网：选择器显示的预设/版本必须与已载入的 draft 一致，否则不允许开始
   const picked=profiles.data?.find(p=>p.profile_id===selected);
-  const pickerMismatch=quick&&(loading||selected!==draft.profile_id||(picked!==undefined&&picked.revision!==draft.revision));
+  const pickerMismatch=quick&&(loading||Boolean(loadError)||selected!==draft.profile_id||(picked!==undefined&&picked.revision!==draft.revision));
   const refresh=async()=>{await Promise.all(['processing-profiles','prepared','workflows','assets','audit'].map(k=>client.invalidateQueries({queryKey:[k]})))};
   const action=useMutation({mutationFn:(fn:()=>Promise<unknown>)=>fn(),onSuccess:async()=>{setError('');await refresh()},onError:e=>{setError(e instanceof Error?e.message:'操作失败');void refresh()}});
   const busy=action.isPending;
@@ -83,11 +94,18 @@ export function PreparationPanel({
   const sampling=(patch:Partial<ProcessingProfile['sampling']>)=>edit({...draft,sampling:{...draft.sampling,...patch}});
   const save=()=>action.mutate(async()=>{const saved=await api.saveProfile({...draft,revision:draft.revision+1},draft.revision);setDraft(saved);setSelected(saved.profile_id);setNotice(`已保存 v${saved.revision}`)});
   const fetchError=error||(profiles.error instanceof Error?profiles.error.message:report.error instanceof Error?report.error.message:profiles.error||report.error?'读取失败':'');
-  const startFlow=()=>action.mutate(async()=>{
-    const run=await api.startPrepared(assetId,draft.profile_id,draft.revision,report.data!.expected_asset_version!);
-    setNotice('已开始生成。请到「编辑」页确认场景并批准解说。');
-    onStarted?.(run);
-  });
+  const starting=useRef(false);  // 同步锁：同一拍内的双击只发一次启动请求（busy 状态要等下一次渲染才生效）
+  const startFlow=()=>{
+    if(starting.current)return;
+    starting.current=true;
+    action.mutate(async()=>{
+      try{
+        const run=await api.startPrepared(assetId,draft.profile_id,draft.revision,report.data!.expected_asset_version!);
+        setNotice('已开始生成。请到「编辑」页确认场景并批准解说。');
+        onStarted?.(run);
+      }finally{starting.current=false}
+    });
+  };
   const goSave=()=>{
     if(activeSection==='all'){
       document.querySelector<HTMLElement>('[data-nav-anchor="profile-save"]')?.focus();
@@ -196,6 +214,9 @@ export function PreparationPanel({
 
   if(activeSection==='quickstart')return <Flex vertical gap={12} className="quickstart-panel" data-nav-anchor="quickstart" tabIndex={-1}>
     {profilePicker}
+    {loadError&&<Alert type="error" showIcon role="alert" className="quickstart-load-error" message={`读取预设失败：${loadError}`}
+      description="已暂停自动重试，「开始生成」保持禁用。换一个预设、预设版本更新，或点右侧「重试」后会再次载入。"
+      action={<Button type="link" size="small" onClick={retryLoad} disabled={loading}>重试</Button>}/>}
     {fetchError&&<Alert type="error" showIcon role="alert" message={fetchError}/>}
     {readinessCard}
   </Flex>;
