@@ -820,3 +820,14 @@ button.timeline-clip:active { transform: scale(0.99); }
 .profile-picker-quick .quickstart-advanced { padding-inline: 4px; height: 32px; color: rgba(255, 255, 255, 0.62); }
 /* 行内 <code>（antd 默认 85% ≈ 11px）不小于 12px */
 body code, body .ant-typography code { font-size: 12px; }
+
+/* 自动模式（一句话剪辑）：标准 antd 组件，不加大圆角、不加玻璃效果 */
+.start-mode-body { margin-top: 12px; }
+.auto-after-progress { margin-top: 12px; }
+.auto-progress { margin-bottom: 0; }
+.auto-start { max-width: 760px; }
+.auto-steps { margin-top: 4px; }
+.auto-reasons { margin: 0; padding-left: 20px; color: rgba(255, 255, 255, 0.65); font-size: 12px; }
+.auto-notice .ant-alert-description { font-size: 12px; line-height: 1.7; }
+.auto-relax { padding-left: 24px; }
+.auto-deadline { font-size: 12px; }

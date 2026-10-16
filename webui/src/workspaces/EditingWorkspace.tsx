@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Button, Card, Tabs } from 'antd';
+import { Alert, Button, Card, Segmented, Tabs } from 'antd';
 import { StageDot } from '../components/PipelineContext';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
@@ -13,6 +13,50 @@ import { displayWorkflowPreview, samePreviewContext, workflowPreviewContext } fr
 import { Monitor, PreviewScope, type PreviewSource } from '../components/Monitor';
 import { PreparationPanel } from '../components/PreparationPanel';
 import { NoAssetEmpty } from '../components/NoAssetEmpty';
+import { AutoRunProgress, AutoRunStart, useAutoView } from '../components/AutoRunPanel';
+import { autoPolling } from '../autoRun';
+
+const START_MODE_KEY = 'vac_start_mode_v1';
+type StartMode = 'manual' | 'auto';
+const readStartMode = (): StartMode => { try { return localStorage.getItem(START_MODE_KEY) === 'auto' ? 'auto' : 'manual'; } catch { return 'manual'; } };
+
+/** 「开始生成」卡：分步生成（预设 + 预检 + 开始）与自动模式（一句话 + 全局授权 + 一键）并存；当前流程是自动模式时先展示进度。 */
+function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
+  asset: Asset;
+  run?: WorkflowRun;
+  selection: RunSelection;
+  navigate: (state: Partial<RouteState>) => void;
+  onPreparedStarted: (run: WorkflowRun) => void;
+}) {
+  const [mode, setMode] = useState<StartMode>(readStartMode);
+  const pick = (m: StartMode) => { setMode(m); try { localStorage.setItem(START_MODE_KEY, m); } catch { /* 隐私模式：本次会话内有效即可 */ } };
+  const auto = useAutoView(run?.run_id);
+  const live = autoPolling(auto.data?.state);
+  // 自动流程已结束（完成/停止/撤销/取消）：默认只看结果，需要时再展开「重新生成」。
+  const ended = Boolean(auto.data) && !live;
+  const [showForm, setShowForm] = useState(false);
+  useEffect(() => { setShowForm(false); }, [run?.run_id]);
+  const goReview = () => navigate({ workspace: 'editing', editingSection: 'review' });
+  return (
+    <Card size="small" className="quickstart-card" title="开始生成" data-nav-anchor="quickstart-card" tabIndex={-1}
+      extra={<span className="quickstart-extra">{mode === 'auto' ? '写一句要求，Agent 自动剪辑并导出' : '自动完成识别、撰稿、配音与字幕，随后进入审查'}</span>}>
+      <AutoRunProgress run={run} onGoReview={goReview} />
+      {ended && !showForm && <Button type="link" className="auto-restart" style={{ paddingInline: 0, marginTop: 8 }} onClick={() => setShowForm(true)}>重新生成…</Button>}
+      {!live && (!ended || showForm) && (
+        <div className={auto.data ? 'auto-after-progress' : undefined}>
+          <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={pick}
+            options={[{ value: 'manual', label: '分步生成' }, { value: 'auto', label: '自动模式' }]} />
+          <div className="start-mode-body">
+            {mode === 'auto'
+              ? <AutoRunStart assetId={asset.asset_id} onGoSettings={() => navigate({ workspace: 'settings', settingsCategory: 'profiles' })}
+                  onStarted={(r) => { selection.setOffset(0); selection.setRunId(r.run_id); }} />
+              : <PreparationPanel assetId={asset.asset_id} activeSection="quickstart" onStarted={onPreparedStarted} onNavigate={navigate} />}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 interface EditingWorkspaceProps {
   route: RouteState;
@@ -95,12 +139,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                   <IngestRegister onSelect={onSelect} />
                   <DeliveryImport onImported={onSelect} />
                   <IngestPanel asset={asset} />
-                  {asset && (
-                    <Card size="small" className="quickstart-card" title="开始生成" data-nav-anchor="quickstart-card" tabIndex={-1}
-                      extra={<span className="quickstart-extra">自动完成识别、撰稿、配音与字幕，随后进入审查</span>}>
-                      <PreparationPanel assetId={asset.asset_id} activeSection="quickstart" onStarted={onPreparedStarted} onNavigate={navigate} />
-                    </Card>
-                  )}
+                  {asset && <StartCard asset={asset} run={workflowData.current} selection={selection} navigate={navigate} onPreparedStarted={onPreparedStarted} />}
                 </PreviewScope>
               )}
               
