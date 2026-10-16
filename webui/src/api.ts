@@ -75,7 +75,7 @@ export const api = {
   startAutoRun: (asset: string, body: object) => request<{ run: WorkflowRun; auto: AutoView }>(`/api/assets/${encodeURIComponent(asset)}/auto-runs`, json('POST', body)),
   getAuto: (runId: string) => request<AutoView>(`/api/workflows/${encodeURIComponent(runId)}/auto`),
   autoReviews: (runId: string) => request<AutoReviewInfo[]>(`/api/workflows/${encodeURIComponent(runId)}/auto/reviews`),
-  decideAuto: (runId: string, body: { decision: 'export' | 'revise'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
+  decideAuto: (runId: string, body: { decision: 'export' | 'revise' | 'discard'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
     request<{ auto: AutoView; run: WorkflowRun }>(`/api/workflows/${encodeURIComponent(runId)}/auto/decision`, json('POST', body)),
   revokeAuto: (runId: string, body: { reason: string; expected_auto_version: number; also_revoke_consent: boolean }) =>
     request<{ auto: AutoView }>(`/api/workflows/${encodeURIComponent(runId)}/auto/revoke`, json('POST', body)),

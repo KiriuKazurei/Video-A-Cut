@@ -9,27 +9,33 @@ import { previewFileURL } from '../previewContracts';
 import type { ProcessingProfile } from '../preparation';
 import type { WorkflowRun } from '../types';
 import {
-  AUTO_PHASES, HIGH_SCORE_DEFAULT, HIGH_SCORE_FLOOR, autoErrorText, autoPanelModel, autoPolling, autoPreflightBlockers,
-  bandLabel, buildAutoRunBody, canStartAuto, decisionHeadline, phaseIndex, reasonLines, type AutoView
+  HIGH_SCORE_DEFAULT, HIGH_SCORE_FLOOR, autoDecisionBody, autoErrorText, autoPanelModel, autoPolling, autoPreflightBlockers, autoSteps,
+  bandLabel, buildAutoRunBody, canStartAuto, decisionHeadline, decisionHoldLabel, deliveryNote, noteAutoMissing, noteAutoPresent, reasonLines, shouldRequestAuto, type AutoView
 } from '../autoRun';
 import { ValueSelect } from './ui';
 
-/** 当前流程的自动模式视图。普通（非自动）流程后端回 404：按「不是自动模式」处理，不当作错误、不重试。 */
+/** 当前流程的自动模式视图。普通（非自动）流程后端回 404：按「不是自动模式」处理，不当作错误；记下之后不再请求。 */
 export function useAutoView(runId: string | undefined) {
+  // 404 记在模块级集合里。查询结果回来后这次渲染会把 enabled 关掉，快照刷新不会再打。
   return useQuery<AutoView | null>({
     queryKey: ['auto', runId],
-    enabled: Boolean(runId),
+    enabled: shouldRequestAuto(runId),
     retry: false,
     queryFn: async () => {
-      try { return await api.getAuto(runId!); } catch (e) { if (e instanceof ApiError && e.status === 404) return null; throw e; }
+      if (!runId || !shouldRequestAuto(runId)) return null;
+      try {
+        const view = await api.getAuto(runId);
+        noteAutoPresent(runId);
+        return view;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) { noteAutoMissing(runId); return null; }
+        throw e;
+      }
     },
     // 出错后不再自动轮询（避免失败后无限请求）；用户点「重试」或事件到来才会再拉。
     refetchInterval: (q) => (q.state.status === 'error' ? false : autoPolling(q.state.data?.state) ? 5000 : false)
   });
 }
-
-const stepStatusOf = (i: number, cur: number, model: ReturnType<typeof autoPanelModel>, failed: boolean) =>
-  i < cur ? 'finish' as const : i === cur ? (failed ? 'error' as const : model.live || model.kind === 'decision' ? 'process' as const : 'wait' as const) : 'wait' as const;
 
 /** 进度 + 自评结果 + 决策卡 + 下载入口。当前流程不是自动模式时不渲染。 */
 export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoReview: () => void }) {
@@ -61,14 +67,18 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
   const currentRun = snapshot.data?.run ?? run;
   const model = autoPanelModel(a, currentRun);
   const failed = currentRun.status === 'failed';
-  const cur = phaseIndex(currentRun.stage);
+  const steps = autoSteps(currentRun.stage, model, { failed, decisionReason: a.decision?.reason ?? a.halt_reason });
   const review = a.latest_review;
   const lines = reasonLines(review);
-  const decide = (decision: 'export' | 'revise') => invoke(() => api.decideAuto(a.run_id, { decision, ...(decision === 'revise' ? { feedback: feedback.trim() } : {}), expected_auto_version: a.auto_version, idempotency_key: crypto.randomUUID() })
-    .then(() => { setFeedback(''); setFeedbackOpen(false); }));
+  const decide = (decision: 'export' | 'revise' | 'discard') => invoke(() => api.decideAuto(a.run_id, autoDecisionBody(decision, {
+    feedback, expectedAutoVersion: a.auto_version, idempotencyKey: crypto.randomUUID()
+  })).then(() => { setFeedback(''); setFeedbackOpen(false); }));
   const revoke = () => invoke(() => api.revokeAuto(a.run_id, { reason: 'user_revoked_from_ui', expected_auto_version: a.auto_version, also_revoke_consent: alsoConsent }));
   const deadline = a.decision?.deadline_at ? dayjs(a.decision.deadline_at).format('YYYY-MM-DD HH:mm') : '';
   const d = a.delivery;
+  const holdLabel = decisionHoldLabel(a.delivery_hold);
+  const footnote = deliveryNote(d);
+  const finished = steps.filter(step => step.status === 'finish').length;
 
   return (
     <Card size="small" className="auto-progress" data-auto-kind={model.kind} title="自动剪辑进度"
@@ -83,8 +93,8 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
       )}>
       <Flex vertical gap={12}>
         <Alert type={model.alert} showIcon message={model.title} description={model.description} />
-        <Steps size="small" current={Math.min(cur, AUTO_PHASES.length - 1)} className="auto-steps"
-          items={AUTO_PHASES.map((title, i) => ({ title, status: stepStatusOf(i, cur, model, failed) }))} />
+        <Steps size="small" className="auto-steps" current={finished}
+          items={steps.map((step) => ({ title: step.title, status: step.status, description: step.note }))} />
         {review && (
           <Flex vertical gap={4} className="auto-review">
             <Space size={8} wrap>
@@ -95,17 +105,21 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
           </Flex>
         )}
         {model.kind === 'decision' && a.decision && (
-          <Card size="small" type="inner" className="auto-decision" title={<span>待你确认 <Tag bordered={false}>{a.delivery_hold ? '尚未导出' : '已确认'}</Tag></span>}>
+          <Card size="small" type="inner" className="auto-decision" title={<span>待你确认{holdLabel && <> <Tag bordered={false}>{holdLabel}</Tag></>}</span>}>
             <Flex vertical gap={12}>
               <Typography.Text>{decisionHeadline(a.decision.reason, a.decision.can_export).description}</Typography.Text>
               {deadline && <Typography.Text type="secondary" className="auto-deadline">请在 {deadline} 前决定；超时会停止，不会自动导出。</Typography.Text>}
               <Space wrap>
-                <Tooltip title={a.decision.can_export ? undefined : '还没有可导出的成片，只能提出修改意见'}>
+                <Tooltip title={a.decision.can_export ? undefined : '还没有可导出的成片，只能提出修改意见或放弃'}>
                   <Button type="primary" className="vac-cta" disabled={!a.decision.can_export || act.isPending} onClick={() => decide('export')}>直接导出</Button>
                 </Tooltip>
                 <Tooltip title={a.decision.can_revise ? undefined : '重剪次数或额度已用完，不能再提修改意见'}>
                   <Button disabled={!a.decision.can_revise || act.isPending} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(o => !o)}>提出修改意见</Button>
                 </Tooltip>
+                <Popconfirm title="放弃这次结果？" okText="放弃" cancelText="再想想" okButtonProps={{ danger: true }}
+                  description="自动剪辑会停在这里，不会导出。之后可以改为手动处理。" onConfirm={() => decide('discard')}>
+                  <Button disabled={act.isPending}>放弃</Button>
+                </Popconfirm>
               </Space>
               {feedbackOpen && a.decision.can_revise && (
                 <Flex vertical gap={8}>
@@ -124,7 +138,7 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
               {d.package_ready && <Button icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(a.run_id)}/delivery.zip`)}>下载交付包（含原画质分段）</Button>}
               <Button onClick={onGoReview}>去审查验收</Button>
             </Space>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>成片为 {d.spec} 预览规格；原画质分段在交付包里，可导入剪辑软件继续精修。</Typography.Text>
+            {footnote && <Typography.Text type="secondary" className="auto-delivery-note" style={{ fontSize: 12 }}>{footnote}</Typography.Text>}
           </Flex>
         )}
         {model.canTakeOver && <div><Button onClick={onGoReview}>改为手动处理</Button></div>}
@@ -177,6 +191,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
     },
     onSuccess: async ({ run }) => {
       setError('');
+      noteAutoPresent(run.run_id);
       await Promise.all(['workflows', 'workflow', 'assets', 'auto', 'prepared', 'audit'].map(k => client.invalidateQueries({ queryKey: [k] })));
       onStarted(run);
     },
