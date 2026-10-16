@@ -93,7 +93,7 @@ export function EvidenceSummaryCard({
                   {details.map((row) => (
                     <Typography.Text key={row.label} type="secondary" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>
                       {row.label}{' '}
-                      <Typography.Text code copyable={{ text: row.value }} style={{ fontSize: 11 }}>
+                      <Typography.Text code copyable={{ text: row.value }} style={{ fontSize: 12 }}>
                         {row.value.length > 48 ? `${row.value.slice(0, 20)}…${row.value.slice(-12)}` : row.value}
                       </Typography.Text>
                     </Typography.Text>

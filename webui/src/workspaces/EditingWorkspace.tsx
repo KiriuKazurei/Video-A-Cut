@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Tabs, Typography } from 'antd';
+import { Alert, Button, Card, Segmented, Tabs } from 'antd';
 import { StageDot } from '../components/PipelineContext';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
@@ -11,6 +11,52 @@ import { DeliveryImport } from '../components/DeliveryPanel';
 import { WorkflowPanel, useWorkflowData } from '../components/WorkflowPanel';
 import { displayWorkflowPreview, samePreviewContext, workflowPreviewContext } from '../previewContext';
 import { Monitor, PreviewScope, type PreviewSource } from '../components/Monitor';
+import { PreparationPanel } from '../components/PreparationPanel';
+import { NoAssetEmpty } from '../components/NoAssetEmpty';
+import { AutoRunProgress, AutoRunStart, useAutoView } from '../components/AutoRunPanel';
+import { autoPolling } from '../autoRun';
+
+const START_MODE_KEY = 'vac_start_mode_v1';
+type StartMode = 'manual' | 'auto';
+const readStartMode = (): StartMode => { try { return localStorage.getItem(START_MODE_KEY) === 'auto' ? 'auto' : 'manual'; } catch { return 'manual'; } };
+
+/** 「开始生成」卡：分步生成（预设 + 预检 + 开始）与自动模式（一句话 + 全局授权 + 一键）并存；当前流程是自动模式时先展示进度。 */
+function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
+  asset: Asset;
+  run?: WorkflowRun;
+  selection: RunSelection;
+  navigate: (state: Partial<RouteState>) => void;
+  onPreparedStarted: (run: WorkflowRun) => void;
+}) {
+  const [mode, setMode] = useState<StartMode>(readStartMode);
+  const pick = (m: StartMode) => { setMode(m); try { localStorage.setItem(START_MODE_KEY, m); } catch { /* 隐私模式：本次会话内有效即可 */ } };
+  const auto = useAutoView(run?.run_id);
+  const live = autoPolling(auto.data?.state);
+  // 自动流程已结束（完成/停止/撤销/取消）：默认只看结果，需要时再展开「重新生成」。
+  const ended = Boolean(auto.data) && !live;
+  const [showForm, setShowForm] = useState(false);
+  useEffect(() => { setShowForm(false); }, [run?.run_id]);
+  const goReview = () => navigate({ workspace: 'editing', editingSection: 'review' });
+  return (
+    <Card size="small" className="quickstart-card" title="开始生成" data-nav-anchor="quickstart-card" tabIndex={-1}
+      extra={<span className="quickstart-extra">{mode === 'auto' ? '写一句要求，Agent 自动剪辑并导出' : '自动完成识别、撰稿、配音与字幕，随后进入审查'}</span>}>
+      <AutoRunProgress run={run} onGoReview={goReview} />
+      {ended && !showForm && <Button type="link" className="auto-restart" style={{ paddingInline: 0, marginTop: 8 }} onClick={() => setShowForm(true)}>重新生成…</Button>}
+      {!live && (!ended || showForm) && (
+        <div className={auto.data ? 'auto-after-progress' : undefined}>
+          <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={pick}
+            options={[{ value: 'manual', label: '分步生成' }, { value: 'auto', label: '自动模式' }]} />
+          <div className="start-mode-body">
+            {mode === 'auto'
+              ? <AutoRunStart assetId={asset.asset_id} onGoSettings={() => navigate({ workspace: 'settings', settingsCategory: 'profiles' })}
+                  onStarted={(r) => { selection.setOffset(0); selection.setRunId(r.run_id); }} />
+              : <PreparationPanel assetId={asset.asset_id} activeSection="quickstart" onStarted={onPreparedStarted} onNavigate={navigate} />}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 interface EditingWorkspaceProps {
   route: RouteState;
@@ -44,6 +90,26 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
   useEffect(() => {
     setProgramPreview(previous => samePreviewContext(previous?.workflowContext, owner) ? previous : null);
   }, [owner?.assetId, owner?.runId, owner?.revisionId]);
+  // 「开始生成」入口放在导入页底部：从别处跳来时切到导入页并滚动、聚焦到它
+  const goStart = () => {
+    navigate({ workspace: 'editing', editingSection: 'import' });
+    let tries = 0;
+    const attempt = () => {
+      const el = [...document.querySelectorAll<HTMLElement>('.page:not([hidden]) [data-nav-anchor="quickstart-card"]')].find((n) => n.offsetParent !== null);
+      if (!el) { if (++tries < 15) requestAnimationFrame(attempt); return; }
+      // 吸顶的源监视器与位置条会盖住上沿：滚到它们的下沿，而不是视口顶
+      const scroller = el.closest<HTMLElement>('.stage-main');
+      const pinned = document.querySelector<HTMLElement>('.page:not([hidden]) .sticky-monitor') ?? document.querySelector<HTMLElement>('.context-bar');
+      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      if (scroller && pinned && getComputedStyle(pinned).position === 'sticky') {
+        scroller.scrollTo({ top: scroller.scrollTop + el.getBoundingClientRect().top - pinned.getBoundingClientRect().bottom - 8, behavior });
+      } else {
+        el.scrollIntoView({ block: 'start', behavior });
+      }
+      el.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(attempt);
+  };
   const visibleProgramPreview = displayWorkflowPreview(programPreview, owner, workflowData.review.data);
 
   return (
@@ -67,15 +133,22 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                       emptyHint="单击时间线或缩略图预览；双击时间线片段加入/移出已选；短片生成后点击卡片在此播放。" 
                     />
                   </div>
+                  {asset && <Alert type="info" showIcon className="start-banner" message="素材导入好了？"
+                    description="在页面最下方的「开始生成」里检查条件并一键开始；也可以先在上方选好段落再开始。"
+                    action={<Button type="primary" className="vac-cta" onClick={goStart}>去开始生成</Button>} />}
                   <IngestRegister onSelect={onSelect} />
                   <DeliveryImport onImported={onSelect} />
                   <IngestPanel asset={asset} />
+                  {asset && <StartCard asset={asset} run={workflowData.current} selection={selection} navigate={navigate} onPreparedStarted={onPreparedStarted} />}
                 </PreviewScope>
               )}
               
               {section.id === 'content' && asset && (
                 <PreviewScope onPreview={setProgramPreview}>
                   <WorkflowPanel 
+                    mode="content"
+                    onGoStart={goStart}
+                    onGoReview={() => navigate({ workspace: 'editing', editingSection: 'review' })}
                     key={asset.asset_id} 
                     assetId={asset.asset_id} 
                     selection={selection}
@@ -87,7 +160,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                         label="节目" 
                         preview={visibleProgramPreview}
                         emptyTitle="节目监视器"
-                        emptyHint="单击时间线片段或审查卡片预览画面；证据缩略图可点进节目监视器。" 
+                        emptyHint="单击时间线片段或卡片预览画面；证据缩略图可点进节目监视器。" 
                       />
                     }
                   />
@@ -95,12 +168,14 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
               )}
               
               {section.id === 'content' && !asset && (
-                <Typography.Text type="secondary">请先在左侧项目面板选择资产。</Typography.Text>
+                <NoAssetEmpty navigate={navigate} />
               )}
               
               {section.id === 'review' && asset && (
                 <PreviewScope onPreview={setProgramPreview}>
                   <WorkflowPanel 
+                    mode="review"
+                    onGoStart={goStart}
                     key={asset.asset_id} 
                     assetId={asset.asset_id} 
                     selection={selection}
@@ -120,7 +195,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
               )}
               
               {section.id === 'review' && !asset && (
-                <Typography.Text type="secondary">请先在左侧项目面板选择资产。</Typography.Text>
+                <NoAssetEmpty navigate={navigate} />
               )}
             </div>
           )

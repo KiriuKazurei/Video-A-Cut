@@ -27,6 +27,9 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: 'l', keys: ['L'], action: '快进 2 秒', category: '播放控制' },
   { key: 'left', keys: ['←'], action: '快退 2 秒', category: '播放控制' },
   { key: 'right', keys: ['→'], action: '快进 2 秒', category: '播放控制' },
+  { key: 'review-confirm', keys: ['C'], action: '确认当前场景（场景待确认时，审查页）', category: '审查' },
+  { key: 'review-approve', keys: ['A'], action: '批准当前解说（解说待批准时，审查页）', category: '审查' },
+  { key: 'review-next', keys: ['N'], action: '跳到下一个待处理的场景 / 解说', category: '审查' },
   { key: 'help', keys: ['?'], action: '打开 / 关闭快捷键帮助', category: '通用' },
   { key: 'esc', keys: ['Esc'], action: '关闭当前弹窗 / 抽屉', category: '通用' }
 ];
@@ -89,10 +92,10 @@ export function KeyboardShortcutsModal({ open, onClose }: KeyboardShortcutsModal
       onCancel={onClose}
       footer={null}
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 4 }}>
-        在非文本输入焦点时生效。按键后直接跳转或控制当前监视器播放。
+        在非文本输入焦点时生效。按键后直接跳转、控制当前监视器播放，或处理审查项（C / A / N 只在「编辑 › 审查」生效）。
       </Typography.Paragraph>
 
       <Table

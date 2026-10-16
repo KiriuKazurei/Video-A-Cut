@@ -182,6 +182,8 @@ const setFaderNumber = async (label, value) => {
 };
 
 try{
+ // 新手引导（antd Tour）会遮住页面：CDP 直连的 Chrome 里 navigator.webdriver 为 false，必须显式写入「已看过」标记
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:"try{localStorage.setItem('vac_tour_seen_v1','1')}catch(e){}"});
  await send('Page.enable');await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:1600,height:1000,deviceScaleFactor:1,mobile:false}); await send('Page.navigate',{url:base+'/'});
  await wait(`document.readyState==='complete'||document.readyState==='interactive'`);
  if(mode==='tts'){

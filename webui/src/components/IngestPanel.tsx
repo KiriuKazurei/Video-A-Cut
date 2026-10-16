@@ -97,7 +97,7 @@ export function IngestRegister({ onSelect }: { onSelect: (id: string) => void })
                 onChange={(e) => setAssetId(e.target.value)} />
             </Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item label=" ">
-              <Button type="primary" htmlType="submit" block loading={busy} disabled={roots.data.roots.length === 0}>登记录像</Button>
+              <Button type="primary" className="vac-cta" htmlType="submit" block loading={busy} disabled={roots.data.roots.length === 0}>登记录像</Button>
             </Form.Item></Col>
           </Row>
         </Form>
