@@ -13,6 +13,7 @@ import type {
   WorkflowRun,
   WorkflowSnapshot
 } from './types';
+import type { AutoNotice, AutoView, AutoReviewInfo } from './autoRun';
 import type { ProcessingProfile, ProcessingProvider, ProviderDiagnostic, PreparationReport } from './preparation';
 import type { TtsCapabilities, TtsTemplate, TtsSettings, TtsPreview } from './ttsContracts';
 import type { IngestRoots, IngestRun, IngestRunView, RecordingSource, SegmentPage, Segmentation, SelectedSegment } from './ingest';
@@ -70,6 +71,14 @@ export const api = {
   profileConsent: (id:string,revision:number,granted:boolean) => request<{granted:boolean}>(`/api/processing-profiles/${encodeURIComponent(id)}/revisions/${revision}/external-consent`,{method:granted?'POST':'DELETE'}),
   preparedPreflight: (asset:string,id:string,revision:number) => request<PreparationReport>(`/api/assets/${encodeURIComponent(asset)}/prepared-preflight`,json('POST',{profile_id:id,revision})),
   startPrepared: (asset:string,id:string,revision:number,version:string) => request<WorkflowRun>(`/api/assets/${encodeURIComponent(asset)}/prepared-workflows`,json('POST',{profile_id:id,revision,expected_asset_version:version,idempotency_key:crypto.randomUUID()})),
+  autoNotice: (id: string, revision: number) => request<AutoNotice>(`/api/processing-profiles/${encodeURIComponent(id)}/revisions/${revision}/auto-notice`),
+  startAutoRun: (asset: string, body: object) => request<{ run: WorkflowRun; auto: AutoView }>(`/api/assets/${encodeURIComponent(asset)}/auto-runs`, json('POST', body)),
+  getAuto: (runId: string) => request<AutoView>(`/api/workflows/${encodeURIComponent(runId)}/auto`),
+  autoReviews: (runId: string) => request<AutoReviewInfo[]>(`/api/workflows/${encodeURIComponent(runId)}/auto/reviews`),
+  decideAuto: (runId: string, body: { decision: 'export' | 'revise' | 'discard'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
+    request<{ auto: AutoView; run: WorkflowRun }>(`/api/workflows/${encodeURIComponent(runId)}/auto/decision`, json('POST', body)),
+  revokeAuto: (runId: string, body: { reason: string; expected_auto_version: number; also_revoke_consent: boolean }) =>
+    request<{ auto: AutoView }>(`/api/workflows/${encodeURIComponent(runId)}/auto/revoke`, json('POST', body)),
   preflightWorkflow: (assetId: string, profile: ProcessingProfile) =>
     request<PreparationReport>(`/api/assets/${encodeURIComponent(assetId)}/workflow-preflight`, json('POST', profile)),
   listAssets: () => request<Asset[]>('/api/assets'),

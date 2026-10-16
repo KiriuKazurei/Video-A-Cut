@@ -19,7 +19,8 @@ export const REFRESH_DOMAINS = [
   'ingest',
   'mp4Previews',
   'deliveryVariants',
-  'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities'
+  'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities',
+  'auto'
 ] as const;
 
 export type RefreshDomain = (typeof REFRESH_DOMAINS)[number];
@@ -130,7 +131,8 @@ export const SUPPORTED_SSE_EVENTS = [
   'audit.changed',
   'preview_updated',
   'delivery_variant.changed',
-  'tts.template.changed', 'tts.preview.changed'
+  'tts.template.changed', 'tts.preview.changed',
+  'auto.changed', 'auto.reviewed'
 ] as const;
 
 export type SupportedSSEEvent = (typeof SUPPORTED_SSE_EVENTS)[number];
@@ -150,6 +152,10 @@ export function handleSSEEvent(
   watchedTaskId?: string | null
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
+  // 自动模式：只让 auto 视图与对应流程失效，事件负载不当作权威状态。
+  if (eventName === 'auto.changed' || eventName === 'auto.reviewed') {
+    return Promise.all(['auto', 'workflows', 'workflow', 'review', 'mp4Previews'].map(k => queryClient.invalidateQueries({ queryKey: [k] }))) as Promise<void[]>;
+  }
   if (eventName === 'tts.template.changed') return Promise.all([queryClient.invalidateQueries({queryKey:['tts-templates']}),queryClient.invalidateQueries({queryKey:['audit']})]);
   if (eventName === 'tts.preview.changed') return Promise.all([queryClient.invalidateQueries({queryKey:['tts-previews']}),queryClient.invalidateQueries({queryKey:['tts-preview']}),queryClient.invalidateQueries({queryKey:['audit']})]);
   const promises: Promise<void>[] = [];

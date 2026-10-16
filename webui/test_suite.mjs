@@ -206,23 +206,24 @@ test('queryRefresh: domains and scopes contain all 17 required domains', () => {
     'ingest',
     'mp4Previews',
     'deliveryVariants',
-    'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities'
+    'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities',
+    'auto'
   ];
   assert.deepEqual([...REFRESH_DOMAINS], expectedDomains);
-  assert.equal(REFRESH_SCOPES.length, 17);
+  assert.equal(REFRESH_SCOPES.length, 18);
   assert.deepEqual(REFRESH_SCOPES.map((s) => s[0]), expectedDomains);
 });
 
 test('queryRefresh: refreshSnapshot invalidates all domains and watchedTaskId if present', async () => {
   const client1 = createMockQueryClient();
   await refreshSnapshot(client1, null);
-  assert.equal(client1.invalidated.length, 17);
+  assert.equal(client1.invalidated.length, 18);
   assert.deepEqual(client1.invalidated.map((k) => k[0]), [...REFRESH_DOMAINS]);
 
   const client2 = createMockQueryClient();
   await refreshSnapshot(client2, 'task-999');
-  assert.equal(client2.invalidated.length, 18);
-  assert.deepEqual(client2.invalidated[17], ['task', 'task-999']);
+  assert.equal(client2.invalidated.length, 19);
+  assert.deepEqual(client2.invalidated[18], ['task', 'task-999']);
 });
 
 test('queryRefresh: invalidateDeliveryFiles targets specific asset or full prefix', async () => {
@@ -697,6 +698,16 @@ test('ASS SSE invalidates variant queries after task, governance and capability 
     assert(client.invalidated.some(key=>key[0]==='deliveryVariants'));
   }
   assert(SUPPORTED_SSE_EVENTS.includes('delivery_variant.changed'));
+});
+
+test('auto-run SSE events are subscribed and only invalidate queries (payload is never cached)', async () => {
+  assert(SUPPORTED_SSE_EVENTS.includes('auto.changed') && SUPPORTED_SSE_EVENTS.includes('auto.reviewed'));
+  for (const event of ['auto.changed', 'auto.reviewed']) {
+    const client = createMockQueryClient();
+    await handleSSEEvent(client, event, JSON.stringify({ run_id: 'r1', state: 'active' }));
+    const keys = client.invalidated.map(k => k[0]);
+    for (const k of ['auto', 'workflows', 'workflow', 'review']) assert(keys.includes(k), `${event} should invalidate ${k}`);
+  }
 });
 
 import {
