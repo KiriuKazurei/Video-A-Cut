@@ -149,7 +149,7 @@ export function TtsWorkspace({ active }: { active: boolean }) {
           </div>
           <Form layout="vertical" className="tts-save-form">
             <Form.Item label="模板名称"><Input aria-label="TTS 模板名称" value={name} maxLength={100} onChange={e => { setName(e.target.value); setDirty(true); }} /></Form.Item>
-            <Space wrap><Button icon={<SaveOutlined />} loading={save.isPending} disabled={!!saveError || !name.trim()} onClick={() => saveSnapshot(false)}>{loaded ? '保存新版本' : '保存模板'}</Button>
+            <Space wrap><Button className="vac-cta" icon={<SaveOutlined />} loading={save.isPending} disabled={!!saveError || !name.trim()} onClick={() => saveSnapshot(false)}>{loaded ? '保存新版本' : '保存模板'}</Button>
               <Button disabled={!!saveError || !name.trim() || save.isPending} onClick={() => saveSnapshot(true)}>另存为</Button>
               {loaded && <Typography.Text type="secondary">{loaded.name} · v{loaded.revision}{dirty ? ' · 有未保存修改' : ''}</Typography.Text>}</Space>
           </Form>

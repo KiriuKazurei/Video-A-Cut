@@ -1,11 +1,11 @@
 import { apiURL } from '../runtimeUrl.ts';
-import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, Button, Card, Col, Collapse, Descriptions, Empty, Flex, Form, Input, InputNumber, List, Popconfirm, Row, Space, Spin, Steps, Tag, Tooltip, Typography
 } from 'antd';
 import type { StepProps } from 'antd';
-import { CopyOutlined, DownloadOutlined, RightOutlined } from '@ant-design/icons';
+import { CopyOutlined, DownloadOutlined, QuestionCircleOutlined, RightOutlined } from '@ant-design/icons';
 import { api, previewApi, previewQueryKey } from '../api';
 import type { ReviewView, WorkflowRun } from '../types';
 import { usePreview } from './Monitor';
@@ -15,6 +15,7 @@ import { createWorkflowPreview, latestWorkflowRun, reviewMatchesCurrent, samePre
 import { EvidenceSummaryCard } from './EvidenceSummaryCard';
 import { previewProductKey } from '../previewContracts';
 import { buildEvidenceDigest } from '../evidenceSummary';
+import { REVIEW_SHORTCUT_EVENT, type ReviewShortcutAction } from '../hooks/useKeyboardShortcuts';
 
 const checks = [['content_fidelity', '内容是否正确'], ['evidence_trace', '画面与素材是否对得上'], ['browser', '浏览器里能否正常操作'], ['premiere', '能否导入 Premiere'], ['cuts_fps', '切点与帧率是否正常'], ['subtitle_audio_duck', '字幕、旁白与压低是否正常']] as const;
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请刷新后重试';
@@ -127,6 +128,12 @@ interface WorkflowPanelProps {
   monitor: ReactNode;
   onGoExport?: () => void;
   onGoTasks?: () => void;
+  /** 还没有流程时的主操作：去「导入与粗剪」页底部的「开始生成」 */
+  onGoStart?: () => void;
+  /** content：侧重改文稿/场景/时间线，不放确认与批准按钮；review：侧重逐项确认场景、批准解说，并带流程控制。 */
+  mode?: 'content' | 'review';
+  /** 去「审查」页（内容编辑页提示用） */
+  onGoReview?: () => void;
 }
 
 export function WorkflowPanel({ data, ...props }: WorkflowPanelProps & { data?: WorkflowData }) {
@@ -138,7 +145,9 @@ function QueriedWorkflowPanel(props: WorkflowPanelProps) {
   return <WorkflowContent {...props} data={data} />;
 }
 
-function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, data }: WorkflowPanelProps & { data: WorkflowData }) {
+function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, onGoStart, onGoReview, mode: panelMode = 'review', data }: WorkflowPanelProps & { data: WorkflowData }) {
+  const isReview = panelMode === 'review';
+  const rootRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<'configured' | 'builtin'>('configured');
   const [note, setNote] = useState('');
   const [focused, setFocused] = useState<{ key: string; owner: ReturnType<typeof workflowPreviewContext> } | null>(null);
@@ -161,7 +170,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
   const scenes = review.data?.scenes ?? [];
   const lines = review.data?.narration ?? [];
   const evidence = review.data?.evidence_files ?? [];
-  const activeTab = tab ?? (current?.stage === 'draft_review' || (lines.length > 0 && current?.stage !== 'scene_review') ? 'narration' : 'scenes');
+  const activeTab = tab ?? (current?.stage === 'draft_review' || (lines.length > 0 && (current?.stage !== 'scene_review' || !isReview)) ? 'narration' : 'scenes');
   const generating = current && (current.status === 'running' || current.status === 'created' || current.status === 'claimed');
 
   const showScene = (scene: Scene, key?: string) => {
@@ -177,6 +186,43 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
     if (t.closest('button, input, textarea, .ant-select, a, .ant-input-number')) return;
     fn();
   };
+
+  // 审查提速：待处理项与快捷键（C 确认场景 / A 批准解说 / N 下一待处理）。只有当前可见的面板响应，且仅在对应闸口开启时生效。
+  const pendingScenes = scenes.filter(sc => sc.decision !== 'confirmed' && sc.decision !== 'rejected');
+  const pendingLines = lines.filter(l => !l.approved_hash);
+  const jumpNext = () => {
+    if (activeTab === 'scenes') {
+      const list = pendingScenes; if (!list.length) return false;
+      const at = list.findIndex(sc => focus === `scene:${sc.scene_id}`);
+      showScene(list[(at + 1) % list.length]); return true;
+    }
+    const list = pendingLines; if (!list.length) return false;
+    const at = list.findIndex(l => focus === `line:${l.id}`);
+    showLine(list[(at + 1) % list.length]); return true;
+  };
+  const onShortcut = (action: ReviewShortcutAction) => {
+    if (!current || !review.data || busy) return;
+    if (action === 'next') { jumpNext(); return; }
+    if (action === 'confirm' && isReview && sceneGate) {
+      const sc = scenes.find(x => focus === `scene:${x.scene_id}` && x.decision !== 'confirmed') ?? pendingScenes[0];
+      if (sc?.scene_id) invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: sc.scene_id!, decision: 'confirmed', note }));
+    }
+    if (action === 'approve' && isReview && draftGate) {
+      const ln = lines.find(x => focus === `line:${x.id}` && !x.approved_hash) ?? pendingLines[0];
+      if (ln?.id) invoke(() => api.approveNarration(current.run_id, { ...context(), narration_id: ln.id! }));
+    }
+  };
+  const shortcutRef = useRef(onShortcut); shortcutRef.current = onShortcut;
+  useEffect(() => {
+    const handle = (e: Event) => {
+      const root = rootRef.current;
+      if (!root || root.getClientRects().length === 0) return; // 隐藏的页/分区不响应
+      const action = (e as CustomEvent<{ action: ReviewShortcutAction }>).detail?.action;
+      if (action) shortcutRef.current(action);
+    };
+    window.addEventListener(REVIEW_SHORTCUT_EVENT, handle);
+    return () => window.removeEventListener(REVIEW_SHORTCUT_EVENT, handle);
+  }, []);
 
   const ordered = [...scenes].map((scene, index) => ({ scene, index })).sort((a, b) => (a.scene.sequence_rank ?? a.index) - (b.scene.sequence_rank ?? b.index));
   const timed = lines.filter(l => typeof l.start === 'number' && typeof l.end === 'number' && l.end! > l.start!);
@@ -197,21 +243,34 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
   const revisionId = current?.current_revision_id ?? '';
   const doCopy = () => { void copyText(revisionId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
 
-  return <Card className="workflow-panel" aria-labelledby="workflow-title" title={<span id="workflow-title">内容流程与审查</span>}
+  return <Card ref={rootRef} className="workflow-panel" data-panel-mode={panelMode} aria-labelledby="workflow-title" title={<span id="workflow-title">{isReview ? '审查：确认场景、批准解说' : '内容编辑：场景与解说文稿'}</span>}
     extra={current && <Tag color={statusColor(current.status)}>{STATUS_ZH[current.status] ?? current.status}</Tag>}>
     <Flex vertical gap={12}>
       <Flex gap={8} align="flex-end" wrap className="workflow-toolbar">
+        {isReview && <>
         <Form.Item label="内容模式" layout="vertical" style={{ marginBottom: 0, width: 180 }}>
           <ValueSelect<'configured' | 'builtin'> className="select-content-mode" aria-label="内容模式" value={mode} onChange={setMode}
             options={[{ value: 'configured', label: '已配置模型' }, { value: 'builtin', label: 'builtin 工程回归' }]} />
         </Form.Item>
-        <Button type="primary" disabled={busy} title="通用入口；固定预设流程请在「准备」页通过预检后启动" onClick={() => invoke(async () => { const created = await api.startWorkflow(assetId, crypto.randomUUID(), mode); selection.setOffset(0); selection.setRunId(created.run_id); })}>启动新流程</Button>
+        <Button type="primary" className="vac-cta" disabled={busy} title="通用入口；固定预设流程请在「准备」页通过预检后启动" onClick={() => invoke(async () => { const created = await api.startWorkflow(assetId, crypto.randomUUID(), mode); selection.setOffset(0); selection.setRunId(created.run_id); })}>启动新流程</Button>
+        </>}
         <div style={{ flex: '1 1 360px', minWidth: 0 }}><RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} /></div>
       </Flex>
-      <Typography.Text type="secondary">先看画面、确认场景，再批准解说。点时间线或卡片可在监视器预览。建议在「设置 › 运行准备」检查条件后再启动流程。</Typography.Text>
+      <Typography.Text type="secondary">{isReview
+        ? '先看画面、确认场景，再批准解说。点时间线或卡片可在监视器预览。快捷键：C 确认场景 · A 批准解说 · N 跳到下一个待处理。'
+        : '在这里修改场景名称、顺序和解说文字，保存后会生成新修订并重新审查。逐项确认与批准请到「审查」页。'}
+        {' '}<Tooltip title="「证据」是系统从素材里截取的取样画面，说明为什么识别出这个场景；点缩略图可在节目监视器查看。"><span className="jargon-hint"><QuestionCircleOutlined /> 什么是证据</span></Tooltip></Typography.Text>
+      {isReview && current && (sceneGate || draftGate) && <Alert type="info" showIcon className="review-todo"
+        message={sceneGate ? `还有 ${pendingScenes.length} 个场景待确认` : `还有 ${pendingLines.length} 段解说待批准`}
+        action={<Button size="small" disabled={sceneGate ? !pendingScenes.length : !pendingLines.length} onClick={() => { jumpNext(); }}>跳到下一个 (N)</Button>} />}
+      {!isReview && current && (sceneGate || draftGate) && onGoReview && <Alert type="warning" showIcon className="review-todo"
+        message={sceneGate ? '流程在等待场景确认' : '流程在等待解说批准'}
+        action={<Button type="primary" className="vac-cta" onClick={onGoReview}>去审查</Button>} />}
       {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
       {(failure || runs.error || review.error || snapshot.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || review.error || snapshot.error)} />}
-      {runs.isSuccess && !current && <Empty description="此资产还没有内容流程。可在「准备」页核对运行条件后启动固定预设流程。" />}
+      {runs.isSuccess && !current && <Empty description="此资产还没有生成内容。先到「导入与粗剪」完成导入，再点「开始生成」。">
+        {onGoStart && <Button type="primary" className="vac-cta" onClick={onGoStart}>去开始生成</Button>}
+      </Empty>}
       {current && <>
         <div className="workflow-status-strip">
           <Flex gap={8} align="center" wrap>
@@ -219,9 +278,9 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
             <Tag color={sceneGate || draftGate ? 'warning' : 'default'}>{STAGE_ZH[current.stage] ?? current.stage}</Tag>
             {sceneGate && <Tag color="warning">等待场景确认</Tag>}
             {draftGate && <Tag color="warning">等待解说批准</Tag>}
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{current.status} / {current.stage}</Typography.Text>
+            <Typography.Text type="secondary" className="tech-detail" style={{ fontSize: 12 }}>{current.status} / {current.stage}</Typography.Text>
             <span className="revision-chip" title={revisionId}>
-              修订 <Typography.Text code>{shortId(revisionId)}</Typography.Text>
+              <Tooltip title="每次保存修改都会生成一个新「修订」，旧修订不会被覆盖；审查与导出都针对当前这一个修订。">修订</Tooltip> <Typography.Text code>{shortId(revisionId)}</Typography.Text>
               <Tooltip title={copied ? '已复制' : '复制完整修订 ID'}>
                 <Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制修订 ID" onClick={doCopy} />
               </Tooltip>
@@ -255,10 +314,10 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
                   </figure>)}</div>
                   <SceneEdit key={`${review.data!.revision.revision_id}-${scene.scene_id}`} scene={scene} disabled={busy || !(sceneGate || current.stage === 'acceptance')} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), scene_id: scene.scene_id, ...fields }))} />
                   {focus === `scene:${scene.scene_id}` && <Tag color="warning" bordered={false} style={{ marginBottom: 8 }}>正在节目监视器</Tag>}
-                  <Space wrap>
-                    <Button type="primary" disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'confirmed', note }))}>确认此场景</Button>
+                  {isReview && <Space wrap>
+                    <Button type="primary" className="vac-cta" disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'confirmed', note }))}>确认此场景</Button>
                     <Button danger disabled={busy || !sceneGate} onClick={() => invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: scene.scene_id!, decision: 'rejected', note }))}>退回场景</Button>
-                  </Space>
+                  </Space>}
                 </Card>)}
               </div>
               <div className="review-scroll" role="tabpanel" id="review-narration" hidden={activeTab !== 'narration'}>
@@ -273,11 +332,11 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
                     <Typography.Text type="secondary" style={{ overflowWrap: 'anywhere' }}>来源场景 {line.source_scene_id || '未提供'}</Typography.Text>
                     {focus === `line:${line.id}` && <Tag color="warning" bordered={false}>正在节目监视器</Tag>}
                   </Flex>
-                  <Space wrap>
-                    <Button type="primary" disabled={busy || !draftGate || Boolean(line.approved_hash)} onClick={() => invoke(() => api.approveNarration(current.run_id, { ...context(), narration_id: line.id! }))}>批准当前版本</Button>
+                  {isReview ? <Space wrap>
+                    <Button type="primary" className="vac-cta" disabled={busy || !draftGate || Boolean(line.approved_hash)} onClick={() => invoke(() => api.approveNarration(current.run_id, { ...context(), narration_id: line.id! }))}>批准当前版本</Button>
                     <Button danger disabled={busy || current.status === 'cancelled'} onClick={() => invoke(() => api.revokeWorkflowNarration(current.run_id, line.id!, current.version))}>撤销并停止下游</Button>
                     <Button type="link" size="small" onClick={() => showLine(line)}>节目监视器</Button>
-                  </Space>
+                  </Space> : <Button type="link" size="small" onClick={() => showLine(line)}>在节目监视器预览</Button>}
                 </Card>)}
               </div>
             </Spin>
@@ -294,7 +353,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
           caption={seqEnd > 0 ? `解说时间轴（秒）· 场景时间窗由所属解说推得` : '尚无解说时间：场景按 sequence_rank 等宽显示顺序'}
           tracks={[{ id: 'V1', name: '场景', hint: '蓝=待确认 绿=已确认 红=已退回', clips: sceneClips }, { id: 'A1', name: '解说', hint: '绿=已批准 青=未批准', clips: lineClips }]}
           emptyText="识别完成后在此显示场景与解说" />
-        <Card size="small" title="流程状态与阶段" className="edit-status">
+        {isReview && <Card size="small" title="流程状态与阶段" className="edit-status">
           <Flex vertical gap={12}>
             <Descriptions size="small" column={{ xs: 1, sm: 2, xl: 4 }} items={[
               { key: 'status', label: '状态 / 阶段', children: `${current.status} / ${current.stage}` },
@@ -332,7 +391,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, d
                 };
               })} /> : null}
           </Flex>
-        </Card>
+        </Card>}
       </>}
     </Flex>
   </Card>;
@@ -456,7 +515,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
         <List size="small" bordered className="acceptance-list" dataSource={[...checks]} renderItem={([item, label]) => {
           const row = latestFor(item);
           const state = row?.result === 'passed' ? 'passed' : row?.result === 'failed' ? 'failed' : 'pending';
-          return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
+          return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" className="vac-cta" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
             disabled={busy || !ready || (result === 'failed' && !note.trim())}
             onClick={() => recordOne(item, result)}>{result === 'passed' ? '通过' : '不通过'}</Button>)}>
             <List.Item.Meta
@@ -474,7 +533,7 @@ export function AcceptancePanel({ assetId, selection }: { assetId: string; selec
           children: <List size="small" dataSource={acceptance.data ?? []} locale={{ emptyText: '暂无记录' }} renderItem={r => <List.Item key={r.id}>
             <Flex gap={8} wrap align="center" style={{ width: '100%' }}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.created_at}</Typography.Text>
-              <Typography.Text code style={{ fontSize: 11 }}>{shortId(r.export_revision_id)}</Typography.Text>
+              <Typography.Text code style={{ fontSize: 12 }}>{shortId(r.export_revision_id)}</Typography.Text>
               <Tag bordered={false}>{checks.find(c => c[0] === r.check_item)?.[1] ?? r.check_item}</Tag>
               <Tag color={r.result === 'passed' ? 'success' : r.result === 'failed' ? 'error' : 'default'}>{r.result === 'passed' ? '通过' : r.result === 'failed' ? '未通过' : r.result}</Tag>
               {r.note && <Typography.Text type="secondary" style={{ flex: '1 1 100%' }}>{r.note}</Typography.Text>}
