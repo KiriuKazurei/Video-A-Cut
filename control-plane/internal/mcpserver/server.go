@@ -50,6 +50,9 @@ func Load(path string, svc *service.Service, lease time.Duration) (http.Handler,
 		if strings.TrimSpace(a.ID) == "" || strings.TrimSpace(a.Role) == "" {
 			return nil, errors.New("mcp: agent_id and role are required")
 		}
+		if reservedAgentID(a.ID) {
+			return nil, fmt.Errorf("mcp: agent_id %q is reserved", a.ID)
+		}
 		decoded, err := hex.DecodeString(a.TokenSHA256)
 		if err != nil || len(decoded) != sha256.Size || a.TokenSHA256 != strings.ToLower(a.TokenSHA256) {
 			return nil, fmt.Errorf("mcp: invalid token_sha256 for %q", a.ID)
@@ -60,6 +63,16 @@ func Load(path string, svc *service.Service, lease time.Duration) (http.Handler,
 		seenIDs[a.ID], seenHashes[a.TokenSHA256] = true, true
 	}
 	return New(c.Agents, svc, lease), nil
+}
+
+// reservedAgentID reports an agent id that would let an MCP worker pass for an
+// internal or human actor. The auto-reviewer records as system:auto-review and
+// people as human:<name>; a worker must never be able to share either name.
+// The comparison ignores case and surrounding space so a variant cannot slip
+// through.
+func reservedAgentID(id string) bool {
+	v := strings.ToLower(strings.TrimSpace(id))
+	return v == "auto-review" || v == "system" || strings.HasPrefix(v, "system:") || strings.HasPrefix(v, "human:")
 }
 
 // maxRequestBytes caps one JSON-RPC request body.

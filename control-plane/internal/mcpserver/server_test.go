@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -180,5 +181,30 @@ func TestSubmitUsesTokenIdentity(t *testing.T) {
 	}
 	if task, err := svc.GetTask(ctx, "task"); err != nil || task.Status != model.TaskStatusSucceeded {
 		t.Fatalf("owner result missing: %+v %v", task, err)
+	}
+}
+
+// An MCP worker is recorded as "agent:<agent_id>". Ids that read like the
+// internal auto-reviewer or a person must never be configurable.
+func TestLoadRejectsReservedAgentIDs(t *testing.T) {
+	hash := strings.Repeat("a", 64)
+	for _, id := range []string{"auto-review", "Auto-Review", " auto-review ", "system", "system:auto-review", "SYSTEM:x", "human:webui", "Human:x"} {
+		path := filepath.Join(t.TempDir(), "agents.json")
+		body := `{"agents":[{"agent_id":` + strconv.Quote(id) + `,"role":"recognizer","token_sha256":"` + hash + `"}]}`
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Load(path, nil, 0)
+		if err == nil || !strings.Contains(err.Error(), "reserved") {
+			t.Fatalf("agent_id %q accepted or wrong error: %v", id, err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "agents.json")
+	body := `{"agents":[{"agent_id":"recognizer-1","role":"recognizer","token_sha256":"` + hash + `"}]}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path, nil, 0); err != nil {
+		t.Fatalf("an ordinary id must still load: %v", err)
 	}
 }

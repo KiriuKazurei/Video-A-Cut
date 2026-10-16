@@ -1,0 +1,49 @@
+{
+  "_fixture": {
+    "kind": "r1_good_preview_report",
+    "reason": "R1 ran no MP4 preview (results.json preview.* is null); this report has the preview.Report shape with the five checks passed and media.duration_seconds equal to the EDL timeline length, i.e. what a perfect render of the R1 export would report.",
+    "synthetic": true
+  },
+  "checks": [
+    {
+      "code": "source_fingerprint",
+      "message": "",
+      "status": "passed"
+    },
+    {
+      "code": "timeline_frames",
+      "message": "",
+      "status": "passed"
+    },
+    {
+      "code": "audio_alignment",
+      "message": "",
+      "status": "passed"
+    },
+    {
+      "code": "subtitles",
+      "message": "",
+      "status": "passed"
+    },
+    {
+      "code": "media_streams",
+      "message": "",
+      "status": "passed"
+    }
+  ],
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "media": {
+    "audio_codec": "aac",
+    "channels": 2,
+    "duration_seconds": 53.049999666666665,
+    "fps": 60,
+    "frame_count": 3183,
+    "height": 720,
+    "sample_rate": 48000,
+    "video_codec": "h264",
+    "width": 1280
+  },
+  "schema_version": 1,
+  "target_frames": 3183,
+  "target_samples": 2546400
+}

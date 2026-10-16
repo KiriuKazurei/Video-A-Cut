@@ -1,0 +1,63 @@
+{
+  "scorer_version": "v1",
+  "band": "high",
+  "score": 0.9475,
+  "components": [
+    {
+      "name": "recognition",
+      "score": 0.85,
+      "weight": 0.35,
+      "available": true
+    },
+    {
+      "name": "tts_complete",
+      "score": 1,
+      "weight": 0.2,
+      "available": true
+    },
+    {
+      "name": "av_alignment",
+      "score": 1,
+      "weight": 0.3,
+      "available": true
+    },
+    {
+      "name": "pacing",
+      "score": 1,
+      "weight": 0.15,
+      "available": true
+    }
+  ],
+  "brief_coverage": null,
+  "reasons": [],
+  "improvable": false,
+  "facts": {
+    "scenes": 12,
+    "lines": 12,
+    "lines_with_audio": 12,
+    "confidence_mean": 0.85,
+    "confidence_min": 0.85,
+    "max_pace": 3.759398,
+    "subtitle_fit": 1,
+    "audio_fit": 1,
+    "edl_duration_seconds": 53.05,
+    "preview_duration_seconds": 53.05,
+    "duration_deviation_seconds": 0,
+    "brief_keywords": 0,
+    "brief_provided": false
+  },
+  "thresholds": {
+    "high_score_min": 0.85,
+    "medium_score_min": 0.6,
+    "recognition_floor": 0.7,
+    "tts_floor": 1,
+    "av_floor": 0.9,
+    "pacing_floor": 0.7,
+    "scene_confidence_min": 0.6,
+    "brief_coverage_min": 0.6,
+    "pace_min": 2,
+    "pace_max": 6,
+    "duration_tolerance_seconds": 0.025,
+    "window_tolerance_seconds": 0.05
+  }
+}

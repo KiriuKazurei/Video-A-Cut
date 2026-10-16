@@ -2,8 +2,8 @@
   "schema_version": 1,
   "verified_date": "2026-10-07",
   "scope": "当前 Go REST/SSE 全部注册路由与前端功能映射；描述性清单，不是 OpenAPI Schema",
-  "registered_route_count": 76,
-  "expanded_endpoint_count": 77,
+  "registered_route_count": 82,
+  "expanded_endpoint_count": 83,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -1138,6 +1138,108 @@
       }
     },
     {
+      "id": "API-67",
+      "group": "自动模式（Stage B1）",
+      "method": "GET",
+      "path": "/api/processing-profiles/{id}/revisions/{revision}/auto-notice",
+      "frontend_function": "无",
+      "frontend_ui": "尚未接入（阶段 C）",
+      "request": "无",
+      "success_response": "200 {profile_id, revision, profile_sha256, external, notice, notice_sha256}",
+      "behavior": "服务端按预设版本生成固定外发告知文案及其 sha256；授权时必须回传该 notice_sha256；全回环预设 external=false，文案为「仅本机端点」变体",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "autoNotice",
+      "backend_source": {
+        "file": "control-plane/internal/api/auto.go",
+        "line": 41
+      }
+    },
+    {
+      "id": "API-68",
+      "group": "自动模式（Stage B1）",
+      "method": "POST",
+      "path": "/api/assets/{id}/auto-runs",
+      "frontend_function": "无",
+      "frontend_ui": "尚未接入（阶段 C）",
+      "request": "JSON：profile_id, revision, expected_asset_version, idempotency_key, brief?, scope?{max_rounds,max_total_rounds,max_stage_retries,max_actions,max_tts_chars,max_wall_seconds,decision_timeout_seconds,thresholds}, authorization{notice_sha256, accept_external_egress?}；可选 revision_id",
+      "success_response": "201 {run: WorkflowRun, auto: AutoView}",
+      "behavior": "授权并启动自动模式 run；notice_sha256 缺失或不符 400；仅 profile.External() 时要求 accept_external_egress=true 并在同一事务内设置外发同意；同资产已有 active/awaiting_user_decision 的 auto run 返回 409；actor 固定 human:webui",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "startAutoRun",
+      "backend_source": {
+        "file": "control-plane/internal/api/auto.go",
+        "line": 55
+      }
+    },
+    {
+      "id": "API-69",
+      "group": "自动模式（Stage B1）",
+      "method": "GET",
+      "path": "/api/workflows/{run}/auto",
+      "frontend_function": "无",
+      "frontend_ui": "尚未接入（阶段 C）",
+      "request": "无",
+      "success_response": "200 {run_id, auto_version, state, halt_reason?, brief, brief_sha256, authorized_by, authorized_at, revoked_*, consent_at_revoke?, consent_granted_by_run, notice_sha256, scope, profile_id, profile_revision, profile_sha256, round, max_rounds, total_rounds, max_total_rounds, actions_used, tts_chars_used, delivery_hold, created_at, updated_at, deadline_at, rounds[], latest_review, decisions[], delivery{delivered, package_ready, preview_id?, preview_status?, preview_is_current, preview_preset, spec: 720p}, decision{reason, can_export, can_revise, deadline_at?}|null, delivery_hold_enforced:false}",
+      "behavior": "非 auto run 返回 404；latest_review 在评分器（B2）上线前恒为 null",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "getAuto",
+      "backend_source": {
+        "file": "control-plane/internal/api/auto.go",
+        "line": 74
+      }
+    },
+    {
+      "id": "API-70",
+      "group": "自动模式（Stage B1）",
+      "method": "GET",
+      "path": "/api/workflows/{run}/auto/reviews",
+      "frontend_function": "无",
+      "frontend_ui": "尚未接入（阶段 C）",
+      "request": "无",
+      "success_response": "200 AutoReview[]",
+      "behavior": "自评记录；B2 之前为空数组；非 auto run 404",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "listAutoReviews",
+      "backend_source": {
+        "file": "control-plane/internal/api/auto.go",
+        "line": 83
+      }
+    },
+    {
+      "id": "API-71",
+      "group": "自动模式（Stage B1）",
+      "method": "POST",
+      "path": "/api/workflows/{run}/auto/decision",
+      "frontend_function": "无",
+      "frontend_ui": "尚未接入（阶段 C）",
+      "request": "JSON：decision(export|revise|discard), expected_auto_version, idempotency_key, feedback?（revise 必填）",
+      "success_response": "200 {auto, run}",
+      "behavior": "仅 awaiting_user_decision 可调；export→completed 且 delivery_hold=false（仅当当前 export 的包与 720p 预览都已交付，否则 409）；discard→halted(user_discarded)；revise→按 §6.1 重剪（total_rounds+1，预算不足 409）；auto_version 过期 409；相同 idempotency_key 重放不重复写决策",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "decideAuto",
+      "backend_source": {
+        "file": "control-plane/internal/api/auto.go",
+        "line": 92
+      }
+    },
+    {
+      "id": "API-72",
+      "group": "自动模式（Stage B1）",
+      "method": "POST",
+      "path": "/api/workflows/{run}/auto/revoke",
+      "frontend_function": "无",
+      "frontend_ui": "尚未接入（阶段 C）",
+      "request": "JSON：reason, expected_auto_version, also_revoke_consent?（默认 false）",
+      "success_response": "200 {auto}",
+      "behavior": "撤销后不再有任何自动动作（已排队/运行中的 worker 任务不会被杀；已打开的评审关口保持给人）；事务内记录 consent_at_revoke 与 human:webui 的 auto.revoke 审计；已 revoked/cancelled 返回 409",
+      "usage": "后端已提供，前端待接入",
+      "backend_handler": "revokeAuto",
+      "backend_source": {
+        "file": "control-plane/internal/api/auto.go",
+        "line": 106
+      }
+    },
+    {
       "id": "API-TTS-01",
       "group": "TTS 调控台",
       "method": "GET",
@@ -1329,5 +1431,6 @@
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/tts.go"
-  ]
+  ],
+  "sse_new_events_note": "B1 新增 SSE 事件 auto.changed（{run_id,state,round,auto_version}）与 auto.reviewed（B2 起发送）"
 }

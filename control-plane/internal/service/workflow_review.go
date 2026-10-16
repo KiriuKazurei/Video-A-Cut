@@ -80,6 +80,7 @@ func (s *Service) ConfirmScene(ctx context.Context, actor, runID string, version
 		return model.WorkflowRun{}, fmt.Errorf("service: scene review: decision must be confirmed or rejected: %w", model.ErrArgument)
 	}
 	var saved model.WorkflowRun
+	var halted *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		run, rev, edl, err := s.lockRun(ctx, tx, runID, version, revisionID)
 		if err != nil {
@@ -119,6 +120,9 @@ func (s *Service) ConfirmScene(ctx context.Context, actor, runID string, version
 			if err := s.openSortIfReady(ctx, tx, &run, edl); err != nil {
 				return err
 			}
+		} else if halted, err = autoTakeover(ctx, tx, runID, actor, model.AutoHaltHumanTakeover, "scene_reject"); err != nil {
+			// A rejected scene means the person is steering; the auto run stops.
+			return err
 		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()
@@ -131,6 +135,7 @@ func (s *Service) ConfirmScene(ctx context.Context, actor, runID string, version
 	if err != nil {
 		return model.WorkflowRun{}, err
 	}
+	s.publishAutoPtr(halted)
 	s.publish("review.changed", saved)
 	s.audit(ctx, actor, "scene.review", runID, sceneID+" "+decision)
 	return saved, nil
@@ -241,6 +246,7 @@ func (s *Service) RevokeWorkflowNarration(ctx context.Context, actor, runID, nar
 		return model.WorkflowRun{}, model.ErrArgument
 	}
 	var saved model.WorkflowRun
+	var halted *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		run, err := s.locked(ctx, tx, runID, version)
 		if err != nil {
@@ -276,6 +282,11 @@ func (s *Service) RevokeWorkflowNarration(ctx context.Context, actor, runID, nar
 		run.Status = model.WorkflowAwaitingReview
 		run.Stage = "draft_review"
 		run.BlockedReason = "narration approval was revoked"
+		// The approval row is deleted without a trace, so the auto run must be
+		// stopped here or it would approve the line again.
+		if halted, err = autoTakeover(ctx, tx, runID, actor, model.AutoHaltHumanTakeover, "narration_revoke"); err != nil {
+			return err
+		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()
 		if err := tx.UpdateWorkflow(ctx, run); err != nil {
@@ -287,6 +298,7 @@ func (s *Service) RevokeWorkflowNarration(ctx context.Context, actor, runID, nar
 	if err != nil {
 		return model.WorkflowRun{}, err
 	}
+	s.publishAutoPtr(halted)
 	s.publish("review.changed", saved)
 	s.audit(ctx, actor, "narration.revoke", runID, narrationID)
 	return saved, nil
@@ -297,12 +309,16 @@ func (s *Service) CancelWorkflow(ctx context.Context, actor, runID, reason strin
 		return model.WorkflowRun{}, fmt.Errorf("service: cancel workflow: actor and reason are required: %w", model.ErrArgument)
 	}
 	var saved model.WorkflowRun
+	var closed *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		run, err := s.locked(ctx, tx, runID, version)
 		if err != nil {
 			return err
 		}
 		if err := s.invalidateFrom(ctx, tx, &run, model.TaskTypeRecognize); err != nil {
+			return err
+		}
+		if closed, err = autoCancelTx(ctx, tx, runID, actor, reason); err != nil {
 			return err
 		}
 		run.Status = model.WorkflowCancelled
@@ -318,12 +334,22 @@ func (s *Service) CancelWorkflow(ctx context.Context, actor, runID, reason strin
 	if err != nil {
 		return model.WorkflowRun{}, err
 	}
+	s.publishAutoPtr(closed)
 	s.publish("workflow.changed", saved)
 	s.audit(ctx, actor, "workflow.cancel", runID, reason)
 	return saved, nil
 }
 
 func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, idemKey string, version int) (model.WorkflowRun, error) {
+	if actor == model.AutoActor {
+		return model.WorkflowRun{}, fmt.Errorf("service: the auto-reviewer retries only through AutoRetryStage: %w", model.ErrForbidden)
+	}
+	return s.retryWorkflow(ctx, actor, runID, failedStage, idemKey, version, nil)
+}
+
+// retryWorkflow is RetryWorkflow with a hook that runs inside the transaction
+// after the stage is queued; the auto-reviewer uses it to charge the ledger.
+func (s *Service) retryWorkflow(ctx context.Context, actor, runID, failedStage, idemKey string, version int, extra func(ctx context.Context, tx *store.Store) error) (model.WorkflowRun, error) {
 	if actor == "" || idemKey == "" {
 		return model.WorkflowRun{}, fmt.Errorf("service: retry workflow: actor and idempotency_key are required: %w", model.ErrArgument)
 	}
@@ -339,6 +365,7 @@ func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, 
 	}
 	var saved model.WorkflowRun
 	var attemptOf string
+	var halted *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		if got, body, e := tx.GetIdempotency(ctx, scope, idemKey); e == nil {
 			if got != requestHash {
@@ -372,6 +399,14 @@ func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, 
 		if err := s.queueStage(ctx, tx, run, failedStage, input, attemptOf); err != nil {
 			return err
 		}
+		if halted, err = autoTakeover(ctx, tx, runID, actor, model.AutoHaltHumanTakeover, "retry"); err != nil {
+			return err
+		}
+		if extra != nil {
+			if err := extra(ctx, tx); err != nil {
+				return err
+			}
+		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()
 		if err := tx.UpdateWorkflow(ctx, run); err != nil {
@@ -384,6 +419,7 @@ func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, 
 	if err != nil {
 		return model.WorkflowRun{}, err
 	}
+	s.publishAutoPtr(halted)
 	s.publish("workflow.changed", saved)
 	s.audit(ctx, actor, "workflow.retry", runID, failedStage)
 	return saved, nil
@@ -392,6 +428,11 @@ func (s *Service) RetryWorkflow(ctx context.Context, actor, runID, failedStage, 
 func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem, result, note string, version int) (model.AcceptanceRecord, error) {
 	if result == model.AcceptanceFailed && strings.TrimSpace(note) == "" {
 		return model.AcceptanceRecord{}, model.ErrArgument
+	}
+	// Only a person records acceptance. This is an allow-list, not a refusal of
+	// agent: alone, so system:auto-review and every other prefix are out too.
+	if !isHumanActor(actor) {
+		return model.AcceptanceRecord{}, fmt.Errorf("service: acceptance must be recorded by a human actor: %w", model.ErrForbidden)
 	}
 	if actor == "" || (result != model.AcceptancePassed && result != model.AcceptanceFailed) {
 		return model.AcceptanceRecord{}, fmt.Errorf("service: acceptance result must be passed or failed: %w", model.ErrArgument)
@@ -404,6 +445,7 @@ func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem,
 		return model.AcceptanceRecord{}, fmt.Errorf("service: unknown acceptance item: %w", model.ErrArgument)
 	}
 	var rec model.AcceptanceRecord
+	var closed *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		run, err := s.locked(ctx, tx, runID, version)
 		if err != nil {
@@ -433,11 +475,19 @@ func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem,
 		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()
-		return tx.UpdateWorkflow(ctx, run)
+		if err := tx.UpdateWorkflow(ctx, run); err != nil {
+			return err
+		}
+		// A person who records acceptance takes the run through the last human
+		// gate: a live auto overlay (still working, or waiting for a decision)
+		// is closed in the same transaction, so the asset is not held by it.
+		closed, err = autoHumanCompletedTx(ctx, tx, runID, actor, "acceptance:"+checkItem)
+		return err
 	})
 	if err != nil {
 		return model.AcceptanceRecord{}, err
 	}
+	s.publishAutoPtr(closed)
 	s.publish("acceptance.changed", rec)
 	s.audit(ctx, actor, "acceptance.record", runID, checkItem+"="+result)
 	return rec, nil
@@ -638,6 +688,7 @@ func (s *Service) EditWorkflow(ctx context.Context, actor, runID string, version
 		return model.WorkflowRun{}, fmt.Errorf("service: edit workflow: actor is required: %w", model.ErrArgument)
 	}
 	var saved model.WorkflowRun
+	var halted *model.WorkflowAuto
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		run, rev, edl, err := s.lockRun(ctx, tx, runID, version, baseRevision)
 		if err != nil {
@@ -711,6 +762,9 @@ func (s *Service) EditWorkflow(ctx context.Context, actor, runID string, version
 		}
 		run.CurrentRevisionID = next.RevisionID
 		run.Status = model.WorkflowAwaitingReview
+		if halted, err = autoTakeover(ctx, tx, runID, actor, model.AutoHaltHumanTakeover, "edit"); err != nil {
+			return err
+		}
 		run.Version++
 		run.UpdatedAt = time.Now().UTC()
 		if err := tx.UpdateWorkflow(ctx, run); err != nil {
@@ -722,6 +776,7 @@ func (s *Service) EditWorkflow(ctx context.Context, actor, runID string, version
 	if err != nil {
 		return model.WorkflowRun{}, err
 	}
+	s.publishAutoPtr(halted)
 	s.publish("workflow.changed", saved)
 	s.audit(ctx, actor, "revision.create", saved.CurrentRevisionID, "edit")
 	return saved, nil

@@ -112,6 +112,39 @@ class WorkerTest(unittest.TestCase):
             self.assertEqual(result['outcome'],'failed')
             self.assertIn('content mode',result['reason'])
             self.assertFalse(any(name=='submit_delivery' for name,_ in client.calls))
+    def test_receipt_carries_brief_sha256_and_bad_brief_fails_closed(self):
+        import hashlib
+        brief = "只保留团战"
+        digest = hashlib.sha256(brief.encode("utf-8")).hexdigest()
+        for auto, expect in (({"brief": brief, "brief_sha256": digest, "round": 0}, digest),
+                             ({"brief": "", "brief_sha256": "", "round": 0}, None), (None, None)):
+            with tempfile.TemporaryDirectory() as t:
+                root = Path(t).resolve()
+                handlers = fixture(root)
+                task = {'versioned': True, 'content_mode': 'builtin', 'revision_id': 'rev1', 'edl': {}, 'edl_path': 'src/edl.json'}
+                if auto is not None:
+                    task['auto'] = auto
+                handlers['get_task_input'] = lambda _, task=task: task
+
+                def stage(ctx):
+                    (ctx.out_dir / "edl.json").write_text("{}")
+                    return {}
+
+                client = FakeClient(handlers)
+                result = process_task(client, cfg(root), TASK, lambda _: None, stages={"narrate": stage})
+                self.assertEqual(result["outcome"], "succeeded")
+                receipt = json.loads((root / 'stages/clip/t1/worker-receipt.json').read_text(encoding='utf-8'))
+                self.assertEqual(receipt.get("brief_sha256"), expect)
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t).resolve()
+            handlers = fixture(root)
+            handlers['get_task_input'] = lambda _: {'versioned': True, 'content_mode': 'builtin', 'revision_id': 'rev1', 'edl': {},
+                                                    'edl_path': 'src/edl.json', 'auto': {'brief': brief, 'brief_sha256': '0' * 64}}
+            client = FakeClient(handlers)
+            result = process_task(client, cfg(root), TASK, lambda _: None, stages={"narrate": lambda _: self.fail('ran with a bad brief')})
+            self.assertEqual(result["outcome"], "failed")
+            self.assertNotIn(brief, result["reason"])
+            self.assertFalse(any(name == 'submit_delivery' for name, _ in client.calls))
     def test_success_publishes_package_and_submits(self):
         with tempfile.TemporaryDirectory() as t:
             root = Path(t).resolve()

@@ -22,7 +22,16 @@ import (
 // reopening is not a reason to widen or narrow who may work on the asset.
 // Active tasks on the asset block the reopen, since a running stage would
 // otherwise finish against a package the human just replaced.
+//
+// A person reopening an asset whose auto run is still live takes that run over
+// (it halts as human_takeover) and the reopen goes on. The same reopen coming
+// from startWorkflow (fromStart) is refused instead, so that starting a run
+// can never flip the asset under a live auto run.
 func (s *Service) ReopenAsset(ctx context.Context, actor, assetID string) (model.Asset, error) {
+	return s.reopenAsset(ctx, actor, assetID, false)
+}
+
+func (s *Service) reopenAsset(ctx context.Context, actor, assetID string, fromStart bool) (model.Asset, error) {
 	if actor == "" {
 		return model.Asset{}, fmt.Errorf("service: reopen asset %s: actor is required: %w", assetID, model.ErrArgument)
 	}
@@ -43,6 +52,7 @@ func (s *Service) ReopenAsset(ctx context.Context, actor, assetID string) (model
 		return model.Asset{}, fmt.Errorf("service: reopen asset %s: package has no edl: %w", assetID, model.ErrInvalidState)
 	}
 	var saved model.Asset
+	var halted *model.WorkflowAuto
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		a, err := tx.GetAsset(ctx, assetID)
 		if err != nil {
@@ -50,6 +60,16 @@ func (s *Service) ReopenAsset(ctx context.Context, actor, assetID string) (model
 		}
 		if a.Status != model.AssetStatusExported || a.Artifacts["manifest"] != manifest {
 			return fmt.Errorf("asset changed while reopening: %w", model.ErrConflict)
+		}
+		if liveRun, live, err := tx.ActiveAutoForAsset(ctx, assetID); err != nil {
+			return err
+		} else if live {
+			if fromStart {
+				return fmt.Errorf("asset has auto run %s in progress: %w", liveRun, model.ErrConflict)
+			}
+			if halted, err = autoTakeover(ctx, tx, liveRun, actor, model.AutoHaltHumanTakeover, "reopen"); err != nil {
+				return err
+			}
 		}
 		active, err := tx.ListActiveTasks(ctx)
 		if err != nil {
@@ -87,6 +107,7 @@ func (s *Service) ReopenAsset(ctx context.Context, actor, assetID string) (model
 	if err != nil {
 		return model.Asset{}, fmt.Errorf("service: reopen asset %s: %w", assetID, err)
 	}
+	s.publishAutoPtr(halted)
 	s.publish("asset_updated", cloneAsset(saved))
 	s.audit(ctx, actor, "asset.reopen", assetID, path.Dir(manifest))
 	return cloneAsset(saved), nil

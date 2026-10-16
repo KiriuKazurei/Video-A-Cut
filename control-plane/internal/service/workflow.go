@@ -24,6 +24,7 @@ import (
 type TaskInput struct {
 	ProcessingProfile  *preparation.Profile `json:"processing_profile,omitempty"`
 	ProfileSHA256      string               `json:"profile_sha256,omitempty"`
+	Auto               *AutoInput           `json:"auto,omitempty"`
 	Versioned          bool                 `json:"versioned"`
 	Cancelled          bool                 `json:"cancelled"`
 	TaskID             string               `json:"task_id"`
@@ -63,10 +64,10 @@ var autoNext = map[string]string{
 // revision of the asset's current package. Builtin mode is recorded and is
 // not described as model recognition.
 func (s *Service) StartWorkflow(ctx context.Context, actor, assetID, revisionID, idemKey, contentMode string) (model.WorkflowRun, error) {
-	return s.startWorkflow(ctx, actor, assetID, revisionID, idemKey, contentMode, nil)
+	return s.startWorkflow(ctx, actor, assetID, revisionID, idemKey, contentMode, nil, nil)
 }
 
-func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID, idemKey, contentMode string, prepared *preparation.PreparedStart) (model.WorkflowRun, error) {
+func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID, idemKey, contentMode string, prepared *preparation.PreparedStart, auto *autoStart) (model.WorkflowRun, error) {
 	if actor == "" || !validTaskID(assetID) {
 		return model.WorkflowRun{}, fmt.Errorf("service: start workflow: actor and asset are required: %w", model.ErrArgument)
 	}
@@ -81,6 +82,12 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 	if prepared != nil {
 		scope = "prepared.start:" + assetID
 		requestHash += "|" + prepared.ProfileSHA256 + "|" + prepared.ExpectedAssetVersion
+	}
+	if auto != nil {
+		// An authorization is a different request from a manual prepared start
+		// with the same key, so it gets its own scope and hash.
+		scope = "auto.start:" + assetID
+		requestHash += "|auto|" + auto.requestHash
 	}
 	if cached, err := s.idempotent(ctx, scope, idemKey, requestHash); err == nil {
 		var run model.WorkflowRun
@@ -110,8 +117,17 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 			return model.WorkflowRun{}, fmt.Errorf("service: start workflow %s: allowed_agents missing %s: %w", assetID, role, model.ErrInvalidState)
 		}
 	}
+	// Rule A, early and side-effect free: no new run and no reopen while an
+	// auto run on the asset is active or waiting for the user. The same rule is
+	// enforced again inside the transaction below.
+	if err := ensureNoLiveAuto(ctx, s.st, assetID); err != nil {
+		return model.WorkflowRun{}, err
+	}
+	if s.afterEarlyAutoCheck != nil {
+		s.afterEarlyAutoCheck()
+	}
 	if asset.Status == model.AssetStatusExported && prepared == nil {
-		if _, err := s.ReopenAsset(ctx, actor, assetID); err != nil {
+		if _, err := s.reopenAsset(ctx, actor, assetID, true); err != nil {
 			return model.WorkflowRun{}, err
 		}
 	}
@@ -124,6 +140,31 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 			return json.Unmarshal([]byte(body), &run)
 		} else if !errors.Is(e, model.ErrNotFound) {
 			return e
+		}
+		consentGranted := false
+		// Rule A again, atomically, for every start (manual ones included):
+		// an auto run can become live between the early check and here.
+		if e := ensureNoLiveAuto(ctx, tx, assetID); e != nil {
+			return e
+		}
+		if auto != nil {
+			if auto.grantConsent {
+				// Consent is granted in this transaction, before the preflight
+				// that reads it, so a failed start leaves no consent behind.
+				already, e := tx.ProfileConsent(ctx, prepared.ProfileID, prepared.ProfileRevision, prepared.ProfileSHA256)
+				if e != nil {
+					return e
+				}
+				if !already {
+					if e := tx.SetProfileConsent(ctx, prepared.ProfileID, prepared.ProfileRevision, prepared.ProfileSHA256, actor, true); e != nil {
+						return e
+					}
+					if e := auditTx(ctx, tx, actor, "profile.consent", prepared.ProfileID, fmt.Sprintf("revision=%d granted=true via=auto.authorize", prepared.ProfileRevision)); e != nil {
+						return e
+					}
+					consentGranted = true
+				}
+			}
 		}
 		if prepared != nil {
 			row, e := tx.GetProfileRevision(ctx, prepared.ProfileID, prepared.ProfileRevision)
@@ -194,6 +235,11 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 			}
 			if e := tx.WriteAudit(ctx, model.AuditLog{Actor: actor, Action: "workflow.profile.bind", Target: run.RunID, Detail: row.ProfileID + " sha256=" + row.SHA256}); e != nil {
 				return e
+			}
+		}
+		if auto != nil {
+			if err := s.insertAutoOverlay(ctx, tx, actor, run, auto, consentGranted); err != nil {
+				return err
 			}
 		}
 		if err := s.queueStage(ctx, tx, run, model.TaskTypeRecognize, rev.RevisionID, ""); err != nil {
@@ -329,6 +375,7 @@ func (s *Service) NoteWorkflowSuccess(ctx context.Context, tx *store.Store, tk m
 			TaskID        string `json:"task_id"`
 			RevisionID    string `json:"revision_id"`
 			ContentMode   string `json:"content_mode"`
+			BriefSHA256   string `json:"brief_sha256"`
 		}
 		if json.Unmarshal(raw, &receipt) != nil || receipt.TaskID != tk.TaskID || receipt.RevisionID != stg.InputRevisionID || receipt.ContentMode != run.ContentMode {
 			return fmt.Errorf("delivery receipt does not match fixed input: %w", model.ErrConflict)
@@ -337,6 +384,17 @@ func (s *Service) NoteWorkflowSuccess(ctx context.Context, tx *store.Store, tk m
 			return e
 		} else if sha != "" && sha != receipt.ProfileSHA256 {
 			return model.ErrConflict
+		}
+		// A worker that used another brief, or none, must not have its output
+		// accepted into an auto run. The receipt names only the hash.
+		wantBrief := ""
+		if auto, e := tx.GetWorkflowAuto(ctx, run.RunID); e == nil {
+			wantBrief = auto.BriefSHA256
+		} else if !errors.Is(e, model.ErrNotFound) {
+			return e
+		}
+		if receipt.BriefSHA256 != wantBrief {
+			return fmt.Errorf("delivery receipt brief does not match the run: %w", model.ErrConflict)
 		}
 	} else if !errors.Is(e, model.ErrNotFound) {
 		return e
@@ -614,8 +672,12 @@ func (s *Service) loadHistoricalTaskInput(ctx context.Context, agentID, role, ta
 	if err != nil {
 		return TaskInput{}, err
 	}
+	autoIn, err := autoRunInput(ctx, s.st, run.RunID)
+	if err != nil {
+		return TaskInput{}, err
+	}
 	return TaskInput{
-		ProcessingProfile: profile, ProfileSHA256: profileSHA,
+		ProcessingProfile: profile, ProfileSHA256: profileSHA, Auto: autoIn,
 		Versioned: true, Cancelled: stg.Invalidated || run.Status == model.WorkflowCancelled,
 		TaskID: taskID, AssetID: tk.AssetID, RevisionID: rev.RevisionID, PackageRef: rev.PackageRef, ContentMode: run.ContentMode,
 		EDLPath: rev.PackageRef + "/edl.json", EDL: edl, NarrationApprovals: approvals,

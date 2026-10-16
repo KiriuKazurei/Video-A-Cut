@@ -1,0 +1,36 @@
+{
+  "profile_binding": null,
+  "run": {
+    "asset_id": "clip",
+    "base_revision_id": "REVISION",
+    "content_mode": "configured",
+    "created_at": "TIME",
+    "current_revision_id": "REVISION",
+    "run_id": "RUN",
+    "stage": "recognize",
+    "status": "running",
+    "updated_at": "TIME",
+    "version": 1
+  },
+  "stages": [
+    {
+      "input_revision_id": "REVISION",
+      "invalidated": false,
+      "run_id": "RUN",
+      "stage": "recognize",
+      "task_id": "TASK"
+    }
+  ],
+  "tasks": [
+    {
+      "agent_role": "recognizer",
+      "asset_id": "clip",
+      "attempts": 0,
+      "progress": 0,
+      "status": "queued",
+      "task_id": "TASK",
+      "type": "recognize",
+      "updated_at": "TIME"
+    }
+  ]
+}

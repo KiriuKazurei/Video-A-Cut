@@ -1,0 +1,190 @@
+{
+  "_fixture": {
+    "defects": [
+      "low-confidence scenes (0.35, 0.40, 0.50)",
+      "line 2 has no voice (missing TTS)",
+      "line 3 is ~45 characters in a 1 s window (pace far above 6 chars/s)",
+      "line 4 audio overruns its window by 0.8 s",
+      "labels unrelated to the brief used in the test"
+    ],
+    "kind": "bad_sample",
+    "reason": "no real bad run exists; hand-built in the shape of the R1 export with one defect of each kind",
+    "synthetic": true
+  },
+  "narration": [
+    {
+      "end": 1.2,
+      "id": "nar_scn_bad_0",
+      "start": 0.2,
+      "text": "Boss 战开局就倒下了"
+    },
+    {
+      "end": 3.2,
+      "id": "nar_scn_bad_1",
+      "start": 2.2,
+      "text": "加载中"
+    },
+    {
+      "end": 5.2,
+      "id": "nar_scn_bad_2",
+      "start": 4.2,
+      "text": "菜单"
+    },
+    {
+      "end": 7.2,
+      "id": "nar_scn_bad_3",
+      "start": 6.2,
+      "text": "这里是一段非常非常长的旁白文字它在一个很短的时间窗口里根本读不完而且还在继续写下去"
+    },
+    {
+      "end": 9.2,
+      "id": "nar_scn_bad_4",
+      "start": 8.2,
+      "text": "过场"
+    },
+    {
+      "end": 11.2,
+      "id": "nar_scn_bad_5",
+      "start": 10.2,
+      "text": "装备整理完成"
+    }
+  ],
+  "scenes": [
+    {
+      "confidence": 0.35,
+      "label": "Boss 战失败",
+      "method": "vision",
+      "scene_id": "scn_bad_0"
+    },
+    {
+      "confidence": 0.5,
+      "label": "背景加载画面",
+      "method": "vision",
+      "scene_id": "scn_bad_1"
+    },
+    {
+      "confidence": 0.9,
+      "label": "菜单界面",
+      "method": "vision",
+      "scene_id": "scn_bad_2"
+    },
+    {
+      "confidence": 0.88,
+      "label": "装备栏整理",
+      "method": "vision",
+      "scene_id": "scn_bad_3"
+    },
+    {
+      "confidence": 0.4,
+      "label": "过场动画",
+      "method": "vision",
+      "scene_id": "scn_bad_4"
+    },
+    {
+      "confidence": 0.72,
+      "label": "菜单界面",
+      "method": "vision",
+      "scene_id": "scn_bad_5"
+    }
+  ],
+  "subtitle": [
+    {
+      "end": 1.2,
+      "id": "sub_scn_bad_0",
+      "start": 0.2
+    },
+    {
+      "end": 3.2,
+      "id": "sub_scn_bad_1",
+      "start": 2.2
+    },
+    {
+      "end": 5.2,
+      "id": "sub_scn_bad_2",
+      "start": 4.2
+    },
+    {
+      "end": 7.2,
+      "id": "sub_scn_bad_3",
+      "start": 6.2
+    },
+    {
+      "end": 9.2,
+      "id": "sub_scn_bad_4",
+      "start": 8.2
+    },
+    {
+      "end": 11.2,
+      "id": "sub_scn_bad_5",
+      "start": 10.2
+    }
+  ],
+  "timeline": {
+    "fps": 60,
+    "sample_rate": 48000
+  },
+  "video": [
+    {
+      "in": 0,
+      "out": 2.0,
+      "timeline_in": 0.0
+    },
+    {
+      "in": 0,
+      "out": 2.0,
+      "timeline_in": 2.0
+    },
+    {
+      "in": 0,
+      "out": 2.0,
+      "timeline_in": 4.0
+    },
+    {
+      "in": 0,
+      "out": 2.0,
+      "timeline_in": 6.0
+    },
+    {
+      "in": 0,
+      "out": 2.0,
+      "timeline_in": 8.0
+    },
+    {
+      "in": 0,
+      "out": 2.0,
+      "timeline_in": 10.0
+    }
+  ],
+  "voice": [
+    {
+      "end": 1.2,
+      "id": "vo_scn_bad_0",
+      "src": "media/vo_0.wav",
+      "start": 0.2
+    },
+    {
+      "end": 3.2,
+      "id": "vo_scn_bad_1",
+      "src": "media/vo_1.wav",
+      "start": 2.2
+    },
+    {
+      "end": 7.2,
+      "id": "vo_scn_bad_3",
+      "src": "media/vo_3.wav",
+      "start": 6.2
+    },
+    {
+      "end": 10.0,
+      "id": "vo_scn_bad_4",
+      "src": "media/vo_4.wav",
+      "start": 8.2
+    },
+    {
+      "end": 11.2,
+      "id": "vo_scn_bad_5",
+      "src": "media/vo_5.wav",
+      "start": 10.2
+    }
+  ]
+}

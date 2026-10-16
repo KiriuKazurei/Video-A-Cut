@@ -1,0 +1,359 @@
+{
+  "_fixture": {
+    "derivation": "fields the scorer reads, copied unchanged (scenes: label/method/confidence/scene_id; narration: id/text/start/end; voice: id/src/start/end; subtitle: id/start/end; video: in/out/timeline_in; timeline). Media files, evidence frames and other keys omitted.",
+    "kind": "r1_good",
+    "limitations": "content_mode=builtin: confidence is null and labels are metadata_only; narration text is the builtin placeholder; TTS audio is real (stepfun).",
+    "source": "r1-20261013 run_dbb3c3164d454a18 export revision wfexport_94f44e22166a5fc7/edl.json",
+    "source_edl_sha256": "f049f656f761363569704b2483caeac96fda8c416e374cd53b5cba61d390df37"
+  },
+  "narration": [
+    {
+      "end": 1.53,
+      "id": "nar_scn_709aca9e16c88b5f",
+      "start": 0.2,
+      "text": "第 1 段"
+    },
+    {
+      "end": 4.417,
+      "id": "nar_scn_c9af4378c147373a",
+      "start": 2.417,
+      "text": "第 2 段"
+    },
+    {
+      "end": 8.03,
+      "id": "nar_scn_1ce8201a062e4c0c",
+      "start": 5.75,
+      "text": "第 3 段"
+    },
+    {
+      "end": 13.48,
+      "id": "nar_scn_884f8d81bcdfddff",
+      "start": 9.55,
+      "text": "第 4 段"
+    },
+    {
+      "end": 22.06,
+      "id": "nar_scn_76485eb53c34c6c1",
+      "start": 16.1,
+      "text": "第 5 段"
+    },
+    {
+      "end": 27.523,
+      "id": "nar_scn_fc17f3120c1599a4",
+      "start": 26.033,
+      "text": "第 6 段"
+    },
+    {
+      "end": 30.357,
+      "id": "nar_scn_122e81606312e933",
+      "start": 28.517,
+      "text": "第 7 段"
+    },
+    {
+      "end": 33.383,
+      "id": "nar_scn_ed4bb4efd4587bab",
+      "start": 31.583,
+      "text": "第 8 段"
+    },
+    {
+      "end": 36.883,
+      "id": "nar_scn_e8fd047d965bf08c",
+      "start": 34.583,
+      "text": "第 9 段"
+    },
+    {
+      "end": 43.047,
+      "id": "nar_scn_cfd3a5a1744252ac",
+      "start": 38.417,
+      "text": "第 10 段"
+    },
+    {
+      "end": 47.903,
+      "id": "nar_scn_92d3a7996040c78d",
+      "start": 46.133,
+      "text": "第 11 段"
+    },
+    {
+      "end": 51.583,
+      "id": "nar_scn_44b6fd8bfccbd0d5",
+      "start": 49.083,
+      "text": "第 12 段"
+    }
+  ],
+  "scenes": [
+    {
+      "confidence": null,
+      "label": "scene_01",
+      "method": "metadata_only",
+      "scene_id": "scn_709aca9e16c88b5f"
+    },
+    {
+      "confidence": null,
+      "label": "scene_02",
+      "method": "metadata_only",
+      "scene_id": "scn_c9af4378c147373a"
+    },
+    {
+      "confidence": null,
+      "label": "scene_03",
+      "method": "metadata_only",
+      "scene_id": "scn_1ce8201a062e4c0c"
+    },
+    {
+      "confidence": null,
+      "label": "scene_04",
+      "method": "metadata_only",
+      "scene_id": "scn_884f8d81bcdfddff"
+    },
+    {
+      "confidence": null,
+      "label": "scene_05",
+      "method": "metadata_only",
+      "scene_id": "scn_76485eb53c34c6c1"
+    },
+    {
+      "confidence": null,
+      "label": "scene_06",
+      "method": "metadata_only",
+      "scene_id": "scn_fc17f3120c1599a4"
+    },
+    {
+      "confidence": null,
+      "label": "scene_07",
+      "method": "metadata_only",
+      "scene_id": "scn_122e81606312e933"
+    },
+    {
+      "confidence": null,
+      "label": "scene_08",
+      "method": "metadata_only",
+      "scene_id": "scn_ed4bb4efd4587bab"
+    },
+    {
+      "confidence": null,
+      "label": "scene_09",
+      "method": "metadata_only",
+      "scene_id": "scn_e8fd047d965bf08c"
+    },
+    {
+      "confidence": null,
+      "label": "scene_10",
+      "method": "metadata_only",
+      "scene_id": "scn_cfd3a5a1744252ac"
+    },
+    {
+      "confidence": null,
+      "label": "scene_11",
+      "method": "metadata_only",
+      "scene_id": "scn_92d3a7996040c78d"
+    },
+    {
+      "confidence": null,
+      "label": "scene_12",
+      "method": "metadata_only",
+      "scene_id": "scn_44b6fd8bfccbd0d5"
+    }
+  ],
+  "subtitle": [
+    {
+      "end": 1.24,
+      "id": "sub_scn_709aca9e16c88b5f",
+      "start": 0.2
+    },
+    {
+      "end": 3.897,
+      "id": "sub_scn_c9af4378c147373a",
+      "start": 2.417
+    },
+    {
+      "end": 6.95,
+      "id": "sub_scn_1ce8201a062e4c0c",
+      "start": 5.75
+    },
+    {
+      "end": 10.71,
+      "id": "sub_scn_884f8d81bcdfddff",
+      "start": 9.55
+    },
+    {
+      "end": 17.42,
+      "id": "sub_scn_76485eb53c34c6c1",
+      "start": 16.1
+    },
+    {
+      "end": 26.953,
+      "id": "sub_scn_fc17f3120c1599a4",
+      "start": 26.033
+    },
+    {
+      "end": 29.477,
+      "id": "sub_scn_122e81606312e933",
+      "start": 28.517
+    },
+    {
+      "end": 32.583,
+      "id": "sub_scn_ed4bb4efd4587bab",
+      "start": 31.583
+    },
+    {
+      "end": 35.703,
+      "id": "sub_scn_e8fd047d965bf08c",
+      "start": 34.583
+    },
+    {
+      "end": 39.737,
+      "id": "sub_scn_cfd3a5a1744252ac",
+      "start": 38.417
+    },
+    {
+      "end": 47.293,
+      "id": "sub_scn_92d3a7996040c78d",
+      "start": 46.133
+    },
+    {
+      "end": 50.243,
+      "id": "sub_scn_44b6fd8bfccbd0d5",
+      "start": 49.083
+    }
+  ],
+  "timeline": {
+    "fps": 60,
+    "sample_rate": 48000
+  },
+  "video": [
+    {
+      "in": 0,
+      "out": 2.216666666666667,
+      "timeline_in": 0
+    },
+    {
+      "in": 0,
+      "out": 3.3333333333333335,
+      "timeline_in": 2.216667
+    },
+    {
+      "in": 0,
+      "out": 3.8,
+      "timeline_in": 5.55
+    },
+    {
+      "in": 0,
+      "out": 6.55,
+      "timeline_in": 9.35
+    },
+    {
+      "in": 0,
+      "out": 9.933333333333334,
+      "timeline_in": 15.9
+    },
+    {
+      "in": 0,
+      "out": 2.4833333333333334,
+      "timeline_in": 25.833333
+    },
+    {
+      "in": 0,
+      "out": 3.066666666666667,
+      "timeline_in": 28.316667
+    },
+    {
+      "in": 0,
+      "out": 3,
+      "timeline_in": 31.383333
+    },
+    {
+      "in": 0,
+      "out": 3.8333333333333335,
+      "timeline_in": 34.383333
+    },
+    {
+      "in": 0,
+      "out": 7.716666666666667,
+      "timeline_in": 38.216667
+    },
+    {
+      "in": 0,
+      "out": 2.95,
+      "timeline_in": 45.933333
+    },
+    {
+      "in": 0,
+      "out": 4.166666666666667,
+      "timeline_in": 48.883333
+    }
+  ],
+  "voice": [
+    {
+      "end": 1.24,
+      "id": "vo_scn_709aca9e16c88b5f",
+      "src": "media/src_1_13_13_nar_scn_709aca9e16c88b5f.wav",
+      "start": 0.2
+    },
+    {
+      "end": 3.897,
+      "id": "vo_scn_c9af4378c147373a",
+      "src": "media/src_2_14_14_nar_scn_c9af4378c147373a.wav",
+      "start": 2.417
+    },
+    {
+      "end": 6.95,
+      "id": "vo_scn_1ce8201a062e4c0c",
+      "src": "media/src_3_15_15_nar_scn_1ce8201a062e4c0c.wav",
+      "start": 5.75
+    },
+    {
+      "end": 10.71,
+      "id": "vo_scn_884f8d81bcdfddff",
+      "src": "media/src_4_16_16_nar_scn_884f8d81bcdfddff.wav",
+      "start": 9.55
+    },
+    {
+      "end": 17.42,
+      "id": "vo_scn_76485eb53c34c6c1",
+      "src": "media/src_5_17_17_nar_scn_76485eb53c34c6c1.wav",
+      "start": 16.1
+    },
+    {
+      "end": 26.953,
+      "id": "vo_scn_fc17f3120c1599a4",
+      "src": "media/src_6_18_18_nar_scn_fc17f3120c1599a4.wav",
+      "start": 26.033
+    },
+    {
+      "end": 29.477,
+      "id": "vo_scn_122e81606312e933",
+      "src": "media/src_7_19_19_nar_scn_122e81606312e933.wav",
+      "start": 28.517
+    },
+    {
+      "end": 32.583,
+      "id": "vo_scn_ed4bb4efd4587bab",
+      "src": "media/src_8_20_20_nar_scn_ed4bb4efd4587bab.wav",
+      "start": 31.583
+    },
+    {
+      "end": 35.703,
+      "id": "vo_scn_e8fd047d965bf08c",
+      "src": "media/src_9_21_21_nar_scn_e8fd047d965bf08c.wav",
+      "start": 34.583
+    },
+    {
+      "end": 39.737,
+      "id": "vo_scn_cfd3a5a1744252ac",
+      "src": "media/src_10_22_22_nar_scn_cfd3a5a1744252ac.wav",
+      "start": 38.417
+    },
+    {
+      "end": 47.293,
+      "id": "vo_scn_92d3a7996040c78d",
+      "src": "media/src_11_23_23_nar_scn_92d3a7996040c78d.wav",
+      "start": 46.133
+    },
+    {
+      "end": 50.243,
+      "id": "vo_scn_44b6fd8bfccbd0d5",
+      "src": "media/src_12_24_24_nar_scn_44b6fd8bfccbd0d5.wav",
+      "start": 49.083
+    }
+  ]
+}

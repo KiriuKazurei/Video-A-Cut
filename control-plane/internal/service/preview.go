@@ -100,6 +100,29 @@ func (s *Service) projectPreviewViewAt(ctx context.Context, st *store.Store, job
 // StartPreview starts or reuses an MP4 preview job for a workflow run's exported revision.
 // Returns view, created (true if a new preview task was created, false if reused), and error.
 func (s *Service) StartPreview(ctx context.Context, actor, runID string, req preview.StartRequest) (preview.View, bool, error) {
+	if actor == model.AutoActor {
+		// The auto-reviewer starts previews only through AutoStartPreview, which
+		// carries the guard and the ledger row in the same transaction.
+		return preview.View{}, false, fmt.Errorf("service: the auto-reviewer may not start a preview directly: %w", model.ErrForbidden)
+	}
+	// A person who starts a *new* preview job on an auto run takes it over.
+	// Reusing an existing job (the auto-reviewer's own, say) does not: the hook
+	// runs only on the branch that creates a job.
+	var halted *model.WorkflowAuto
+	view, created, err := s.startPreview(ctx, actor, runID, req, func(ctx context.Context, tx *store.Store) error {
+		var e error
+		halted, e = autoTakeover(ctx, tx, runID, actor, model.AutoHaltHumanTakeover, "preview")
+		return e
+	})
+	if err == nil && created {
+		s.publishAutoPtr(halted)
+	}
+	return view, created, err
+}
+
+// startPreview is StartPreview with a hook that runs inside the transaction,
+// after every reuse check missed and before the new job is written.
+func (s *Service) startPreview(ctx context.Context, actor, runID string, req preview.StartRequest, onNewJob func(ctx context.Context, tx *store.Store) error) (preview.View, bool, error) {
 	if actor == "" {
 		return preview.View{}, false, fmt.Errorf("service: actor is required: %w", model.ErrArgument)
 	}
@@ -422,6 +445,9 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 	if err != nil {
 		return preview.View{}, false, err
 	}
+	if s.beforePreviewTx != nil {
+		s.beforePreviewTx()
+	}
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		// Concurrency double check for request_id
 		if dup, e := tx.GetPreviewJobByRequest(ctx, runID, req.RequestID); e == nil {
@@ -470,6 +496,11 @@ func (s *Service) StartPreview(ctx context.Context, actor, runID string, req pre
 			return e
 		}
 
+		if onNewJob != nil {
+			if err := onNewJob(ctx, tx); err != nil {
+				return err
+			}
+		}
 		if err := tx.CreateTask(ctx, tk); err != nil {
 			return fmt.Errorf("service: create preview task: %w", err)
 		}
