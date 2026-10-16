@@ -131,7 +131,9 @@ export function decisionHeadline(reason: string | undefined, canExport = true): 
     case 'exhausted': return {
       title: '已自动重剪多轮，仍未达到高档',
       // 卡在场景识别闸门时没有成片可导出：别再说「可以直接导出」
-      description: canExport ? '你可以直接导出最近一版，或写下修改意见让 Agent 再剪一次。' : '目前还没有可导出的成片。你可以写下修改意见让 Agent 再剪一次，或撤销授权改用分步生成。'
+      description: canExport
+        ? '你可以直接导出最近一版，写下修改意见让 Agent 再剪一次，或放弃这次结果。'
+        : '目前还没有可导出的成片。你可以写下修改意见让 Agent 再剪一次，或放弃这次结果。'
     };
     case 'asset_busy': return { title: '这个素材已有另一个进行中的任务', description: '先处理那个任务，再回来决定。' };
     default: return { title: '成片已生成，AI 自评为中档，请你决定', description: '直接导出当前这版，或写下修改意见让 Agent 再剪一次。' };
@@ -173,6 +175,92 @@ export function autoPanelModel(a: AutoView, run?: { status?: string; stage?: str
 
 /** 是否还需要轮询：进行中、等待决定。已结束的状态靠事件/手动刷新。 */
 export const autoPolling = (state?: string) => state === 'active' || state === 'awaiting_user_decision';
+
+export type AutoStepStatus = 'wait' | 'process' | 'finish' | 'error';
+export interface AutoStepModel {
+  title: string;
+  status: AutoStepStatus;
+  /** 停在这一步等用户决定时的说明。 */
+  note?: string;
+}
+
+/**
+ * 阶段条。已经走过的阶段是完成；正在跑的当前阶段是进行中。
+ * 耗尽并等用户决定时，不再把停住的那一步（例如「确认场景」）标成进行中：
+ * 之前的阶段保持完成，这一步标「待你确认」。流程已到验收则七步都算完成。
+ */
+export function autoSteps(
+  stage: string | undefined,
+  model: { kind: AutoPanelKind; live: boolean },
+  opts?: { failed?: boolean; decisionReason?: string }
+): AutoStepModel[] {
+  const cur = phaseIndex(stage);
+  const exhausted = model.kind === 'decision' && opts?.decisionReason === 'exhausted';
+  return AUTO_PHASES.map((title, i) => {
+    let status: AutoStepStatus;
+    if (i < cur) status = 'finish';
+    else if (i > cur) status = 'wait';
+    else if (exhausted) status = 'wait';
+    else if (opts?.failed) status = 'error';
+    else if (model.live || model.kind === 'decision') status = 'process';
+    else status = 'wait';
+    const step: AutoStepModel = { title, status };
+    if (exhausted && i === cur && cur < AUTO_PHASES.length) step.note = '待你确认';
+    return step;
+  });
+}
+
+/**
+ * 决策卡标题旁的标签。仍扣着导出时写「尚未导出」。
+ * hold 为 false 时不写「已确认」：这张卡只在还没决定时出现，已确认到不了这里。
+ */
+export function decisionHoldLabel(deliveryHold: boolean): string | null {
+  return deliveryHold ? '尚未导出' : null;
+}
+
+/**
+ * 完成态脚注。没有成片、也没有交付包时不提预览规格
+ * （后端当前不会给出「已完成但无交付」；即使视图如此，也不要显示 720p）。
+ */
+export function deliveryNote(d?: { delivered?: boolean; package_ready?: boolean; spec?: string } | null): string {
+  if (!d?.delivered && !d?.package_ready) return '';
+  if (d.delivered && d.package_ready) return `成片为 ${d.spec} 预览规格；原画质分段在交付包里，可导入剪辑软件继续精修。`;
+  if (d.delivered) return `成片为 ${d.spec} 预览规格。`;
+  return '原画质分段在交付包里，可导入剪辑软件继续精修。';
+}
+
+export type AutoDecisionName = 'export' | 'revise' | 'discard';
+
+/** POST …/auto/decision 的请求体。只有「提出修改意见」才带 feedback。 */
+export function autoDecisionBody(decision: AutoDecisionName, input: { feedback?: string; expectedAutoVersion: number; idempotencyKey: string }) {
+  const body: { decision: AutoDecisionName; expected_auto_version: number; idempotency_key: string; feedback?: string } = {
+    decision,
+    expected_auto_version: input.expectedAutoVersion,
+    idempotency_key: input.idempotencyKey
+  };
+  if (decision === 'revise') body.feedback = (input.feedback ?? '').trim();
+  return body;
+}
+
+/** 已经确认不是自动流程的 run：再 GET …/auto 只会 404。 */
+const knownNonAutoRuns = new Set<string>();
+
+/** 有 run、且还没被 404 标成「不是自动流程」时才去拉。 */
+export function shouldRequestAuto(runId: string | undefined): boolean {
+  return typeof runId === 'string' && runId.length > 0 && !knownNonAutoRuns.has(runId);
+}
+
+export function noteAutoMissing(runId: string): void {
+  if (runId) knownNonAutoRuns.add(runId);
+}
+
+export function noteAutoPresent(runId: string): void {
+  if (runId) knownNonAutoRuns.delete(runId);
+}
+
+export function resetAutoPresence(): void {
+  knownNonAutoRuns.clear();
+}
 
 /** 授权阈值：只开放 high_score_min 一项放宽；默认 0.85，硬下限 0.80（后端 CheckOverrides）。 */
 export const HIGH_SCORE_DEFAULT = 0.85;
