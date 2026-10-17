@@ -250,7 +250,7 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
           options={[{ value: 'list', icon: <UnorderedListOutlined />, label: '详细列表' }, { value: 'grid', icon: <AppstoreOutlined />, label: '缩略图' }]} />
         <Tag>{assetsQuery.isPending ? '读取中' : `${rows.length} 项`}</Tag>
       </Space>}>
-      <Flex vertical gap={12}>
+      <Flex vertical gap={16}>
         <Row gutter={12} className="asset-toolbar">
           <Col xs={24} md={14}><Form.Item label="按资产 ID 筛选" htmlFor="asset-search" layout="vertical" style={{ marginBottom: 0 }}>
             <Input.Search id="asset-search" allowClear value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入资产 ID" />

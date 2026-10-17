@@ -38,15 +38,29 @@ export const appTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: BASE_TOKEN,
   components: {
-    Layout: { headerBg: UNIFIED_BG, bodyBg: UNIFIED_BG, footerBg: UNIFIED_BG, siderBg: UNIFIED_BG, lightSiderBg: UNIFIED_BG, headerHeight: 48, headerPadding: '0 12px', footerPadding: '4px 12px' },
+    Layout: { headerBg: UNIFIED_BG, bodyBg: UNIFIED_BG, footerBg: UNIFIED_BG, siderBg: UNIFIED_BG, lightSiderBg: UNIFIED_BG, headerHeight: 48, headerPadding: '0 16px', footerPadding: '8px 16px' },
     // 页签（小圆角矩形）：当前页白字落在蓝色玻璃高亮上（对比度 > 7:1）；去掉水平菜单的下划线指示。
     Menu: { itemBg: 'transparent', horizontalLineHeight: '28px', horizontalItemSelectedColor: '#ffffff', horizontalItemHoverColor: '#ffffff', itemHoverColor: '#ffffff', activeBarHeight: 0, horizontalItemBorderRadius: 3, itemBorderRadius: 3, itemPaddingInline: 12 },
     // 以下组件级覆写只用于中间工作区（卡片/表格融入统一底色）；侧栏用 siderTheme，不继承这些覆写。
-    Card: { colorBgContainer: 'transparent', headerBg: 'transparent', headerHeight: 38, headerFontSize: 14 },
-    Table: { colorBgContainer: 'transparent', headerBg: 'rgba(255, 255, 255, 0.04)', rowHoverBg: 'rgba(255, 255, 255, 0.05)' },
+    // 内边距比默认小卡片略松，避免标题、表格和空态贴着卡片边。圆角仍走全局 2–4px。
+    Card: {
+      colorBgContainer: 'transparent', headerBg: 'transparent', headerFontSize: 14,
+      headerHeight: 46, headerHeightSM: 42,
+      headerPadding: 20, headerPaddingSM: 18,
+      bodyPadding: 20, bodyPaddingSM: 16
+    },
+    Table: {
+      colorBgContainer: 'transparent', headerBg: 'rgba(255, 255, 255, 0.04)', rowHoverBg: 'rgba(255, 255, 255, 0.05)',
+      cellPaddingBlockSM: 12, cellPaddingInlineSM: 14
+    },
     Descriptions: { labelBg: 'rgba(255, 255, 255, 0.04)' },
     Collapse: { headerBg: 'rgba(255, 255, 255, 0.03)', contentBg: 'transparent' },
-    List: { colorBgContainer: 'transparent' }
+    List: {
+      colorBgContainer: 'transparent',
+      itemPadding: '18px 2px',
+      itemPaddingSM: '14px 4px',
+      itemPaddingLG: '20px 8px'
+    }
   }
 };
 

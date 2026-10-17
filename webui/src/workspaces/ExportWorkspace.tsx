@@ -188,7 +188,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
           children: (
             <div className="section-content" data-nav-anchor={section.id} tabIndex={-1}>
               {section.id === 'delivery' && (
-                <Row gutter={[16, 16]}>
+                <Row gutter={[24, 24]}>
                   <Col xs={24} xl={14}>
                     <Flex vertical gap={16}>
                       <Monitor 

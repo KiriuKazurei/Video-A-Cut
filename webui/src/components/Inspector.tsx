@@ -10,14 +10,15 @@ type Patch = UseMutationResult<Asset, Error, { id: string; values: GovernancePat
 /** 属性面板（Premiere Properties）：当前资产的治理状态与 PATCH 操作（API-03）。全部为 antd 默认暗色组件。 */
 export function Inspector({ asset, patch }: { asset?: Asset; patch: Patch }) {
   return (
-    <Card size="small" variant="borderless" aria-labelledby="detail-title" title={<span id="detail-title">属性 · 资产治理</span>}>
+    <Card size="small" variant="borderless" aria-labelledby="detail-title" title={<span id="detail-title">属性 · 资产治理</span>}
+      styles={{ header: { paddingInline: 16 }, body: { padding: '8px 16px 20px' } }}>
       {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="在项目面板选择一项资产以查看状态和治理操作。" />}
-      {asset && <Flex vertical gap={12}>
+      {asset && <Flex vertical gap={16}>
         <Flex align="center" gap={8} wrap>
           <Typography.Title level={5} style={{ margin: 0, overflowWrap: 'anywhere' }}>{asset.asset_id}</Typography.Title>
           <Tag color={asset.status === 'exported' ? 'success' : 'default'}>{asset.status}</Tag>
         </Flex>
-        <Descriptions size="small" column={1} bordered styles={{ label: { whiteSpace: 'nowrap' } }} items={[
+        <Descriptions column={1} bordered styles={{ label: { whiteSpace: 'nowrap' } }} items={[
           { key: 'kind', label: '输入类型', children: kindLabel(asset) },
           { key: 'visible', label: 'Agent 可见', children: asset.agent_visible ? '是' : '否' },
           { key: 'locked', label: '锁定', children: asset.locked ? '是' : '否' },
@@ -27,7 +28,7 @@ export function Inspector({ asset, patch }: { asset?: Asset; patch: Patch }) {
           { key: 'artifacts', label: '产物记录', children: `${Object.keys(asset.artifacts ?? {}).length} 项` },
           ...(asset.ingest_run_id ? [{ key: 'run', label: '导入运行', children: <Typography.Text code style={{ overflowWrap: 'anywhere' }}>{asset.ingest_run_id}</Typography.Text> }] : [])
         ]} />
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Button block type="primary" disabled={patch.isPending} icon={asset.agent_visible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
             onClick={() => patch.mutate({ id: asset.asset_id, values: { agent_visible: !asset.agent_visible } })}>
             {asset.agent_visible ? '设为 Agent 不可见' : '设为 Agent 可见'}</Button>
@@ -39,7 +40,7 @@ export function Inspector({ asset, patch }: { asset?: Asset; patch: Patch }) {
             {asset.human_approved ? '撤销批准' : '人工批准'}</Button>
         </Space>
         {patch.isError && <Alert type="error" showIcon message={`更新失败：${errorText(patch.error)}`} />}
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>只发送修改的治理字段；人工批准资产不等于批准某句解说。修改权限可能影响活动任务。</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 13, lineHeight: 1.65 }}>只发送修改的治理字段；人工批准资产不等于批准某句解说。修改权限可能影响活动任务。</Typography.Text>
       </Flex>}
     </Card>
   );

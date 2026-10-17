@@ -295,7 +295,7 @@ export function PreparationPanel({
 
       {/* 4. all: 完整并排展示（默认与向后兼容） */}
       {activeSection === 'all' && (
-        <Row gutter={[16,16]}>
+        <Row gutter={[24, 24]}>
           <Col xs={24} xl={16}>
             <Form layout="vertical" className="prep-main" onFinish={save} disabled={busy}>
               <Typography.Title level={5}>基本信息</Typography.Title>

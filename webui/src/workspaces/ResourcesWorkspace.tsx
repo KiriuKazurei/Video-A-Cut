@@ -22,7 +22,7 @@ export function ResourcesWorkspace({ asset, onSelect }: ResourcesWorkspaceProps)
 
   return (
     <div className="page-body">
-      <Row gutter={[16, 16]}>
+      <Row gutter={[24, 24]}>
         <Col xs={24} xl={15}>
           <Monitor 
             label="资源预览" 
@@ -42,14 +42,14 @@ export function ResourcesWorkspace({ asset, onSelect }: ResourcesWorkspaceProps)
             {!asset && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未选择资产" />}
             {asset && (
               <>
-                <Descriptions size="small" column={1} items={[
+                <Descriptions column={1} items={[
                   { key: 'id', label: '资产 ID', children: <Typography.Text code>{asset.asset_id}</Typography.Text> },
                   { key: 'kind', label: '输入类型', children: kindLabel(asset) },
                   { key: 'status', label: '状态', children: <Tag>{asset.status}</Tag> },
                   { key: 'created', label: '创建时间', children: stamp(asset.created_at) },
                   { key: 'files', label: '产物记录', children: `${Object.keys(asset.artifacts ?? {}).length} 项 · 可播放 ${playable.length} 个` }
                 ]} />
-                <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+                <Typography.Paragraph type="secondary" style={{ fontSize: 13, lineHeight: 1.65, marginTop: 16, marginBottom: 0 }}>
                   完整治理操作（可见性、锁定、批准）在右侧属性面板。artifacts 值是服务端记录，不是下载地址。
                 </Typography.Paragraph>
               </>
