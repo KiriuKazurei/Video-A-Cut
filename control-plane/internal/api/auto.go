@@ -34,6 +34,7 @@ type autoRunRequest struct {
 	Authorization        struct {
 		AcceptExternalEgress bool   `json:"accept_external_egress"`
 		NoticeSHA256         string `json:"notice_sha256"`
+		VisibleSetSHA        string `json:"visible_set_sha"`
 	} `json:"authorization"`
 	IdempotencyKey string `json:"idempotency_key"`
 }
@@ -79,7 +80,7 @@ func (s *Server) startAutoRun(w http.ResponseWriter, r *http.Request) {
 		AssetID: r.PathValue("id"), RevisionID: req.RevisionID, ProfileID: req.ProfileID, ProfileRevision: req.Revision,
 		ExpectedAssetVersion: req.ExpectedAssetVersion, Brief: req.Brief, Scope: req.Scope,
 		AcceptExternalEgress: req.Authorization.AcceptExternalEgress, NoticeSHA256: req.Authorization.NoticeSHA256,
-		IdempotencyKey: req.IdempotencyKey,
+		VisibleSetSHA: req.Authorization.VisibleSetSHA, IdempotencyKey: req.IdempotencyKey,
 	})
 	if err != nil {
 		writeServiceError(w, err)

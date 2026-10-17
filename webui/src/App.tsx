@@ -86,8 +86,8 @@ export default function App() {
   const { route, navigate } = useWorkspaceRoute();
   const { workspace } = route;
 
-  // 顶部页签的液态玻璃滑块：量出选中项（或选中的「…」）相对页签组的 left/width，写成 CSS 变量；
-  // 滑块本身是 .app-nav::before（见 styles.css），无需额外 DOM；窗口/字体/折叠变化时自动重新量。
+  // 顶栏分段滑块：量出选中项（或选中的「…」）相对页签组的 left/width，写成 CSS 变量。
+  // 滑块是 .app-nav.seg-nav::before。首次定位不动画，之后才打开位移动效。
   const navWrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const wrap = navWrapRef.current;
@@ -110,7 +110,7 @@ export default function App() {
       nav.style.setProperty('--nav-thumb-w', `${w}px`);
       if (first) {
         nav.setAttribute('data-thumb', 'on');
-        // 首次定位不做滑动动画（对齐 #039 movePill(false)），下一帧再开启 spring
+        // 首次定位不滑动，下一帧再开 #295 的位移动效
         requestAnimationFrame(() => requestAnimationFrame(() => nav.setAttribute('data-thumb-anim', '1')));
       }
     };
@@ -207,6 +207,7 @@ export default function App() {
   const workflowData = useWorkflowData(assetId, selection);
   const rawAsset = Boolean(selected && (selected.input_kind === 'raw_recording' || selected.ingest_run_id));
   const ingestRuns = useQuery({ queryKey: ['ingest', 'runs', assetId], queryFn: () => ingestApi.runs(assetId), enabled: rawAsset });
+  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
   const pipeline = useMemo(() => derivePipeline({
     asset: selected,
     assetCount: assets.data?.length ?? 0,
@@ -214,8 +215,9 @@ export default function App() {
     ingestRuns: rawAsset ? ingestRuns.data : undefined,
     // 未加载 = undefined；加载成功但没有流程 = null；查询失败走 workflowError（下一步可点「重新加载」）
     workflow: !selected ? null : workflowData.runs.isSuccess ? (workflowData.current ?? null) : workflowData.runs.isError ? null : undefined,
-    workflowError: selected && workflowData.runs.isError ? (workflowData.runs.error?.message || '网络或服务异常') : undefined
-  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.runs.isError, workflowData.runs.error, workflowData.current]);
+    workflowError: selected && workflowData.runs.isError ? (workflowData.runs.error?.message || '网络或服务异常') : undefined,
+    visibleConfirmed: visibleSet.isSuccess ? visibleSet.data.confirmed : undefined
+  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.runs.isError, workflowData.runs.error, workflowData.current, visibleSet.isSuccess, visibleSet.data?.confirmed]);
 
   // 跳转并把目标分区滚动到视野内、聚焦（保持当前资产不变；路由不变时也会聚焦）
   const [focusTick, setFocusTick] = useState(0);
@@ -284,7 +286,7 @@ export default function App() {
         {/* 工作区导航：资源、编辑、导出、TTS + 右侧设置 */}
         <div className="app-nav-wrap" ref={navWrapRef} data-tour="nav">
           <Menu 
-            className="app-nav glass-nav" 
+            className="app-nav seg-nav" 
             mode="horizontal" 
             aria-label="工作区" 
             overflowedIndicatorPopupClassName="app-nav-popup"

@@ -81,7 +81,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
           </Layout.Sider>
         )}
 
-        <Layout.Content style={{ paddingLeft: isMobile ? 0 : 20, minHeight: 500, width: '100%', minWidth: 0 }}>
+        <Layout.Content style={{ paddingLeft: isMobile ? 0 : 28, minHeight: 500, width: '100%', minWidth: 0 }}>
           {/* P2-02: 保持 PreparationPanel 实例常驻挂载，切换分类不卸载草稿 */}
           <div style={{ display: isProfileCategory ? 'block' : 'none', width: '100%' }}>
             <PreparationPanel 

@@ -90,6 +90,13 @@ func (s *Service) SubmitDelivery(ctx context.Context, agentID, taskID, packageDi
 		if err := tx.UpdateAsset(ctx, asset); err != nil {
 			return fmt.Errorf("service: submit delivery on task %s asset: %w", taskID, err)
 		}
+		// A new export is a new delivery version. Older packages stay invalidated
+		// until this write replaces them; the fresh package may be downloaded.
+		if tk.Type == model.TaskTypeExport {
+			if err := tx.ClearDeliveryInvalidation(ctx, tk.AssetID); err != nil {
+				return err
+			}
+		}
 
 		tk.Status = model.TaskStatusSucceeded
 		tk.Progress = 1

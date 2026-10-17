@@ -42,7 +42,7 @@ const allowsIngester = (asset: Asset) =>
 /** 粗剪时间线的标尺刻度：整数微秒 → 简短时钟文本（仅显示，不回写）。 */
 const tickClock = (us: number) => usToClock(Math.round(us / 1e6) * 1e6).replace(/\.$/, '').replace(/\.0*$/, '');
 
-const Hint = ({ children }: { children: React.ReactNode }) => <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>{children}</Typography.Paragraph>;
+const Hint = ({ children }: { children: React.ReactNode }) => <Typography.Paragraph type="secondary" style={{ marginBottom: 16, lineHeight: 1.65 }}>{children}</Typography.Paragraph>;
 
 /** 导入页：受控根目录内录像登记（API-04、API-05）。只提交 root_id + 相对路径。 */
 export function IngestRegister({ onSelect }: { onSelect: (id: string) => void }) {
@@ -142,7 +142,7 @@ export function IngestPanel({ asset }: { asset?: Asset }) {
     <Card className="ingest-panel" aria-labelledby="ingest-title" title={<span id="ingest-title">原始录像导入与自动切分</span>}
       extra={current && <Tag color={stateColor[current.state]}>{stateText[current.state] ?? current.state} · {stageText[current.stage] ?? current.stage}</Tag>}>
       <Hint>系统会先给出切分建议，你确认选段后再生成短片。</Hint>
-      <Flex vertical gap={12}>
+      <Flex vertical gap={16}>
         {error && <Alert type="error" showIcon role="alert" message={error} />}
         {workerHint && online === 0 && (
           <Alert type="info" showIcon closable onClose={() => setWorkerHint(false)}
@@ -206,7 +206,7 @@ function RunDetail({ runId, policy, busy, act, onCleanup }: { runId: string; pol
     ? ['allocated', 'waiting_resource'].includes(execution?.status ?? '')
     : task?.status === 'queued' || task?.status === 'pending';
   return (
-    <Flex vertical gap={12} className="ingest-run">
+    <Flex vertical gap={16} className="ingest-run">
       <Flex align="center" gap={8} wrap>
         <Typography.Text strong>{stateText[run.state]} · {stageText[run.stage]}</Typography.Text>
         <Tag>v{run.version}</Tag>
@@ -364,7 +364,7 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
         note: '候选片段缩略图（源素材取样，非成片）'
       });
     } else {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#121316"/><text x="50%" y="48%" fill="#8c8c8c" font-size="18" text-anchor="middle" dominant-baseline="middle">${it.segment_id}</text><text x="50%" y="58%" fill="#595959" font-size="12" text-anchor="middle">无缩略图</text></svg>`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#000000"/><text x="50%" y="48%" fill="#E6E6E6" font-size="18" text-anchor="middle" dominant-baseline="middle">${it.segment_id}</text><text x="50%" y="58%" fill="#9A9A9A" font-size="12" text-anchor="middle">无缩略图</text></svg>`;
       preview({ kind: 'image', src: 'data:image/svg+xml,' + encodeURIComponent(svg), title: it.segment_id, meta, note: '无缩略图 · 仍可在时间线选中与编辑' });
     }
     requestAnimationFrame(() => {
@@ -398,7 +398,7 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
     }
   }));
 
-  return <Flex vertical gap={12} className="ingest-review">
+  return <Flex vertical gap={16} className="ingest-review">
     <Timeline label="源时间线" duration={durationUs} formatTick={tickClock}
       caption={`本页候选 ${page.data?.items.length ?? 0} · 已选 ${picked.size} · 单击预览 · 双击加入/移出已选`}
       tracks={[{ id: 'C', name: '候选', hint: '单击预览；双击或 Ctrl/⌘+单击加入/移出已选', clips: candidateClips },

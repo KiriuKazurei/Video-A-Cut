@@ -62,7 +62,7 @@ export function Monitor({ label, preview, emptyTitle, emptyHint, compact, childr
   const timed = preview?.kind === 'video' || preview?.kind === 'audio';
   const note = preview?.note ?? (preview?.kind === 'audio' ? '音量仅作用于本次浏览器试听，不改写交付文件' : '');
   return (
-    <Card size="small" className="monitor glass glass-window" aria-label={`${label}监视器`} styles={{ body: { padding: 0 } }}
+    <Card size="small" className="monitor" aria-label={`${label}监视器`} styles={{ body: { padding: 0 } }}
       title={<Flex gap={8} align="center" style={{ minWidth: 0 }}>
         <Tag color="processing" bordered={false} style={{ marginInlineEnd: 0 }}>{label}</Tag>
         <Typography.Text strong ellipsis={{ tooltip: preview?.title }} className="monitor-title">{preview?.title ?? '无媒体'}</Typography.Text>
@@ -80,7 +80,7 @@ export function Monitor({ label, preview, emptyTitle, emptyHint, compact, childr
         {preview?.kind === 'image' && <img key={preview.src} className="monitor-media" src={preview.src} alt={preview.title}
           style={{ display: failed ? 'none' : undefined }} onError={() => setFailedSource(preview.src)} onLoad={() => setFailedSource(null)} />}
         {preview?.kind === 'audio' && <Flex vertical align="center" gap={12} className="monitor-audio">
-          <SoundOutlined style={{ fontSize: 40, color: '#fff' }} />
+          <SoundOutlined style={{ fontSize: 40, color: 'var(--vac-on-media)' }} />
           <audio key={preview.src} ref={audioRef} controls preload="metadata" src={preview.src} aria-label={`试听 ${preview.title}`}
             onError={() => setFailedSource(preview.src)} onLoadedData={() => setFailedSource(null)}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}

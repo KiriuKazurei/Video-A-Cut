@@ -206,6 +206,17 @@ func (s *Service) startWorkflow(ctx context.Context, actor, assetID, revisionID,
 		} else if !errors.Is(err, model.ErrNotFound) {
 			return err
 		}
+		// A new run, manual or automatic, needs a fresh human confirmation of
+		// the visible set. Replaying an idempotent start returned above, and an
+		// already-active run returned as a conflict, so an in-progress run is
+		// not stuck on this gate.
+		if auto != nil {
+			if err := s.writeVisibleConfirmation(ctx, tx, actor, auto.visibleSHA, true); err != nil {
+				return err
+			}
+		} else if err := s.requireVisibleConfirmation(ctx, tx, assetID); err != nil {
+			return err
+		}
 		rev, err := s.ensureRevision(ctx, tx, actor, assetID, revisionID)
 		if err != nil {
 			return err

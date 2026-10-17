@@ -90,13 +90,13 @@ export function Timeline({ label, duration, tracks, formatTick, caption, emptyTe
   };
 
   const tones: Record<ClipTone, { background: string; color: string; borderColor: string }> = {
-    video: { background: token.colorPrimary, color: token.colorTextLightSolid, borderColor: token.colorPrimary },
-    selected: { background: token.colorPrimary, color: token.colorTextLightSolid, borderColor: token.colorPrimary },
-    audio: { background: token.cyan6, color: token.colorTextLightSolid, borderColor: token.cyan6 },
+    video: { background: 'var(--vac-clip-video)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-clip-video)' },
+    selected: { background: 'var(--vac-clip-video)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-clip-video)' },
+    audio: { background: 'var(--vac-status-cyan)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-status-cyan)' },
     candidate: { background: token.colorFillSecondary, color: token.colorText, borderColor: token.colorBorder },
-    ok: { background: token.colorSuccess, color: token.colorTextLightSolid, borderColor: token.colorSuccess },
-    warn: { background: token.colorWarning, color: token.colorTextLightSolid, borderColor: token.colorWarning },
-    bad: { background: token.colorError, color: token.colorTextLightSolid, borderColor: token.colorError },
+    ok: { background: 'var(--vac-success)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-success)' },
+    warn: { background: 'var(--vac-warning)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-warning)' },
+    bad: { background: 'var(--vac-danger)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-danger)' },
     muted: { background: token.colorFillTertiary, color: token.colorTextSecondary, borderColor: token.colorBorderSecondary }
   };
 
@@ -205,10 +205,7 @@ export function Timeline({ label, duration, tracks, formatTick, caption, emptyTe
                   left: `${left}%`,
                   width: `${width}%`,
                   ...tone,
-                  borderRadius: token.borderRadiusSM,
-                  boxShadow: clip.active
-                    ? `0 0 0 2px ${token.colorBgContainer}, 0 0 0 4px ${token.colorWarning}`
-                    : undefined
+                  borderRadius: token.borderRadiusSM
                 };
                 const className = `timeline-clip tone-${clip.tone}${clip.active ? ' is-active' : ''}${clip.picked ? ' is-picked' : ''}`;
                 const tip = [

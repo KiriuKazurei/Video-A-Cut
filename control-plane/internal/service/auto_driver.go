@@ -888,6 +888,43 @@ func (s *Service) haltBudgetSpent(ctx context.Context, runID string) (bool, erro
 	return err == nil, err
 }
 
+// parkVisibleSet stops an authorized run whose visible set no longer matches
+// the grant. The run stays; the person re-authorizes or takes over.
+func (s *Service) parkVisibleSet(ctx context.Context, a model.WorkflowAuto, sha string, ids []string) error {
+	now := s.autoNow()
+	var saved model.WorkflowAuto
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
+		cur, err := tx.GetWorkflowAuto(ctx, a.RunID)
+		if err != nil {
+			return err
+		}
+		if cur.State != model.AutoStateActive || cur.AutoVersion != a.AutoVersion {
+			return model.ErrConflict
+		}
+		if cur.Scope.VisibleSetSHA == "" || cur.Scope.VisibleSetSHA == sha {
+			return nil
+		}
+		saved = cur
+		return s.applyAutoTransition(ctx, tx, &saved, autoTransition{
+			state: model.AutoStateAwaitingDecision, reason: model.AutoWaitVisibleSet,
+			hold: boolPtr(true), wait: true,
+			kind: model.AutoDecisionVisibleSet, target: "visible_set",
+			basis: map[string]any{"from": cur.Scope.VisibleSetSHA, "to": sha, "asset_ids": ids},
+			audit: "auto.visible_set_changed",
+		}, now)
+	})
+	if err != nil {
+		if errors.Is(err, model.ErrConflict) {
+			return nil
+		}
+		return err
+	}
+	if saved.RunID != "" {
+		s.publishAuto(saved)
+	}
+	return nil
+}
+
 func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 	a, err := s.st.GetWorkflowAuto(ctx, runID)
 	if err != nil {
@@ -905,6 +942,15 @@ func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 		}
 		return false, nil
 	case model.AutoStateActive:
+		if a.Scope.VisibleSetSHA != "" {
+			set, err := loadVisibleSet(ctx, s.st)
+			if err != nil {
+				return false, err
+			}
+			if set.SHA != a.Scope.VisibleSetSHA {
+				return true, s.parkVisibleSet(ctx, a, set.SHA, set.IDs)
+			}
+		}
 	default:
 		return false, nil
 	}

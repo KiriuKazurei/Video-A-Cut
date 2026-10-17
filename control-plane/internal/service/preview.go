@@ -1037,6 +1037,9 @@ func (s *Service) ResolvePreviewFile(ctx context.Context, previewID, key string)
 	if err != nil {
 		return preview.ResolvedFile{}, err
 	}
+	if job.Invalidated {
+		return preview.ResolvedFile{}, fmt.Errorf("service: preview %s was invalidated: %w", previewID, model.ErrInvalidState)
+	}
 	if job.OutputDir == "" {
 		return preview.ResolvedFile{}, fmt.Errorf("service: preview %s has not produced output: %w", previewID, model.ErrNotFound)
 	}

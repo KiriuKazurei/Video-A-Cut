@@ -46,6 +46,7 @@ func workflowSetup(t *testing.T) (*service.Service, string, model.WorkflowRun) {
 	if err := svc.CreateAsset(t.Context(), model.Asset{AssetID: "clip", Status: model.AssetStatusIngested, AgentVisible: true, AllowedAgents: []string{"recognizer", "narrator", "exporter"}, Artifacts: map[string]string{"edl": "src/edl.json"}}); err != nil {
 		t.Fatal(err)
 	}
+	confirmVisible(t, svc)
 	run, err := svc.StartWorkflow(t.Context(), "human:webui", "clip", "", "start", "configured")
 	if err != nil {
 		t.Fatal(err)

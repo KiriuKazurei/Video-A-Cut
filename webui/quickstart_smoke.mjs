@@ -20,6 +20,7 @@ const starts = []; const preflights = []; const gate = { beta: null };
 const fail = { alpha_profile: false, beta_profile: false }; const getCount = { alpha_profile: 0, beta_profile: 0 }; const startDelay = { ms: 0 };
 
 await page.route(/\/api\/assets(\?.*)?$/, async (route) => { const r = await route.fetch(); const l = await r.json(); await route.fulfill({ response: r, json: l.map((a) => a.asset_id === '_selfcheck' ? { ...a, agent_visible: true } : a) }); });
+await page.route('**/api/visible-set', (route) => route.fulfill({ json: { asset_ids: ['_selfcheck'], sha256: 'vis-smoke', confirmed: true, script_finalize: false, stale: false, assets: [{ asset_id: '_selfcheck', status: 'ingested', agent_visible: true, ingested: true }] } }));
 await page.route(/\/api\/processing-profiles(\?.*)?$/, (route) => {
   if (route.request().method() === 'POST') { const { profile } = route.request().postDataJSON(); profiles[profile.profile_id] = profile; return route.fulfill({ json: profile }); }
   return route.fulfill({ json: Object.values(profiles) });
