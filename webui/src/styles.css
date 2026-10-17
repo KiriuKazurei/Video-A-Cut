@@ -589,6 +589,42 @@ button.timeline-clip:focus-visible { outline: 2px solid var(--vac-on-media); out
 
 /* TTS 推子使用 Ant Design 5 Slider，不自绘推子帽、渐变或阴影。 */
 
+/* antd 写死、组件 token 关不掉的阴影和文字投影。运行时必须是 none。 */
+.ant-btn,
+.ant-btn:hover,
+.ant-btn:active,
+.ant-btn:focus {
+  box-shadow: none !important;
+}
+.ant-slider .ant-slider-handle::before,
+.ant-slider .ant-slider-handle::after,
+.ant-slider:hover .ant-slider-handle::after,
+.ant-slider .ant-slider-handle:hover::after,
+.ant-slider .ant-slider-handle:focus::after,
+.ant-slider .ant-slider-handle:active::after,
+.ant-slider-disabled .ant-slider-handle::after {
+  box-shadow: none !important;
+}
+.ant-slider .ant-slider-handle::after,
+.ant-slider:hover .ant-slider-handle::after,
+.ant-slider .ant-slider-handle:hover::after,
+.ant-slider .ant-slider-handle:focus::after,
+.ant-slider .ant-slider-handle:active::after {
+  outline: 2px solid var(--vac-accent) !important;
+  outline-offset: 0;
+}
+.ant-slider-disabled .ant-slider-handle::after {
+  outline-color: var(--vac-border) !important;
+}
+.ant-tabs-nav-wrap::before,
+.ant-tabs-nav-wrap::after {
+  box-shadow: none !important;
+}
+.ant-tabs-tab-active .ant-tabs-tab-btn,
+.ant-spin-text {
+  text-shadow: none !important;
+}
+
 /* 进度条：方头小圆角，不用胶囊 */
 .ant-progress-line .ant-progress-bg, .ant-progress-line .ant-progress-inner, .ant-progress-line .ant-progress-success-bg { border-radius: 2px !important; }
 

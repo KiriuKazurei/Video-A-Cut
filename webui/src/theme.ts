@@ -116,7 +116,10 @@ export const appTheme: ThemeConfig = {
       itemPaddingSM: '14px 4px',
       itemPaddingLG: '20px 8px'
     },
-    Button: { defaultBg: CONTROL_BG, defaultBorderColor: BORDER, defaultColor: TEXT, primaryShadow: 'none', defaultShadow: 'none' },
+    Button: {
+      defaultBg: CONTROL_BG, defaultBorderColor: BORDER, defaultColor: TEXT,
+      primaryShadow: 'none', defaultShadow: 'none', dangerShadow: 'none'
+    },
     Input: { colorBgContainer: CONTROL_BG, activeBorderColor: ACCENT, hoverBorderColor: ACCENT },
     InputNumber: { colorBgContainer: CONTROL_BG, activeBorderColor: ACCENT, hoverBorderColor: ACCENT },
     Select: { selectorBg: CONTROL_BG, optionSelectedBg: CONTROL_BG },
@@ -131,5 +134,9 @@ export const appTheme: ThemeConfig = {
 export const siderTheme: ThemeConfig = {
   inherit: false,
   algorithm: theme.darkAlgorithm,
-  token: BASE_TOKEN
+  token: BASE_TOKEN,
+  components: {
+    // inherit:false 不会带上 appTheme 的 Button 覆写，阴影要在这里单独关掉。
+    Button: { primaryShadow: 'none', defaultShadow: 'none', dangerShadow: 'none' }
+  }
 };
