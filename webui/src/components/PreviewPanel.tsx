@@ -330,11 +330,7 @@ export function PreviewPanel({
             {inProgressPreview && (
               <Card
                 size="small"
-                className="preview-progress-card"
-                style={{
-                  background: 'rgba(22, 119, 255, 0.04)',
-                  borderColor: 'rgba(22, 119, 255, 0.25)'
-                }}
+                className="preview-progress-card is-rendering"
               >
                 <Flex vertical gap={6}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
@@ -362,7 +358,7 @@ export function PreviewPanel({
                   <Progress
                     percent={Math.round((inProgressPreview.progress ?? 0) * 100)}
                     status="active"
-                    strokeColor={{ from: '#108ee9', to: '#87d068' }}
+                    strokeColor="var(--vac-accent)"
                   />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {inProgressPreview.message ||
@@ -426,16 +422,12 @@ export function PreviewPanel({
             {latestSucceededPreview && (
               <Card
                 size="small"
-                className="preview-media-card"
-                style={{
-                  background: 'rgba(82, 196, 26, 0.04)',
-                  borderColor: 'rgba(82, 196, 26, 0.3)'
-                }}
+                className="preview-media-card is-ready"
               >
                 <Flex vertical gap={8}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
-                      <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+                      <CheckCircleOutlined style={{ color: 'var(--vac-success-text)', fontSize: 16 }} />
                       <Typography.Text strong>原 SRT 成片 MP4 已就绪</Typography.Text>
                       <Tag color="success">已完成</Tag>
                       <Tag>原 SRT</Tag>

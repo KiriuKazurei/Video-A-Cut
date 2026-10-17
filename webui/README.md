@@ -32,7 +32,7 @@ npm run dev
 
 固定区域：左侧「项目 · 资产」面板（API-01），右侧「属性 · 资产治理」面板（API-03）。**系统连接与本机服务状态**集中在「设置 › 状态监控」（含控制面、SSE 事件流、本机导入服务、语音试听环境）；主界面底栏只显示当前资产与工作区，不再常驻 SSE「已连接」指示。监视器只播放受控文件键，不把 artifacts 当下载地址。界面组件：`src/navigation.ts`、`src/workspaces/*`、`src/components/{Monitor,Timeline,StatusMonitor,...}`。
 
-视觉：全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`）。当前试验配色集中在 `src/theme.ts` 与 `styles.css` 的 `--vac-*`：窗口 `#1E1E1E`、面板 `#252525`、控件 `#2F2F2F`、边框 `#3A3A3A`、主文字 `#E6E6E6`、次文字 `#9A9A9A`、强调色 `#4C8DFF`。顶栏工作区页签是实色分段滑块（圆角槽 + 一块滑块，选中项加粗；位移动效只加在这块滑块上，对齐 Lucian #295）。监视器是普通实色外框，没有液态玻璃、背景模糊或高光。左右侧栏是 antd `Layout.Sider`：纯色底、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里。系统开启「减少动态效果」时滑块瞬时到位。回退配色时还原 `theme.ts` 与 `:root` 的 `--vac-*` 色值即可。
+视觉：硬性规范见 [`docs/ui-style-spec.md`](../docs/ui-style-spec.md)。全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`）。配色集中在 `src/theme.ts` 与 `styles.css` 的 `--vac-*`：窗口 `#1E1E1E`、面板 `#252525`、控件 `#2F2F2F`、边框 `#3A3A3A`、主文字 `#E6E6E6`、次文字 `#9A9A9A`、强调色 `#4C8DFF`。顶栏工作区页签是实色分段滑块（圆角槽 + 一块滑块，选中项加粗；位移动效只加在这块滑块上，对齐 Lucian #295）。监视器是普通实色外框，没有液态玻璃、背景模糊或高光。左右侧栏是 antd `Layout.Sider`：纯色底、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里。系统开启「减少动态效果」时滑块瞬时到位。描述表行高为字号的 1.25 倍。`npm run lint:style` 检查渐变、阴影、模糊和色板以外的颜色。
 
 浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）已对齐五工作区路由：
 `#/resources`、`#/editing/{import|content|review}`、`#/export/{delivery|acceptance|tasks}`、`#/settings/{profiles|providers|preparation|logs|status}`、`#/tts`（仍接受旧六页别名）。

@@ -364,7 +364,7 @@ function SegmentReview({ view, policy, busy, act }: { view: IngestRunView; polic
         note: '候选片段缩略图（源素材取样，非成片）'
       });
     } else {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#121316"/><text x="50%" y="48%" fill="#8c8c8c" font-size="18" text-anchor="middle" dominant-baseline="middle">${it.segment_id}</text><text x="50%" y="58%" fill="#595959" font-size="12" text-anchor="middle">无缩略图</text></svg>`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#000000"/><text x="50%" y="48%" fill="#E6E6E6" font-size="18" text-anchor="middle" dominant-baseline="middle">${it.segment_id}</text><text x="50%" y="58%" fill="#9A9A9A" font-size="12" text-anchor="middle">无缩略图</text></svg>`;
       preview({ kind: 'image', src: 'data:image/svg+xml,' + encodeURIComponent(svg), title: it.segment_id, meta, note: '无缩略图 · 仍可在时间线选中与编辑' });
     }
     requestAnimationFrame(() => {

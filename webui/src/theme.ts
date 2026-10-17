@@ -1,10 +1,7 @@
 import { theme, type ThemeConfig } from 'antd';
 
 /**
- * 中性灰深色试验。配色只集中在这里和 styles.css 的 --vac-*。
- * 回退这一版时还原本文件与 :root 里的 --vac-bg / --vac-panel / --vac-control /
- * --vac-border / --vac-text / --vac-text-2 / --vac-accent 即可。
- *
+ * 硬性色板。数值与 docs/ui-style-spec.md、styles.css 的 --vac-* 保持一致。
  * 窗口 #1E1E1E，面板 #252525，控件 #2F2F2F，边框 #3A3A3A，
  * 主文字 #E6E6E6，次文字 #9A9A9A，强调色只有 #4C8DFF。
  * 无渐变、无发光、无阴影。控件仍走 Ant Design 5，圆角 2–4px。
@@ -16,6 +13,20 @@ export const BORDER = '#3A3A3A';
 export const TEXT = '#E6E6E6';
 export const TEXT_SECONDARY = '#9A9A9A';
 export const ACCENT = '#4C8DFF';
+export const CLIP_VIDEO = '#3E6FB0';
+export const CLIP_AUDIO = '#3E8E6B';
+export const CLIP_SUBTITLE = '#B08A3E';
+export const CLIP_EFFECT = '#8A5FB0';
+export const SUCCESS = '#49AA19';
+export const SUCCESS_TEXT = '#52C41A';
+export const WARNING = '#D89614';
+export const WARNING_TEXT = '#FAAD14';
+export const DANGER = '#DC4446';
+export const DANGER_TEXT = '#FF4D4F';
+export const DANGER_SOFT = '#FF7875';
+export const STATUS_CYAN = '#13A8A8';
+export const MEDIA = '#000000';
+export const ON_MEDIA = '#FFFFFF';
 
 /** 窗口底色。旧名保留，供仍引用 UNIFIED_BG 的地方使用。 */
 export const UNIFIED_BG = WINDOW_BG;
@@ -24,6 +35,10 @@ const BASE_TOKEN: ThemeConfig['token'] = {
   colorPrimary: ACCENT,
   colorInfo: ACCENT,
   colorLink: ACCENT,
+  colorSuccess: SUCCESS,
+  colorWarning: WARNING,
+  colorError: DANGER,
+  colorTextLightSolid: ON_MEDIA,
   colorBgBase: WINDOW_BG,
   colorBgLayout: WINDOW_BG,
   colorBgContainer: PANEL_BG,
@@ -85,7 +100,15 @@ export const appTheme: ThemeConfig = {
       borderColor: BORDER,
       cellPaddingBlockSM: 12, cellPaddingInlineSM: 14
     },
-    Descriptions: { labelBg: CONTROL_BG },
+    Descriptions: {
+      labelBg: CONTROL_BG,
+      itemPaddingBottom: 4,
+      itemPaddingEnd: 10,
+      padding: 4,
+      paddingLG: 10,
+      paddingSM: 4,
+      paddingXS: 4
+    },
     Collapse: { headerBg: CONTROL_BG, contentBg: 'transparent' },
     List: {
       colorBgContainer: 'transparent',
