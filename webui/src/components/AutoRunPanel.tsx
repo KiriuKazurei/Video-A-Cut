@@ -70,7 +70,7 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
   const steps = autoSteps(currentRun.stage, model, { failed, decisionReason: a.decision?.reason ?? a.halt_reason });
   const review = a.latest_review;
   const lines = reasonLines(review);
-  const decide = (decision: 'export' | 'revise' | 'discard') => invoke(() => api.decideAuto(a.run_id, autoDecisionBody(decision, {
+  const decide = (decision: 'export' | 'revise' | 'discard' | 'confirm_visible_set') => invoke(() => api.decideAuto(a.run_id, autoDecisionBody(decision, {
     feedback, expectedAutoVersion: a.auto_version, idempotencyKey: crypto.randomUUID()
   })).then(() => { setFeedback(''); setFeedbackOpen(false); }));
   const revoke = () => invoke(() => api.revokeAuto(a.run_id, { reason: 'user_revoked_from_ui', expected_auto_version: a.auto_version, also_revoke_consent: alsoConsent }));
@@ -110,11 +110,14 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
               <Typography.Text>{decisionHeadline(a.decision.reason, a.decision.can_export).description}</Typography.Text>
               {deadline && <Typography.Text type="secondary" className="auto-deadline">请在 {deadline} 前决定；超时会停止，不会自动导出。</Typography.Text>}
               <Space wrap>
+                {(a.decision.reason === 'visible_set_changed') && (
+                  <Button type="primary" className="vac-cta" disabled={act.isPending} onClick={() => decide('confirm_visible_set')}>确认新的可见集并继续</Button>
+                )}
                 <Tooltip title={a.decision.can_export ? undefined : '还没有可导出的成片，只能提出修改意见或放弃'}>
-                  <Button type="primary" className="vac-cta" disabled={!a.decision.can_export || act.isPending} onClick={() => decide('export')}>直接导出</Button>
+                  <Button type="primary" className="vac-cta" disabled={!a.decision.can_export || act.isPending || a.decision.reason === 'visible_set_changed'} onClick={() => decide('export')}>直接导出</Button>
                 </Tooltip>
-                <Tooltip title={a.decision.can_revise ? undefined : '重剪次数或额度已用完，不能再提修改意见'}>
-                  <Button disabled={!a.decision.can_revise || act.isPending} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(o => !o)}>提出修改意见</Button>
+                <Tooltip title={a.decision.reason === 'visible_set_changed' ? '可见集变了，请先确认新的可见集' : a.decision.can_revise ? undefined : '重剪次数或额度已用完，不能再提修改意见'}>
+                  <Button disabled={!a.decision.can_revise || act.isPending || a.decision.reason === 'visible_set_changed'} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(o => !o)}>提出修改意见</Button>
                 </Tooltip>
                 <Popconfirm title="放弃这次结果？" okText="放弃" cancelText="再想想" okButtonProps={{ danger: true }}
                   description="自动剪辑会停在这里，不会导出。之后可以改为手动处理。" onConfirm={() => decide('discard')}>
@@ -174,14 +177,19 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
 
   const blockers = autoPreflightBlockers(preflight.data?.checks);
   const preflightOk = Boolean(preflight.data) && Boolean(preflight.data?.expected_asset_version) && blockers.length === 0;
-  const ok = canStartAuto({ authorized, profileOk: Boolean(profile), noticeReady: Boolean(notice.data), preflightOk, busy: false, relaxOn, relaxValue, relaxConfirmed });
+  const inVisibleSet = Boolean(notice.data?.visible_assets?.some((item) => item.asset_id === assetId && item.agent_visible));
+  const ok = canStartAuto({
+    authorized, profileOk: Boolean(profile), noticeReady: Boolean(notice.data), preflightOk, busy: false, relaxOn, relaxValue, relaxConfirmed,
+    visibleReady: Boolean(notice.data?.visible_set_sha) && inVisibleSet
+  });
 
   const start = useMutation({
     mutationFn: async () => {
       try {
         const base = {
           profileId: profile!.profile_id, revision: rev, expectedAssetVersion: preflight.data!.expected_asset_version!, brief, maxRounds,
-          relaxHighScore: relaxOn ? relaxValue : undefined, relaxConfirmed, noticeSha: notice.data!.notice_sha256, external: notice.data!.external
+          relaxHighScore: relaxOn ? relaxValue : undefined, relaxConfirmed, noticeSha: notice.data!.notice_sha256,
+          external: notice.data!.external, visibleSetSha: notice.data!.visible_set_sha
         };
         const sig = JSON.stringify(base);
         // 相同内容重试沿用同一幂等键（网络抖动不会起两个 run）；内容变了换新键。
@@ -226,10 +234,22 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
       {notice.isError && <Alert type="error" showIcon role="alert" message="读取授权说明失败" description="没有授权说明就不能启动。" action={<Button type="link" size="small" onClick={() => void notice.refetch()}>重试</Button>} />}
       {notice.data && (
         <Alert type={notice.data.external ? 'warning' : 'info'} showIcon className="auto-notice" message={notice.data.external ? '数据会发送到外部服务' : '数据只在本机处理'}
-          description={<div style={{ whiteSpace: 'pre-wrap' }} data-testid="auto-notice-text">{notice.data.notice}</div>} />
+          description={<Flex vertical gap={8}>
+            <div style={{ whiteSpace: 'pre-wrap' }} data-testid="auto-notice-text">{notice.data.notice}</div>
+            <div>
+              <Typography.Text strong>本次授权范围</Typography.Text>
+              <ul className="auto-grant-list">
+                {(notice.data.grants ?? []).map((grant) => <li key={grant.code}>{grant.label}</li>)}
+                {(notice.data.visible_assets ?? []).filter((item) => item.agent_visible).map((item) => (
+                  <li key={item.asset_id}>{item.asset_id}：已入库，Agent 可见</li>
+                ))}
+                {(notice.data.visible_assets ?? []).filter((item) => item.agent_visible).length === 0 && <li>当前没有 Agent 可见素材</li>}
+              </ul>
+            </div>
+          </Flex>} />
       )}
       <Checkbox className="auto-authorize" checked={authorized} onChange={e => setAuthorized(e.target.checked)}>
-        <b>全局授权</b>：同意 Agent 不再逐步询问，自动完成剪辑、配音、字幕和导出，并按上面的说明处理数据。我可以随时撤销。
+        <b>全局授权</b>：同意对上面列出的可见素材和脚本定稿授权，Agent 不再逐步询问，自动完成剪辑、配音、字幕和导出。我可以随时撤销。
       </Checkbox>
       <Collapse size="small" ghost className="auto-advanced" items={[{
         key: 'adv', label: '高级设置（可选）',

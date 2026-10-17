@@ -21,6 +21,32 @@ import type { PreviewClient, PreviewStartRequest, PreviewView, PreviewList } fro
 import { previewFileURL, previewQueryKey } from './previewContracts.ts';
 import type { SaveStyleRequest, SubtitleFontFamily, SubtitleStyleDraft, VariantStartRequest, VariantView, VariantList } from './deliveryVariantContracts';
 
+export interface VisibleAssetLine {
+  asset_id: string;
+  status: string;
+  agent_visible: boolean;
+  ingested: boolean;
+}
+
+export interface VisibleSetView {
+  asset_ids: string[];
+  sha256: string;
+  confirmed: boolean;
+  confirmed_sha?: string;
+  confirmed_by?: string;
+  confirmed_at?: string;
+  script_finalize: boolean;
+  stale: boolean;
+  assets: VisibleAssetLine[];
+}
+
+export interface ScriptRecord {
+  script_id: string;
+  asset_id: string;
+  status: string;
+  visible_set_sha: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -75,12 +101,17 @@ export const api = {
   startAutoRun: (asset: string, body: object) => request<{ run: WorkflowRun; auto: AutoView }>(`/api/assets/${encodeURIComponent(asset)}/auto-runs`, json('POST', body)),
   getAuto: (runId: string) => request<AutoView>(`/api/workflows/${encodeURIComponent(runId)}/auto`),
   autoReviews: (runId: string) => request<AutoReviewInfo[]>(`/api/workflows/${encodeURIComponent(runId)}/auto/reviews`),
-  decideAuto: (runId: string, body: { decision: 'export' | 'revise' | 'discard'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
+  decideAuto: (runId: string, body: { decision: 'export' | 'revise' | 'discard' | 'confirm_visible_set'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
     request<{ auto: AutoView; run: WorkflowRun }>(`/api/workflows/${encodeURIComponent(runId)}/auto/decision`, json('POST', body)),
   revokeAuto: (runId: string, body: { reason: string; expected_auto_version: number; also_revoke_consent: boolean }) =>
     request<{ auto: AutoView }>(`/api/workflows/${encodeURIComponent(runId)}/auto/revoke`, json('POST', body)),
   preflightWorkflow: (assetId: string, profile: ProcessingProfile) =>
     request<PreparationReport>(`/api/assets/${encodeURIComponent(assetId)}/workflow-preflight`, json('POST', profile)),
+  visibleSet: () => request<VisibleSetView>('/api/visible-set'),
+  confirmVisibleSet: (sha: string) => request<VisibleSetView>('/api/visible-set/confirm', json('POST', { visible_set_sha: sha })),
+  batchVisibility: (assetIds: string[], agentVisible: boolean) =>
+    request<Asset[]>('/api/assets/visibility', json('POST', { asset_ids: assetIds, agent_visible: agentVisible })),
+  enterScript: (id: string) => request<ScriptRecord>(`/api/assets/${encodeURIComponent(id)}/script-entry`, json('POST', {})),
   listAssets: () => request<Asset[]>('/api/assets'),
   getAsset: (id: string) => request<Asset>(`/api/assets/${encodeURIComponent(id)}`),
   patchAsset: (id: string, patch: GovernancePatch) =>

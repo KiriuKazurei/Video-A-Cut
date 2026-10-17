@@ -77,9 +77,13 @@ func (e *autoEnv) request(t *testing.T, key, brief string, accept bool) service.
 	if err != nil {
 		t.Fatal(err)
 	}
+	visible, err := e.svc.VisibleSet(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	return service.AutoRunRequest{AssetID: "clip", ProfileID: e.profile.ProfileID, ProfileRevision: 1,
 		ExpectedAssetVersion: report.ExpectedAssetVersion, Brief: brief, AcceptExternalEgress: accept,
-		NoticeSHA256: notice.NoticeSHA256, IdempotencyKey: key}
+		NoticeSHA256: notice.NoticeSHA256, VisibleSetSHA: visible.SHA256, IdempotencyKey: key}
 }
 
 func (e *autoEnv) start(t *testing.T, brief string) (model.WorkflowRun, service.AutoView) {
@@ -523,6 +527,7 @@ func TestAutoConfirmSceneRefusesWhatItCannotJustify(t *testing.T) {
 	}
 	// Not an auto run.
 	plain := newAutoEnv(t, false)
+	confirmVisible(t, plain.svc)
 	pr, err := plain.svc.StartWorkflow(ctx, "human:webui", "clip", "", "plain", "configured")
 	if err != nil {
 		t.Fatal(err)

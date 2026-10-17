@@ -247,6 +247,7 @@ func (s *Service) PatchAssetGovernance(
 	var saved model.Asset
 	var detail string
 	changed := false
+	visibilityChanged := false
 	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		before, err := tx.GetAsset(ctx, assetID)
 		if err != nil {
@@ -255,6 +256,7 @@ func (s *Service) PatchAssetGovernance(
 		a := cloneAsset(before)
 		if patch.AgentVisible != nil {
 			a.AgentVisible = *patch.AgentVisible
+			visibilityChanged = before.AgentVisible != a.AgentVisible
 		}
 		if patch.Locked != nil {
 			a.Locked = *patch.Locked
@@ -276,6 +278,11 @@ func (s *Service) PatchAssetGovernance(
 		}
 		if err := tx.UpdateAsset(ctx, a); err != nil {
 			return fmt.Errorf("service: update asset governance %s: %w", assetID, err)
+		}
+		if visibilityChanged {
+			if err := s.expireVisibleDownstream(ctx, tx); err != nil {
+				return err
+			}
 		}
 		saved, err = tx.GetAsset(ctx, assetID)
 		changed = err == nil

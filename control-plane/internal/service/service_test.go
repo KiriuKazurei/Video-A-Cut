@@ -54,6 +54,20 @@ func setTaskFixture(t *testing.T, svc *service.Service, taskID string, edit func
 	return updated
 }
 
+// confirmVisible records a human confirmation of whatever the library currently
+// exposes to agents. Successful StartWorkflow calls in older tests go through
+// this helper: a new run is refused until that confirmation exists.
+func confirmVisible(t *testing.T, svc *service.Service) {
+	t.Helper()
+	view, err := svc.VisibleSet(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ConfirmVisibleSet(t.Context(), "human:test", view.SHA256, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // seedAsset creates one asset through the service and fails the test if the
 // store rejects it. Tests seed via CreateAsset rather than the store so the
 // visibility assertions cover the whole service surface.

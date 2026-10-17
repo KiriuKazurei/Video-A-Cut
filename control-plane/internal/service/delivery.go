@@ -237,6 +237,9 @@ func (s *Service) packagePath(a model.Asset, real string, key string) (string, e
 // ListDeliveryFiles revalidates every registered path. Missing or escaped
 // files fail the whole list rather than silently producing an incomplete ZIP.
 func (s *Service) ListDeliveryFiles(ctx context.Context, assetID string) ([]DeliveryFile, error) {
+	if err := s.deliveryBlocked(ctx, s.st, assetID); err != nil {
+		return nil, err
+	}
 	a, err := s.GetAsset(ctx, assetID)
 	if err != nil {
 		return nil, err
@@ -270,6 +273,9 @@ func (s *Service) ListDeliveryFiles(ctx context.Context, assetID string) ([]Deli
 func (s *Service) OpenDeliveryFile(ctx context.Context, assetID, key string) (*os.File, DeliveryFile, error) {
 	if !deliveryKey.MatchString(key) {
 		return nil, DeliveryFile{}, fmt.Errorf("invalid artifact key: %w", model.ErrArgument)
+	}
+	if err := s.deliveryBlocked(ctx, s.st, assetID); err != nil {
+		return nil, DeliveryFile{}, err
 	}
 	a, err := s.GetAsset(ctx, assetID)
 	if err != nil {

@@ -43,6 +43,8 @@ export function PreparationPanel({
     enabled:autoCheck,
     refetchInterval:autoCheck?15000:false
   });
+  const visibleSet=useQuery({queryKey:['visible-set'],queryFn:api.visibleSet});
+  const visibleBlocked=visibleSet.isSuccess&&!visibleSet.data.confirmed;
   // 进入运行准备分区或资产变化时主动刷新预检（治理状态可能已变）
   const prepFocus=activeSection==='preparation'||activeSection==='all';
   useEffect(()=>{if(prepFocus&&autoCheck)void report.refetch()},[prepFocus,autoCheck,assetId,draft.profile_id,draft.revision]);
@@ -196,9 +198,10 @@ export function PreparationPanel({
               {hasIngestBlock&&<Button onClick={()=>onNavigate?.({workspace:'editing',editingSection:'import'})}>去导入与粗剪</Button>}
             </Space>
           )}
-          <Tooltip title={pickerMismatch?'正在载入所选预设的最新版本，请稍候':report.data.can_start?undefined:blockerTip}>
+          {visibleBlocked&&<Alert type="warning" showIcon message="可见素材还没确认" description="开始生成前，请先在资源页确认当前 Agent 可见素材。" action={<Button size="small" onClick={()=>onNavigate?.({workspace:'resources'})}>去确认</Button>}/>}
+          <Tooltip title={visibleBlocked?'请先确认 Agent 可见素材':pickerMismatch?'正在载入所选预设的最新版本，请稍候':report.data.can_start?undefined:blockerTip}>
             <span style={{display:'block',width:'100%'}}>
-              <Button type="primary" block className="vac-cta" disabled={busy||report.isFetching||!report.data.can_start||unsaved||pickerMismatch} onClick={startFlow}>开始生成</Button>
+              <Button type="primary" block className="vac-cta" disabled={busy||report.isFetching||!report.data.can_start||unsaved||pickerMismatch||visibleBlocked||!visibleSet.isSuccess} onClick={startFlow}>开始生成</Button>
             </span>
           </Tooltip>
         </>}

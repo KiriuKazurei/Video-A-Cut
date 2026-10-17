@@ -4,6 +4,18 @@
  * 约束：不向普通用户暴露内部术语（actor、auto_version、阶段英文名、原因码）。
  */
 
+export interface VisibleAssetLine {
+  asset_id: string;
+  status: string;
+  agent_visible: boolean;
+  ingested: boolean;
+}
+
+export interface AuthorizationGrant {
+  code: string;
+  label: string;
+}
+
 export interface AutoNotice {
   profile_id: string;
   revision: number;
@@ -11,6 +23,9 @@ export interface AutoNotice {
   external: boolean;
   notice: string;
   notice_sha256: string;
+  visible_set_sha?: string;
+  visible_assets?: VisibleAssetLine[];
+  grants?: AuthorizationGrant[];
 }
 
 export interface AutoScopeInfo {
@@ -136,6 +151,10 @@ export function decisionHeadline(reason: string | undefined, canExport = true): 
         : '目前还没有可导出的成片。你可以写下修改意见让 Agent 再剪一次，或放弃这次结果。'
     };
     case 'asset_busy': return { title: '这个素材已有另一个进行中的任务', description: '先处理那个任务，再回来决定。' };
+    case 'visible_set_changed': return {
+      title: '可见素材发生了变化',
+      description: '这次授权没有覆盖新的可见集。请确认新的可见集后再继续，或放弃这次结果。'
+    };
     default: return { title: '成片已生成，AI 自评为中档，请你决定', description: '直接导出当前这版，或写下修改意见让 Agent 再剪一次。' };
   }
 }
@@ -229,7 +248,7 @@ export function deliveryNote(d?: { delivered?: boolean; package_ready?: boolean;
   return '原画质分段在交付包里，可导入剪辑软件继续精修。';
 }
 
-export type AutoDecisionName = 'export' | 'revise' | 'discard';
+export type AutoDecisionName = 'export' | 'revise' | 'discard' | 'confirm_visible_set';
 
 /** POST …/auto/decision 的请求体。只有「提出修改意见」才带 feedback。 */
 export function autoDecisionBody(decision: AutoDecisionName, input: { feedback?: string; expectedAutoVersion: number; idempotencyKey: string }) {
@@ -276,6 +295,8 @@ export interface AutoStartInput {
   relaxConfirmed: boolean;
   noticeSha: string;
   external: boolean;
+  /** 授权页上看到的可见集指纹。缺省时不写入请求体，避免改掉旧的精确对比。 */
+  visibleSetSha?: string;
   idempotencyKey: string;
 }
 
@@ -284,20 +305,25 @@ export function buildAutoRunBody(i: AutoStartInput) {
   const relaxed = i.relaxConfirmed && i.relaxHighScore !== undefined && i.relaxHighScore < HIGH_SCORE_DEFAULT;
   const scope: Record<string, unknown> = { max_rounds: i.maxRounds };
   if (relaxed) { scope.thresholds = { high_score_min: i.relaxHighScore }; scope.relax_thresholds = true; }
+  const authorization: { accept_external_egress: boolean; notice_sha256: string; visible_set_sha?: string } = {
+    accept_external_egress: i.external, notice_sha256: i.noticeSha
+  };
+  if (i.visibleSetSha) authorization.visible_set_sha = i.visibleSetSha;
   return {
     profile_id: i.profileId,
     revision: i.revision,
     expected_asset_version: i.expectedAssetVersion,
     brief: i.brief.trim(),
     scope,
-    authorization: { accept_external_egress: i.external, notice_sha256: i.noticeSha },
+    authorization,
     idempotency_key: i.idempotencyKey
   };
 }
 
 /** 启动按钮能否点：授权已勾选、预设可用、预检通过；放宽阈值时必须再勾选确认。 */
-export function canStartAuto(s: { authorized: boolean; profileOk: boolean; noticeReady: boolean; preflightOk: boolean; busy: boolean; relaxOn: boolean; relaxValue?: number; relaxConfirmed: boolean }): boolean {
+export function canStartAuto(s: { authorized: boolean; profileOk: boolean; noticeReady: boolean; preflightOk: boolean; busy: boolean; relaxOn: boolean; relaxValue?: number; relaxConfirmed: boolean; visibleReady?: boolean }): boolean {
   if (!s.authorized || !s.profileOk || !s.noticeReady || !s.preflightOk || s.busy) return false;
+  if (s.visibleReady === false) return false;
   const relaxed = s.relaxOn && s.relaxValue !== undefined && s.relaxValue < HIGH_SCORE_DEFAULT;
   if (relaxed && !s.relaxConfirmed) return false;
   if (s.relaxOn && (s.relaxValue === undefined || s.relaxValue < HIGH_SCORE_FLOOR || s.relaxValue > HIGH_SCORE_DEFAULT)) return false;
@@ -308,8 +334,10 @@ export function canStartAuto(s: { authorized: boolean; profileOk: boolean; notic
 export function autoErrorText(e: unknown): string {
   const { status, code } = (e ?? {}) as { status?: number; code?: string };
   const msg = e instanceof Error ? e.message : '';
+  if (status === 409 && /visible set|visible_set/.test(msg)) return '可见素材刚刚变了，请回到资源页重新确认后再授权。';
   if (status === 409 && code === 'invalid_state') return '当前状态下无法这样操作，已刷新，请看看最新状态。';
   if (status === 409) return '状态刚刚发生了变化（可能是你或 Agent 刚做了别的操作），已刷新，请再试一次。';
+  if (status === 400 && /visible_set_sha/.test(msg)) return '请先确认当前可见素材，再启动自动剪辑。';
   if (status === 400 && /relax_thresholds|looser/.test(msg)) return '放宽的自评标准需要你明确确认。';
   if (status === 400 && /notice_sha256/.test(msg)) return '授权说明已更新，请重新阅读并勾选授权。';
   if (status === 400 && /at least|at most/.test(msg)) return '放宽的自评标准超出了允许范围。';

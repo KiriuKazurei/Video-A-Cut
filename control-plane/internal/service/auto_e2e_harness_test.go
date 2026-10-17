@@ -380,8 +380,12 @@ func (e *e2eEnv) startAuto(brief string, scope service.AutoScopeRequest) service
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	visible, err := e.svc.VisibleSet(ctx)
+	if err != nil {
+		e.t.Fatal(err)
+	}
 	run, view, err := e.svc.StartAutoRun(ctx, "human:webui", service.AutoRunRequest{AssetID: e.assetID, ProfileID: e.profile.ProfileID, ProfileRevision: 1,
-		ExpectedAssetVersion: report.ExpectedAssetVersion, Brief: brief, Scope: scope, NoticeSHA256: notice.NoticeSHA256, IdempotencyKey: "e2e-" + e.t.Name()})
+		ExpectedAssetVersion: report.ExpectedAssetVersion, Brief: brief, Scope: scope, NoticeSHA256: notice.NoticeSHA256, VisibleSetSHA: visible.SHA256, IdempotencyKey: "e2e-" + e.t.Name()})
 	if err != nil {
 		e.t.Fatal(err)
 	}

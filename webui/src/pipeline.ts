@@ -56,6 +56,11 @@ export interface PipelineInput {
   workflow?: WorkflowRun | null;
   /** 内容流程查询失败时的错误文案；有值时下一步改为可点的「重新加载」 */
   workflowError?: string;
+  /**
+   * false = 可见集已经读到、但还没有人工确认。
+   * 缺省表示调用方还不知道，保持原来的下一步，避免未加载时误拦。
+   */
+  visibleConfirmed?: boolean;
 }
 
 export const STAGE_LABEL: Record<StageId, string> = { import: '导入与粗剪', prepare: '准备', generate: '生成', review: '审查', delivery: '交付' };
@@ -140,8 +145,10 @@ export function derivePipeline(input: PipelineInput): { stages: StageInfo[]; nex
     stat.review = { status: 'blocked', text: '需先完成导入', reason: why };
     stat.delivery = { status: 'blocked', text: '需先完成导入', reason: why };
   } else if (!workflow) {
-    const block = prepareBlock(asset);
-    stat.prepare = block ? { status: 'blocked', text: '运行条件未满足', reason: block } : { status: 'todo', text: '可以运行准备' };
+    const block = input.visibleConfirmed === false
+      ? '请先在资源页确认 Agent 可见素材，才能进入脚本或开始生成。'
+      : prepareBlock(asset);
+    stat.prepare = block ? { status: 'blocked', text: input.visibleConfirmed === false ? '可见素材未确认' : '运行条件未满足', reason: block } : { status: 'todo', text: '可以运行准备' };
     // 没有流程时，后续阶段的状态沿用上面的“尚无流程”默认值
   } else {
     stat.prepare = { status: 'done', text: '已启动内容流程' };
@@ -221,7 +228,18 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
     };
   }
   if (workflow === undefined) return { label: '下一步', stage: null, hint: '正在读取流程状态', disabledReason: '正在读取内容流程状态…' };
+  const visibleGate = (): NextStep | undefined => {
+    if (input.visibleConfirmed !== false) return undefined;
+    return {
+      label: '去确认可见素材',
+      stage: null,
+      target: { route: { workspace: 'resources' }, anchor: 'visible-set' },
+      hint: '进入脚本或开始生成前，请确认当前 Agent 可见素材。'
+    };
+  };
   const restart = (label: string, hint: string): NextStep => {
+    const gate = visibleGate();
+    if (gate) return gate;
     const block = prepareBlock(asset);
     const onPrepare = route.workspace === 'settings' && route.settingsCategory === 'preparation';
     return go('prepare', onPrepare ? '开始生成' : label, hint, block ? { disabledReason: block } : undefined);

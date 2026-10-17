@@ -42,6 +42,9 @@ func (s *Service) WorkflowPackageFiles(ctx context.Context, runID string) (map[s
 	if err != nil {
 		return nil, err
 	}
+	if err := s.deliveryBlocked(ctx, s.st, run.AssetID); err != nil {
+		return nil, err
+	}
 	if run.Status != model.WorkflowReadyAcceptance {
 		return nil, fmt.Errorf("no final package: %w", model.ErrInvalidState)
 	}

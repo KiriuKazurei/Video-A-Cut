@@ -268,6 +268,9 @@ func (s *Service) ResolveDeliveryVariantFile(ctx context.Context, id, key string
 	if err != nil {
 		return dv.ResolvedFile{}, err
 	}
+	if job.Invalidated {
+		return dv.ResolvedFile{}, fmt.Errorf("service: delivery variant %s was invalidated: %w", id, model.ErrInvalidState)
+	}
 	asset, err := s.st.GetAsset(ctx, job.AssetID)
 	if err != nil {
 		return dv.ResolvedFile{}, err

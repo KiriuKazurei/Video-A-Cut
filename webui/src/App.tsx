@@ -207,6 +207,7 @@ export default function App() {
   const workflowData = useWorkflowData(assetId, selection);
   const rawAsset = Boolean(selected && (selected.input_kind === 'raw_recording' || selected.ingest_run_id));
   const ingestRuns = useQuery({ queryKey: ['ingest', 'runs', assetId], queryFn: () => ingestApi.runs(assetId), enabled: rawAsset });
+  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
   const pipeline = useMemo(() => derivePipeline({
     asset: selected,
     assetCount: assets.data?.length ?? 0,
@@ -214,8 +215,9 @@ export default function App() {
     ingestRuns: rawAsset ? ingestRuns.data : undefined,
     // 未加载 = undefined；加载成功但没有流程 = null；查询失败走 workflowError（下一步可点「重新加载」）
     workflow: !selected ? null : workflowData.runs.isSuccess ? (workflowData.current ?? null) : workflowData.runs.isError ? null : undefined,
-    workflowError: selected && workflowData.runs.isError ? (workflowData.runs.error?.message || '网络或服务异常') : undefined
-  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.runs.isError, workflowData.runs.error, workflowData.current]);
+    workflowError: selected && workflowData.runs.isError ? (workflowData.runs.error?.message || '网络或服务异常') : undefined,
+    visibleConfirmed: visibleSet.isSuccess ? visibleSet.data.confirmed : undefined
+  }), [selected, assets.data?.length, route, rawAsset, ingestRuns.data, workflowData.runs.isSuccess, workflowData.runs.isError, workflowData.runs.error, workflowData.current, visibleSet.isSuccess, visibleSet.data?.confirmed]);
 
   // 跳转并把目标分区滚动到视野内、聚焦（保持当前资产不变；路由不变时也会聚焦）
   const [focusTick, setFocusTick] = useState(0);

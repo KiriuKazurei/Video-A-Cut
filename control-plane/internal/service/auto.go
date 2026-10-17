@@ -79,7 +79,10 @@ type AutoRunRequest struct {
 	Scope                AutoScopeRequest
 	AcceptExternalEgress bool
 	NoticeSHA256         string
-	IdempotencyKey       string
+	// VisibleSetSHA is the fingerprint of the visible set the person just saw.
+	// Omitting it is not an authorization of "whatever is visible".
+	VisibleSetSHA  string
+	IdempotencyKey string
 }
 
 // AutoView is the read model of GET /api/workflows/{run}/auto.
@@ -105,6 +108,11 @@ type AutoNoticeView struct {
 	External      bool   `json:"external"`
 	Notice        string `json:"notice"`
 	NoticeSHA256  string `json:"notice_sha256"`
+	// Visible-set lines are additive. The notice text and its hash stay a
+	// function of the profile so existing disclosures keep their sha256.
+	VisibleSetSHA string               `json:"visible_set_sha,omitempty"`
+	VisibleAssets []model.VisibleAsset `json:"visible_assets,omitempty"`
+	Grants        []AuthorizationGrant `json:"grants,omitempty"`
 }
 
 // AutoPolicyError reports that a run does not meet an automatic-approval
@@ -188,7 +196,18 @@ func (s *Service) AutoNoticeFor(ctx context.Context, profileID string, revision 
 		return AutoNoticeView{}, err
 	}
 	text, hash := AutoNotice(p, sum)
-	return AutoNoticeView{ProfileID: p.ProfileID, Revision: p.Revision, ProfileSHA256: sum, External: p.External(), Notice: text, NoticeSHA256: hash}, nil
+	view := AutoNoticeView{ProfileID: p.ProfileID, Revision: p.Revision, ProfileSHA256: sum, External: p.External(), Notice: text, NoticeSHA256: hash}
+	set, err := loadVisibleSet(ctx, s.st)
+	if err != nil {
+		return AutoNoticeView{}, err
+	}
+	view.VisibleSetSHA = set.SHA
+	view.VisibleAssets = set.Assets
+	view.Grants = []AuthorizationGrant{
+		{Code: "visible_set", Label: "当前 Agent 可见素材（逐项列在 visible_assets）"},
+		{Code: "script_finalize", Label: "脚本定稿：仅限上面列出的可见素材"},
+	}
+	return view, nil
 }
 
 func intOr(v *int, def, lo, hi int, name string) (int, error) {
@@ -267,6 +286,8 @@ type autoStart struct {
 	profile      preparation.Profile
 	profileSHA   string
 	requestHash  string
+	visibleSHA   string
+	visibleIDs   []string
 }
 
 // StartAutoRun authorizes and starts an unattended run on a prepared profile.
@@ -304,6 +325,24 @@ func (s *Service) StartAutoRun(ctx context.Context, actor string, in AutoRunRequ
 	if err != nil {
 		return model.WorkflowRun{}, AutoView{}, err
 	}
+	// The global authorization is the human grant of this visible set and of
+	// script finalization inside it. A missing or stale fingerprint is not a grant.
+	vis, err := loadVisibleSet(ctx, s.st)
+	if err != nil {
+		return model.WorkflowRun{}, AutoView{}, err
+	}
+	if in.VisibleSetSHA == "" {
+		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: visible_set_sha is required: %w", model.ErrArgument)
+	}
+	if in.VisibleSetSHA != vis.SHA {
+		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: visible_set_sha does not match the current visible set: %w", model.ErrConflict)
+	}
+	if !containsString(vis.IDs, in.AssetID) {
+		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: asset is not in the agent-visible set: %w", model.ErrForbidden)
+	}
+	scope.VisibleSetSHA = vis.SHA
+	scope.VisibleAssetIDs = append([]string(nil), vis.IDs...)
+	scope.ScriptFinalize = true
 	// Host tools are checked outside the write transaction, as in
 	// StartPreparedWorkflow; governance, consent and worker capability are
 	// rechecked inside it.
@@ -325,7 +364,8 @@ func (s *Service) StartAutoRun(ctx context.Context, actor string, in AutoRunRequ
 	auto := &autoStart{
 		brief: brief, briefSHA: briefSHA, scope: scope, noticeSHA: wantNotice, grantConsent: external,
 		profile: p, profileSHA: sha,
-		requestHash: briefSHA + "|" + hex.EncodeToString(scopeSum[:]) + "|" + wantNotice,
+		requestHash: briefSHA + "|" + hex.EncodeToString(scopeSum[:]) + "|" + wantNotice + "|" + vis.SHA,
+		visibleSHA:  vis.SHA, visibleIDs: vis.IDs,
 	}
 	run, err := s.startWorkflow(ctx, actor, in.AssetID, in.RevisionID, in.IdempotencyKey, p.ContentMode, &prepared, auto)
 	if err != nil {
@@ -355,7 +395,9 @@ func (s *Service) insertAutoOverlay(ctx context.Context, tx *store.Store, actor 
 	}
 	basis, _ := json.Marshal(map[string]any{"profile_id": overlay.ProfileID, "profile_revision": overlay.ProfileRevision,
 		"notice_sha256": overlay.NoticeSHA256, "brief_sha256": overlay.BriefSHA256, "external_egress": a.scope.ExternalEgress,
-		"thresholds": a.scope.Thresholds, "relaxed_thresholds": a.scope.RelaxedThresholds})
+		"thresholds": a.scope.Thresholds, "relaxed_thresholds": a.scope.RelaxedThresholds,
+		"visible_set_sha": a.scope.VisibleSetSHA, "visible_asset_ids": a.scope.VisibleAssetIDs,
+		"script_finalize": a.scope.ScriptFinalize})
 	if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: run.RunID, Kind: model.AutoDecisionAuthorize, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
 		return err
 	}
@@ -510,9 +552,9 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		return model.WorkflowRun{}, AutoView{}, model.ErrArgument
 	}
 	switch decision {
-	case "export", "discard", "revise":
+	case "export", "discard", "revise", "confirm_visible_set":
 	default:
-		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: decision must be export, revise or discard: %w", model.ErrArgument)
+		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: decision must be export, revise, discard or confirm_visible_set: %w", model.ErrArgument)
 	}
 	feedback = strings.TrimSpace(feedback)
 	if decision == "revise" {
@@ -567,6 +609,29 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		case "discard":
 			kind = model.AutoDecisionUserDiscard
 			a.State, a.HaltReason = model.AutoStateHalted, model.AutoHaltUserDiscarded
+		case "confirm_visible_set":
+			if a.HaltReason != model.AutoWaitVisibleSet {
+				return fmt.Errorf("service: confirm_visible_set is only for a changed visible set: %w", model.ErrInvalidState)
+			}
+			set, serr := loadVisibleSet(ctx, tx)
+			if serr != nil {
+				return serr
+			}
+			run, rerr := tx.GetWorkflow(ctx, runID)
+			if rerr != nil {
+				return rerr
+			}
+			if !containsString(set.IDs, run.AssetID) {
+				return fmt.Errorf("service: asset is not in the agent-visible set: %w", model.ErrForbidden)
+			}
+			if err := s.writeVisibleConfirmation(ctx, tx, actor, set.SHA, true); err != nil {
+				return err
+			}
+			a.Scope.VisibleSetSHA = set.SHA
+			a.Scope.VisibleAssetIDs = append([]string(nil), set.IDs...)
+			a.Scope.ScriptFinalize = true
+			a.State, a.HaltReason, a.DeliveryHold = model.AutoStateActive, "", false
+			kind = model.AutoDecisionVisibleSet
 		case "revise":
 			if a.TotalRounds >= a.MaxTotalRounds || a.ActionsUsed >= a.Scope.MaxActions || a.TTSCharsUsed >= a.Scope.MaxTTSChars {
 				return fmt.Errorf("service: no budget left for another round: %w", model.ErrInvalidState)

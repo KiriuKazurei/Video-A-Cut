@@ -93,8 +93,10 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
   const [draftErrors, setDraftErrors] = useState<string[]>([]);
   const [importText, setImportText] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
 
   const assetsQuery = useQuery({ queryKey: ['assets'], queryFn: api.listAssets });
+  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
   const auditQuery = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100) });
 
   /* --- 治理 PATCH：只发允许字段，成功后以服务端返回的 Asset 更新缓存 --- */
@@ -104,6 +106,7 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
       queryClient.setQueryData<Asset[]>(['assets'], (previous) =>
         previous?.map((item) => (item.asset_id === updated.asset_id ? updated : item)));
       void queryClient.invalidateQueries({ queryKey: ['audit'] });
+      void queryClient.invalidateQueries({ queryKey: ['visible-set'] });
     }
   });
 
@@ -221,7 +224,23 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
     patch.mutate({ id: asset.asset_id, values });
   }, [patch]);
 
+  const refreshVisibility = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['assets'] }),
+      queryClient.invalidateQueries({ queryKey: ['visible-set'] }),
+      queryClient.invalidateQueries({ queryKey: ['audit'] })
+    ]);
+  };
+  const batch = useMutation({
+    mutationFn: ({ ids, visible }: { ids: string[]; visible: boolean }) => api.batchVisibility(ids, visible),
+    onSuccess: async () => { setPicked([]); await refreshVisibility(); }
+  });
+  const confirmSet = useMutation({
+    mutationFn: () => api.confirmVisibleSet(visibleSet.data!.sha256),
+    onSuccess: async (view) => { queryClient.setQueryData(['visible-set'], view); await refreshVisibility(); }
+  });
   const patchError = patch.isError ? describeError(patch.error) : null;
+  const serverPicked = picked.filter((id) => rows.some((row) => row.asset.asset_id === id && !row.draft));
 
   const { Text } = Typography;
   return (
@@ -242,6 +261,24 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
           </Form.Item></Col>
         </Row>
         <Text type="secondary">服务端资产的类型由 <Text code>artifacts</Text> 键名推断（键即文件名），<Text strong>不是</Text>服务端字段；每条推断依据都在「产物记录」表格里逐行列明，可自行核对。</Text>
+        <div data-nav-anchor="visible-set">
+          {visibleSet.isSuccess && !visibleSet.data.confirmed && (
+            <Alert type="warning" showIcon message="Agent 可见素材尚未确认"
+              description={`入库表示素材已在库中。当前 Agent 可见 ${visibleSet.data.asset_ids.length} 项。进入脚本或开始生成前，请确认这一组可见素材。`}
+              action={<Button type="primary" disabled={confirmSet.isPending || !visibleSet.data.sha256} onClick={() => confirmSet.mutate()}>确认当前可见集</Button>} />
+          )}
+          {visibleSet.isSuccess && visibleSet.data.confirmed && (
+            <Alert type="success" showIcon message="当前 Agent 可见素材已确认"
+              description={`${visibleSet.data.asset_ids.length} 项可见。改动可见性后需要重新确认，下游脚本会标为过期。`} />
+          )}
+          {visibleSet.isError && <Alert type="error" showIcon message={`可见集读取失败：${describeError(visibleSet.error)}`} action={<Button size="small" onClick={() => void visibleSet.refetch()}>重试</Button>} />}
+          {(batch.isError || confirmSet.isError) && <Alert style={{ marginTop: 8 }} type="error" showIcon message={describeError(batch.error ?? confirmSet.error)} />}
+        </div>
+        {serverPicked.length > 0 && <Space wrap>
+          <Text>已选 {serverPicked.length} 项服务端素材</Text>
+          <Button disabled={batch.isPending} onClick={() => batch.mutate({ ids: serverPicked, visible: true })}>批量设为 Agent 可见</Button>
+          <Button disabled={batch.isPending} onClick={() => batch.mutate({ ids: serverPicked, visible: false })}>批量设为 Agent 不可见</Button>
+        </Space>}
 
         {assetsQuery.isPending && <Text type="secondary">正在读取资产…</Text>}
         {assetsQuery.isError && <Alert type="error" showIcon role="alert" message={`资产读取失败：${describeError(assetsQuery.error)}`}
@@ -256,9 +293,16 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
           pagination={{ pageSize: 8, hideOnSinglePage: true, showSizeChanger: false }}
           rowClassName={(row) => selected?.asset.asset_id === row.asset.asset_id ? 'ant-table-row-selected' : ''}
           onRow={(row) => ({ onClick: () => setSelectedId(row.asset.asset_id), style: { cursor: 'pointer' } })}
+          rowSelection={{
+            selectedRowKeys: picked,
+            onChange: (keys) => setPicked(keys.map(String)),
+            getCheckboxProps: (row) => ({ disabled: Boolean(row.draft), 'aria-label': `${row.asset.asset_id} 批量选择` })
+          }}
           columns={[
             { key: 'id', title: '资产 ID', render: (_, row) => <Button type="link" size="small" style={{ padding: 0 }} aria-pressed={selected?.asset.asset_id === row.asset.asset_id}
               onClick={(event) => { event.stopPropagation(); setSelectedId(row.asset.asset_id); }}>{row.asset.asset_id}</Button> },
+            { key: 'library', title: '入库', width: 88, render: (_, row) => row.draft ? <Tag>未入库</Tag> : <Tag color="success">已入库</Tag> },
+            { key: 'visible', title: 'Agent 可见', width: 110, render: (_, row) => row.draft ? <Tag>草稿</Tag> : <Tag color={row.asset.agent_visible ? 'processing' : 'default'}>{row.asset.agent_visible ? '可见' : '不可见'}</Tag> },
             { key: 'status', title: '状态', render: (_, row) => <Space size={4}>{row.statusLabel}{row.draft && <Tag color="warning">草稿</Tag>}</Space> },
             { key: 'kind', title: '类型', render: (_, row) => <Text type="secondary">{categoryText(row.categories)}
               {row.duration !== null ? ` · ${durationText(row.duration)}` : ''}{row.resolution !== null ? ` · ${row.resolution}` : ''}
@@ -377,6 +421,7 @@ function AssetDetail({
         <Descriptions size="small" column={{ xs: 1, md: 2 }} items={[
           { key: 'kind', label: '素材类型（推断）', children: categoryText(classification.categories) },
           { key: 'status', label: '服务端状态', children: `${assetStatusLabel(asset.status)}（${asset.status}）` },
+          { key: 'library', label: '入库', children: '已入库' },
           { key: 'visible', label: 'Agent 可见', children: yes(asset.agent_visible) },
           { key: 'locked', label: '锁定', children: yes(asset.locked) },
           { key: 'approved', label: '人工批准', children: yes(asset.human_approved) },
