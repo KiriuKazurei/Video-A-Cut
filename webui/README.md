@@ -54,6 +54,7 @@ npm run dev
 ## 统一导航与「下一步」（Stage 3a）
 
 - `src/pipeline.ts`：纯函数，从资产 / 导入运行 / 内容流程的真实状态推导五个阶段（导入与粗剪 → 准备 → 生成 → 审查 → 交付）的状态、推荐的「下一步」，以及位置面包屑。单元测试需 Node 22 的类型剥离：`node --experimental-strip-types pipeline_test.mjs`（`navigation_smoke.mjs` 同理可用 Playwright）。
+- 新机器首次跑浏览器脚本前，在 `webui/` 执行 `npx playwright install chromium`。`playwright-core` 只带驱动，不带浏览器；未安装时 Chromium 启动会失败。装好后再按各脚本要求设置 `PLAYWRIGHT_CORE` 与 `CHROME`。
 - 页头阶段条（`PipelineStepper`）与页内位置条（`ContextBar`：面包屑 + 下一步）共用这份推导；编辑 / 导出 / 设置的二级菜单用同一阶段模型显示状态点。路由与深链不变。
 - 导航冒烟：`PLAYWRIGHT_CORE=<playwright-core/index.mjs> CHROME=<chrome> node navigation_smoke.mjs http://127.0.0.1:8816 [截图目录]`（连 `vite` 开发服务器可同时检查 React 的 DOM 嵌套警告）。
 - 新手引导（Stage A）：`src/components/AppTour.tsx`（antd `Tour`，6 步，可跳过、Esc 退出）+ `src/tour.ts`（显示策略纯函数，`node --experimental-strip-types --test tour_test.mjs`）。首次启动自动弹出一次，标记存在 `localStorage['vac_tour_seen_v1']`；页头「新手引导」按钮随时重开。**自动化脚本必须抑制它**：`navigator.webdriver` 为真时默认不弹；用 CDP 直连的真实 Chrome（`browser_acceptance.mjs`）里 webdriver 为假，所以脚本在 `Page.addScriptToEvaluateOnNewDocument` 里写入该标记；也可用 `?tour=0` 强制关闭、`?tour=1` 强制打开。改版引导内容时递增 `TOUR_VERSION`。

@@ -212,10 +212,26 @@ test('a run without a brief keeps the old receipt byte for byte', async () => {
 
 test('a brief whose hash does not match fails the task before the CLI runs', async () => {
   const dir = await root();
+  const brief = '团战';
+  let cliRan = false;
   const client = fakeClient({ get_task_input: () => ({ versioned: true, revision_id: 'rev1', content_mode: 'configured', edl_path: 'src/edl.json',
-    auto: { brief: '团战', brief_sha256: briefHash('别的') } }) });
-  const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async () => assert.fail('CLI ran') });
+    auto: { brief, brief_sha256: briefHash('别的') } }) });
+  // A successful CLI must not look like the hash failure. processTask turns any
+  // throw, including assert.fail, into fail_task, so a throwing stub would stay
+  // green after the check is removed.
+  const r = await processTask({ client, cfg: baseCfg(dir), task, log: () => {}, runCliImpl: async ({ outputDir }) => {
+    cliRan = true;
+    await mkdir(outputDir, { recursive: true });
+  } });
+  assert.equal(cliRan, false);
   assert.equal(r.outcome, 'failed');
-  assert.ok(client.calls.some(([name]) => name === 'fail_task'));
-  assert.ok(!JSON.stringify(client.calls).includes('别的'));
+  assert.match(r.reason, /brief does not match its sha256/);
+  assert.equal(r.reason.includes(brief), false);
+  const fail = client.calls.find(([name]) => name === 'fail_task');
+  assert.ok(fail, 'fail_task was not called');
+  assert.equal(fail[1].task_id, 't1');
+  assert.match(fail[1].reason, /brief does not match its sha256/);
+  assert.equal(fail[1].reason.includes(brief), false);
+  assert.ok(!client.calls.some(([name]) => name === 'submit_delivery'));
+  await assert.rejects(readFile(join(dir, 'deliveries', 'clip', 't1', 'worker-receipt.json')));
 });

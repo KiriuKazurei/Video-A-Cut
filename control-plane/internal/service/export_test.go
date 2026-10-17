@@ -42,3 +42,8 @@ func AutoGuard(a model.WorkflowAuto, inScope bool, autoVersion int, now time.Tim
 // SetBeforeAutoTx installs a hook that runs between an auto approval's early
 // replay check and its transaction.
 func (s *Service) SetBeforeAutoTx(f func()) { s.beforeAutoTx = f }
+
+// SetBeforeReconcileTx installs a hook that runs after reconcileHumanFinished
+// decides the run looks finished and before the write transaction. Tests use
+// it to change auto_version or the run in that window.
+func (s *Service) SetBeforeReconcileTx(f func()) { s.beforeReconcileTx = f }
