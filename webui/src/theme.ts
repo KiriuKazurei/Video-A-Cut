@@ -1,20 +1,46 @@
 import { theme, type ThemeConfig } from 'antd';
 
 /**
- * Ant Design 5 暗色算法：Premiere 式统一底色——布局、容器、页头页脚取同一纯色，
- * 中间工作区不再用色块区分面板；操作控件保持 antd 默认外观（主色、圆角、尺寸不改）。
- * 次要/三级文字略提亮，保证 4.5:1 对比度。
+ * 中性灰深色试验。配色只集中在这里和 styles.css 的 --vac-*。
+ * 回退这一版时还原本文件与 :root 里的 --vac-bg / --vac-panel / --vac-control /
+ * --vac-border / --vac-text / --vac-text-2 / --vac-accent 即可。
+ *
+ * 窗口 #1E1E1E，面板 #252525，控件 #2F2F2F，边框 #3A3A3A，
+ * 主文字 #E6E6E6，次文字 #9A9A9A，强调色只有 #4C8DFF。
+ * 无渐变、无发光、无阴影。控件仍走 Ant Design 5，圆角 2–4px。
  */
-export const UNIFIED_BG = '#1c1d21';
+export const WINDOW_BG = '#1E1E1E';
+export const PANEL_BG = '#252525';
+export const CONTROL_BG = '#2F2F2F';
+export const BORDER = '#3A3A3A';
+export const TEXT = '#E6E6E6';
+export const TEXT_SECONDARY = '#9A9A9A';
+export const ACCENT = '#4C8DFF';
+
+/** 窗口底色。旧名保留，供仍引用 UNIFIED_BG 的地方使用。 */
+export const UNIFIED_BG = WINDOW_BG;
 
 const BASE_TOKEN: ThemeConfig['token'] = {
-  colorBgBase: UNIFIED_BG,
-  colorBgLayout: UNIFIED_BG,
-  colorBgContainer: UNIFIED_BG,
-  colorTextSecondary: 'rgba(255, 255, 255, 0.68)',
-  colorTextTertiary: 'rgba(255, 255, 255, 0.52)',
-  colorTextDescription: 'rgba(255, 255, 255, 0.6)',
-  // 专业剪辑工具：小圆角（2–4px）、更紧凑的控件与字号；不再使用大圆角/胶囊。
+  colorPrimary: ACCENT,
+  colorInfo: ACCENT,
+  colorLink: ACCENT,
+  colorBgBase: WINDOW_BG,
+  colorBgLayout: WINDOW_BG,
+  colorBgContainer: PANEL_BG,
+  colorBgElevated: CONTROL_BG,
+  colorBorder: BORDER,
+  colorBorderSecondary: BORDER,
+  colorSplit: BORDER,
+  colorText: TEXT,
+  colorTextBase: TEXT,
+  colorTextSecondary: TEXT_SECONDARY,
+  colorTextTertiary: TEXT_SECONDARY,
+  colorTextDescription: TEXT_SECONDARY,
+  colorTextQuaternary: TEXT_SECONDARY,
+  boxShadow: 'none',
+  boxShadowSecondary: 'none',
+  boxShadowTertiary: 'none',
+  // 专业剪辑工具：小圆角（2–4px）、更紧凑的控件与字号。
   borderRadius: 3,
   borderRadiusLG: 4,
   borderRadiusSM: 2,
@@ -24,7 +50,6 @@ const BASE_TOKEN: ThemeConfig['token'] = {
   controlHeight: 28,
   controlHeightSM: 24,
   controlHeightLG: 34,
-  // 动效：antd 缓动曲线 + 150–250ms 时长（与 styles.css 的 --vac-* 变量一致）
   motionDurationFast: '0.15s',
   motionDurationMid: '0.2s',
   motionDurationSlow: '0.25s'
@@ -32,40 +57,52 @@ const BASE_TOKEN: ThemeConfig['token'] = {
 
 /**
  * 全局主题。顶栏分段滑块和监视器外框都是实色，不用液态玻璃（见 styles.css）。
- * 侧栏底色 siderBg / lightSiderBg = colorBgContainer，纯色、不透明。
+ * 侧栏底色是面板色，纯色、不透明。
  */
 export const appTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: BASE_TOKEN,
   components: {
-    Layout: { headerBg: UNIFIED_BG, bodyBg: UNIFIED_BG, footerBg: UNIFIED_BG, siderBg: UNIFIED_BG, lightSiderBg: UNIFIED_BG, headerHeight: 48, headerPadding: '0 16px', footerPadding: '8px 16px' },
-    // 页签（小圆角矩形）：当前页白字落在蓝色玻璃高亮上（对比度 > 7:1）；去掉水平菜单的下划线指示。
-    Menu: { itemBg: 'transparent', horizontalLineHeight: '28px', horizontalItemSelectedColor: '#ffffff', horizontalItemHoverColor: '#ffffff', itemHoverColor: '#ffffff', activeBarHeight: 0, horizontalItemBorderRadius: 3, itemBorderRadius: 3, itemPaddingInline: 12 },
-    // 以下组件级覆写只用于中间工作区（卡片/表格融入统一底色）；侧栏用 siderTheme，不继承这些覆写。
-    // 内边距比默认小卡片略松，避免标题、表格和空态贴着卡片边。圆角仍走全局 2–4px。
+    Layout: {
+      headerBg: WINDOW_BG, bodyBg: WINDOW_BG, footerBg: WINDOW_BG,
+      siderBg: PANEL_BG, lightSiderBg: PANEL_BG,
+      headerHeight: 48, headerPadding: '0 16px', footerPadding: '8px 16px'
+    },
+    Menu: {
+      itemBg: 'transparent', horizontalLineHeight: '28px',
+      horizontalItemSelectedColor: TEXT, horizontalItemHoverColor: TEXT,
+      itemHoverColor: TEXT, itemSelectedColor: TEXT, itemColor: TEXT_SECONDARY,
+      activeBarHeight: 0, horizontalItemBorderRadius: 3, itemBorderRadius: 3, itemPaddingInline: 12
+    },
     Card: {
-      colorBgContainer: 'transparent', headerBg: 'transparent', headerFontSize: 14,
+      colorBgContainer: PANEL_BG, headerBg: 'transparent', headerFontSize: 14,
       headerHeight: 46, headerHeightSM: 42,
       headerPadding: 20, headerPaddingSM: 18,
       bodyPadding: 20, bodyPaddingSM: 16
     },
     Table: {
-      colorBgContainer: 'transparent', headerBg: 'rgba(255, 255, 255, 0.04)', rowHoverBg: 'rgba(255, 255, 255, 0.05)',
+      colorBgContainer: 'transparent', headerBg: CONTROL_BG, rowHoverBg: CONTROL_BG,
+      borderColor: BORDER,
       cellPaddingBlockSM: 12, cellPaddingInlineSM: 14
     },
-    Descriptions: { labelBg: 'rgba(255, 255, 255, 0.04)' },
-    Collapse: { headerBg: 'rgba(255, 255, 255, 0.03)', contentBg: 'transparent' },
+    Descriptions: { labelBg: CONTROL_BG },
+    Collapse: { headerBg: CONTROL_BG, contentBg: 'transparent' },
     List: {
       colorBgContainer: 'transparent',
       itemPadding: '18px 2px',
       itemPaddingSM: '14px 4px',
       itemPaddingLG: '20px 8px'
-    }
+    },
+    Button: { defaultBg: CONTROL_BG, defaultBorderColor: BORDER, defaultColor: TEXT, primaryShadow: 'none', defaultShadow: 'none' },
+    Input: { colorBgContainer: CONTROL_BG, activeBorderColor: ACCENT, hoverBorderColor: ACCENT },
+    InputNumber: { colorBgContainer: CONTROL_BG, activeBorderColor: ACCENT, hoverBorderColor: ACCENT },
+    Select: { selectorBg: CONTROL_BG, optionSelectedBg: CONTROL_BG },
+    Segmented: { itemSelectedBg: CONTROL_BG, itemSelectedColor: TEXT, itemColor: TEXT_SECONDARY, trackBg: PANEL_BG }
   }
 };
 
 /**
- * 左右侧栏主题：不继承上面的组件级覆写（inherit: false），只用 antd 暗色算法 + 同一组基础色值，
+ * 左右侧栏主题：不继承上面的组件级覆写（inherit: false），只用 antd 暗色算法 + 同一组色值。
  * 按钮、输入框、列表、卡片、描述表、标签、提示框全部是 antd 5 默认暗色外观。
  */
 export const siderTheme: ThemeConfig = {

@@ -189,7 +189,7 @@ export function PreviewPanel({
       aria-labelledby="preview-panel-title"
       title={
         <Flex gap={8} align="center" wrap style={{ minWidth: 0 }}>
-          <VideoCameraOutlined style={{ color: '#1677ff' }} />
+          <VideoCameraOutlined style={{ color: 'var(--vac-accent)' }} />
           <Typography.Text strong id="preview-panel-title">
             合成成片 MP4 预览
           </Typography.Text>
@@ -315,7 +315,7 @@ export function PreviewPanel({
                 <Flex vertical gap={6}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
-                      <SyncOutlined spin style={{ color: '#1677ff' }} />
+                      <SyncOutlined spin style={{ color: 'var(--vac-accent)' }} />
                       <Typography.Text strong>{previewStyleLabel(job)} MP4</Typography.Text>
                       <Tag color="processing">{job.status}</Tag>
                     </Space>
@@ -339,7 +339,7 @@ export function PreviewPanel({
                 <Flex vertical gap={6}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
-                      <SyncOutlined spin style={{ color: '#1677ff' }} />
+                      <SyncOutlined spin style={{ color: 'var(--vac-accent)' }} />
                       <Typography.Text strong>
                         {inProgressPreview.status === 'queued'
                           ? '预览任务排队中…'
