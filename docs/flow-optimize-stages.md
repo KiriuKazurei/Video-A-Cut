@@ -14,7 +14,7 @@ G3. TTS 与字幕关闭不挡成片；开启时能从脚本段跳到 TTS 专页�
 G4. 交付物与 `delivery.zip` / 720p 对齐，或明确替换并写入文档与 UI 文案。
 
 ## 口径补充（Gate 条件通过后补入，F1 开工前定稿）
-C1. G1 口径【待和零二选一】：A）启动时的全局授权即对「可见集 + 脚本定稿」的人工授权，授权页明确列出范围并留痕；B）两个确认点必须真人点，自动模式停在决策卡。我的建议：A，授权页逐项列出范围，超范围（可见集变化、生成稿被改）重新停决策卡。无论 A/B，新增确认动作都进人工白名单，`system:auto-review` 与 agent 的 actor 不能代点。
+C1. G1 口径【和零已定 A，2026-10-17】：启动时的全局授权即对「可见集 + 脚本定稿」的人工授权；授权页必须逐项列出范围并留痕。超范围（可见集变化、生成稿被改/重生成）时自动模式停决策卡，需重新授权或人工确认。新增确认动作一律进人工白名单，`system:auto-review` 与 agent 的 actor 不能代点。
 C2. 兼容：已有素材默认「Agent 可见」状态等于现状（入库即可见），进行中的 run 按现状视为已确认，不得被卡死；非自动 run 的 JSON 形状（golden）与 B1–B4 的 API 保持兼容，新增字段只增不改，有改动逐项在交审时列出。
 C3. 「过期」：可见集变化后，下游脚本标记过期但不删除；已定稿稿件作废为「待重新定稿」，需人工再确认；已有成片与交付包标记失效，不可继续下载，重新渲染后生成新版本。
 C4. 依赖：F1 → F2 → F3 → F4 顺序，F3 依赖 F2，F4 依赖 F3；F0 可与 F1 并行但先交审。
@@ -42,6 +42,11 @@ C4. 依赖：F1 → F2 → F3 → F4 顺序，F3 依赖 F2，F4 依赖 F3；F0 �
 
 ## 不做
 不新增顶层入口；不把 TTS 细调并入脚本工作台；不改 `main`；Premiere A08 仍待 Windows，不挡本轮。
+
+
+## F0 范围说明（Gate 非阻塞）
+F0 已清：Node brief 哈希空测、reconcile 锁内重判竞态、playwright 安装说明、本阶段文档入库。
+仍存活、排到后续阶段：AutoConfirmScene 预算 ErrForbidden vs errAutoBudgetSpent；haltBudgetSpent 状态检查；ErrArgument/ErrInvalidState→preview_unavailable；read-model D2/D4/D5/D8/D13；reconcile 后 SSE publish 缺测；reconcileHumanFinished 吞 ErrConflict；N7a/N13/N14/R22/R28 未重跑。另可补真 goroutine 竞态测。
 
 ## 提交约定
 每阶段一个小范围分支或提交序列，交 Gate 时附：阶段目标、本表对应验收点、测试输出、已知风险。
