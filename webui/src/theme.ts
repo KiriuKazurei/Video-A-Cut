@@ -31,7 +31,7 @@ const BASE_TOKEN: ThemeConfig['token'] = {
 };
 
 /**
- * 全局主题。液态玻璃（Spatial UI / visionOS）只作用于顶部页签与监视器/预览窗口（见 styles.css）。
+ * 全局主题。顶栏分段滑块和监视器外框都是实色，不用液态玻璃（见 styles.css）。
  * 侧栏底色 siderBg / lightSiderBg = colorBgContainer，纯色、不透明。
  */
 export const appTheme: ThemeConfig = {
