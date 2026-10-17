@@ -145,10 +145,14 @@ export function derivePipeline(input: PipelineInput): { stages: StageInfo[]; nex
     stat.review = { status: 'blocked', text: '需先完成导入', reason: why };
     stat.delivery = { status: 'blocked', text: '需先完成导入', reason: why };
   } else if (!workflow) {
-    const block = input.visibleConfirmed === false
+    const gov = prepareBlock(asset);
+    const unconfirmed = input.visibleConfirmed === false
       ? '请先在资源页确认 Agent 可见素材，才能进入脚本或开始生成。'
-      : prepareBlock(asset);
-    stat.prepare = block ? { status: 'blocked', text: input.visibleConfirmed === false ? '可见素材未确认' : '运行条件未满足', reason: block } : { status: 'todo', text: '可以运行准备' };
+      : undefined;
+    const block = gov ?? unconfirmed;
+    stat.prepare = block
+      ? { status: 'blocked', text: gov ? '运行条件未满足' : '可见素材未确认', reason: block }
+      : { status: 'todo', text: '可以运行准备' };
     // 没有流程时，后续阶段的状态沿用上面的“尚无流程”默认值
   } else {
     stat.prepare = { status: 'done', text: '已启动内容流程' };
@@ -238,11 +242,12 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
     };
   };
   const restart = (label: string, hint: string): NextStep => {
-    const gate = visibleGate();
-    if (gate) return gate;
     const block = prepareBlock(asset);
     const onPrepare = route.workspace === 'settings' && route.settingsCategory === 'preparation';
-    return go('prepare', onPrepare ? '开始生成' : label, hint, block ? { disabledReason: block } : undefined);
+    if (block) return go('prepare', onPrepare ? '开始生成' : label, hint, { disabledReason: block });
+    const gate = visibleGate();
+    if (gate) return gate;
+    return go('prepare', onPrepare ? '开始生成' : label, hint);
   };
   if (!workflow) return restart('去运行准备', '选择处理预设、核对运行条件并启动内容流程');
   switch (workflow.status) {

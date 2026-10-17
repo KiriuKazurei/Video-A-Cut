@@ -32,6 +32,10 @@ test('pipeline sends an unconfirmed library to the resource page before preparat
     visibleConfirmed: false
   });
   assert.equal(running.next.label, '查看生成进度');
+  const hidden = derivePipeline({
+    asset: { ...asset(), agent_visible: false }, assetCount: 1, route: { workspace: 'resources' }, workflow: null, visibleConfirmed: false
+  });
+  assert.match(hidden.next.disabledReason, /对 Agent 不可见/);
 });
 
 test('auto authorization carries the visible-set fingerprint only when the page has one', () => {

@@ -15,7 +15,14 @@ const warnings = [];
 page.on('console', (m) => { if (['warning', 'error'].includes(m.type()) && /validateDOMNesting|cannot (be a )?descendant|nested/i.test(m.text())) warnings.push(m.text()); });
 if (shots) fs.mkdirSync(shots, { recursive: true });
 
-const state = { visible: false, workflow: null };
+const state = { visible: false, workflow: null, confirmed: true };
+await page.route('**/api/visible-set', (route) => route.fulfill({
+  json: {
+    asset_ids: state.confirmed && state.visible ? ['_selfcheck'] : [],
+    sha256: 'vis-smoke', confirmed: state.confirmed, script_finalize: false, stale: !state.confirmed,
+    assets: state.visible ? [{ asset_id: '_selfcheck', status: 'ingested', agent_visible: true, ingested: true }] : []
+  }
+}));
 await page.route(/\/api\/assets(\?.*)?$/, async (route) => {
   const response = await route.fetch(); const list = await response.json();
   await route.fulfill({ response, json: list.map((a) => a.asset_id === '_selfcheck' ? { ...a, agent_visible: state.visible } : a) });
@@ -67,6 +74,12 @@ assert.deepEqual(await crumbs(), ['设置', '运行准备', '_selfcheck']);
 assert.equal((await nextBtn().innerText()).trim(), '开始生成');
 assert.match(await step('准备').getAttribute('class'), /is-current/);
 ok('去运行准备 → settings/preparation, anchor focused, asset kept, label becomes 开始生成');
+
+state.confirmed = false; await load('#/resources');
+assert.equal((await nextBtn().innerText()).trim(), '去确认可见素材');
+assert.equal(await nextBtn().isDisabled(), false);
+state.confirmed = true;
+ok('unconfirmed visible set points at the resource page before preparation');
 
 // 4) 待确认场景：阶段条标出下一步；点击下一步去审查并聚焦
 state.workflow = wf('awaiting_review', 'scene_review'); await load('#/resources');
