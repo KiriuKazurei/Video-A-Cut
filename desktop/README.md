@@ -1,6 +1,6 @@
 # Windows 桌面
 
-核对日期：2026-10-16。源码应用版本为 0.1.1，版本基准在 tauri.conf.json。Tauri/Rust 管理窗口、托盘、原生文件对话框、后台进程和更新；Go 管理 SQLite 和业务，React 通过本机 HTTP REST/SSE/Range 读取媒体，不通过 IPC 传帧。
+核对日期：2026-10-18（agent/develop）。源码应用版本为 0.1.1，版本基准在 tauri.conf.json。Tauri/Rust 管理窗口、托盘、原生文件对话框、后台进程和更新；Go 管理 SQLite 和业务，React 通过本机 HTTP REST/SSE/Range 读取媒体，不通过 IPC 传帧。
 
 完整运行目录为 build/desktop/app，入口 video-auto-cut-desktop.exe；Go、.runtime.json、Worker 和协议资源须来自同一构建。Node >=22.12、Python >=3.11、FFmpeg/ffprobe 和 WebView2 需预装，程序不下载模型。10 月 9 日已有桌面包及验收是历史证据，不能代表新增自动模式与当前修复已经打包。
 
@@ -10,7 +10,7 @@
 
 ## 构建与验证
 
-依赖先行准备后，从源码根执行 `pwsh -NoProfile -File scripts/Build-TauriDesktop.ps1`。Debug 输出 app-debug；Installer 模式需要更新签名配置。Go/Cargo 使用本地固定依赖；缺少工具应报告。当前版本未因文档修正重新构建、启动或发布。
+依赖先行准备后，从源码根执行 `pwsh -NoProfile -File scripts/Build-TauriDesktop.ps1`。Debug 输出 app-debug；Installer 模式需要更新签名配置。Go/Cargo 使用本地固定依赖；缺少工具应报告。本轮已编译并运行 Go 与前端源码；未重新构建、安装或发布 Tauri 桌面包。F2 新脚本运行资源与项目 Skill 的独立桌面包覆盖仍待发行阶段验证。
 
 开发使用 Vite 严格端口，desktop_origin 配置为实际开发来源，再按本机已安装 Rust 工具链运行 desktop/Cargo.toml。历史曾验证的某个 Rust/Edge 版本不是本轮再次核验过的运行要求。
 

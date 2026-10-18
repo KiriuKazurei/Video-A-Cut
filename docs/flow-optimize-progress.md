@@ -1,20 +1,24 @@
 # 流程优化进度
 
-仓库 KiriuKazurei/Video-A-Cut。本文只记进度。不合并任何分支。
+仓库 KiriuKazurei/Video-A-Cut。本文记录实际进度；2026-10-18 本轮分支合并已由用户授权，全部原分支保留。
 
 ## 版本
 
 | 项 | 值 |
 | --- | --- |
-| 当前基线 | `agent/flow-optimize` |
-| 基线 tip | `810fa67199d2c2876da721c62af92d48d148a327`（本次用户指定） |
+| 当前整合分支 | `agent/develop` |
+| 远程功能输入 | `agent/flow-optimize@810fa67199d2c2876da721c62af92d48d148a327` |
 | F1 代码点 | `ec7555d1b4e0e46ff0cffd8e80d83a53aa696532`，PR #8；810fa67 另含交接文档合并 |
-| F2 实施 | `agent/script-workbench`，未提交/合并 |
+| F2 整合 | `agent/develop@d67e71d`，已本地提交；原 agent/script-workbench 保留 |
 | PR #8 | https://github.com/KiriuKazurei/Video-A-Cut/pull/8 已合进 `agent/flow-optimize`（2026-10-17） |
 | F0 | PR #7，合并提交 `6f3b879` |
-| 核对 | 2026-10-17 fetch 后的接手快照；远端当前 tip 仍需实际 fetch，不能沿用旧文本 |
+| 远程核对 | 2026-10-18 已逐个 fetch 11 个分支；本地未推送 |
 
-## 交接
+## 当前交接
+
+2026-10-18：F0/F1、F2 和本地修复已整合，最简验证通过：Go API 3/service 17/语法 3、前端 22+8、Python 8、Node 渲染 1 及类型/样式/前后端构建和本机进程运行。跨语言使用本机模型桩；不代替质量。人工全流程等待用户确认。详见 [整合记录](开发分支合并-2026-10-18.md)。
+
+## 本次合并前的 F2 实施记录（历史）
 
 2026-10-18：F2 首版实现与功能验证完成，等待用户 Gate 复审；新增语法和使用方式见 [脚本工作台说明](script-workbench-syntax.md)。Go 当前权威、人工定稿、四态脚本和非自动流程 JSON 边界保持。
 
@@ -66,8 +70,8 @@ PR #8 合入前的 Gate 复审（相对 `eb6452e`，提交 `3026f1d`）已处理
 
 ## 待完成
 
-- F2 Gate 用户复审，B04 Windows I/O 根因、真实模型/Premiere 与发行包验收；F3 → F4 仍按依赖推进。目标、验收、依赖在 `docs/flow-optimize-stages.md`。
-- 功能分支从 `agent/flow-optimize` 的当前 tip 开。合进 `agent/flow-optimize` 之前交 Gate。合入由和零批准。接手 Agent 不自行合并，不改 `main`。
+- 本轮合并和最简验证已完成；人工全流程等待用户确认。B04 根因、真实模型/Premiere 与发行包验收仍待处理；F3 → F4 未启动。目标、验收、依赖在 `docs/flow-optimize-stages.md`。
+- 当前工作区为 agent/develop；所有原分支保留。后续新增开发与合入按用户下一步指示，不自动推进 main 或公开远程。
 - 时间轴自绘、幽灵片段、停靠面板仍是未来计划，没有开工，不挡 F2–F4 验收。
 - Gate 非阻塞挂账，可选清，不挡 F2 开工。清单在 `docs/flow-optimize-stages.md`「Gate 非阻塞挂账」：F0 存活变异、真并发 reconcile、SSE publish、`visible_set_sha` → 400 的 HTTP API 测、Badge 描边。
 - 历史挂账仍然有效：

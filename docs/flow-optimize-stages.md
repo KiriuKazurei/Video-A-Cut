@@ -1,14 +1,13 @@
-# agent/flow-optimize 阶段目标与验收点
+# 流程优化阶段目标与验收点
 
 仓库 KiriuKazurei/Video-A-Cut。本文是本流的验收合同。交接步骤见 `docs/flow-optimize-handoff.md`。进度见 `docs/flow-optimize-progress.md`。
 
-## 分支规则
+## 当前分支与验收范围
 
-- 不碰 `main`。
-- 本次用户指定接手基线为 `agent/flow-optimize@810fa67`，包含 PR #8 代码点 ec7555d 及后续交接文档。F2 实施分支为 `agent/script-workbench`。
-- 旧的远端 main / agent/main tip 文字已经过时，不能据此改写分支。本次不从它们重做 F0/F1；远端位置按实际 fetch 快照核对。
-- 功能分支在合进 `agent/flow-optimize` 之前交 Gate。交审附：阶段目标、本文件对应验收点、测试输出、已知风险。
-- 合入需和零批准。Agent 不自行合并，也不把本流推进 `main` 或 `agent/main`。
+- 2026-10-18 用户已授权将各开发功能整合到 `agent/develop`；F0/F1/F2 与本地修复已本地合入，原分支全部保留，main 不变，未推送或发行。
+- `agent/flow-optimize@810fa67` 和 `agent/script-workbench` 是本轮来源；当前源码在 `.run-data/worktrees/agent-develop`。
+- 本轮仅执行最简编译、相关功能和本机运行检查，不做基线、备份或浏览器冒烟。旧阶段完整验收项是后续验收要求，不能写成本轮已全部执行。
+- 人工全流程等待用户确认。F3/F4、真实模型/Premiere 和发行验收未因源码合并自动完成；详见 [整合记录](开发分支合并-2026-10-18.md)。
 
 ## 总目标
 
@@ -67,7 +66,7 @@ F1 已经落地、F2 必须接着用的行为：
 - 交付失效走 `delivery_invalidations`。新的 export 成功后 `ClearDeliveryInvalidation` 才恢复下载。
 - 前端门在 `webui/src/visibleSet.ts`：`enterScriptAllowed`、`startGenerationAllowed`。进行中的流程（已有 run）仍可进入内容页，不因这次确认被拦住。
 
-### F2 脚本工作台（首版实现/功能验证完成，待用户 Gate，2026-10-18）
+### F2 脚本工作台（已合入 agent/develop，待人工全流程，2026-10-18）
 
 用户追加的花括号语法、高亮、Agent Skill、文字联网查证和可预渲染的 Premiere 画面效果，详见 [脚本工作台说明](script-workbench-syntax.md)。这是对本节范围的明确扩展；本节后续验收条款继续有效，TTS 实际合成仍留 F3。
 
@@ -186,7 +185,7 @@ F0 仍存活的变异与缺测：
 
 ## 提交约定
 
-每阶段一个小范围分支。合进 `agent/flow-optimize` 前交 Gate。附：阶段目标、本文件对应验收点、测试输出、已知风险。合入等和零批准。
+本轮已按用户指示将开发功能合入 agent/develop，保留原分支。今后新增实施单独确定范围，并附目标、对应验收、实际检查和已知风险；不据本轮授权自动推送、发行或进入人工测试。
 
 ## 未来开发计划
 

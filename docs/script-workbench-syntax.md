@@ -1,6 +1,6 @@
 # 脚本工作台与特殊语法 v1
 
-更新：2026-10-18。实现分支 `agent/script-workbench`，基于 `agent/flow-optimize@810fa67`。尚未提交、合并或人工验收。工程验证进度见 [流程优化进度](flow-optimize-progress.md)；后续 F3、F4 的要求仍见 [阶段合同](flow-optimize-stages.md)。
+更新：2026-10-18。脚本工作台与其他开发功能已合入 `agent/develop`（功能提交 d67e71d），原 `agent/script-workbench` 保留；尚未推送或人工全流程验收。本轮最简验证通过，工程验证进度见 [流程优化进度](flow-optimize-progress.md)；后续 F3、F4 的要求仍见 [阶段合同](flow-optimize-stages.md)。
 
 ## 使用
 

@@ -1,11 +1,9 @@
 # 测试目录、版本与简档
 
-核对日期：2026-10-16。当前完整规则及多工作区入口见 [当前运行与测试](../docs/当前运行与测试.md)。
+更新：2026-10-18。agent/develop 已合入版本化入口和固定样本迁移。多工作区使用方式与本轮最简命令见 [当前运行与测试](../docs/当前运行与测试.md)；执行清单见 [当前工作与待办](../docs/当前工作与待办.md)。
 
-小版本结束更新版本后 Prepare；同版本 Clear；只读 Measure。所有清空先从 summary.json 提炼每版本一份 Markdown，最多保留三个版本，记录通过/失败/待验及真实修复版本/提交，未知写未记录。500 MiB 包括源码、样本和缓存，运行中也检查；超限停止所属测试并按标记目录清理，不删除源码/业务数据。清理要求进程退出、绝对路径边界、父子项无重解析点、无 Git 跟踪文件，使用 PowerShell LiteralPath。
+通过 scripts/TestWorkspace.ps1 的 custom、WorkingDirectory 和 ArgumentsJson 选择实际源码。原根目录管理入口的内置 suite 指向旧源码，不能替 develop 背书。输出使用 VAC_TEST_ROOT/VAC_TEST_OUTPUT，版本来自 desktop/tauri.conf.json；TEMP/TMP/TMPDIR、Go/npm 缓存与 Python 禁写缓存统一设置。
 
-## 已有证据与未验范围
+小版本更新后 Prepare；同版本 Clear；只读 Measure；Clear -CacheOnly 保留 artifacts。清理前归每版本一份 Markdown，最多 3 版，未知修复版本/提交写未记录。500 MiB 包括规定范围的测试源码、样本、脚本和缓存；超限终止测试并归档清理，不删除源码、业务数据或密钥。清理必须验证进程退出、绝对路径、父子重解析点和 Git 跟踪边界。
 
-本轮已有 Go short 15 包分轮结果、7 条 E2E、前端 67、浏览器 19+10+9、入口保护 25，以及合并候选 Python 146、Timeline/Exporter 各 52。日志在原根目录 .run-data/tests/0.1.1/artifacts/custom；完整命令、初次失败和后续修复见本轮复审交接。service 需要合理包级时限，曾用 60 秒导致假超时；实际复跑约 171 秒。
-
-浏览器使用既有 Playwright 1.62.1 + Edge，锁定版 1.64.0 安装未验；模型/TTS 为本机桩。真实 720p 渲染和中文抽帧已验，不代表真实模型或人工作品验收。short 跳过的 AutoUILive 服务夹具、ASS 人工入口与凭据缺失集成用例未补记通过。构建、运行程序、外发和公开发行不是文档命令自动授予的操作。
+本轮仅执行新增模块定向测试、类型/样式/构建、真实脚本往返与新二进制本机运行，未做基线、备份、浏览器冒烟或人工全流程。详细实际结果见 [整合记录](../docs/开发分支合并-2026-10-18.md)。

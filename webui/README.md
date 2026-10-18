@@ -1,6 +1,6 @@
 # WebUI
 
-核对日期：2026-10-17。React/TypeScript、Vite、Ant Design、TanStack Query；业务仍由 Go 的 REST/SSE 处理，桌面能力通过 Tauri 桥接。完整接口见 [接口清单](../docs/前端接口清单与重构交接.md) 与 [JSON](../docs/frontend-api-inventory.json)。
+核对日期：2026-10-18（agent/develop）。React/TypeScript、Vite、Ant Design、TanStack Query；业务仍由 Go 的 REST/SSE 处理，桌面能力通过 Tauri 桥接。完整接口见 [接口清单](../docs/前端接口清单与重构交接.md) 与 [JSON](../docs/frontend-api-inventory.json)。
 
 2026-10-18：`#/editing/content` 新增脚本工作台；普通文字用于请求实际文稿，花括号用于强制视频、字幕和画面效果。语法、接口、修订与交付限制见 [脚本工作台说明](../docs/script-workbench-syntax.md)，Agent 使用 [项目 Skill](../skills/vac-script-syntax/SKILL.md)。当前分支实施结果及待验边界见 [流程优化进度](../docs/flow-optimize-progress.md)。
 
@@ -34,7 +34,7 @@ C/A 仅在审查卡片或时间线具有焦点时确认/批准；N 跳到下一�
 
 Windows 测试统一经 [管理入口](../scripts/TESTING.md)，在本轮分离工作区使用 custom + WorkingDirectory 指向这里；不要误跑原根目录的旧源码。`test:unit` 覆盖契约、桌面 URL、TTS、阶段推导、证据摘要、引导和自动模式。`test:browser-tts` 仍引用仓库外 /workspace/vac-demo，当前 Windows 工作区不能将它当作可用入口。
 
-`auto_ui_smoke.mjs` 自带 mock 服务；`run-local-smokes.mjs` 为 quickstart/review 提供本地夹具。两者需明确 VAC_DIST、PLAYWRIGHT_CORE、CHROME 和受管理输出目录。本轮浏览器共 20+10+9 组通过，使用既有 Playwright 1.62.1 + Edge；锁定版 1.64.0 安装验收未执行。真实 Go 浏览器联调、可见桌面和人工内容质量分别记录。
+本轮合并后仅执行新增模块 22 项、queryRefresh 8 项、类型/样式/构建，均通过，未执行浏览器冒烟。以下浏览器结果属于此前版本。`auto_ui_smoke.mjs` 自带 mock 服务；`run-local-smokes.mjs` 为 quickstart/review 提供本地夹具。两者需明确 VAC_DIST、PLAYWRIGHT_CORE、CHROME 和受管理输出目录。本轮浏览器共 20+10+9 组通过，使用既有 Playwright 1.62.1 + Edge；锁定版 1.64.0 安装验收未执行。真实 Go 浏览器联调、可见桌面和人工内容质量分别记录。
 
 视觉：硬性规范见 [`docs/ui-style-spec.md`](../docs/ui-style-spec.md)。全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`）。配色集中在 `src/theme.ts` 与 `styles.css` 的 `--vac-*`：窗口 `#1E1E1E`、面板 `#252525`、控件 `#2F2F2F`、边框 `#3A3A3A`、主文字 `#E6E6E6`、次文字 `#9A9A9A`、强调色 `#4C8DFF`。顶栏工作区页签是实色分段滑块（圆角槽 + 一块滑块，选中项加粗；位移动效只加在这块滑块上，对齐 Lucian #295）。监视器是普通实色外框，没有液态玻璃、背景模糊或高光。左右侧栏是 antd `Layout.Sider`：纯色底、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里。系统开启「减少动态效果」时滑块瞬时到位。描述表行高为字号的 1.25 倍。`npm run lint:style` 检查渐变、阴影、模糊和色板以外的颜色。
 

@@ -1,17 +1,15 @@
 # 流程优化交接（F2 起）
 
-仓库 KiriuKazurei/Video-A-Cut。2026-10-18 更新：F2 首版已在 `agent/script-workbench` 实现并完成本轮功能验证，待用户 Gate 复审；基线为用户指定的 `agent/flow-optimize@810fa67`。旧文档的 ec7555d 是 F1 代码合并点；810fa67 包含其后的交接文档合并，不再把 ec7555d 当分支当前 tip。
+仓库 KiriuKazurei/Video-A-Cut。2026-10-18：用户已授权本轮整合；F0/F1、F2 首版和本地修复已合入 agent/develop（功能提交 d67e71d），原分支保留。最简验证通过，人工全流程等待用户确认。原 810fa67 是本轮输入提交，已不是当前工作区指针。
 
 验收合同是 `docs/flow-optimize-stages.md`。进度是 `docs/flow-optimize-progress.md`。界面硬性规范是 `docs/ui-style-spec.md`。本文只写开工顺序和已有落点，避免接手时重做 F0/F1。
 
-## 现在从哪开始
+## 当前交接
 
-1. 核对基线：本次接手快照为 `agent/flow-optimize@810fa67199d2c2876da721c62af92d48d148a327`；F2 源码在其上的 `agent/script-workbench`，尚未提交。F0+F1+视觉规范已经包含在基线中。
-2. 从该 tip 开功能分支。合进 `agent/flow-optimize` 之前交 Gate。合入等和零批准。不自行合并。不碰 `main`。
-3. 只做 F2。F3 等 F2 合入后再开。F4 等 F3 合入后再开。
-4. 交审附：阶段目标、`docs/flow-optimize-stages.md` 里 F2 验收清单的证据、测试输出、已知风险。
-
-远端引用以实际 fetch 快照为准；旧文档中把两条都写成 0f4a894 的结论已经过时。此任务的基线明确为本流 810fa67，不另选基线重做 F0/F1。F2 新增语法、真实画面交付、接口和限制见 [脚本工作台说明](script-workbench-syntax.md)。用户已允许预渲染效果，因此本轮画面交付属于用户追加范围；TTS 合成仍留 F3。
+1. 当前源码为 `agent/develop`，目录 `E:\AI\Video Auto Cut\.run-data\worktrees\agent-develop`；不得在旧根目录或旧功能工作区中继续改本轮产品代码。
+2. 本轮分支合并已获用户授权并完成，不删除原分支、不推送或发行。提交、比较与实际验证见 [合并记录](开发分支合并-2026-10-18.md)。
+3. 先等待用户确认，再进入人工全流程；F3/F4 的实施未因本次合并自动启动。
+4. F2 当前语法、接口与交付边界见 [工作台说明](script-workbench-syntax.md)。配音合成与原自动执行链完整挂接留 F3，真实模型/Premiere/桌面包仍待验。
 
 ## 主路径（不要改这条产品口径）
 
@@ -85,7 +83,7 @@ PR #8，已合进基线。入库与 Agent 可见分层、可见集确认、`Visi
 
 ## 测试与产物
 
-改了 Go 就跑相关包测试。改了 webui 就跑 `npm run test:unit`（含 `lint:style`）。交审贴输出。
+本轮按用户要求仅做相关模块最简测试、类型/样式/构建与本机运行；均已通过，未跑基线或浏览器冒烟。今后新增实施仍须按实际改动选择检查。
 
 测试产物总占用上限 500 MiB，统计口径在仓库 `AGENTS.md`。不要删测试源码、固定样本、原始录制和业务数据。
 

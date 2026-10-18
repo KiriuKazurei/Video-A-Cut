@@ -1,6 +1,6 @@
 # Python 流水线 Worker
 
-核对日期：2026-10-17。Worker 通过 MCP 领取导入及 recognize/sort/narrate/tts/subtitle/mix 等任务，不打开 SQLite，不自行指定认证角色。工具和依赖应事先安装；运行不下载模型。
+核对日期：2026-10-18（agent/develop）。Worker 通过 MCP 领取导入及 recognize/sort/narrate/tts/subtitle/mix 等任务，不打开 SQLite，不自行指定认证角色。工具和依赖应事先安装；运行不下载模型。
 
 从本目录运行 `python -m vac_worker --config <worker.json> [--once]`。token_env 指定凭证环境变量名，配置不保存令牌值。delivery_root 必须与控制面一致；ffmpeg/ffprobe 在 PATH 或配置中提供，心跳必须早于租约到期。`--once` 最多执行一项，0 表示成功/空闲，1 为已上报失败，2 为配置/传输错误。完整固定预设配置由 [运行入口](../../scripts/RUNTIME.md) 生成。
 
@@ -12,6 +12,10 @@
 
 Windows 日常测试通过 [统一测试入口](../../scripts/TESTING.md)，本轮 custom 的工作目录指向此目录，参数为 `-B -m unittest discover -s tests -t . -v`。兼容 `discover -s tests -v` 和单模块入口。原工作区固定媒体已迁至 timeline-cli/fixtures/media；历史独立脚本与源码恢复副本保留在 test-support/legacy，不作为生成物删除。测试版本来自 desktop/tauri.conf.json，输出经 VAC_TEST_ROOT/VAC_TEST_OUTPUT，500 MiB 与简档规则见根 AGENTS。
 
-## 审查补充（2026-10-16）
+## 脚本工作台
+
+`python -B -m vac_worker.script_workbench` 是 Go 显式调用的 JSON stdin/stdout 桥，负责受限抽帧、视觉检查、可选文字查证和实际旁白草稿。只处理控制面冻结的可见素材；不替人定稿。标准协议与凭证要求、范围和修订约束见 [工作台说明](../../docs/script-workbench-syntax.md)。本轮工作台/重定向 8 项和真实跨语言往返通过，不代表真实模型质量。
+
+## 审查补充（历史：2026-10-16）
 
 2026-10-17：CR01 已修复。省略 api_format 的自定义 vision/narration 与标准协议网关、TTS 共用 NoRedirect，拒绝转向其他路径或目的地。20 个重定向子场景和两类正常请求通过，Python 全套 148 项通过；监督脚本测试改用被测脚本要求的 pwsh。测试仅使用本机服务和虚拟令牌，详见 [代码审查与复验](../../docs/代码审查-2026-10-16.md)。
