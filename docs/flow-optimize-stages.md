@@ -5,9 +5,8 @@
 ## 分支规则
 
 - 不碰 `main`。
-- 开发可以基于 `agent/main`，或基于本流 `agent/flow-optimize`。本流的当前基线是 `agent/flow-optimize` @ `ec7555d1b4e0e46ff0cffd8e80d83a53aa696532`（PR #8 合并提交，含已完成的 F0、F1 和视觉规范）。
-- F2 及以后从这条基线开功能分支。`origin/agent/main` 与 `main` 目前都在 `0f4a894`，上面没有 F0/F1。不要从那里重做已合入的门禁。
-- 旧文档里的「基线 `agent/main` @ `4bdd5d6`」是 Stage C 合入记录。`4bdd5d6` 在本流历史上，不在当前 `origin/agent/main` 上。以本流 tip 为准。
+- 本次用户指定接手基线为 `agent/flow-optimize@810fa67`，包含 PR #8 代码点 ec7555d 及后续交接文档。F2 实施分支为 `agent/script-workbench`。
+- 旧的远端 main / agent/main tip 文字已经过时，不能据此改写分支。本次不从它们重做 F0/F1；远端位置按实际 fetch 快照核对。
 - 功能分支在合进 `agent/flow-optimize` 之前交 Gate。交审附：阶段目标、本文件对应验收点、测试输出、已知风险。
 - 合入需和零批准。Agent 不自行合并，也不把本流推进 `main` 或 `agent/main`。
 
@@ -68,7 +67,9 @@ F1 已经落地、F2 必须接着用的行为：
 - 交付失效走 `delivery_invalidations`。新的 export 成功后 `ClearDeliveryInvalidation` 才恢复下载。
 - 前端门在 `webui/src/visibleSet.ts`：`enterScriptAllowed`、`startGenerationAllowed`。进行中的流程（已有 run）仍可进入内容页，不因这次确认被拦住。
 
-### F2 脚本工作台（下一项，接手 Agent 从这里开工）
+### F2 脚本工作台（首版实现/功能验证完成，待用户 Gate，2026-10-18）
+
+用户追加的花括号语法、高亮、Agent Skill、文字联网查证和可预渲染的 Premiere 画面效果，详见 [脚本工作台说明](script-workbench-syntax.md)。这是对本节范围的明确扩展；本节后续验收条款继续有效，TTS 实际合成仍留 F3。
 
 依赖：F1 已合入。未确认可见集不能进脚本，这道门保持。F2 不重做可见集，不改四个脚本状态的含义。
 
@@ -102,18 +103,18 @@ F1 已经落地、F2 必须接着用的行为：
   - 可见集变化：已实现，`halt_reason=visible_set_changed`，恢复动作 `confirm_visible_set`。F2 不要换一套。
   - 生成稿被改或重新生成：停决策卡。`halt_reason` 用 `script_changed`。恢复动作用 `confirm_script`，只接受 `human:`。这是 C1 已定的「生成稿被改」，不是新的授权产品。已有同含义常量时用已有常量，并在交审说明里写明。
 - 已定稿稿件的正文或分段被改、或路径 B 重新生成：状态回到 `needs_refinalize`（行保留），`stale_reason=script_changed`。不要新增第五个状态。人重新定稿后，自动 run 才能离开这张决策卡。
-- `needs_refinalize` 今天不能直接定稿（`FinalizeScript` 只接受 `draft`）。F2 让人把 `needs_refinalize` 重新定稿。Agent 不能代点。
+- F2 使用带 expected_version 的 `/workbench/finalize`，允许人工把 `needs_refinalize` 重新定稿。旧 F1 定稿路由不能用于绕过工作台校验。Agent 不能代点。
 
 版本：
 
-- 定稿前后都要能读回来。现有 `scripts` 表是当前稿一行（`title` / `body`），没有修订历史。
+- 定稿前后都要能读回来。F1 的 `scripts` 表仍是当前行；F2 通过 0019 迁移增加工作台、修订历史和交付表。
 - 每次保存和每次定稿留一份修订：稿 id、可见集指纹、状态、正文或分段、操作者、时间。当前行仍表示当前稿。覆盖写时不要只留最后一版。
 - 新字段、新表只增不改。`workflow_runs` 的 JSON 保持不变。交审时逐项列出新增 API。
 
 TTS 边界（F2 只记账，不做细调）：
 
 - 稿或段上保存「启用 TTS」「启用字幕」，以及挂接哪些段落。
-- F2 验收不要求跳到 `#/tts`，不要求合成，不要求出成片。
+- F2 不要求跳到 `#/tts` 或实际 TTS 合成；用户 10-18 已追加特殊语法的实际画面/Premiere 交付，因此本轮需要验证预渲染成片效果。
 - 音色、语气、频谱、按轴调语气不进脚本工作台。那些是 F3，页面仍是 TTS 专页。
 
 验收清单（交 Gate 时逐条给证据）：

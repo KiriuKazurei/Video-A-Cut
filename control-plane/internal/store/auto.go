@@ -66,14 +66,18 @@ func scanWorkflowAuto(row scanner) (model.WorkflowAuto, error) {
 // a.AutoVersion-1. The caller bumps AutoVersion first, the same convention as
 // UpdateWorkflow, so a stale writer gets ErrConflict instead of overwriting.
 func (s *Store) UpdateWorkflowAuto(ctx context.Context, a model.WorkflowAuto) error {
+	scope, err := json.Marshal(a.Scope)
+	if err != nil {
+		return err
+	}
 	res, err := s.q.ExecContext(ctx, `UPDATE workflow_auto SET
   auto_version = ?, state = ?, halt_reason = ?, revoked_by = ?, revoked_at = ?, revoke_reason = ?, consent_at_revoke = ?,
   round = ?, total_rounds = ?, actions_used = ?, tts_chars_used = ?, delivery_hold = ?, updated_at = ?,
-  deadline_at = ?, paused_at = ?, decision_deadline_at = ?
+  deadline_at = ?, paused_at = ?, decision_deadline_at = ?, scope_json = ?
   WHERE run_id = ? AND auto_version = ?`,
 		a.AutoVersion, a.State, a.HaltReason, a.RevokedBy, nullTime(a.RevokedAt), a.RevokeReason, a.ConsentAtRevoke,
 		a.Round, a.TotalRounds, a.ActionsUsed, a.TTSCharsUsed, a.DeliveryHold, a.UpdatedAt,
-		a.DeadlineAt, nullTime(a.PausedAt), nullTime(a.DecisionDeadlineAt),
+		a.DeadlineAt, nullTime(a.PausedAt), nullTime(a.DecisionDeadlineAt), string(scope),
 		a.RunID, a.AutoVersion-1)
 	if err != nil {
 		return fmt.Errorf("store: update workflow auto %s: %w", a.RunID, err)

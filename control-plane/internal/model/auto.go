@@ -129,7 +129,9 @@ type AutoScope struct {
 	VisibleAssetIDs []string `json:"visible_asset_ids,omitempty"`
 	// ScriptFinalize records that the same authorization covers script finalization
 	// for that visible set. It is additive: older scope JSON omits it.
-	ScriptFinalize bool `json:"script_finalize,omitempty"`
+	ScriptFinalize bool   `json:"script_finalize,omitempty"`
+	ScriptID       string `json:"script_id,omitempty"`
+	ScriptVersion  int    `json:"script_version,omitempty"`
 }
 
 // WorkflowAuto is the auto-run overlay of one workflow run.

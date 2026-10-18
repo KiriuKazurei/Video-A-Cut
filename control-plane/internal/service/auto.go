@@ -552,9 +552,9 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 		return model.WorkflowRun{}, AutoView{}, model.ErrArgument
 	}
 	switch decision {
-	case "export", "discard", "revise", "confirm_visible_set":
+	case "export", "discard", "revise", "confirm_visible_set", "confirm_script":
 	default:
-		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: decision must be export, revise, discard or confirm_visible_set: %w", model.ErrArgument)
+		return model.WorkflowRun{}, AutoView{}, fmt.Errorf("service: unknown auto decision: %w", model.ErrArgument)
 	}
 	feedback = strings.TrimSpace(feedback)
 	if decision == "revise" {
@@ -591,8 +591,60 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 			return fmt.Errorf("service: auto run is %s, not waiting for a decision: %w", a.State, model.ErrInvalidState)
 		}
 		now := s.autoNow()
+		if (a.HaltReason == "script_changed" || a.HaltReason == model.AutoWaitVisibleSet) && decision != "discard" && decision != "confirm_script" && decision != "confirm_visible_set" {
+			return model.ErrInvalidState
+		}
 		kind := model.AutoDecisionUserExport
 		switch decision {
+		case "confirm_script":
+			if a.HaltReason != "script_changed" {
+				return model.ErrInvalidState
+			}
+			var proof struct {
+				ScriptID string `json:"script_id"`
+				Version  int    `json:"script_version"`
+			}
+			if json.Unmarshal([]byte(feedback), &proof) != nil || proof.ScriptID == "" || proof.Version < 1 {
+				return model.ErrArgument
+			}
+			w, err := workbenchAt(ctx, tx, proof.ScriptID)
+			if err != nil {
+				return err
+			}
+			run, err := tx.GetWorkflow(ctx, runID)
+			if err != nil {
+				return err
+			}
+			if w.Version != proof.Version {
+				return model.ErrConflict
+			}
+			if w.Script.AssetID != run.AssetID || w.Script.Status != model.ScriptFinalized {
+				return model.ErrInvalidState
+			}
+			latest, err := tx.ListScripts(ctx, run.AssetID)
+			if err != nil {
+				return err
+			}
+			if len(latest) == 0 || latest[len(latest)-1].ScriptID != proof.ScriptID {
+				return model.ErrConflict
+			}
+			view, err := s.visibleSetAt(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if !view.Confirmed || view.SHA256 != w.Script.VisibleSetSHA || (a.Scope.VisibleSetSHA != "" && view.SHA256 != a.Scope.VisibleSetSHA) {
+				return model.ErrForbidden
+			}
+			if a.Scope.VisibleSetSHA == "" {
+				set, err := loadVisibleSet(ctx, tx)
+				if err != nil {
+					return err
+				}
+				a.Scope.VisibleSetSHA, a.Scope.VisibleAssetIDs, a.Scope.ScriptFinalize = set.SHA, append([]string(nil), set.IDs...), true
+			}
+			a.Scope.ScriptID, a.Scope.ScriptVersion = proof.ScriptID, proof.Version
+			a.State, a.HaltReason, a.DeliveryHold = model.AutoStateActive, "", false
+			kind = "script_confirmed"
 		case "export":
 			// Releasing the hold means there is something to release: the
 			// package and the 720p preview of the current export. A run that
@@ -652,14 +704,23 @@ func (s *Service) DecideAuto(ctx context.Context, actor, runID, decision, feedba
 			// nothing left to confirm until the new pass is scored.
 			a.DeliveryHold = false
 		}
+		if (decision == "confirm_script" || decision == "confirm_visible_set") && a.PausedAt != nil && now.After(*a.PausedAt) {
+			a.DeadlineAt = a.DeadlineAt.Add(now.Sub(*a.PausedAt))
+		}
 		a.PausedAt, a.DecisionDeadlineAt = nil, nil
 		a.AutoVersion++
 		a.UpdatedAt = now
 		if err := tx.UpdateWorkflowAuto(ctx, a); err != nil {
 			return err
 		}
-		basis, _ := json.Marshal(map[string]any{"decision": decision, "feedback_chars": utf8.RuneCountInString(feedback)})
-		if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: runID, Round: a.Round, Kind: kind, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
+		facts := map[string]any{"decision": decision, "feedback_chars": utf8.RuneCountInString(feedback)}
+		target := ""
+		if decision == "confirm_script" {
+			facts["script_id"], facts["script_version"], facts["visible_set_sha"] = a.Scope.ScriptID, a.Scope.ScriptVersion, a.Scope.VisibleSetSHA
+			target = a.Scope.ScriptID
+		}
+		basis, _ := json.Marshal(facts)
+		if err := tx.InsertAutoDecision(ctx, model.AutoDecision{RunID: runID, Round: a.Round, Kind: kind, Target: target, Actor: actor, Basis: basis, CreatedAt: now}); err != nil {
 			return err
 		}
 		if err := auditTx(ctx, tx, actor, "auto.decision", runID, decision); err != nil {

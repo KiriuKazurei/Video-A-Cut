@@ -20,7 +20,7 @@ export const REFRESH_DOMAINS = [
   'mp4Previews',
   'deliveryVariants',
   'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities',
-  'auto', 'auto-notice'
+  'auto', 'auto-notice', 'visible-set', 'scripts', 'script-workbench', 'script-media', 'script-revisions'
 ] as const;
 
 export type RefreshDomain = (typeof REFRESH_DOMAINS)[number];
@@ -132,7 +132,7 @@ export const SUPPORTED_SSE_EVENTS = [
   'preview_updated',
   'delivery_variant.changed',
   'tts.template.changed', 'tts.preview.changed',
-  'auto.changed', 'auto.reviewed'
+  'auto.changed', 'auto.reviewed', 'script.changed'
 ] as const;
 
 export type SupportedSSEEvent = (typeof SUPPORTED_SSE_EVENTS)[number];
@@ -152,13 +152,17 @@ export function handleSSEEvent(
   watchedTaskId?: string | null
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
+  const promises: Promise<void>[] = [];
+  if (['script.changed', 'asset_created', 'asset_updated'].includes(eventName)) {
+    promises.push(...['scripts', 'script-workbench', 'script-media', 'script-revisions', 'visible-set', 'auto'].map(k => queryClient.invalidateQueries({ queryKey: [k] })));
+    if (eventName === 'script.changed') { promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] })); return Promise.all(promises); }
+  }
   // 自动模式：只让 auto 视图与对应流程失效，事件负载不当作权威状态。
   if (eventName === 'auto.changed' || eventName === 'auto.reviewed') {
     return Promise.all(['auto', 'workflows', 'workflow', 'review', 'mp4Previews'].map(k => queryClient.invalidateQueries({ queryKey: [k] }))) as Promise<void[]>;
   }
   if (eventName === 'tts.template.changed') return Promise.all([queryClient.invalidateQueries({queryKey:['tts-templates']}),queryClient.invalidateQueries({queryKey:['audit']})]);
   if (eventName === 'tts.preview.changed') return Promise.all([queryClient.invalidateQueries({queryKey:['tts-previews']}),queryClient.invalidateQueries({queryKey:['tts-preview']}),queryClient.invalidateQueries({queryKey:['audit']})]);
-  const promises: Promise<void>[] = [];
   if (['delivery_variant.changed', 'capability.changed', 'workflow.changed', 'asset_created', 'asset_updated', 'task_updated', 'task_created'].includes(eventName)) {
     promises.push(queryClient.invalidateQueries({ queryKey: ['deliveryVariants'] }));
   }

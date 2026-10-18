@@ -2,6 +2,10 @@
 
 核对日期：2026-10-17。React/TypeScript、Vite、Ant Design、TanStack Query；业务仍由 Go 的 REST/SSE 处理，桌面能力通过 Tauri 桥接。完整接口见 [接口清单](../docs/前端接口清单与重构交接.md) 与 [JSON](../docs/frontend-api-inventory.json)。
 
+2026-10-18：`#/editing/content` 新增脚本工作台；普通文字用于请求实际文稿，花括号用于强制视频、字幕和画面效果。语法、接口、修订与交付限制见 [脚本工作台说明](../docs/script-workbench-syntax.md)，Agent 使用 [项目 Skill](../skills/vac-script-syntax/SKILL.md)。当前分支实施结果及待验边界见 [流程优化进度](../docs/flow-optimize-progress.md)。
+
+接手当前完整界面时，请先阅读 [前端接口清单与重构交接](../docs/前端接口清单与重构交接.md) 和 [机器可读接口清单](../docs/frontend-api-inventory.json)。文档覆盖录屏导入、服务商、预设、内容审查、交付、任务、审计与 SSE，并区分流程级取消/重试与尚未提供的单任务控制接口。
+
 ## 页面与状态
 
 | 地址 | 内容 |

@@ -42,6 +42,9 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
   const client = useQueryClient();
   const auto = useAutoView(run?.run_id);
   const snapshot = useQuery({ queryKey: ['workflow', run?.run_id], queryFn: () => api.getWorkflow(run!.run_id), enabled: Boolean(run) && Boolean(auto.data), retry: false });
+  const scripts = useQuery({ queryKey: ['scripts', run?.asset_id], queryFn: () => api.listScripts(run!.asset_id), enabled: Boolean(run) && auto.data?.halt_reason === 'script_changed', retry: false });
+  const finalScript = scripts.data?.at(-1);
+  const script = useQuery({ queryKey: ['script-workbench', finalScript?.script_id], queryFn: () => api.scriptWorkbench(finalScript!.script_id), enabled: Boolean(finalScript) && auto.data?.halt_reason === 'script_changed', retry: false });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [alsoConsent, setAlsoConsent] = useState(false);
@@ -70,8 +73,8 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
   const steps = autoSteps(currentRun.stage, model, { failed, decisionReason: a.decision?.reason ?? a.halt_reason });
   const review = a.latest_review;
   const lines = reasonLines(review);
-  const decide = (decision: 'export' | 'revise' | 'discard' | 'confirm_visible_set') => invoke(() => api.decideAuto(a.run_id, autoDecisionBody(decision, {
-    feedback, expectedAutoVersion: a.auto_version, idempotencyKey: crypto.randomUUID()
+  const decide = (decision: 'export' | 'revise' | 'discard' | 'confirm_visible_set' | 'confirm_script') => invoke(() => api.decideAuto(a.run_id, autoDecisionBody(decision, {
+    feedback: decision === 'confirm_script' ? JSON.stringify({ script_id: script.data!.script.script_id, script_version: script.data!.version }) : feedback, expectedAutoVersion: a.auto_version, idempotencyKey: crypto.randomUUID()
   })).then(() => { setFeedback(''); setFeedbackOpen(false); }));
   const revoke = () => invoke(() => api.revokeAuto(a.run_id, { reason: 'user_revoked_from_ui', expected_auto_version: a.auto_version, also_revoke_consent: alsoConsent }));
   const deadline = a.decision?.deadline_at ? dayjs(a.decision.deadline_at).format('YYYY-MM-DD HH:mm') : '';
@@ -110,14 +113,15 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
               <Typography.Text>{decisionHeadline(a.decision.reason, a.decision.can_export).description}</Typography.Text>
               {deadline && <Typography.Text type="secondary" className="auto-deadline">请在 {deadline} 前决定；超时会停止，不会自动导出。</Typography.Text>}
               <Space wrap>
+                {a.decision.reason === 'script_changed' && <Button type="primary" disabled={act.isPending || !script.data || script.data.script.status !== 'finalized'} onClick={() => decide('confirm_script')}>确认已定稿脚本修订 {script.data?.version ?? '—'} 并继续</Button>}
                 {(a.decision.reason === 'visible_set_changed') && (
                   <Button type="primary" className="vac-cta" disabled={act.isPending} onClick={() => decide('confirm_visible_set')}>确认新的可见集并继续</Button>
                 )}
                 <Tooltip title={a.decision.can_export ? undefined : '还没有可导出的成片，只能提出修改意见或放弃'}>
-                  <Button type="primary" className="vac-cta" disabled={!a.decision.can_export || act.isPending || a.decision.reason === 'visible_set_changed'} onClick={() => decide('export')}>直接导出</Button>
+                  <Button type="primary" className="vac-cta" disabled={!a.decision.can_export || act.isPending || ['visible_set_changed', 'script_changed'].includes(a.decision.reason)} onClick={() => decide('export')}>直接导出</Button>
                 </Tooltip>
                 <Tooltip title={a.decision.reason === 'visible_set_changed' ? '可见集变了，请先确认新的可见集' : a.decision.can_revise ? undefined : '重剪次数或额度已用完，不能再提修改意见'}>
-                  <Button disabled={!a.decision.can_revise || act.isPending || a.decision.reason === 'visible_set_changed'} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(o => !o)}>提出修改意见</Button>
+                  <Button disabled={!a.decision.can_revise || act.isPending || ['visible_set_changed', 'script_changed'].includes(a.decision.reason)} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(o => !o)}>提出修改意见</Button>
                 </Tooltip>
                 <Popconfirm title="放弃这次自动剪辑结果？" okText="放弃结果" cancelText="继续保留"
                   description="自动模式会停止，已有文件会保留，你仍可手动处理。" onConfirm={() => decide('discard')}>

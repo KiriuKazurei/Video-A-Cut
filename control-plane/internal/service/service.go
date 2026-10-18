@@ -23,6 +23,8 @@ type Service struct {
 	// st is the persistence layer. It never sees a business rule.
 	st         *store.Store
 	ttsRuntime *ttsRuntime
+	scriptMu   sync.Mutex
+	scriptBusy map[string]bool
 	// deliveryRoot is configured before serving HTTP and never changes after startup.
 	deliveryRoot string
 	// maxAttempts caps lease recoveries per task; see SetMaxAttempts.

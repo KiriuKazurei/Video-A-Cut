@@ -226,6 +226,13 @@ func (s *Service) FinalizeScript(ctx context.Context, actor, scriptID string) (m
 		if err != nil {
 			return err
 		}
+		version, _, err := tx.GetScriptWorkbench(ctx, scriptID)
+		if err != nil {
+			return err
+		}
+		if version > 0 {
+			return fmt.Errorf("请在脚本工作台确认具体修订: %w", model.ErrInvalidState)
+		}
 		if sc.Status != model.ScriptDraft {
 			return fmt.Errorf("service: script %s is %s, not a draft: %w", scriptID, sc.Status, model.ErrInvalidState)
 		}

@@ -89,6 +89,7 @@ const (
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/runtime/activity", s.runtimeActivity)
 	s.ttsRoutes()
+	s.scriptWorkbenchRoutes()
 	s.mux.HandleFunc("POST /api/providers/{operation}", s.diagnoseProvider)
 	s.mux.HandleFunc("GET /api/processing-profiles", s.listProfiles)
 	s.mux.HandleFunc("POST /api/processing-profiles", s.saveProfile)

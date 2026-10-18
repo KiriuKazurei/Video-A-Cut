@@ -833,3 +833,30 @@ body code, body .ant-typography code { font-size: 12px; }
 .auto-notice .ant-alert-description { font-size: 12px; line-height: 1.7; }
 .auto-relax { padding-left: 24px; }
 .auto-deadline { font-size: 12px; }
+.script-workbench { margin-block-end: var(--vac-stack-gap); }
+.script-code-field { position: relative; }
+.script-code-field textarea, .script-highlight {
+  font: inherit;
+  line-height: var(--vac-line-read);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
+  scrollbar-gutter: stable;
+}
+.script-highlight {
+  position: absolute;
+  inset: 1px;
+  margin: 0;
+  padding: 4px 11px;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--vac-text);
+  background: var(--vac-control);
+  border-radius: 3px;
+}
+.script-code-field textarea { color: transparent; background: transparent; caret-color: var(--vac-text); }
+.script-code-field textarea::placeholder { color: var(--vac-text-2); }
+.script-code-field textarea::selection { color: var(--vac-text); background: var(--vac-accent); }
+.script-highlight mark { color: var(--vac-text); background: color-mix(in srgb, var(--vac-accent) 20%, transparent); }
+.script-highlight .script-token-invalid { color: var(--vac-danger); text-decoration: underline wavy; }
+.script-history { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto; }

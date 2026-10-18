@@ -7,15 +7,24 @@
 | 项 | 值 |
 | --- | --- |
 | 当前基线 | `agent/flow-optimize` |
-| 基线 tip | `ec7555d1b4e0e46ff0cffd8e80d83a53aa696532` |
-| 该提交 | PR #8 的合并提交：`Merge pull request #8 from KiriuKazurei/cursor/f1-agent-visible-8ba2` |
+| 基线 tip | `810fa67199d2c2876da721c62af92d48d148a327`（本次用户指定） |
+| F1 代码点 | `ec7555d1b4e0e46ff0cffd8e80d83a53aa696532`，PR #8；810fa67 另含交接文档合并 |
+| F2 实施 | `agent/script-workbench`，未提交/合并 |
 | PR #8 | https://github.com/KiriuKazurei/Video-A-Cut/pull/8 已合进 `agent/flow-optimize`（2026-10-17） |
 | F0 | PR #7，合并提交 `6f3b879` |
-| 核对 | `git rev-parse agent/flow-optimize` 应等于上表 tip。本文随后的文档提交不改变这条基线的含义 |
+| 核对 | 2026-10-17 fetch 后的接手快照；远端当前 tip 仍需实际 fetch，不能沿用旧文本 |
 
 ## 交接
 
-开发交接中，F2 起由其它 Agent 接手。
+2026-10-18：F2 首版实现与功能验证完成，等待用户 Gate 复审；新增语法和使用方式见 [脚本工作台说明](script-workbench-syntax.md)。Go 当前权威、人工定稿、四态脚本和非自动流程 JSON 边界保持。
+
+- 已实现：指令/实际旁白分离、可见视频绑定、强制字幕与字号/系统字体、高亮、黑白淡变和交叉溶解；保存/修订/否决/生成/定稿；script_changed 暂停和带精确版本的人工 confirm_script；本机画面/Premiere 包。
+- 功能验证：Go 工作台定向 8 项（包含旧/新 scope 恢复、精确审计、真实 Go/Python/本机模型桩/Node/FFmpeg 往返）、人工定稿门变异、Go vet 通过；scriptsyntax 3、model 2、store 44、API 98 项通过。Python 6+5、Node ASS/字体/渲染 21、前端 84、类型/样式/生产构建、浏览器 7 组及 Skill 官方校验通过。
+- 真实画面：720p、3.666667 秒/110 帧；中文字幕/溶解抽帧已查看，黑 Y=16、白 Y=235，红蓝混合 U=165/V=177；XML 引用的视频与 final.mp4 哈希一致。
+- 全套限制：最新 service short 为 230 通过、10 跳过、3 项 Windows 快照目录 rename 拒绝访问。随后这三个用例各重复 3 次全部通过；根因尚未确认，挂 B04 非阻塞调查，不称本次全套零失败。
+- 文档：101 个注册路由/102 个展开接口、102 个处理器位置、10 份关联文档/30 个本地链接校验通过。未提交/推送/合并，用户 Gate 尚未通过。
+- 待人工/后续：真实模型知识与出稿质量、Premiere 实机导入、独立桌面包；TTS 合成/专页回写留 F3。未对外发送真实素材，浏览器模型为夹具。
+- 测试空间：冷编译多次触发 500 MiB 后按规则归简档并清空生成物/cache。最终采用 API→service 逐包编译、统一入口 Clear -CacheOnly，再执行二进制；28 项清理保护通过，最终占用约 133.5 MiB。旧具体日志路径已失效；最终证据重建于 `.run-data/tests/0.1.1/artifacts/custom/script-workbench-20261018/`。
 
 开工读 `docs/flow-optimize-handoff.md`，验收口径以 `docs/flow-optimize-stages.md` 为准。界面遵守 `docs/ui-style-spec.md`。
 
@@ -57,7 +66,7 @@ PR #8 合入前的 Gate 复审（相对 `eb6452e`，提交 `3026f1d`）已处理
 
 ## 待完成
 
-- 开发交接中，F2 起由其它 Agent 接手。顺序是 F2 → F3 → F4。目标、验收、依赖在 `docs/flow-optimize-stages.md`。
+- F2 Gate 用户复审，B04 Windows I/O 根因、真实模型/Premiere 与发行包验收；F3 → F4 仍按依赖推进。目标、验收、依赖在 `docs/flow-optimize-stages.md`。
 - 功能分支从 `agent/flow-optimize` 的当前 tip 开。合进 `agent/flow-optimize` 之前交 Gate。合入由和零批准。接手 Agent 不自行合并，不改 `main`。
 - 时间轴自绘、幽灵片段、停靠面板仍是未来计划，没有开工，不挡 F2–F4 验收。
 - Gate 非阻塞挂账，可选清，不挡 F2 开工。清单在 `docs/flow-optimize-stages.md`「Gate 非阻塞挂账」：F0 存活变异、真并发 reconcile、SSE publish、`visible_set_sha` → 400 的 HTTP API 测、Badge 描边。

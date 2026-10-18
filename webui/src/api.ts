@@ -1,4 +1,5 @@
 import { apiURL } from './runtimeUrl.ts';
+import type { ScriptDocument, ScriptMedia, ScriptWorkbenchView, ScriptSave, ScriptRevision, ScriptDelivery, ScriptRecord as WorkbenchScriptRecord } from './scriptWorkbench';
 import type {
   AcceptanceRecord,
   Asset,
@@ -101,7 +102,7 @@ export const api = {
   startAutoRun: (asset: string, body: object) => request<{ run: WorkflowRun; auto: AutoView }>(`/api/assets/${encodeURIComponent(asset)}/auto-runs`, json('POST', body)),
   getAuto: (runId: string) => request<AutoView>(`/api/workflows/${encodeURIComponent(runId)}/auto`),
   autoReviews: (runId: string) => request<AutoReviewInfo[]>(`/api/workflows/${encodeURIComponent(runId)}/auto/reviews`),
-  decideAuto: (runId: string, body: { decision: 'export' | 'revise' | 'discard' | 'confirm_visible_set'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
+  decideAuto: (runId: string, body: { decision: 'export' | 'revise' | 'discard' | 'confirm_visible_set' | 'confirm_script'; feedback?: string; expected_auto_version: number; idempotency_key: string }) =>
     request<{ auto: AutoView; run: WorkflowRun }>(`/api/workflows/${encodeURIComponent(runId)}/auto/decision`, json('POST', body)),
   revokeAuto: (runId: string, body: { reason: string; expected_auto_version: number; also_revoke_consent: boolean }) =>
     request<{ auto: AutoView }>(`/api/workflows/${encodeURIComponent(runId)}/auto/revoke`, json('POST', body)),
@@ -112,6 +113,18 @@ export const api = {
   batchVisibility: (assetIds: string[], agentVisible: boolean) =>
     request<Asset[]>('/api/assets/visibility', json('POST', { asset_ids: assetIds, agent_visible: agentVisible })),
   enterScript: (id: string) => request<ScriptRecord>(`/api/assets/${encodeURIComponent(id)}/script-entry`, json('POST', {})),
+  listScripts: (id: string) => request<WorkbenchScriptRecord[]>(`/api/assets/${encodeURIComponent(id)}/scripts`),
+  parseScript: (body: string) => request<ScriptDocument>('/api/script-workbench/parse', json('POST', { body })),
+  scriptMedia: () => request<ScriptMedia[]>('/api/script-workbench/media'),
+  scriptFonts: () => request<string[]>('/api/script-workbench/fonts'),
+  scriptWorkbench: (id: string) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/workbench`),
+  saveScript: (id: string, body: ScriptSave) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/workbench`, json('PUT', body)),
+  scriptRevisions: (id: string) => request<ScriptRevision[]>(`/api/scripts/${encodeURIComponent(id)}/revisions`),
+  generateScript: (id: string, body: { expected_version: number; visible_set_sha: string; profile_id: string; profile_revision: number; allow_web_research: boolean }, signal?: AbortSignal) =>
+    request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/generate`, { ...json('POST', body), signal }),
+  rejectScript: (id: string, body: { expected_version: number; visible_set_sha: string }) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/reject`, json('POST', body)),
+  finalizeScriptWorkbench: (id: string, body: { expected_version: number; visible_set_sha: string }) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/workbench/finalize`, json('POST', body)),
+  exportScript: (id: string, body: { expected_version: number; visible_set_sha: string }) => request<ScriptDelivery>(`/api/scripts/${encodeURIComponent(id)}/export`, json('POST', body)),
   listAssets: () => request<Asset[]>('/api/assets'),
   getAsset: (id: string) => request<Asset>(`/api/assets/${encodeURIComponent(id)}`),
   patchAsset: (id: string, patch: GovernancePatch) =>

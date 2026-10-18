@@ -18,7 +18,7 @@ var sseEventNames = []string{
 	"workflow.changed", "review.changed", "acceptance.changed", "profile.changed",
 	"capability.changed", "ingest.changed", "audit.changed", "preview_updated",
 	"delivery_variant.changed", "tts.template.changed", "tts.preview.changed",
-	"auto.changed", "auto.reviewed",
+	"auto.changed", "auto.reviewed", "script.changed",
 }
 
 var sseHeartbeatInterval = 15 * time.Second

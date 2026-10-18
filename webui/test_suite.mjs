@@ -207,22 +207,22 @@ test('queryRefresh: domains and scopes contain all required domains including au
     'mp4Previews',
     'deliveryVariants',
     'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities',
-    'auto', 'auto-notice'
+    'auto', 'auto-notice', 'visible-set', 'scripts', 'script-workbench', 'script-media', 'script-revisions'
   ];
   assert.deepEqual([...REFRESH_DOMAINS], expectedDomains);
-  assert.equal(REFRESH_SCOPES.length, 19);
+  assert.equal(REFRESH_SCOPES.length, 24);
   assert.deepEqual(REFRESH_SCOPES.map((s) => s[0]), expectedDomains);
 });
 
 test('queryRefresh: refreshSnapshot invalidates all domains and watchedTaskId if present', async () => {
   const client1 = createMockQueryClient();
   await refreshSnapshot(client1, null);
-  assert.equal(client1.invalidated.length, 19);
+  assert.equal(client1.invalidated.length, 24);
   assert.deepEqual(client1.invalidated.map((k) => k[0]), [...REFRESH_DOMAINS]);
 
   const client2 = createMockQueryClient();
   await refreshSnapshot(client2, 'task-999');
-  assert.equal(client2.invalidated.length, 20);
+  assert.equal(client2.invalidated.length, 25);
   assert.deepEqual(client2.invalidated.at(-1), ['task', 'task-999']);
 });
 
@@ -264,6 +264,7 @@ test('queryRefresh: handleSSEEvent invalidates deliveryFiles and related queries
   const clientAsset = createMockQueryClient();
   await handleSSEEvent(clientAsset, 'asset_created', JSON.stringify({ asset_id: 'clip_01' }));
   assert.deepEqual(clientAsset.invalidated, [
+    ['scripts'], ['script-workbench'], ['script-media'], ['script-revisions'], ['visible-set'], ['auto'],
     ['deliveryVariants'],
     ['deliveryFiles', 'clip_01'],
     ['assets'],

@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "verified_date": "2026-10-07",
+  "verified_date": "2026-10-18",
   "scope": "当前 Go REST/SSE 全部注册路由与前端功能映射；描述性清单，不是 OpenAPI Schema",
-  "registered_route_count": 82,
-  "expanded_endpoint_count": 83,
+  "registered_route_count": 101,
+  "expanded_endpoint_count": 102,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -11,7 +11,10 @@
     "webui/src/components/WorkflowPanel.tsx",
     "webui/src/components/DeliveryVariantPanel.tsx",
     "webui/src/workspaces/TtsWorkspace.tsx",
-    "webui/src/components/TtsTemplateBindingEditor.tsx"
+    "webui/src/components/TtsTemplateBindingEditor.tsx",
+    "webui/src/components/ScriptWorkbench.tsx",
+    "webui/src/scriptWorkbench.ts",
+    "webui/src/queryRefresh.ts"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -29,7 +32,7 @@
       "backend_handler": "listAssets",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 451
+        "line": 514
       }
     },
     {
@@ -46,7 +49,7 @@
       "backend_handler": "getAsset",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 472
+        "line": 535
       }
     },
     {
@@ -862,7 +865,7 @@
       "backend_handler": "streamEvents",
       "backend_source": {
         "file": "control-plane/internal/api/sse.go",
-        "line": 38
+        "line": 44
       }
     },
     {
@@ -1151,7 +1154,7 @@
       "backend_handler": "autoNotice",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
-        "line": 41
+        "line": 55
       }
     },
     {
@@ -1168,7 +1171,7 @@
       "backend_handler": "startAutoRun",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
-        "line": 55
+        "line": 69
       }
     },
     {
@@ -1185,7 +1188,7 @@
       "backend_handler": "getAuto",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
-        "line": 74
+        "line": 92
       }
     },
     {
@@ -1202,7 +1205,7 @@
       "backend_handler": "listAutoReviews",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
-        "line": 83
+        "line": 101
       }
     },
     {
@@ -1219,7 +1222,7 @@
       "backend_handler": "decideAuto",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
-        "line": 92
+        "line": 110
       }
     },
     {
@@ -1236,7 +1239,7 @@
       "backend_handler": "revokeAuto",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
-        "line": 106
+        "line": 128
       }
     },
     {
@@ -1425,12 +1428,337 @@
         "file": "control-plane/internal/api/tts.go",
         "line": 121
       }
+    },
+    {
+      "id": "API-FLOW-01",
+      "group": "运行状态",
+      "method": "GET",
+      "path": "/api/runtime/activity",
+      "frontend_function": "未在 WebUI 使用；运行状态读取",
+      "frontend_ui": "本机运行状态",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "兼容/运维接口",
+      "backend_handler": "runtimeActivity",
+      "backend_source": {
+        "file": "control-plane/internal/api/runtime.go",
+        "line": 5
+      }
+    },
+    {
+      "id": "API-FLOW-02",
+      "group": "可见集 F1",
+      "method": "GET",
+      "path": "/api/visible-set",
+      "frontend_function": "api.visibleSet",
+      "frontend_ui": "AssetManager / 可见集入口",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "页面已使用",
+      "backend_handler": "getVisibleSet",
+      "backend_source": {
+        "file": "control-plane/internal/api/visible_set.go",
+        "line": 19
+      }
+    },
+    {
+      "id": "API-FLOW-03",
+      "group": "可见集 F1",
+      "method": "POST",
+      "path": "/api/visible-set/confirm",
+      "frontend_function": "api.confirmVisibleSet",
+      "frontend_ui": "AssetManager / 可见集入口",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "页面已使用",
+      "backend_handler": "confirmVisibleSet",
+      "backend_source": {
+        "file": "control-plane/internal/api/visible_set.go",
+        "line": 28
+      }
+    },
+    {
+      "id": "API-FLOW-04",
+      "group": "可见集 F1",
+      "method": "POST",
+      "path": "/api/assets/visibility",
+      "frontend_function": "api.batchVisibility",
+      "frontend_ui": "AssetManager / 可见集入口",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "页面已使用",
+      "backend_handler": "batchVisibility",
+      "backend_source": {
+        "file": "control-plane/internal/api/visible_set.go",
+        "line": 42
+      }
+    },
+    {
+      "id": "API-FLOW-05",
+      "group": "可见集 F1",
+      "method": "POST",
+      "path": "/api/assets/{id}/script-entry",
+      "frontend_function": "api.enterScript",
+      "frontend_ui": "AssetManager / 可见集入口",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "页面已使用",
+      "backend_handler": "enterScript",
+      "backend_source": {
+        "file": "control-plane/internal/api/visible_set.go",
+        "line": 60
+      }
+    },
+    {
+      "id": "API-FLOW-06",
+      "group": "可见集 F1",
+      "method": "GET",
+      "path": "/api/assets/{id}/scripts",
+      "frontend_function": "api.listScripts",
+      "frontend_ui": "AssetManager / 可见集入口",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "页面已使用",
+      "backend_handler": "listScripts",
+      "backend_source": {
+        "file": "control-plane/internal/api/visible_set.go",
+        "line": 74
+      }
+    },
+    {
+      "id": "API-FLOW-07",
+      "group": "可见集 F1",
+      "method": "POST",
+      "path": "/api/scripts/{id}/finalize",
+      "frontend_function": "legacy F1 caller",
+      "frontend_ui": "AssetManager / 可见集入口",
+      "request": "见 Go 注册处理器与 visible_set.go",
+      "success_response": "200 JSON",
+      "behavior": "以 Go 服务校验为准",
+      "usage": "兼容/运维接口",
+      "backend_handler": "finalizeScript",
+      "backend_source": {
+        "file": "control-plane/internal/api/visible_set.go",
+        "line": 88
+      }
+    },
+    {
+      "id": "API-FLOW-08",
+      "group": "脚本工作台 F2",
+      "method": "POST",
+      "path": "/api/script-workbench/parse",
+      "frontend_function": "api.parseScript",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "parseScript",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 31
+      }
+    },
+    {
+      "id": "API-FLOW-09",
+      "group": "脚本工作台 F2",
+      "method": "GET",
+      "path": "/api/script-workbench/media",
+      "frontend_function": "api.scriptMedia",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "scriptMedia",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 41
+      }
+    },
+    {
+      "id": "API-FLOW-10",
+      "group": "脚本工作台 F2",
+      "method": "GET",
+      "path": "/api/script-workbench/fonts",
+      "frontend_function": "api.scriptFonts",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "scriptFonts",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 49
+      }
+    },
+    {
+      "id": "API-FLOW-11",
+      "group": "脚本工作台 F2",
+      "method": "GET",
+      "path": "/api/scripts/{id}/workbench",
+      "frontend_function": "api.scriptWorkbench",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "scriptWorkbench",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 57
+      }
+    },
+    {
+      "id": "API-FLOW-12",
+      "group": "脚本工作台 F2",
+      "method": "PUT",
+      "path": "/api/scripts/{id}/workbench",
+      "frontend_function": "api.saveScript",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "saveScriptWorkbench",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 65
+      }
+    },
+    {
+      "id": "API-FLOW-13",
+      "group": "脚本工作台 F2",
+      "method": "GET",
+      "path": "/api/scripts/{id}/revisions",
+      "frontend_function": "api.scriptRevisions",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "scriptRevisions",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 78
+      }
+    },
+    {
+      "id": "API-FLOW-14",
+      "group": "脚本工作台 F2",
+      "method": "POST",
+      "path": "/api/scripts/{id}/generate",
+      "frontend_function": "api.generateScript",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "generateScript",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 86
+      }
+    },
+    {
+      "id": "API-FLOW-15",
+      "group": "脚本工作台 F2",
+      "method": "POST",
+      "path": "/api/scripts/{id}/reject",
+      "frontend_function": "api.rejectScript",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "rejectScript",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 105
+      }
+    },
+    {
+      "id": "API-FLOW-16",
+      "group": "脚本工作台 F2",
+      "method": "POST",
+      "path": "/api/scripts/{id}/workbench/finalize",
+      "frontend_function": "api.finalizeScriptWorkbench",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "finalizeScriptWorkbench",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 118
+      }
+    },
+    {
+      "id": "API-FLOW-17",
+      "group": "脚本工作台 F2",
+      "method": "POST",
+      "path": "/api/scripts/{id}/export",
+      "frontend_function": "api.exportScript",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 JSON",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "exportScript",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 131
+      }
+    },
+    {
+      "id": "API-FLOW-18",
+      "group": "脚本工作台 F2",
+      "method": "GET",
+      "path": "/api/scripts/{id}/preview.mp4",
+      "frontend_function": "URL preview.mp4",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 video/mp4",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "scriptPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 144
+      }
+    },
+    {
+      "id": "API-FLOW-19",
+      "group": "脚本工作台 F2",
+      "method": "GET",
+      "path": "/api/scripts/{id}/delivery.zip",
+      "frontend_function": "URL delivery.zip",
+      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "success_response": "200 application/zip",
+      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "usage": "页面已使用",
+      "backend_handler": "scriptZIP",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 153
+      }
     }
   ],
-  "routes_source_sha256": "55b268e0208208f554b392c0d2a51647ff4375c2df18571437ca7133bbb3f1c7",
+  "routes_source_sha256": "6b3aefba6008d12da01449e3e3cb152eec4a9e154193b9eb16fa8692d85fc6af",
   "routes_sources": [
     "control-plane/internal/api/api.go",
+    "control-plane/internal/api/script_workbench.go",
     "control-plane/internal/api/tts.go"
   ],
-  "sse_new_events_note": "B1 新增 SSE 事件 auto.changed（{run_id,state,round,auto_version}）与 auto.reviewed（B2 起发送）"
+  "sse_new_events_note": "auto.changed / auto.reviewed 沿用；新增 script.changed（script_id,asset_id），仅触发 REST 快照失效。",
+  "additive_contract_note": "2026-10-18: confirm_script 使用原 auto decision 路由，feedback 内为 script_id/script_version JSON；scope 新增可选 script_id/script_version；workflow_runs JSON 不变。"
 }

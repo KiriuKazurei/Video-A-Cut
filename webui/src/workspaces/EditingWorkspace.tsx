@@ -18,6 +18,7 @@ import { PreparationPanel } from '../components/PreparationPanel';
 import { NoAssetEmpty } from '../components/NoAssetEmpty';
 import { AutoRunProgress, AutoRunStart, useAutoView } from '../components/AutoRunPanel';
 import { autoPolling } from '../autoRun';
+import { ScriptWorkbench } from '../components/ScriptWorkbench';
 
 type StartMode = 'manual' | 'auto';
 
@@ -168,6 +169,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
               )}
               {section.id === 'content' && asset && scriptOpen && (
                 <PreviewScope onPreview={setProgramPreview}>
+                  <ScriptWorkbench key={`script-${asset.asset_id}`} assetId={asset.asset_id} />
                   <WorkflowPanel 
                     mode="content"
                     onGoStart={goStart}

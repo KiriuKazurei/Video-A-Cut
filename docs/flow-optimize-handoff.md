@@ -1,17 +1,17 @@
 # 流程优化交接（F2 起）
 
-仓库 KiriuKazurei/Video-A-Cut。开发交接中，F2 起由其它 Agent 接手。
+仓库 KiriuKazurei/Video-A-Cut。2026-10-18 更新：F2 首版已在 `agent/script-workbench` 实现并完成本轮功能验证，待用户 Gate 复审；基线为用户指定的 `agent/flow-optimize@810fa67`。旧文档的 ec7555d 是 F1 代码合并点；810fa67 包含其后的交接文档合并，不再把 ec7555d 当分支当前 tip。
 
 验收合同是 `docs/flow-optimize-stages.md`。进度是 `docs/flow-optimize-progress.md`。界面硬性规范是 `docs/ui-style-spec.md`。本文只写开工顺序和已有落点，避免接手时重做 F0/F1。
 
 ## 现在从哪开始
 
-1. 核对基线：`git rev-parse agent/flow-optimize` 应为 `ec7555d1b4e0e46ff0cffd8e80d83a53aa696532`。这是 PR #8 的合并提交。F0+F1+视觉规范都在这之上。
+1. 核对基线：本次接手快照为 `agent/flow-optimize@810fa67199d2c2876da721c62af92d48d148a327`；F2 源码在其上的 `agent/script-workbench`，尚未提交。F0+F1+视觉规范已经包含在基线中。
 2. 从该 tip 开功能分支。合进 `agent/flow-optimize` 之前交 Gate。合入等和零批准。不自行合并。不碰 `main`。
 3. 只做 F2。F3 等 F2 合入后再开。F4 等 F3 合入后再开。
 4. 交审附：阶段目标、`docs/flow-optimize-stages.md` 里 F2 验收清单的证据、测试输出、已知风险。
 
-`origin/agent/main` 与 `main` 目前都在 `0f4a894`，没有本流的 F0/F1。不要从这两条重做可见集。
+远端引用以实际 fetch 快照为准；旧文档中把两条都写成 0f4a894 的结论已经过时。此任务的基线明确为本流 810fa67，不另选基线重做 F0/F1。F2 新增语法、真实画面交付、接口和限制见 [脚本工作台说明](script-workbench-syntax.md)。用户已允许预渲染效果，因此本轮画面交付属于用户追加范围；TTS 合成仍留 F3。
 
 ## 主路径（不要改这条产品口径）
 
@@ -70,7 +70,7 @@ PR #8，已合进基线。入库与 Agent 可见分层、可见集确认、`Visi
 - 路径 B 只能读已确认可见集。路径 A 只能挂这些素材。
 - 定稿前后版本都要读得回。当前 `scripts` 行仍是当前稿。修订另存。
 - `workflow_runs` 的 JSON 不改。新字段只增。交审时逐项列出。
-- 脚本段只保存是否启用 TTS、是否启用字幕、挂接哪些段落。音色、语气、频谱、按轴调语气留给 F3 的 TTS 专页。F2 不做出成片。
+- 脚本段保存 TTS/自动字幕意图与分段挂接；音色、语气、频谱、按轴调语气留给 F3。按用户 10-18 追加范围，F2 同时交付特殊语法对应的预渲染画面与字幕，实际配音合成仍不在本轮。
 - 时间轴自绘、幽灵片段、停靠面板不挡 F2 验收。这三项不要夹进 F2。
 
 ## 非阻塞挂账（可选，单独做）

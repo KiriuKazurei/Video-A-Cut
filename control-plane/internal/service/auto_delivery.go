@@ -104,6 +104,9 @@ func (s *Service) fillAutoView(ctx context.Context, v *AutoView) error {
 			CanRevise:  autoCanRevise(v.WorkflowAuto),
 			DeadlineAt: v.DecisionDeadlineAt,
 		}
+		if v.HaltReason == "script_changed" || v.HaltReason == model.AutoWaitVisibleSet {
+			v.Decision.CanExport, v.Decision.CanRevise = false, false
+		}
 	}
 	return nil
 }

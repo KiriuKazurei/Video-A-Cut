@@ -501,7 +501,7 @@ await shot('11-low-exhausted');
 mk.calls.decision = 0; mk.bodies.decision.length = 0;
 await dec.getByRole('button', { name: '放弃' }).click();
 await page.locator('.ant-popconfirm:not(.ant-popover-hidden)').waitFor();
-await page.locator('.ant-popconfirm-buttons button', { hasText: '再想想' }).click();
+await page.locator('.ant-popconfirm-buttons button', { hasText: '继续保留' }).click();
 await wait(300);
 assert.equal(mk.calls.decision, 0, 'cancelling 放弃 does not post');
 await dec.getByRole('button', { name: '放弃' }).click();

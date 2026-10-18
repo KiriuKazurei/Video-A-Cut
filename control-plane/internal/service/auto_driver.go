@@ -951,6 +951,38 @@ func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 				return true, s.parkVisibleSet(ctx, a, set.SHA, set.IDs)
 			}
 		}
+		if a.Scope.ScriptID != "" {
+			w, err := s.GetScriptWorkbench(ctx, a.Scope.ScriptID)
+			if err != nil {
+				return false, err
+			}
+			if w.Version != a.Scope.ScriptVersion || w.Script.Status != model.ScriptFinalized {
+				err := s.st.Transaction(ctx, func(tx *store.Store) error { return s.parkChangedScriptTx(ctx, tx, w) })
+				return true, err
+			}
+		} else {
+			// A run started after a workbench draft already existed has not
+			// authorized a concrete revision. Require that human decision too.
+			run, err := s.st.GetWorkflow(ctx, runID)
+			if err != nil {
+				return false, err
+			}
+			scripts, err := s.st.ListScripts(ctx, run.AssetID)
+			if err != nil {
+				return false, err
+			}
+			for i := len(scripts) - 1; i >= 0; i-- {
+				w, err := workbenchAt(ctx, s.st, scripts[i].ScriptID)
+				if err != nil {
+					return false, err
+				}
+				if w.Version == 0 {
+					continue
+				}
+				err = s.st.Transaction(ctx, func(tx *store.Store) error { return s.parkChangedScriptTx(ctx, tx, w) })
+				return true, err
+			}
+		}
 	default:
 		return false, nil
 	}
