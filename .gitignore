@@ -5,6 +5,7 @@
 /desktop/binaries/
 # All local runtime state, test evidence, caches, credentials and media
 /.run-data/
+/test-support/legacy/
 *.exe
 *.test
 *.out

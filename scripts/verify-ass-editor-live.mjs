@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 // Real local page for the ASS style editor. Loopback base URL required.
 // Schematic placement in the editor is not the burned MP4; this script records that distinction.
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ import { spawn } from 'node:child_process';
 
 const [base] = process.argv.slice(2);
 if (!base || !['127.0.0.1', 'localhost'].includes(new URL(base).hostname)) throw new Error('loopback base URL required');
-const out = path.resolve(process.env.VAC_TEST_OUTPUT || '.run-data/ass-editor-live');
+const out = testDirectory('ass-editor-live');
 await fs.mkdir(out, { recursive: true });
 const checks = [];
 const errors = [];

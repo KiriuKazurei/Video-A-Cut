@@ -1,3 +1,4 @@
+import { testStorageRoot } from './test-paths.mjs';
 // Real visible WebView + real Go/Workers. Uses a local builtin profile, never cloud/model downloads.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -6,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { CDP, sleep } from './tauri-cdp.mjs';
 const [portArg, pidArg, directoryArg] = process.argv.slice(2);
 const pid = Number(pidArg), out = path.resolve(directoryArg), port = Number(portArg);
-assert(out.startsWith(path.resolve('.run-data') + path.sep));
+assert(out.startsWith(testStorageRoot + path.sep));
 const checks = [], report = { checks, mode: 'visible_tauri_real_go_workers_local_builtin', human_acceptance: 'pending' };
 const c = await CDP.connect(port);
 const record = async (name, detail) => { checks.push({ name, pass: true, detail }); await fs.writeFile(path.join(out, 'results.json'), JSON.stringify(report, null, 2)); };

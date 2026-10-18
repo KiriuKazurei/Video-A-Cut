@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "test:managed": "pwsh -NoProfile -File ../../../scripts/TestWorkspace.ps1 -Action Run -Suite exporter",
     "check": "node --check src/main.mjs && node --check src/mcp.mjs && node --check src/worker.mjs && node --check src/preview.mjs && node --check src/delivery-variant.mjs"
   }
 }

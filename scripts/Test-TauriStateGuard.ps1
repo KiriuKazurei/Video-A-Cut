@@ -1,5 +1,7 @@
 $ErrorActionPreference='Stop'
-$guardRoot=Join-Path (Split-Path -Parent $PSScriptRoot) ('.run-data/runtime-state-guard/'+[guid]::NewGuid().ToString('N'))
+$guardBase=$env:VAC_TEST_ROOT
+if(!$guardBase){$guardBase=& (Join-Path $PSScriptRoot 'TestWorkspace.ps1') -Action Prepare -Suite guard}
+$guardRoot=Join-Path $guardBase ('runtime-state-guard/'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $guardRoot|Out-Null
 $guardSelf=Get-Process -Id $PID
 $guardSession=[guid]::NewGuid().ToString('N')

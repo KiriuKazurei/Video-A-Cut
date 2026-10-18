@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 // Real Go REST/MCP + Worker + FFmpeg, with actual React controls and HTML video decoding.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -6,7 +7,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 const [base,runId,assetA,assetB]=process.argv.slice(2);
 if (!base || !['127.0.0.1','localhost'].includes(new URL(base).hostname) || !runId) throw Error('loopback fixture required');
-const out=path.resolve(process.env.VAC_TEST_OUTPUT || '.run-data/ass-acceptance/browser');await fs.mkdir(out,{recursive:true});
+const out=testDirectory('ass-acceptance/browser');await fs.mkdir(out,{recursive:true});
 await fs.writeFile(path.join(out,'progress.log'),'');
 const checks=[],errors=[];let primary={};
 const check=async(name,evidence={})=>{checks.push({name,pass:true,...evidence});await fs.appendFile(path.join(out,'progress.log'),JSON.stringify(checks.at(-1))+'\n');};

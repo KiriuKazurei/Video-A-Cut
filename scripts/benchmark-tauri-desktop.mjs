@@ -1,3 +1,4 @@
+import { testStorageRoot } from './test-paths.mjs';
 // Same machine, same Go service, same preview (720p preset, no upscaling), GPU enabled.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -6,7 +7,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { CDP, sleep } from './tauri-cdp.mjs';
 const [desktopPortArg,desktopPidArg,rootArg]=process.argv.slice(2), desktopPid=Number(desktopPidArg), root=path.resolve(rootArg);
-assert(root.startsWith(path.resolve('.run-data')+path.sep));
+assert(root.startsWith(testStorageRoot+path.sep));
 const desktop=await CDP.connect(Number(desktopPortArg)), status=await desktop.invoke('runtime_status');
 assert.equal(status.status,'ready');const base=status.api_base_url;
 const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));

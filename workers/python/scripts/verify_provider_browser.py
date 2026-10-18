@@ -11,12 +11,15 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from urllib.request import urlopen
 
 repo = Path(__file__).resolve().parents[3]
-work = repo / '.run-data' / ('provider-integration-' + uuid.uuid4().hex[:8])
+work = test_directory('provider-integration-' + uuid.uuid4().hex[:8])
 work.mkdir()
-source = repo / '.run-data/phase7-recovery-7cc511c1'
+source = Path(os.environ.get('VAC_TEST_SOURCE', ''))
+if not source.is_dir() or not source.is_relative_to(repo / '.run-data' / 'tests'):
+    raise ValueError('Set VAC_TEST_SOURCE to a current versioned phase7 recovery fixture')
 
 def port():
     with socket.socket() as s:
@@ -58,7 +61,7 @@ if __name__ == '__main__':
     owned = []; server = ThreadingHTTPServer(('127.0.0.1', 0), Mock)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        env = os.environ.copy(); env['GOCACHE'] = str(repo / '.run-data/go-cache')
+        env = os.environ.copy(); env['GOCACHE'] = go_cache()
         binary = work / 'control-plane.exe'
         subprocess.run(['go', 'build', '-o', str(binary), '.'], cwd=repo/'control-plane', env=env, check=True, timeout=120)
         hp, dp = port(), port()

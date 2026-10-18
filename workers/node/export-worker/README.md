@@ -1,72 +1,17 @@
-# Export & Preview Worker
+# Export / Preview / Delivery Variant Worker
 
-Node Worker that turns queued `export` tasks into delivery packages and queued
-`preview` tasks into rendered MP4 previews. It talks to the control plane only
-through MCP (`/mcp`); it never opens SQLite and never names its own agent id or role.
+核对日期：2026-10-16。通过 MCP 执行 export、preview、delivery_variant，不打开 SQLite，不在请求中冒充其他 agent/role。通过 `node src/main.mjs --config <worker.json> [--once]` 启动，token_env 只引用环境变量名。
 
-## Run
+配置需包含 mcp_url、delivery_root、cli_path、adapters_path；后三个路径为本机绝对路径。可配置 profile_sha256、output_prefix、心跳/轮询间隔及 task_timeout_ms。delivery_root 与 Go 一致，执行前检验根内路径和重解析边界。`--once` 处理至多一项，退出码为 0 成功/空闲、1 任务失败、2 配置/传输错误。
 
-```sh
-VAC_WORKER_TOKEN=<plain bearer token> node src/main.mjs --config <worker.json> [--once]
-```
+| 类型 | 入口及约束 |
+|---|---|
+| export | 固定任务输入、brief 摘要与版本检查 → timeline CLI build → submit_delivery；Go 重验包和归属 |
+| preview | 独立 preview_capability，固定输入/预设摘要及执行 scope → FFmpeg 渲染或恢复登记 → submit_preview |
+| delivery_variant | 独立 delivery_variant_capability，ass-basic-v1/v2 固定输入 → 派生 ASS 包 → submit_delivery_variant |
 
-`--once` processes at most one task and exits (0 on success or idle, 1 on a
-reported failure, 2 on configuration/transport error). Without it the worker
-polls until SIGINT/SIGTERM.
+预览 720p 是最大画布、不放大小素材。有 SRT 的预览需要本机字体；ASS 样式预览使用冻结的 schema 2 输入。ASS 文件生成本身不要求字体安装，但实际烧录/显示需要字体证据。参见 [MP4 协议](../../../contracts/mp4-preview/v1/README.md) 和 [ASS 协议](../../../contracts/delivery-variant/v1/README.md)。
 
-`worker.json` (absolute paths; the token stays in the environment):
+取消、租约丢失或输入失效时终止拥有的子进程并避免晚提交。产物已发布但登记结果未知时查询状态、有限重试并保留包；不能把未知登记当作失败重跑后覆盖。具体错误、回执和源哈希仍由 Go 独立验证。
 
-```json
-{
-  "mcp_url": "http://127.0.0.1:8787/mcp",
-  "token_env": "VAC_WORKER_TOKEN",
-  "delivery_root": "E:\\...\\root",
-  "cli_path": "E:\\...\\workers\\node\\timeline-cli\\src\\cli.mjs",
-  "adapters_path": "E:\\...\\workers\\node\\timeline-cli\\adapters\\index.mjs",
-  "output_prefix": "deliveries",
-  "poll_interval_ms": 2000,
-  "heartbeat_interval_ms": 5000,
-  "task_timeout_ms": 600000
-}
-```
-
-`delivery_root` must be the same directory as the control plane's
-`delivery_root`. The heartbeat interval must be shorter than `lease_seconds`.
-
-## Flow
-
-### Export Tasks (`task.type === 'export'`)
-`claim_task` → `report_progress` → `get_asset` (reads the `edl` artifact, a
-root-relative path) → CLI `build` into `<output_prefix>/<asset_id>/<task_id>`
-with a hard timeout → `submit_delivery`. The control plane re-validates the
-package with the same rules as human import, replaces the asset's artifact map
-and marks it `exported` in one transaction.
-
-### Preview Tasks (`task.type === 'preview'`)
-When the control plane exposes `submit_preview`, the worker probes host
-rendering capability (`ffmpeg`, `ffprobe`, preset `mp4-720p-v1`, subtitle fonts)
-and includes `preview_capability` in periodic heartbeats.
-
-Task flow: `claim_task` → `get_task_input` → resolve package & target preview
-directory (`previews/<asset_id>/<revision_id>/<preview_id>`) → breakpoint
-recovery check (`final.mp4` + `preview-receipt.json` + `preview-manifest.json`)
-→ if not recovered: invoke preview renderer with progress streaming →
-`submit_preview`.
-
-Any task-level failure becomes `fail_task` with the reason. A lost lease
-(`lease_expired`, `conflict`, etc.) aborts execution and abandons the task
-without reporting, preventing stale submissions.
-
-## Test
-
-ASS tasks use an independent `delivery_variant_capability` heartbeat for fixed
-`ass-basic-v1`. `delivery_variant` reads frozen SRT/style inputs, copies the
-declared parent files into `delivery-variants/<asset_id>/<variant_id>`, and
-calls `submit_delivery_variant`. Go independently reconstructs the expected
-ASS before registration. Generation needs no FFmpeg/font installation; the
-real rendering acceptance is a separate check. Original export packages and
-the existing MP4 preset are preserved. See `contracts/delivery-variant/v1/README.md`.
-
-```sh
-npm run check && npm test
-```
+Windows 单元/集成测试经 [统一入口](../../../scripts/TESTING.md)，custom 指向本目录并运行 `node --test`；静态检查为 npm run check。52 项导出器测试已通过；brief 哈希负向测试还以移除校验的变异验证其有效性。模型与人工验收不由 Worker 的成功状态替代。

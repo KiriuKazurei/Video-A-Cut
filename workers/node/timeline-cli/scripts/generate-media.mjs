@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { testDirectory } from '../../../../scripts/test-paths.mjs';
 
 function ffmpeg(args) {
   return new Promise((done, fail) => {
@@ -50,7 +51,7 @@ export async function generateMediaFixture(directory) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  generateMediaFixture(process.argv[2] || '.run-data/phase1-media').then(({ edlPath }) => {
+  generateMediaFixture(process.argv[2] || testDirectory('phase1-media')).then(({ edlPath }) => {
     process.stdout.write(`Generated: ${edlPath}\n`);
   }).catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
 }

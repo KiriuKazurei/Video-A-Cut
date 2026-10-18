@@ -5,6 +5,7 @@ Uses real ffmpeg and Node adapters, no models or user recordings. The measured
 """
 import array, ctypes, hashlib, json, os, subprocess, sys, threading, time, uuid
 from pathlib import Path
+from test_paths import test_directory, go_cache
 
 repo = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(repo/'workers/python'))
@@ -39,7 +40,7 @@ def beeps(path):
 
 
 def main():
-    work=repo/'.run-data'/('phase7-media-'+uuid.uuid4().hex[:8])
+    work=test_directory('phase7-media-'+uuid.uuid4().hex[:8])
     work.mkdir(parents=True)
     os.environ['TEMP']=os.environ['TMP']=str(work)
     IngestMediaTest.setUpClass()

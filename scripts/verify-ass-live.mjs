@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 // Real local Go API only. Run while TestVariantRealWorkerChain owns the server.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { spawn } from 'node:child_process';
 
 const [base,runId]=process.argv.slice(2);
 if (!base || !['127.0.0.1','localhost'].includes(new URL(base).hostname) || !runId) throw Error('loopback API and run ID required');
-const out=path.resolve(process.env.VAC_TEST_OUTPUT || '.run-data/ass-live-browser');
+const out=testDirectory('ass-live-browser');
 await fs.mkdir(out,{recursive:true});
 const checks=[],errors=[];
 const socket=net.createServer();await new Promise(r=>socket.listen(0,'127.0.0.1',r));const port=socket.address().port;await new Promise(r=>socket.close(r));

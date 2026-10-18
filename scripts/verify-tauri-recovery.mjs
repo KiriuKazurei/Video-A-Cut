@@ -1,10 +1,11 @@
+import { testStorageRoot } from './test-paths.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { CDP,sleep } from './tauri-cdp.mjs';
 const [portArg,pidArg,rootArg]=process.argv.slice(2),pid=Number(pidArg),root=path.resolve(rootArg);
-assert(root.startsWith(path.resolve('.run-data')+path.sep));
+assert(root.startsWith(testStorageRoot+path.sep));
 const c=await CDP.connect(Number(portArg)),file=path.join(root,'desktop.json'),original=await fs.readFile(file,'utf8');
 const checks=[],record=(name,detail)=>checks.push({name,pass:true,detail});let holder;
 const run=(exe,args)=>new Promise((resolve,reject)=>{const p=spawn(exe,args,{windowsHide:true,stdio:['ignore','pipe','pipe']});let log='';p.stdout.on('data',b=>log+=b);p.stderr.on('data',b=>log+=b);p.on('error',reject);p.on('exit',code=>code?reject(Error(log)):resolve(log))});

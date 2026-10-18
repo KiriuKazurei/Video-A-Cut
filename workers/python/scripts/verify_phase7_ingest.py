@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64, hashlib, io, json, os, shutil, socket, sqlite3, subprocess, sys, threading, time, uuid, zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -71,7 +72,7 @@ class Http:
 
 
 def main(recovery=False, sealed=False, browser_fixtures=False, revised=False) -> int:
-    work = repo / ".run-data" / (("phase7-recovery-" if recovery else "phase7-e2e-") + uuid.uuid4().hex[:8])
+    work = test_directory(("phase7-recovery-" if recovery else "phase7-e2e-") + uuid.uuid4().hex[:8])
     delivery, recordings = work / "delivery", work / "recordings"
     delivery.mkdir(parents=True)
     recordings.mkdir()
@@ -134,7 +135,7 @@ def main(recovery=False, sealed=False, browser_fixtures=False, revised=False) ->
         write(work / "control.json", {"http_addr": f"127.0.0.1:{port}", "delivery_root": str(delivery), "web_root": str(repo / "webui/dist"),
                                       "mcp_agents_file": str(work / "agents.json"), "lease_seconds": 60, "ingest_roots": roots})
         env = os.environ.copy()
-        env.update(GOCACHE=str(repo / ".run-data/go-cache"), TEMP=str(work), TMP=str(work))
+        env.update(GOCACHE=go_cache(), TEMP=str(work), TMP=str(work))
         binary = work / "control-plane.exe"
         subprocess.run(["go", "build", "-o", str(binary), "."], cwd=repo / "control-plane", env=env, check=True, timeout=180)
         log = (work / "control.log").open("w", encoding="utf-8")

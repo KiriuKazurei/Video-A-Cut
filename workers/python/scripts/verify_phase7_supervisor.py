@@ -5,13 +5,14 @@ pipeline process environment; the result records identities and state only.
 """
 import json, os, subprocess, sys, time, uuid
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from urllib.request import urlopen
 from verify_phase7_ingest import free_port
 repo=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(repo/'workers/python'))
 from vac_worker.ingest.runtime import process_identity, matches_process
 
-work=repo/'.run-data'/('phase7-supervisor-'+uuid.uuid4().hex[:8]);work.mkdir()
+work=test_directory('phase7-supervisor-'+uuid.uuid4().hex[:8]);work.mkdir()
 recordings=work/'recordings';recordings.mkdir()
 roots=work/'roots.json';roots.write_text(json.dumps([{'root_id':'rec','name':'隔离验收目录','path':str(recordings)}]),encoding='utf-8')
 port=free_port();start=time.time();pipeline=None;observed=[]
@@ -23,7 +24,7 @@ with (work/'pipeline.log').open('w',encoding='utf-8') as log:
         manifest=None
         while time.monotonic()<deadline:
             if pipeline.poll() is not None:raise AssertionError('pipeline exited before workers were available')
-            candidates=[p for p in (repo/'.run-data/local-pipeline').glob('*/owned-processes.json') if p.stat().st_mtime>=start]
+            candidates=[p for p in Path(os.environ.get('VAC_TEST_ROOT', str(test_directory()))).glob('*/owned-processes.json') if p.stat().st_mtime>=start]
             for p in candidates:
                 cfg=json.loads((p.parent/'control.json').read_text(encoding='utf-8-sig'))
                 if cfg['http_addr']==f'127.0.0.1:{port}':manifest=p;break

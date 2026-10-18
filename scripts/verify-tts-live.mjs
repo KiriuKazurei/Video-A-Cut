@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 // Real local API, SAPI audio and Edge DOM. Never invokes a cloud model.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -7,7 +8,7 @@ import {spawn} from 'node:child_process';
 
 const base=process.argv[2];
 if (!base || !['127.0.0.1','localhost'].includes(new URL(base).hostname)) throw new Error('loopback URL required');
-const out=path.resolve('.run-data/tts-live/browser');await fs.mkdir(out,{recursive:true});
+const out=testDirectory('tts-live/browser');await fs.mkdir(out,{recursive:true});
 const socket=net.createServer();await new Promise(r=>socket.listen(0,'127.0.0.1',r));const port=socket.address().port;await new Promise(r=>socket.close(r));
 const log=await fs.open(path.join(out,'edge.log'),'w');
 const browser=spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',[

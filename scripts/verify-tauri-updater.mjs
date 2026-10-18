@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +9,7 @@ import { CDP, sleep } from './tauri-cdp.mjs';
 // Real Windows NSIS update in a copied, repository-contained app directory.
 // The feed is accepted only by the debug baseline. The signed payload is the
 // actual release artifact; it restarts into production HTTPS-only updater code.
-const root = path.resolve('.run-data/updater');
+const root = testDirectory('updater');
 const application = path.join(root, 'app', 'video-auto-cut-desktop.exe');
 const artifact = path.resolve(process.argv[2]);
 const configFile = path.join(root, 'desktop.json');

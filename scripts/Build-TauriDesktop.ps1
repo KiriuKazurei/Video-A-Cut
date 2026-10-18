@@ -9,7 +9,7 @@ $oldTauriConfig=$env:TAURI_CONFIG;$oldToolchain=$env:RUSTUP_TOOLCHAIN;$oldPrivat
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP
 if($Installer -and $Debug){throw 'Debug binaries cannot be published as signed release installers'}
 try {
-  $env:GOCACHE=Join-Path $desktopRepo '.run-data/go-cache';$env:GOPROXY='off';$env:CARGO_TARGET_DIR=$buildRoot
+  $env:GOCACHE=Join-Path $desktopRepo 'build/cache/go';$env:GOPROXY='off';$env:CARGO_TARGET_DIR=$buildRoot
   $env:RUSTUP_TOOLCHAIN='1.98.1'
   $sourceConfig=Get-Content -LiteralPath (Join-Path $desktopRoot 'tauri.conf.json') -Raw|ConvertFrom-Json
   if(!$Version){$Version=$sourceConfig.version}

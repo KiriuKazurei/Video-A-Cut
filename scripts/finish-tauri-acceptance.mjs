@@ -1,9 +1,10 @@
+import { testStorageRoot } from './test-paths.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CDP,sleep } from './tauri-cdp.mjs';
 const [portArg,pidArg,rootArg]=process.argv.slice(2),pid=Number(pidArg),root=path.resolve(rootArg);
-assert(root.startsWith(path.resolve('.run-data')+path.sep));
+assert(root.startsWith(testStorageRoot+path.sep));
 const c=await CDP.connect(Number(portArg)),file=path.join(root,'recovery.json'),report=JSON.parse(await fs.readFile(file));
 report.checks=report.checks.filter(v=>v.pass);
 try {

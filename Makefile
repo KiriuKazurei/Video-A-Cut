@@ -1,7 +1,7 @@
 GO ?= go
 TEST_FLAGS ?= -count=1
 
-.PHONY: all build test vet fmt tidy clean
+.PHONY: all build test test-managed vet fmt tidy clean
 
 all: fmt vet build test
 
@@ -10,6 +10,9 @@ build:
 
 test:
 	$(GO) -C control-plane test $(TEST_FLAGS) ./...
+
+test-managed:
+	pwsh -NoProfile -File scripts/TestWorkspace.ps1 -Action Run -Suite go
 
 vet:
 	$(GO) -C control-plane vet ./...

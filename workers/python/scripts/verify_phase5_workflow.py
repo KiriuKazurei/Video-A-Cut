@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64, hashlib, io, json, os, socket, subprocess, sys, threading, time, uuid, zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 repo=Path(__file__).resolve().parents[3]
@@ -20,7 +21,7 @@ def free_port():
 
 def main(prepared=False, api_format='', content_only=False):
     assert api_format in ('','openai','anthropic','gemini')
-    work=repo/'.run-data'/(('phase6-e2e-' if prepared else 'phase5-e2e-')+uuid.uuid4().hex[:8]);work.mkdir(parents=True)
+    work=test_directory(('phase6-e2e-' if prepared else 'phase5-e2e-')+uuid.uuid4().hex[:8]);work.mkdir(parents=True)
     asset_id='phase6_synthetic' if prepared else 'phase5_synthetic'
     delivery=work/'delivery';source=delivery/'source';source.mkdir(parents=True)
     counters={'verified_images':0};server=None;plane=None
@@ -73,7 +74,7 @@ def main(prepared=False, api_format='', content_only=False):
         tokens={role:uuid.uuid4().hex+uuid.uuid4().hex for role in ('recognizer','narrator','exporter')}
         write(work/'agents.json',{'agents':[{'agent_id':role,'role':role,'token_sha256':hashlib.sha256(token.encode()).hexdigest()} for role,token in tokens.items()]})
         write(work/'control.json',{'http_addr':f'127.0.0.1:{port}','delivery_root':str(delivery),'web_root':str(repo/'webui/dist'),'mcp_agents_file':str(work/'agents.json'),'lease_seconds':60})
-        env=os.environ.copy();env['GOCACHE']=str(repo/'.run-data/go-cache');env['TEMP']=str(work);env['TMP']=str(work)
+        env=os.environ.copy();env['GOCACHE']=go_cache();env['TEMP']=str(work);env['TMP']=str(work)
         binary=work/'control-plane.exe';subprocess.run(['go','build','-o',str(binary),'.'],cwd=repo/'control-plane',env=env,check=True,timeout=120)
         log=(work/'control.log').open('w',encoding='utf-8');logs.append(log)
         plane=subprocess.Popen([str(binary),'-config',str(work/'control.json'),'-db',str(work/'control.db')],stdout=log,stderr=log)

@@ -1,3 +1,6 @@
+<!-- documentation-history-status: 2026-10-16 -->
+> **历史记录，当前状态不沿用。** 正文保留原日期、计划、命令和结果，仅供追溯；最新说明见 [当前文档入口](../../README.md)。历史命令不是本次执行或清理授权。
+
 # 后续模块 v1 契约草案
 
 日期：2026-10-07。**本目录保留早期交接草案和验收模板。ASS 与 delivery_variant 已接入，正式已实现协议见 [delivery-variant v1](../../../contracts/delivery-variant/v1/README.md)。FCPXML 与 runtime-capabilities 仍未实现。完整职责、文件边界与分工见 [方案书](../../后续模块开发框架与Agent交接方案-2026-10-07.md)。

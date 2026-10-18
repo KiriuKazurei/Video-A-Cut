@@ -1,4 +1,6 @@
-# Delivery variant protocol v1 — ASS
+# Delivery variant protocol v1/v2 — ASS
+
+核对日期：2026-10-16。当前运行和验收边界见 [当前状态](../../../docs/当前项目状态.md)。
 
 ASS is a separate `delivery_variant` Task. The original export package, approved text, asset artifacts, workflow revision and existing MP4 preset stay immutable. `ass-basic-v1` remains compatible; `ass-basic-v2` adds editable style/time snapshots. FCPXML is a later extension.
 
@@ -14,11 +16,11 @@ SHA-256 over `canonicalJSON(document)` is the style identity: sorted object keys
 
 The v2 input fingerprint retains the v1 atom algorithm and appends `ass-basic-v2`, `style_sha256` after the source files. The style hash includes source binding, resolution, timing and all custom styles. Go independently regenerates and checks ASS from the approved source and frozen document.
 
-Parallel ownership and acceptance: [ASS editor work allocation](../../../docs/ASS样式编辑器-并行实施分工.md). Go/shared-contract implementation is separate from frontend acceptance and ASS MP4 renderer acceptance.
+Current implementation: Go service validates frozen inputs, Node generates the package, and WebUI edits immutable style revisions. Font/rendering and human acceptance remain separate.
 
 ## Request and capability
 
-`POST /api/workflows/{run}/delivery-variants` accepts exactly `revision_id`, `expected_version`, `request_id`, `spec_id`. A new task returns 202; a durable request or active identical input returns 200. New requests after a completed attempt create a new attempt. Reusing a request with a different revision/version/spec returns 409.
+`POST /api/workflows/{run}/delivery-variants` accepts `revision_id`, `expected_version`, `request_id`, `spec_id`; v2 additionally requires `draft_version` and `style_sha256`. A new task returns 202; a durable request or active identical input returns 200. New requests after a completed attempt create a new attempt. Reusing a request with a different revision/version/spec returns 409.
 
 `GET /api/workflows/{run}/delivery-variants` returns readiness, spec hashes and task views. `GET /api/delivery-variants/{id}`, `POST .../{id}/cancel`, `GET .../{id}/files/{key}` and `GET .../{id}/delivery.zip` expose status, cancellation and registered downloads. Errors use the existing Go error mapping. Capability requires exporter heartbeat `delivery_variant_capability={protocol_version:1,ready:true,specs:[{spec_id,sha256}]}`; the Go expiry is 30 seconds. MP4 capability alone cannot claim ASS.
 
@@ -54,8 +56,8 @@ See [Aegisub ASS tags](https://aegisub.org/docs/latest/ass_tags/), [libass parse
 
 `delivery-variants/{asset_id}/{variant_id}/` copies all frozen declared parent files, EDL and parent manifest; adds `subtitles.ass`, exact `ass-style.json`, `variant-report.json`, `variant-receipt.json`, `variant-manifest.json`. Publish uses a sibling staging directory and atomic new-directory rename. Existing output is never overwritten. Cancellation before publication removes staging; output published before registration can recover only with the same full identity and fingerprint.
 
-Manifest, report and receipt bind schema/variant/task/asset/run/revision and input/spec hashes. Receipt converter_version is `vac.ass-basic-v1/1`. Manifest artifact entries have key/kind/path/mime/size/sha256; paths are relative to the new package. Required keys are ass, srt, style, report, receipt. Go verifies all copied source hashes, exact spec bytes, expected ASS bytes reconstructed independently from SRT, report duration/count, receipt binding, current revision, governance and lease. Required report checks are source_fingerprint, subtitle_text, subtitle_timing, ass_style and self_contained; a passed report cannot override failed validation.
+Manifest, report and receipt bind schema/variant/task/asset/run/revision and input/spec hashes. Receipt converter_version is `vac.ass-basic-v1/1` for v1 and `vac.ass-basic-v2/1` for v2; schema/style binding follows the selected version. Manifest artifact entries have key/kind/path/mime/size/sha256; paths are relative to the new package. Required keys are ass, srt, style, report, receipt. Go verifies all copied source hashes, exact spec bytes, expected ASS bytes reconstructed independently from SRT, report duration/count, receipt binding, current revision, governance and lease. Required report checks are source_fingerprint, subtitle_text, subtitle_timing, ass_style and self_contained; a passed report cannot override failed validation.
 
 ZIP streams registered artifacts plus the hashed variant manifest. Source copied into the variant is self-contained to the extent declared by the original export manifest; the ASS task does not re-author the EDL or audit unrelated parent format semantics. Historical downloads retain their revision and cannot become the current result. Locked/hidden exporter assets block downloads and generation.
 
-CLI local file conversion: `node workers/node/timeline-cli/src/cli.mjs build-ass --package <export-package> --output <new-directory>`. It does not register a Go task. WebUI users generate and download in Export → Delivery → ASS style subtitles. The existing `mp4-720p-v1` still burns SRT; ASS-styled MP4 requires a separate future preset.
+CLI local file conversion: `node workers/node/timeline-cli/src/cli.mjs build-ass --package <export-package> --output <new-directory>`. It does not register a Go task. WebUI users generate and download in Export → Delivery → ASS style subtitles. Schema 1 preview input retains SRT rendering. Schema 2 preview input freezes the completed ASS variant/style and burns that exact ASS using the existing preview pipeline; this path is implemented. Both retain the 1280×720 maximum and no-upscale policy.

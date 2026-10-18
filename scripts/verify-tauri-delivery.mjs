@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -9,11 +10,11 @@ import { CDP, sleep } from './tauri-cdp.mjs';
 const pid = Number(process.argv[2]);
 assert(Number.isInteger(pid) && pid > 0, 'Owned final delivery PID is required');
 const c = await CDP.connect(19331);
-const directory = path.resolve('.run-data/tauri-live');
+const directory = testDirectory('tauri-live');
 const defaults = process.argv.includes('--defaults');
 const config = defaults ? {
   control_binary: path.resolve('build/desktop/app/control-plane.exe'),
-  data_directory: path.resolve('.run-data/tauri-default/数据 目录'),
+  data_directory: testDirectory('tauri-default/数据 目录'),
 } : JSON.parse(await fs.readFile(path.join(directory, 'desktop.json')));
 const checks = [];
 try {

@@ -44,7 +44,7 @@ if($IngestRootsFile){
 }
 $taskSessionID=[Guid]::NewGuid().ToString('N')
 $taskPersistent=[bool]$DataDirectory
-if(!$DataDirectory){$DataDirectory=Join-Path $taskRoot ('.run-data/local-pipeline/'+$taskSessionID)}
+if(!$DataDirectory){$taskSessionRoot=if($env:VAC_TEST_ROOT){$env:VAC_TEST_ROOT}else{Join-Path $taskRoot '.run-data/local-pipeline'};$DataDirectory=Join-Path $taskSessionRoot $taskSessionID}
 $DataDirectory=Assert-VacPlainPath $DataDirectory
 New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
 $taskLock=$null
@@ -128,7 +128,7 @@ try {
  $taskBinary=$ControlBinary
  if(!$taskBinary){
   $taskBinary=Join-Path $taskRun 'control-plane.exe';$taskOldCache=$env:GOCACHE;$taskOldProxy=$env:GOPROXY;$taskOldToolchain=$env:GOTOOLCHAIN
-  try{$env:GOCACHE=Join-Path $taskRoot '.run-data/go-cache';$env:GOPROXY='off';$env:GOTOOLCHAIN='local';Push-Location (Join-Path $taskRoot 'control-plane');try{& go build -o $taskBinary .;if($LASTEXITCODE){throw 'Go build failed; local dependencies and a compatible Go toolchain are required.'}}finally{Pop-Location}}finally{$env:GOCACHE=$taskOldCache;$env:GOPROXY=$taskOldProxy;$env:GOTOOLCHAIN=$taskOldToolchain}
+  try{$env:GOCACHE=if($taskOldCache){$taskOldCache}else{Join-Path $taskRoot 'build/cache/go'};$env:GOPROXY='off';$env:GOTOOLCHAIN='local';Push-Location (Join-Path $taskRoot 'control-plane');try{& go build -o $taskBinary .;if($LASTEXITCODE){throw 'Go build failed; local dependencies and a compatible Go toolchain are required.'}}finally{Pop-Location}}finally{$env:GOCACHE=$taskOldCache;$env:GOPROXY=$taskOldProxy;$env:GOTOOLCHAIN=$taskOldToolchain}
  }
  $taskServer=Start-Process -FilePath $taskBinary -ArgumentList @('-config',('"'+(Join-Path $taskRun 'control.json')+'"'),'-db',('"'+$taskDatabase+'"')) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $taskRun 'control.out') -RedirectStandardError (Join-Path $taskRun 'control.err')
  $taskServerEntry=New-RecordedProcess $taskServer 'control';$taskOwned+=$taskServerEntry;Write-OwnedSnapshot

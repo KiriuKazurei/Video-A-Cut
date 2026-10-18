@@ -5,6 +5,7 @@ kernel locks, control plane and checkpoint registration. No human pass.
 """
 import json, os, socket, subprocess, sys, threading, time, uuid
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from unittest.mock import patch
 
 repo=Path(__file__).resolve().parents[3]
@@ -22,7 +23,7 @@ from vac_worker.ingest.supervise import Halt
 
 
 def main(source):
-    work=repo/'.run-data'/('phase7-faults-'+uuid.uuid4().hex[:8]);work.mkdir()
+    work=test_directory('phase7-faults-'+uuid.uuid4().hex[:8]);work.mkdir()
     delivery=work/'delivery';delivery.mkdir();recordings=work/'recordings';recordings.mkdir()
     media=scenes('ffmpeg',recordings/'fault.mkv');original=sha(media)
     token=uuid.uuid4().hex+uuid.uuid4().hex

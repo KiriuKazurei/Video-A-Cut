@@ -5,12 +5,13 @@ No edits to the source database, no borrowed browser profile or human pass.
 """
 import json, os, socket, sqlite3, subprocess, sys, time, uuid
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from urllib.request import Request, urlopen
 
 repo=Path(__file__).resolve().parents[3]
 source=Path(sys.argv[1]).resolve()
-assert source.parent==repo/'.run-data' and source.name.startswith('phase7-')
-work=repo/'.run-data'/('phase7-browser-'+uuid.uuid4().hex[:8]);work.mkdir()
+assert source.is_relative_to(repo/'.run-data/tests') and source.name.startswith('phase7-')
+work=test_directory('phase7-browser-'+uuid.uuid4().hex[:8]);work.mkdir()
 subprocess.run(['go','build','-o',str(work/'control-plane.exe'),'.'],cwd=repo/'control-plane',check=True)
 
 def port():

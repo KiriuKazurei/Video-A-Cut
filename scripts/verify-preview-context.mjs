@@ -1,3 +1,4 @@
+import { testDirectory } from './test-paths.mjs';
 // Build webui first. Uses only a loopback fixture and its own headless Edge profile.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -8,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(repo, '.run-data', 'preview-context-check');
+const out = testDirectory('preview-context-check');
 await fs.mkdir(out, { recursive: true });
 const checks = [], errors = [], clients = new Set();
 const clone = value => structuredClone(value);

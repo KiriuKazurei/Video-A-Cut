@@ -1,6 +1,7 @@
 """Actual startup outage and control-plane restart during a durable scan unit."""
 import hashlib,json,os,subprocess,sys,threading,time,uuid
 from pathlib import Path
+from test_paths import test_directory, go_cache
 from verify_phase7_ingest import Http,free_port,sha
 from phase7_fixtures import scenes
 from recovery_faults import RecoveryFaultProxy
@@ -9,7 +10,7 @@ sys.path.insert(0,str(repo/'workers/python/tests'))
 from test_ingest import policy
 
 def main(source):
-    work=repo/'.run-data'/('phase7-reconnect-'+uuid.uuid4().hex[:8]);work.mkdir()
+    work=test_directory('phase7-reconnect-'+uuid.uuid4().hex[:8]);work.mkdir()
     delivery=work/'delivery';delivery.mkdir();rec=work/'recordings';rec.mkdir()
     media=scenes('ffmpeg',rec/'restart.mkv');original=sha(media)
     token=uuid.uuid4().hex+uuid.uuid4().hex
