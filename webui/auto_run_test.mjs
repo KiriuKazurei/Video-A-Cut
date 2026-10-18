@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AUTO_PHASES, autoErrorText, autoPanelModel, autoPolling, autoPreflightBlockers, bandLabel, buildAutoRunBody, canStartAuto, phaseIndex, reasonLines
+  AUTO_PHASES, autoDecisionBody, autoErrorText, autoPanelModel, autoPolling, autoPreflightBlockers, autoSteps, bandLabel, buildAutoRunBody, canStartAuto,
+  decisionHoldLabel, deliveryNote, noteAutoMissing, noteAutoPresent, phaseIndex, reasonLines, resetAutoPresence, shouldRequestAuto
 } from './src/autoRun.ts';
 
 const view = (over = {}) => ({
@@ -49,6 +50,7 @@ test('panel: decision / done / halted / revoked / cancelled', () => {
   assert.equal(done.kind, 'done');
   assert.equal(done.canRevoke, false);
   assert.match(done.description, /不等于人工验收/);
+  assert.match(autoPanelModel(view({ state: 'halted', halt_reason: 'user_discarded' })).description, /你已放弃这次自动结果/);
   for (const [reason, re] of [['human_takeover', /手动改动/], ['deadline', /时间上限/], ['decision_timeout', /没有导出/], ['not_improvable', /重剪能解决/], ['budget', /次数/], ['whatever_new', /已停止/]]) {
     const h = autoPanelModel(view({ state: 'halted', halt_reason: reason }));
     assert.equal(h.kind, 'halted');
@@ -110,6 +112,60 @@ test('preflight: external_authorization does not block (the global authorization
   ];
   assert.deepEqual(autoPreflightBlockers(checks), ['素材对 Agent 不可见']);
   assert.deepEqual(autoPreflightBlockers(undefined), []);
+});
+
+test('steps: exhausted decision does not mark the stopped phase in progress', () => {
+  const atScene = autoSteps('scene_review', { kind: 'decision', live: false }, { decisionReason: 'exhausted' });
+  assert.deepEqual(atScene.map(s => s.status), ['finish', 'wait', 'wait', 'wait', 'wait', 'wait', 'wait']);
+  assert.equal(atScene[1].title, '确认场景');
+  assert.equal(atScene[1].note, '待你确认');
+  assert.equal(atScene.filter(s => s.note).length, 1);
+  assert.equal(atScene.some(s => s.status === 'process'), false, '耗尽时阶段条没有进行中');
+  const atEnd = autoSteps('acceptance', { kind: 'decision', live: false }, { decisionReason: 'exhausted' });
+  assert.deepEqual(atEnd.map(s => s.status), ['finish', 'finish', 'finish', 'finish', 'finish', 'finish', 'finish']);
+  assert.equal(atEnd.some(s => s.note), false, '已经走到验收：七步完成，不再把最后一步标成待确认');
+  const running = autoSteps('tts', { kind: 'running', live: true });
+  assert.equal(running[3].status, 'process');
+  assert.equal(running[3].title, '配音');
+  const medium = autoSteps('acceptance', { kind: 'decision', live: false }, { decisionReason: 'medium' });
+  assert.equal(medium.every(s => s.status === 'finish'), true);
+  const failed = autoSteps('tts', { kind: 'running', live: false }, { failed: true });
+  assert.equal(failed[3].status, 'error');
+});
+
+test('decision card label: hold shows 尚未导出; hold false has no 已确认', () => {
+  assert.equal(decisionHoldLabel(true), '尚未导出');
+  assert.equal(decisionHoldLabel(false), null);
+});
+
+test('delivery footnote is omitted when a completed run has nothing to deliver', () => {
+  const full = { delivered: true, package_ready: true, spec: '720p' };
+  assert.match(deliveryNote(full), /720p 预览规格/);
+  assert.match(deliveryNote(full), /交付包/);
+  assert.equal(deliveryNote({ delivered: false, package_ready: false, spec: '720p' }), '');
+  assert.equal(deliveryNote(null), '');
+  assert.doesNotMatch(deliveryNote({ delivered: false, package_ready: true, spec: '720p' }), /720p/);
+  assert.match(deliveryNote({ delivered: true, package_ready: false, spec: '720p' }), /720p 预览规格/);
+});
+
+test('decision body: discard and export carry no feedback; revise does', () => {
+  const key = { expectedAutoVersion: 4, idempotencyKey: 'k' };
+  assert.deepEqual(autoDecisionBody('export', { ...key, feedback: '忽略' }), { decision: 'export', expected_auto_version: 4, idempotency_key: 'k' });
+  assert.deepEqual(autoDecisionBody('discard', key), { decision: 'discard', expected_auto_version: 4, idempotency_key: 'k' });
+  assert.deepEqual(autoDecisionBody('revise', { ...key, feedback: '  节奏再快  ' }), { decision: 'revise', expected_auto_version: 4, idempotency_key: 'k', feedback: '节奏再快' });
+});
+
+test('non-auto run: stop requesting after a 404, and resume if it is actually automatic', () => {
+  resetAutoPresence();
+  assert.equal(shouldRequestAuto(undefined), false);
+  assert.equal(shouldRequestAuto(''), false);
+  assert.equal(shouldRequestAuto('run_manual'), true);
+  noteAutoMissing('run_manual');
+  assert.equal(shouldRequestAuto('run_manual'), false, '404 之后不再 GET');
+  assert.equal(shouldRequestAuto('run_auto'), true, '别的 run 不受影响');
+  noteAutoPresent('run_manual');
+  assert.equal(shouldRequestAuto('run_manual'), true);
+  resetAutoPresence();
 });
 
 test('errors become plain Chinese, never the backend sentence', () => {

@@ -82,8 +82,9 @@ async function api(req, res, url) {
     const body = await readBody(req); mk.calls.decision++; mk.bodies.decision.push(body);
     if (body.expected_auto_version !== mk.auto.auto_version) return err(res, 409, 'conflict', 'service: auto version conflict');
     if (body.decision === 'export') mk.auto = baseAuto({ state: 'completed', auto_version: mk.auto.auto_version + 1, latest_review: mk.auto.latest_review, delivery: delivered });
+    else if (body.decision === 'discard') mk.auto = baseAuto({ state: 'halted', halt_reason: 'user_discarded', auto_version: mk.auto.auto_version + 1, latest_review: mk.auto.latest_review, delivery_hold: true });
     else mk.auto = baseAuto({ state: 'active', auto_version: mk.auto.auto_version + 1, total_rounds: 1, latest_review: mk.auto.latest_review });
-    mk.run = newRun(body.decision === 'export' ? 'acceptance' : 'recognize', body.decision === 'export' ? 'ready_for_acceptance' : 'running');
+    if (body.decision !== 'discard') mk.run = newRun(body.decision === 'export' ? 'acceptance' : 'recognize', body.decision === 'export' ? 'ready_for_acceptance' : 'running');
     push('auto.changed', { run_id: 'run_auto1' });
     return json(res, 200, { auto: mk.auto, run: mk.run });
   }
@@ -294,6 +295,17 @@ setAuto(baseAuto({ auto_version: 6, state: 'awaiting_user_decision', delivery_ho
 await kind('decision');
 const dec = progress.locator('.auto-decision');
 assert.match(await dec.innerText(), /待你确认/);
+assert.match(await dec.innerText(), /尚未导出/);
+assert.doesNotMatch(await dec.innerText(), /已确认/);
+setAuto(baseAuto({ auto_version: 6, state: 'awaiting_user_decision', delivery_hold: false, round: 1, total_rounds: 1, latest_review: review('medium', 0.78, ['item_below_floor']), delivery: delivered,
+  decision: { reason: 'medium', can_export: true, can_revise: true, deadline_at: '2026-10-19T12:00:00+09:00' } }), newRun('acceptance', 'ready_for_acceptance'));
+await page.waitForFunction(() => {
+  const t = document.querySelector('.page:not([hidden]) .auto-decision')?.textContent ?? '';
+  return t.includes('待你确认') && !t.includes('尚未导出') && !t.includes('已确认');
+});
+setAuto(baseAuto({ auto_version: 6, state: 'awaiting_user_decision', delivery_hold: true, round: 1, total_rounds: 1, latest_review: review('medium', 0.78, ['item_below_floor']), delivery: delivered,
+  decision: { reason: 'medium', can_export: true, can_revise: true, deadline_at: '2026-10-19T12:00:00+09:00' } }), newRun('acceptance', 'ready_for_acceptance'));
+await page.waitForFunction(() => /尚未导出/.test(document.querySelector('.page:not([hidden]) .auto-decision')?.textContent ?? ''));
 assert.match(await dec.innerText(), /2026-10-19 \d\d:00 前决定/);
 assert.match(await dec.innerText(), /不会自动导出/);
 assert.equal(await dec.getByRole('button', { name: '直接导出' }).isEnabled(), true);
@@ -333,7 +345,12 @@ assert.match(await mp4.innerText(), /720p 预览规格/);
 assert.match((await mp4.getAttribute('href')) ?? '', /download=1/);
 assert.equal(await progress.locator('a[href$="/api/workflows/run_auto1/delivery.zip"]').count(), 1);
 assert.match(await progress.innerText(), /不等于人工验收/);
+assert.match(await progress.locator('.auto-delivery-note').innerText(), /720p 预览规格/);
 await shot('09-done-download');
+setAuto(baseAuto({ auto_version: 9, state: 'completed', latest_review: review('high', 0.91), delivery: { delivered: false, package_ready: false, preview_is_current: false, spec: '720p' } }), newRun('acceptance', 'ready_for_acceptance'));
+await page.waitForFunction(() => document.querySelectorAll('.page:not([hidden]) .auto-delivery-note').length === 0 && /自动剪辑完成/.test(document.querySelector('.page:not([hidden]) .auto-progress')?.textContent ?? ''));
+assert.doesNotMatch(await progress.innerText(), /720p|预览规格/, 'completed without a deliverable does not mention 720p');
+await shot('09b-done-no-delivery');
 setAuto(baseAuto({ auto_version: 9, state: 'completed', latest_review: review('high', 0.95), delivery: delivered }), newRun('acceptance', 'ready_for_acceptance'));
 await page.waitForFunction(() => /AI 自评：高档/.test(document.querySelector('.page:not([hidden]) .auto-progress')?.textContent ?? ''));
 assert.equal(await doneCount(), 7, 'all seven phases finished');
@@ -343,18 +360,40 @@ await card.locator('button.auto-restart').click();
 await card.locator('.start-mode').waitFor();
 ok('HIGH/done: all 7 phases finished; 720p download (labelled 预览规格) + delivery package link; 「AI 自评≠人工验收」');
 
-// 8) 耗尽：不能导出，只能改意见
-setAuto(baseAuto({ auto_version: 10, state: 'awaiting_user_decision', halt_reason: 'exhausted', round: 1, total_rounds: 1, latest_review: review('low', 0.5, ['low_confidence']),
-  decision: { reason: 'exhausted', can_export: false, can_revise: true, deadline_at: '2026-10-19T12:00:00+09:00' } }), newRun('acceptance', 'ready_for_acceptance'));
+// 8) 耗尽：停在确认场景，阶段条不标进行中；不能导出；可以放弃
+setAuto(baseAuto({ auto_version: 10, state: 'awaiting_user_decision', halt_reason: 'exhausted', delivery_hold: true, round: 1, total_rounds: 1, latest_review: review('low', 0.5, ['low_confidence']),
+  decision: { reason: 'exhausted', can_export: false, can_revise: true, deadline_at: '2026-10-19T12:00:00+09:00' } }), newRun('scene_review', 'awaiting_review'));
 await kind('decision');
 assert.match(await progress.innerText(), /已自动重剪多轮，仍未达到高档/);
+assert.match(await progress.innerText(), /放弃这次结果/);
 assert.equal(await dec.getByRole('button', { name: '直接导出' }).isDisabled(), true);
+const stepItems = progress.locator('.auto-steps .ant-steps-item');
+assert.match((await stepItems.nth(0).getAttribute('class')) ?? '', /ant-steps-item-finish/);
+assert.match(await stepItems.nth(1).innerText(), /确认场景/);
+assert.match(await stepItems.nth(1).innerText(), /待你确认/);
+assert.doesNotMatch((await stepItems.nth(1).getAttribute('class')) ?? '', /ant-steps-item-process/, '确认场景不是进行中');
+assert.equal(await progress.locator('.auto-steps .ant-steps-item-process').count(), 0);
 await shot('11-low-exhausted');
-ok('LOW exhausted: plain explanation; 直接导出 disabled (nothing delivered), revise still possible');
+mk.calls.decision = 0; mk.bodies.decision.length = 0;
+await dec.getByRole('button', { name: '放弃' }).click();
+await page.locator('.ant-popconfirm:not(.ant-popover-hidden)').waitFor();
+await page.locator('.ant-popconfirm-buttons button', { hasText: '再想想' }).click();
+await wait(300);
+assert.equal(mk.calls.decision, 0, 'cancelling 放弃 does not post');
+await dec.getByRole('button', { name: '放弃' }).click();
+await page.locator('.ant-popconfirm-buttons button', { hasText: '放弃' }).click();
+await kind('halted');
+assert.equal(mk.calls.decision, 1);
+assert.equal(mk.bodies.decision[0].decision, 'discard');
+assert.equal('feedback' in mk.bodies.decision[0], false);
+assert.equal(mk.bodies.decision[0].expected_auto_version, 10);
+assert.match(await progress.innerText(), /你已放弃这次自动结果/);
+await shot('11b-discarded');
+ok('LOW exhausted at 确认场景: step is not in progress; 放弃 posts decision=discard once and shows the halted copy');
 
 // 9) halted：人话原因 + 改为手动
 setAuto(baseAuto({ auto_version: 11, state: 'halted', halt_reason: 'human_takeover', latest_review: review('medium', 0.7) }), newRun('draft_review', 'awaiting_review'));
-await kind('halted');
+await page.waitForFunction(() => /你手动改动了内容，自动模式已停止/.test(document.querySelector('.page:not([hidden]) .auto-progress')?.textContent ?? ''));
 assert.match(await progress.innerText(), /你手动改动了内容，自动模式已停止/);
 assert.equal(await progress.getByRole('button', { name: '撤销授权' }).count(), 0, 'nothing left to revoke');
 await shot('12-halted-human-takeover');
@@ -410,14 +449,19 @@ await kind('running');
 assert.equal(mk.calls.auto, before + 1, 'retry sends exactly one request');
 ok(`auto view 500: ${before} request(s) then silence (even past the 5s poll interval); 重试 sends exactly one more and recovers`);
 
-// 12) 非自动流程：404 = 不是自动模式，面板不出现，也不重复请求
+// 12) 非自动流程：404 = 不是自动模式。只打一次，之后快照刷新和轮询都不再打。
 mk.autoNotFound = true; mk.calls.auto = 0;
 setAuto(null, newRun('scene_review', 'awaiting_review'));
-await wait(4500);
+await wait(500);
 assert.equal(await progress.count(), 0, 'no auto panel for a non-auto run');
-assert.ok(mk.calls.auto <= 3, `404 non-auto run requested ${mk.calls.auto} times`);
+const nonAutoGets = mk.calls.auto;
+assert.equal(nonAutoGets, 1, `404 non-auto run requested ${nonAutoGets} times before the quiet period`);
+push('auto.changed', { run_id: 'run_auto1' });
+push('workflow.changed', { asset_id: 'clip_auto', run_id: 'run_auto1' });
+await wait(6000);
+assert.equal(mk.calls.auto, nonAutoGets, 'no further GET /auto after the 404');
 await shot('15-non-auto-run');
-ok('non-auto run (404): no auto panel, no request loop');
+ok('non-auto run (404): no auto panel, exactly one GET, then silence');
 mk.autoNotFound = false;
 
 // 13) 授权说明读取失败：不给启动
