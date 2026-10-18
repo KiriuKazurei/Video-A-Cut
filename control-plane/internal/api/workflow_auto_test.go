@@ -101,9 +101,24 @@ func noticeHash(t *testing.T, srv *Server, p preparation.Profile) string {
 	return notice.NoticeSHA256
 }
 
-func autoBody(version, notice, key string) string {
+func visibleSHA(t *testing.T, srv *Server) string {
+	t.Helper()
+	rec := get(t, srv, "/api/visible-set")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("visible-set = %d %s", rec.Code, rec.Body.String())
+	}
+	var view struct {
+		SHA256 string `json:"sha256"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || len(view.SHA256) != 64 {
+		t.Fatalf("visible-set sha: %s (%v)", rec.Body.String(), err)
+	}
+	return view.SHA256
+}
+
+func autoBody(version, notice, key, visible string) string {
 	body := map[string]any{"profile_id": "auto_api", "revision": 1, "expected_asset_version": version, "idempotency_key": key, "brief": "只保留团战",
-		"authorization": map[string]any{"notice_sha256": notice}}
+		"authorization": map[string]any{"notice_sha256": notice, "visible_set_sha": visible}}
 	raw, _ := json.Marshal(body)
 	return string(raw)
 }
@@ -112,8 +127,9 @@ func autoBody(version, notice, key string) string {
 func TestAutoRunRequiresNoticeHash(t *testing.T) {
 	srv, p, version := autoAPIFixture(t)
 	good := noticeHash(t, srv, p)
+	sha := visibleSHA(t, srv)
 	for name, notice := range map[string]string{"missing": "", "wrong": strings.Repeat("0", 64), "truncated": good[:63]} {
-		rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, "k-"+name))
+		rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, "k-"+name, sha))
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s notice: status %d, want 400 (%s)", name, rec.Code, rec.Body.String())
 		}
@@ -135,7 +151,8 @@ func TestAutoRunRequiresNoticeHash(t *testing.T) {
 func TestAutoRunEndpointsShapesAndErrors(t *testing.T) {
 	srv, p, version := autoAPIFixture(t)
 	notice := noticeHash(t, srv, p)
-	rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, "k1"))
+	sha := visibleSHA(t, srv)
+	rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, "k1", sha))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("start = %d %s", rec.Code, rec.Body.String())
 	}
@@ -172,7 +189,7 @@ func TestAutoRunEndpointsShapesAndErrors(t *testing.T) {
 	if rec := get(t, srv, "/api/workflows/run_missing/auto"); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown run = %d", rec.Code)
 	}
-	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, "k2")); rec.Code != http.StatusConflict {
+	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, "k2", sha)); rec.Code != http.StatusConflict {
 		t.Fatalf("second authorization = %d, want 409 (%s)", rec.Code, rec.Body.String())
 	}
 	// decision while active is refused; revoke works and is human-only.
@@ -207,6 +224,13 @@ func TestAutoRunEndpointsShapesAndErrors(t *testing.T) {
 // The auto overlay must not leak into the response of an ordinary run.
 func TestNonAutoRunResponseHasNoAutoKey(t *testing.T) {
 	srv, _, _ := autoAPIFixture(t)
+	view, err := srv.svc.VisibleSet(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.svc.ConfirmVisibleSet(t.Context(), "human:test", view.SHA256, false); err != nil {
+		t.Fatal(err)
+	}
 	run, err := srv.svc.StartWorkflow(t.Context(), "human:webui", "clip", "", "plain", "configured")
 	if err != nil {
 		t.Fatal(err)
@@ -300,14 +324,15 @@ func normalizeWorkflowJSON(t *testing.T, body []byte, run model.WorkflowRun) []b
 func TestAutoIdempotencyKeyLengthIsCapped(t *testing.T) {
 	srv, p, version := autoAPIFixture(t)
 	notice := noticeHash(t, srv, p)
-	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, strings.Repeat("k", 129))); rec.Code != http.StatusBadRequest {
+	sha := visibleSHA(t, srv)
+	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, strings.Repeat("k", 129), sha)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("129-byte key on start = %d %s, want 400", rec.Code, rec.Body.String())
 	}
 	if rec := postJSON(t, srv, "/api/workflows/run_x/auto/decision", `{"decision":"export","expected_auto_version":1,"idempotency_key":"`+strings.Repeat("d", 129)+`"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("129-byte key on decision = %d %s, want 400", rec.Code, rec.Body.String())
 	}
 	// 128 bytes is accepted, and the refused attempt above left nothing behind.
-	rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, strings.Repeat("k", 128)))
+	rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, strings.Repeat("k", 128), sha))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("128-byte key on start = %d %s, want 201", rec.Code, rec.Body.String())
 	}
@@ -317,9 +342,10 @@ func TestAutoIdempotencyKeyLengthIsCapped(t *testing.T) {
 func TestAutoIdempotencyKeyLengthCountsBytesNotRunes(t *testing.T) {
 	srv, p, version := autoAPIFixture(t)
 	notice := noticeHash(t, srv, p)
+	sha := visibleSHA(t, srv)
 	for _, n := range []int{43, 64} {
 		key := strings.Repeat("键", n)
-		if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, key)); rec.Code != http.StatusBadRequest {
+		if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, key, sha)); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%d runes (%d bytes) on start = %d, want 400", n, len(key), rec.Code)
 		}
 		if rec := postJSON(t, srv, "/api/workflows/run_x/auto/decision", `{"decision":"export","expected_auto_version":1,"idempotency_key":"`+key+`"}`); rec.Code != http.StatusBadRequest {
@@ -327,7 +353,7 @@ func TestAutoIdempotencyKeyLengthCountsBytesNotRunes(t *testing.T) {
 		}
 	}
 	key := strings.Repeat("键", 42) // 126 bytes
-	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, key)); rec.Code != http.StatusCreated {
+	if rec := postJSON(t, srv, "/api/assets/clip/auto-runs", autoBody(version, notice, key, sha)); rec.Code != http.StatusCreated {
 		t.Fatalf("126-byte multibyte key = %d %s, want 201", rec.Code, rec.Body.String())
 	}
 }

@@ -66,6 +66,10 @@ type Service struct {
 	// afterScoreCollect runs between ScoreAutoRun's file reads and its
 	// transaction; tests use it to change the world in that gap.
 	afterScoreCollect func()
+	// beforeReconcileTx runs after reconcileHumanFinished has seen a finished
+	// run and before it locks the overlay. Tests commit a newer auto_version
+	// or a new current revision in that window. nil outside tests.
+	beforeReconcileTx func()
 
 	// clock is the auto-run clock (deadlines, decision timeouts). nil means
 	// the wall clock; SetClock lets tests move time without sleeping.

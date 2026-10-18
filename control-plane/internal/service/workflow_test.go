@@ -32,6 +32,7 @@ func TestWorkflowStartBindsInputAndRejectsASecondActiveRun(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	confirmVisible(t, svc)
 	if _, err := svc.StartWorkflow(ctx, "human:webui", "clip", "", "idem-1", ""); err == nil {
 		t.Fatal("missing content mode was accepted")
 	}
@@ -101,6 +102,7 @@ func TestSceneConfirmationOpensSortAndForgedDraftDoesNot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	confirmVisible(t, svc)
 	run, err := svc.StartWorkflow(ctx, "human:webui", "clip", "", "once", "configured")
 	if err != nil {
 		t.Fatal(err)

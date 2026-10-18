@@ -57,6 +57,11 @@ func (s *Service) autoDeliveryAt(ctx context.Context, st *store.Store, runID str
 	if err != nil {
 		return d, err
 	}
+	if _, blocked, err := st.DeliveryInvalidation(ctx, run.AssetID); err != nil {
+		return d, err
+	} else if blocked {
+		return d, nil
+	}
 	d.PackageReady = exportRev != "" && run.Status == model.WorkflowReadyAcceptance
 	if exportRev == "" {
 		return d, nil

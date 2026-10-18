@@ -189,7 +189,7 @@ export function PreviewPanel({
       aria-labelledby="preview-panel-title"
       title={
         <Flex gap={8} align="center" wrap style={{ minWidth: 0 }}>
-          <VideoCameraOutlined style={{ color: '#1677ff' }} />
+          <VideoCameraOutlined style={{ color: 'var(--vac-accent)' }} />
           <Typography.Text strong id="preview-panel-title">
             合成成片 MP4 预览
           </Typography.Text>
@@ -315,7 +315,7 @@ export function PreviewPanel({
                 <Flex vertical gap={6}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
-                      <SyncOutlined spin style={{ color: '#1677ff' }} />
+                      <SyncOutlined spin style={{ color: 'var(--vac-accent)' }} />
                       <Typography.Text strong>{previewStyleLabel(job)} MP4</Typography.Text>
                       <Tag color="processing">{job.status}</Tag>
                     </Space>
@@ -330,16 +330,12 @@ export function PreviewPanel({
             {inProgressPreview && (
               <Card
                 size="small"
-                className="preview-progress-card"
-                style={{
-                  background: 'rgba(22, 119, 255, 0.04)',
-                  borderColor: 'rgba(22, 119, 255, 0.25)'
-                }}
+                className="preview-progress-card is-rendering"
               >
                 <Flex vertical gap={6}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
-                      <SyncOutlined spin style={{ color: '#1677ff' }} />
+                      <SyncOutlined spin style={{ color: 'var(--vac-accent)' }} />
                       <Typography.Text strong>
                         {inProgressPreview.status === 'queued'
                           ? '预览任务排队中…'
@@ -362,7 +358,7 @@ export function PreviewPanel({
                   <Progress
                     percent={Math.round((inProgressPreview.progress ?? 0) * 100)}
                     status="active"
-                    strokeColor={{ from: '#108ee9', to: '#87d068' }}
+                    strokeColor="var(--vac-accent)"
                   />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {inProgressPreview.message ||
@@ -426,16 +422,12 @@ export function PreviewPanel({
             {latestSucceededPreview && (
               <Card
                 size="small"
-                className="preview-media-card"
-                style={{
-                  background: 'rgba(82, 196, 26, 0.04)',
-                  borderColor: 'rgba(82, 196, 26, 0.3)'
-                }}
+                className="preview-media-card is-ready"
               >
                 <Flex vertical gap={8}>
                   <Flex justify="space-between" align="center" wrap gap={8}>
                     <Space wrap>
-                      <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+                      <CheckCircleOutlined style={{ color: 'var(--vac-success-text)', fontSize: 16 }} />
                       <Typography.Text strong>原 SRT 成片 MP4 已就绪</Typography.Text>
                       <Tag color="success">已完成</Tag>
                       <Tag>原 SRT</Tag>

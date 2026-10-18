@@ -57,6 +57,13 @@ func TestPreviewEvidenceRejectsOldRevisionAfterEdit(t *testing.T) {
 	if err := srv.svc.CreateAsset(t.Context(), model.Asset{AssetID: "preview-asset", Status: model.AssetStatusIngested, AgentVisible: true, AllowedAgents: []string{"recognizer", "narrator", "exporter"}, Artifacts: map[string]string{"edl": "preview-source/edl.json"}}); err != nil {
 		t.Fatal(err)
 	}
+	visible, err := srv.svc.VisibleSet(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.svc.ConfirmVisibleSet(t.Context(), "human:test", visible.SHA256, false); err != nil {
+		t.Fatal(err)
+	}
 	run, err := srv.svc.StartWorkflow(t.Context(), "human:webui", "preview-asset", "", "preview-test", "configured")
 	if err != nil {
 		t.Fatal(err)

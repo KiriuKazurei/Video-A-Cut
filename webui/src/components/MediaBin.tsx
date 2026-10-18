@@ -18,9 +18,10 @@ export function MediaBin({ assets, selectedId, onSelect }: { assets: UseQueryRes
     item.asset_id.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [assets.data, search]);
   return (
     <Card size="small" variant="borderless" aria-labelledby="assets-title"
-      title={<span id="assets-title">项目 · 资产</span>} extra={<Badge count={assets.data?.length ?? 0} showZero color="blue" />}>
+      title={<span id="assets-title">项目 · 资产</span>} extra={<Badge count={assets.data?.length ?? 0} showZero color="blue" />}
+      styles={{ header: { paddingInline: 16 }, body: { padding: '8px 16px 16px' } }}>
       <Input.Search id="bin-search" allowClear value={search} onChange={(event) => setSearch(event.target.value)}
-        placeholder="按资产 ID 筛选" aria-label="按资产 ID 筛选" style={{ marginBottom: 8 }} />
+        placeholder="按资产 ID 筛选" aria-label="按资产 ID 筛选" style={{ marginBottom: 12 }} />
       {assets.isError && <Alert type="error" showIcon message={`资产读取失败：${errorText(assets.error)}`}
         action={<Button size="small" onClick={() => void assets.refetch()}>重试</Button>} />}
       {/* antd List 会把内部 outline 置空；键盘焦点按 antd genFocusOutline 的线宽（lineWidthFocus）补回，颜色用 colorPrimary 以保证 ≥3:1 的焦点对比度。 */}

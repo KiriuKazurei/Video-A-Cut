@@ -41,6 +41,8 @@ const (
 	// AutoDecisionHumanAcceptance records that a person took the run through
 	// acceptance (or it was found accepted) while the overlay was still live.
 	AutoDecisionHumanAcceptance = "human_acceptance"
+	// AutoDecisionVisibleSet records that a person re-authorized a changed visible set.
+	AutoDecisionVisibleSet = "visible_set_confirm"
 )
 
 // Ledger action kinds recorded in auto_actions.
@@ -74,9 +76,10 @@ const (
 // Reasons an auto run waits for the user (workflow_auto.halt_reason while the
 // state is awaiting_user_decision).
 const (
-	AutoWaitMedium    = "medium"
-	AutoWaitExhausted = "exhausted"
-	AutoWaitAssetBusy = "asset_busy"
+	AutoWaitMedium     = "medium"
+	AutoWaitExhausted  = "exhausted"
+	AutoWaitAssetBusy  = "asset_busy"
+	AutoWaitVisibleSet = "visible_set_changed"
 )
 
 // AutoFeedbackCodes is the closed set of reason codes a retry may carry back
@@ -117,6 +120,15 @@ type AutoScope struct {
 	// RelaxedThresholds records that the person confirmed thresholds looser
 	// than the defaults. It is part of the authorization the UI must show.
 	RelaxedThresholds bool `json:"relaxed_thresholds"`
+	// VisibleSetSHA is the visible-set fingerprint this authorization covers.
+	// Empty on runs authorized before F1; those runs are treated as already
+	// confirmed and are not parked when the set later changes.
+	VisibleSetSHA string `json:"visible_set_sha,omitempty"`
+	// VisibleAssetIDs lists the assets the person authorized, in sorted order.
+	VisibleAssetIDs []string `json:"visible_asset_ids,omitempty"`
+	// ScriptFinalize records that the same authorization covers script finalization
+	// for that visible set. It is additive: older scope JSON omits it.
+	ScriptFinalize bool `json:"script_finalize,omitempty"`
 }
 
 // WorkflowAuto is the auto-run overlay of one workflow run.

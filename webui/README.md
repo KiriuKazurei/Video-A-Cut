@@ -32,7 +32,7 @@ npm run dev
 
 固定区域：左侧「项目 · 资产」面板（API-01），右侧「属性 · 资产治理」面板（API-03）。**系统连接与本机服务状态**集中在「设置 › 状态监控」（含控制面、SSE 事件流、本机导入服务、语音试听环境）；主界面底栏只显示当前资产与工作区，不再常驻 SSE「已连接」指示。监视器只播放受控文件键，不把 artifacts 当下载地址。界面组件：`src/navigation.ts`、`src/workspaces/*`、`src/components/{Monitor,Timeline,StatusMonitor,...}`。
 
-视觉：全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`，主色、圆角、控件尺寸保持默认）。整体模仿 Premiere：布局、容器、页头页脚共用同一底色 `#1c1d21`（`src/theme.ts` 里的 `colorBgBase/colorBgLayout/colorBgContainer`），中间工作区不用色块分隔，只留细线。顶部页签和展示窗口使用液态玻璃（ui-ux-pro-max「Spatial UI (VisionOS)」：半透明填充、`backdrop-filter: blur(40px) saturate(180%)`、内侧高光描边、深度阴影）：五个工作区页签使用玻璃材质（设置在页头右侧按钮，非整页胶囊栏），当前页是蓝色调玻璃高亮（白字），窄屏的「…」折叠弹层同样材质；监视器与短片预览窗口是玻璃边框。左右侧栏是 antd `Layout.Sider`：纯色底（`lightSiderBg` = `colorBgContainer`，无渐变、无透明、无 `backdrop-filter`）、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里，不继承中间工作区的组件级覆写，按钮、搜索框、列表与选中项（`controlItemBgActive`）、卡片、描述表、标签、提示框都是 antd 默认暗色外观，`styles.css` 不对侧栏内部写外观样式。页面不设环境光层，唯一的光晕在页头中央玻璃页签背后，不延伸到侧栏。系统开启「减少透明度」或浏览器不支持 `backdrop-filter` 时退化为不透明面板，「减少动态效果」时关闭过渡。`src/styles.css` 只保留布局、媒体尺寸、时间线轨道和玻璃材质。
+视觉：硬性规范见 [`docs/ui-style-spec.md`](../docs/ui-style-spec.md)。全部操作控件使用 Ant Design 5（`antd` + `@ant-design/icons`，`ConfigProvider` 设 `zhCN` 与 `theme.darkAlgorithm`）。配色集中在 `src/theme.ts` 与 `styles.css` 的 `--vac-*`：窗口 `#1E1E1E`、面板 `#252525`、控件 `#2F2F2F`、边框 `#3A3A3A`、主文字 `#E6E6E6`、次文字 `#9A9A9A`、强调色 `#4C8DFF`。顶栏工作区页签是实色分段滑块（圆角槽 + 一块滑块，选中项加粗；位移动效只加在这块滑块上，对齐 Lucian #295）。监视器是普通实色外框，没有液态玻璃、背景模糊或高光。左右侧栏是 antd `Layout.Sider`：纯色底、直角、antd 分隔线；侧栏内容包在独立的 `ConfigProvider`（`siderTheme`，`inherit: false`）里。系统开启「减少动态效果」时滑块瞬时到位。描述表行高为字号的 1.25 倍。`npm run lint:style` 检查渐变、阴影、模糊和色板以外的颜色。
 
 浏览器回归脚本（`browser_acceptance.mjs` / `provider_browser_acceptance.mjs`）已对齐五工作区路由：
 `#/resources`、`#/editing/{import|content|review}`、`#/export/{delivery|acceptance|tasks}`、`#/settings/{profiles|providers|preparation|logs|status}`、`#/tts`（仍接受旧六页别名）。
@@ -54,6 +54,7 @@ npm run dev
 ## 统一导航与「下一步」（Stage 3a）
 
 - `src/pipeline.ts`：纯函数，从资产 / 导入运行 / 内容流程的真实状态推导五个阶段（导入与粗剪 → 准备 → 生成 → 审查 → 交付）的状态、推荐的「下一步」，以及位置面包屑。单元测试需 Node 22 的类型剥离：`node --experimental-strip-types pipeline_test.mjs`（`navigation_smoke.mjs` 同理可用 Playwright）。
+- 新机器首次跑浏览器脚本前，在 `webui/` 执行 `npx playwright install chromium`。`playwright-core` 只带驱动，不带浏览器；未安装时 Chromium 启动会失败。装好后再按各脚本要求设置 `PLAYWRIGHT_CORE` 与 `CHROME`。
 - 页头阶段条（`PipelineStepper`）与页内位置条（`ContextBar`：面包屑 + 下一步）共用这份推导；编辑 / 导出 / 设置的二级菜单用同一阶段模型显示状态点。路由与深链不变。
 - 导航冒烟：`PLAYWRIGHT_CORE=<playwright-core/index.mjs> CHROME=<chrome> node navigation_smoke.mjs http://127.0.0.1:8816 [截图目录]`（连 `vite` 开发服务器可同时检查 React 的 DOM 嵌套警告）。
 - 新手引导（Stage A）：`src/components/AppTour.tsx`（antd `Tour`，6 步，可跳过、Esc 退出）+ `src/tour.ts`（显示策略纯函数，`node --experimental-strip-types --test tour_test.mjs`）。首次启动自动弹出一次，标记存在 `localStorage['vac_tour_seen_v1']`；页头「新手引导」按钮随时重开。**自动化脚本必须抑制它**：`navigator.webdriver` 为真时默认不弹；用 CDP 直连的真实 Chrome（`browser_acceptance.mjs`）里 webdriver 为假，所以脚本在 `Page.addScriptToEvaluateOnNewDocument` 里写入该标记；也可用 `?tour=0` 强制关闭、`?tour=1` 强制打开。改版引导内容时递增 `TOUR_VERSION`。

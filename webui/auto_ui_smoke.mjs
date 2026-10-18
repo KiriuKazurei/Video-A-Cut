@@ -19,8 +19,8 @@ const asset = { asset_id: 'clip_auto', status: 'ingested', agent_visible: true, 
 const mkProfile = (id, name, revision, mode = 'configured') => ({ schema_version: 1, profile_id: id, revision, name, content_mode: mode, vision: { adapter: 'vision', api_format: 'openai', endpoint: 'https://api.example.com/v1', model: 'm', token_env: 'VAC_VISION_TOKEN' }, narration: { adapter: 'narration', api_format: 'openai', endpoint: 'https://api.example.com/v1', model: 'm', token_env: 'VAC_NARRATION_TOKEN' }, sampling: { max_frames: 12, max_bytes: 12582912, timeout_seconds: 60 }, tts_voice: 'v', export_target: 'premiere' });
 const profiles = [mkProfile('cloud_cut', '云端剪辑', 2), mkProfile('local_cut', '本机剪辑', 1), mkProfile('regress', '工程回归', 1, 'builtin')];
 const NOTICES = {
-  cloud_cut: { external: true, notice_sha256: 'sha-cloud', notice: '自动模式将在无逐步确认的情况下完成剪辑、配音与字幕，并向以下外部端点发送数据：抽帧图像、场景标签、旁白文本和你的需求描述。\n视觉识别：api.example.com\n解说生成：api.example.com' },
-  local_cut: { external: false, notice_sha256: 'sha-local', notice: '自动模式将在无逐步确认的情况下完成剪辑、配音与字幕。所有端点均为本机地址，不向外部发送数据。' }
+  cloud_cut: { external: true, notice_sha256: 'sha-cloud', visible_set_sha: 'vis-cloud', visible_assets: [{ asset_id: 'clip_auto', status: 'ingested', agent_visible: true, ingested: true }], grants: [{ code: 'visible_set', label: '当前 Agent 可见素材' }, { code: 'script_finalize', label: '脚本定稿：仅限上面列出的可见素材' }], notice: '自动模式将在无逐步确认的情况下完成剪辑、配音与字幕，并向以下外部端点发送数据：抽帧图像、场景标签、旁白文本和你的需求描述。\n视觉识别：api.example.com\n解说生成：api.example.com' },
+  local_cut: { external: false, notice_sha256: 'sha-local', visible_set_sha: 'vis-local', visible_assets: [{ asset_id: 'clip_auto', status: 'ingested', agent_visible: true, ingested: true }], grants: [{ code: 'visible_set', label: '当前 Agent 可见素材' }, { code: 'script_finalize', label: '脚本定稿：仅限上面列出的可见素材' }], notice: '自动模式将在无逐步确认的情况下完成剪辑、配音与字幕。所有端点均为本机地址，不向外部发送数据。' }
 };
 const mk = {
   run: null, auto: null, autoFail: 0, autoNotFound: false, startMode: 'ok', startFail: 0, noticeFail: 0,
@@ -45,6 +45,7 @@ async function api(req, res, url) {
   const p = url.pathname; const m = req.method;
   if (p === '/api/events') { res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); res.write(': ok\n\n'); mk.sse.add(res); req.on('close', () => mk.sse.delete(res)); return; }
   if (p === '/api/ingest-roots') return json(res, 200, { configured: false, roots: [], policy: {}, ingesters: [] });
+  if (p === '/api/visible-set' && m === 'GET') return json(res, 200, { asset_ids: ['clip_auto'], sha256: 'vis-cloud', confirmed: true, script_finalize: true, stale: false, assets: [{ asset_id: 'clip_auto', status: 'ingested', agent_visible: true, ingested: true }] });
   if (p === '/api/assets' && m === 'GET') return json(res, 200, [asset]);
   if (p === '/api/assets/clip_auto' && m === 'GET') return json(res, 200, asset);
   if (p === '/api/assets/clip_auto/workflows') return json(res, 200, mk.run ? [mk.run] : []);
@@ -257,7 +258,7 @@ const body = mk.bodies.start[0];
 assert.equal(body.profile_id, 'cloud_cut'); assert.equal(body.revision, 2);
 assert.equal(body.expected_asset_version, 'av1');
 assert.equal(body.brief, '剪成一分钟高光，节奏紧凑');
-assert.deepEqual(body.authorization, { accept_external_egress: true, notice_sha256: 'sha-cloud' });
+assert.deepEqual(body.authorization, { accept_external_egress: true, notice_sha256: 'sha-cloud', visible_set_sha: 'vis-cloud' });
 assert.deepEqual(body.scope, { max_rounds: 1, thresholds: { high_score_min: 0.8 }, relax_thresholds: true });
 assert.ok(body.idempotency_key);
 ok('dblclick → 1 start request; body carries profile, notice_sha256, accept_external_egress, relax_thresholds+high_score_min');

@@ -888,6 +888,43 @@ func (s *Service) haltBudgetSpent(ctx context.Context, runID string) (bool, erro
 	return err == nil, err
 }
 
+// parkVisibleSet stops an authorized run whose visible set no longer matches
+// the grant. The run stays; the person re-authorizes or takes over.
+func (s *Service) parkVisibleSet(ctx context.Context, a model.WorkflowAuto, sha string, ids []string) error {
+	now := s.autoNow()
+	var saved model.WorkflowAuto
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
+		cur, err := tx.GetWorkflowAuto(ctx, a.RunID)
+		if err != nil {
+			return err
+		}
+		if cur.State != model.AutoStateActive || cur.AutoVersion != a.AutoVersion {
+			return model.ErrConflict
+		}
+		if cur.Scope.VisibleSetSHA == "" || cur.Scope.VisibleSetSHA == sha {
+			return nil
+		}
+		saved = cur
+		return s.applyAutoTransition(ctx, tx, &saved, autoTransition{
+			state: model.AutoStateAwaitingDecision, reason: model.AutoWaitVisibleSet,
+			hold: boolPtr(true), wait: true,
+			kind: model.AutoDecisionVisibleSet, target: "visible_set",
+			basis: map[string]any{"from": cur.Scope.VisibleSetSHA, "to": sha, "asset_ids": ids},
+			audit: "auto.visible_set_changed",
+		}, now)
+	})
+	if err != nil {
+		if errors.Is(err, model.ErrConflict) {
+			return nil
+		}
+		return err
+	}
+	if saved.RunID != "" {
+		s.publishAuto(saved)
+	}
+	return nil
+}
+
 func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 	a, err := s.st.GetWorkflowAuto(ctx, runID)
 	if err != nil {
@@ -905,6 +942,15 @@ func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 		}
 		return false, nil
 	case model.AutoStateActive:
+		if a.Scope.VisibleSetSHA != "" {
+			set, err := loadVisibleSet(ctx, s.st)
+			if err != nil {
+				return false, err
+			}
+			if set.SHA != a.Scope.VisibleSetSHA {
+				return true, s.parkVisibleSet(ctx, a, set.SHA, set.IDs)
+			}
+		}
 	default:
 		return false, nil
 	}
@@ -943,51 +989,69 @@ func (s *Service) stepAuto(ctx context.Context, runID string) (bool, error) {
 	return false, nil // created or running: a worker owns the next step
 }
 
+// finishedByPerson reports how to close a live overlay whose run a person has
+// already taken to the end. ok is false when this snapshot is not that case.
+// st may be the service store or a transaction; the answer belongs to that
+// snapshot only.
+func finishedByPerson(ctx context.Context, st *store.Store, a model.WorkflowAuto) (state, reason, kind string, ok bool, err error) {
+	run, err := st.GetWorkflow(ctx, a.RunID)
+	if err != nil {
+		return "", "", "", false, err
+	}
+	switch {
+	case run.Status == model.WorkflowCancelled && a.State == model.AutoStateAwaitingDecision:
+		return model.AutoStateCancelled, "", model.AutoDecisionCancelled, true, nil
+	case run.Status == model.WorkflowReadyAcceptance:
+		recs, err := st.ListAcceptance(ctx, a.RunID)
+		if err != nil {
+			return "", "", "", false, err
+		}
+		for _, r := range recs {
+			if r.ExportRevisionID == run.CurrentRevisionID && isHumanActor(r.Actor) {
+				return model.AutoStateHalted, model.AutoHaltHumanCompleted, model.AutoDecisionHumanAcceptance, true, nil
+			}
+		}
+	}
+	return "", "", "", false, nil
+}
+
 // reconcileHumanFinished closes a live overlay whose run a person has already
 // taken to the end: acceptance was recorded for the run's current export, or
 // the run was cancelled while the overlay waited. RecordAcceptance and
 // CancelWorkflow do this in their own transaction; this is the same rule for
 // overlays they did not reach (rows from before the hooks, or a path that does
 // not go through them), so a live overlay can never hold the asset (Rule A)
-// for the rest of its 72 hours. The transition is a no-op for an overlay a
-// person changed since it was read (auto_version), and it never writes for a
-// run that is not finished.
+// for the rest of its 72 hours.
+//
+// The first look is outside the write lock, so two things can change before
+// the update. A newer auto_version means somebody wrote the overlay after this
+// tick read it (a revise leaves it live); that write wins and this tick does
+// not. Separately, an export can replace the current revision, or the run can
+// leave the finished status, without bumping auto_version. The close is
+// decided again on the locked snapshot, and a run that is no longer finished
+// is not written.
 func (s *Service) reconcileHumanFinished(ctx context.Context, a model.WorkflowAuto) (bool, error) {
-	run, err := s.st.GetWorkflow(ctx, a.RunID)
-	if err != nil {
+	if _, _, _, ok, err := finishedByPerson(ctx, s.st, a); err != nil || !ok {
 		return false, err
 	}
-	var state, reason, kind string
-	switch {
-	case run.Status == model.WorkflowCancelled && a.State == model.AutoStateAwaitingDecision:
-		state, kind = model.AutoStateCancelled, model.AutoDecisionCancelled
-	case run.Status == model.WorkflowReadyAcceptance:
-		recs, err := s.st.ListAcceptance(ctx, a.RunID)
-		if err != nil {
-			return false, err
-		}
-		found := false
-		for _, r := range recs {
-			if r.ExportRevisionID == run.CurrentRevisionID && isHumanActor(r.Actor) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false, nil
-		}
-		state, reason, kind = model.AutoStateHalted, model.AutoHaltHumanCompleted, model.AutoDecisionHumanAcceptance
-	default:
-		return false, nil
+	if s.beforeReconcileTx != nil {
+		s.beforeReconcileTx()
 	}
 	var saved model.WorkflowAuto
-	err = s.st.Transaction(ctx, func(tx *store.Store) error {
+	err := s.st.Transaction(ctx, func(tx *store.Store) error {
 		cur, err := tx.GetWorkflowAuto(ctx, a.RunID)
 		if err != nil {
 			return err
 		}
 		if !autoStateLive(cur.State) || cur.AutoVersion != a.AutoVersion {
 			return fmt.Errorf("service: auto run changed: %w", model.ErrConflict)
+		}
+		state, reason, kind, ok, err := finishedByPerson(ctx, tx, cur)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("service: run is no longer finished: %w", model.ErrConflict)
 		}
 		if err := s.applyAutoTransition(ctx, tx, &cur, autoTransition{state: state, reason: reason, hold: boolPtr(false),
 			kind: kind, basis: map[string]any{"via": "tick", "reason": reason}, audit: "auto.reconcile"}, s.autoNow()); err != nil {

@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, Segmented, Tabs } from 'antd';
+import { api } from '../api';
+import { enterScriptAllowed, startGenerationAllowed } from '../visibleSet';
 import { StageDot } from '../components/PipelineContext';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
@@ -31,7 +34,9 @@ function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
   const [mode, setMode] = useState<StartMode>(readStartMode);
   const pick = (m: StartMode) => { setMode(m); try { localStorage.setItem(START_MODE_KEY, m); } catch { /* 隐私模式：本次会话内有效即可 */ } };
   const auto = useAutoView(run?.run_id);
+  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
   const live = autoPolling(auto.data?.state);
+  const canGenerate = visibleSet.isSuccess && startGenerationAllowed(visibleSet.data.confirmed);
   // 自动流程已结束（完成/停止/撤销/取消）：默认只看结果，需要时再展开「重新生成」。
   const ended = Boolean(auto.data) && !live;
   const [showForm, setShowForm] = useState(false);
@@ -42,7 +47,17 @@ function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
       extra={<span className="quickstart-extra">{mode === 'auto' ? '写一句要求，Agent 自动剪辑并导出' : '自动完成识别、撰稿、配音与字幕，随后进入审查'}</span>}>
       <AutoRunProgress run={run} onGoReview={goReview} />
       {ended && !showForm && <Button type="link" className="auto-restart" style={{ paddingInline: 0, marginTop: 8 }} onClick={() => setShowForm(true)}>重新生成…</Button>}
-      {!live && (!ended || showForm) && (
+      {!live && (!ended || showForm) && !visibleSet.isSuccess && (
+        <Alert type={visibleSet.isError ? 'error' : 'info'} showIcon style={{ marginTop: 12 }}
+          message={visibleSet.isError ? '暂时读不到可见素材的确认状态' : '正在读取可见素材的确认状态'}
+          action={visibleSet.isError ? <Button size="small" onClick={() => void visibleSet.refetch()}>重试</Button> : undefined} />
+      )}
+      {!live && (!ended || showForm) && visibleSet.isSuccess && !canGenerate && (
+        <Alert type="warning" showIcon style={{ marginTop: 12 }} message="请先确认 Agent 可见素材"
+          description="手动和自动模式在进入脚本或开始生成前，都要先确认当前可见集。"
+          action={<Button type="primary" onClick={() => navigate({ workspace: 'resources' })}>去资源页确认</Button>} />
+      )}
+      {!live && (!ended || showForm) && canGenerate && (
         <div className={auto.data ? 'auto-after-progress' : undefined}>
           <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={pick}
             options={[{ value: 'manual', label: '分步生成' }, { value: 'auto', label: '自动模式' }]} />
@@ -111,6 +126,12 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
     requestAnimationFrame(attempt);
   };
   const visibleProgramPreview = displayWorkflowPreview(programPreview, owner, workflowData.review.data);
+  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
+  const scriptOpen = Boolean(asset) && enterScriptAllowed({
+    confirmed: visibleSet.isSuccess && visibleSet.data.confirmed,
+    assetVisible: Boolean(asset?.agent_visible),
+    hasWorkflow: Boolean(workflowData.current)
+  });
 
   return (
     <div className="page-body">
@@ -143,7 +164,12 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                 </PreviewScope>
               )}
               
-              {section.id === 'content' && asset && (
+              {section.id === 'content' && asset && !scriptOpen && (
+                <Alert type="warning" showIcon message="还不能进入脚本"
+                  description={visibleSet.isPending ? '正在读取可见素材的确认状态。' : '请先在资源页确认当前 Agent 可见素材。已在进行的流程不受这次确认影响。'}
+                  action={<Button type="primary" onClick={() => navigate({ workspace: 'resources' })}>去资源页确认</Button>} />
+              )}
+              {section.id === 'content' && asset && scriptOpen && (
                 <PreviewScope onPreview={setProgramPreview}>
                   <WorkflowPanel 
                     mode="content"

@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -209,6 +210,129 @@ func TestTickClosesAWaitingOverlayOfACancelledRun(t *testing.T) {
 	}
 	if _, live, _ := e.st.ActiveAutoForAsset(t.Context(), e.run.AssetID); live {
 		t.Fatal("asset still held")
+	}
+}
+
+// acceptBypass inserts a human acceptance for the current export without going
+// through RecordAcceptance, so the overlay stays live for the driver to close.
+func (e *scoreEnv) acceptBypass(t *testing.T) {
+	t.Helper()
+	run, err := e.st.GetWorkflow(t.Context(), e.run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.InsertAcceptance(t.Context(), model.AcceptanceRecord{RunID: e.run.RunID, ExportRevisionID: run.CurrentRevisionID, ManifestSHA256: "m",
+		CheckItem: "browser", Result: "passed", Actor: "human:webui", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (e *scoreEnv) decisions(t *testing.T, kind string) int {
+	t.Helper()
+	return count(t, e.svc, `SELECT COUNT(*) FROM auto_decisions WHERE run_id=? AND kind=?`, e.run.RunID, kind)
+}
+
+// The close is decided before the write lock. Replacing the current revision,
+// or moving the run off the finished status, without bumping auto_version must
+// not still close the overlay from the earlier snapshot.
+func TestReconcileDoesNotApplyAStaleFinish(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sql  string
+		args func(*scoreEnv) []any
+	}{
+		{
+			name: "current revision replaced",
+			sql:  `UPDATE workflow_runs SET current_revision_id = ? WHERE run_id = ?`,
+			args: func(e *scoreEnv) []any { return []any{"rev-newer", e.run.RunID} },
+		},
+		{
+			name: "run left ready_for_acceptance",
+			sql:  `UPDATE workflow_runs SET status = ? WHERE run_id = ?`,
+			args: func(e *scoreEnv) []any { return []any{model.WorkflowRunning, e.run.RunID} },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newScoreEnv(t, 0.5, "钓鱼")
+			e.toWaiting(t)
+			e.acceptBypass(t)
+			before := e.auto(t)
+			e.svc.SetBeforeReconcileTx(func() {
+				mustExec(t, e.st, tc.sql, tc.args(e)...)
+			})
+			t.Cleanup(func() { e.svc.SetBeforeReconcileTx(nil) })
+			if err := e.svc.AutoTick(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			got := e.auto(t)
+			if got.State != before.State || got.HaltReason != before.HaltReason || got.AutoVersion != before.AutoVersion || !got.DeliveryHold {
+				t.Fatalf("stale finish closed the overlay: %+v", got)
+			}
+			if n := e.decisions(t, model.AutoDecisionHumanAcceptance); n != 0 {
+				t.Fatalf("human_acceptance decisions = %d", n)
+			}
+		})
+	}
+}
+
+// A waiting overlay of a cancelled run is closed only while that is still
+// true at the write. A status change that does not bump auto_version is not
+// the cancelled run this tick read.
+func TestReconcileDoesNotCancelFromAStaleStatus(t *testing.T) {
+	e := newScoreEnv(t, 0.5, "钓鱼")
+	e.toWaiting(t)
+	mustExec(t, e.st, `UPDATE workflow_runs SET status = ? WHERE run_id = ?`, model.WorkflowCancelled, e.run.RunID)
+	before := e.auto(t)
+	e.svc.SetBeforeReconcileTx(func() {
+		mustExec(t, e.st, `UPDATE workflow_runs SET status = ? WHERE run_id = ?`, model.WorkflowRunning, e.run.RunID)
+	})
+	t.Cleanup(func() { e.svc.SetBeforeReconcileTx(nil) })
+	if err := e.svc.AutoTick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got := e.auto(t)
+	if got.State != before.State || got.AutoVersion != before.AutoVersion || !got.DeliveryHold {
+		t.Fatalf("stale cancel closed the overlay: %+v", got)
+	}
+	if n := e.decisions(t, model.AutoDecisionCancelled); n != 0 {
+		t.Fatalf("workflow_cancelled decisions = %d", n)
+	}
+}
+
+// auto_version moving either way, while the overlay stays live and the run
+// stays finished, means a later write already owns the row. This tick must
+// leave that row alone. The following tick, reading the new version, closes it.
+func TestReconcileLeavesANewerLiveAutoVersion(t *testing.T) {
+	for _, delta := range []int{1, -1} {
+		t.Run(fmt.Sprintf("delta %d", delta), func(t *testing.T) {
+			e := newScoreEnv(t, 0.5, "钓鱼")
+			e.toWaiting(t)
+			e.acceptBypass(t)
+			before := e.auto(t)
+			e.svc.SetBeforeReconcileTx(func() {
+				mustExec(t, e.st, `UPDATE workflow_auto SET auto_version = ? WHERE run_id = ?`, before.AutoVersion+delta, e.run.RunID)
+			})
+			t.Cleanup(func() { e.svc.SetBeforeReconcileTx(nil) })
+			if err := e.svc.AutoTick(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			got := e.auto(t)
+			if got.State != model.AutoStateAwaitingDecision || got.AutoVersion != before.AutoVersion+delta || !got.DeliveryHold {
+				t.Fatalf("live auto_version %+d was overwritten: %+v", delta, got)
+			}
+			if n := e.decisions(t, model.AutoDecisionHumanAcceptance); n != 0 {
+				t.Fatalf("human_acceptance decisions = %d", n)
+			}
+			e.svc.SetBeforeReconcileTx(nil)
+			if delta < 0 {
+				// The stored version must stay positive for the next optimistic write.
+				mustExec(t, e.st, `UPDATE workflow_auto SET auto_version = ? WHERE run_id = ?`, before.AutoVersion, e.run.RunID)
+			}
+			if err := e.svc.AutoTick(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			assertHumanCompleted(t, e)
+		})
 	}
 }
 
