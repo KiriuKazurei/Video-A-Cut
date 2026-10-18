@@ -993,15 +993,19 @@ func autoTakeover(ctx context.Context, tx *store.Store, runID, actor, reason, vi
 	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, reason, model.AutoDecisionTakeover, via, "auto.takeover", false)
 }
 
-// autoHumanCompletedTx closes a live overlay because a person recorded
+// autoHumanAcceptanceTx closes a live overlay because a person recorded
 // acceptance on its run: the run is in human hands from here, so the overlay
-// becomes halted(human_completed), the delivery hold is released (acceptance is
+// becomes halted(human_completed/human_rejected), the delivery hold is released (acceptance is
 // the person's own decision) and both clocks stop. It frees the asset for the
 // next run (Rule A looks only at live overlays). It is not a takeover: nothing
 // the person did is undone. A run that is not auto, or an overlay that is not
 // live, is left alone.
-func autoHumanCompletedTx(ctx context.Context, tx *store.Store, runID, actor, via string) (*model.WorkflowAuto, error) {
-	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, model.AutoHaltHumanCompleted, model.AutoDecisionHumanAcceptance, via, "auto.human_completed", true)
+func autoHumanAcceptanceTx(ctx context.Context, tx *store.Store, runID, actor, via, result string) (*model.WorkflowAuto, error) {
+	reason, audit := model.AutoHaltHumanCompleted, "auto.human_completed"
+	if result == model.AcceptanceFailed {
+		reason, audit = model.AutoHaltHumanRejected, "auto.human_rejected"
+	}
+	return autoOverride(ctx, tx, runID, actor, model.AutoStateHalted, reason, model.AutoDecisionHumanAcceptance, via, audit, true)
 }
 
 // autoCancelTx records that a person cancelled the workflow of a live auto run.

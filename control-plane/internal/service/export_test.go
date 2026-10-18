@@ -47,3 +47,9 @@ func (s *Service) SetBeforeAutoTx(f func()) { s.beforeAutoTx = f }
 // decides the run looks finished and before the write transaction. Tests use
 // it to change auto_version or the run in that window.
 func (s *Service) SetBeforeReconcileTx(f func()) { s.beforeReconcileTx = f }
+
+// ReconcileHumanFinished exposes the stale-snapshot boundary without adding a
+// production timing hook.
+func (s *Service) ReconcileHumanFinished(ctx context.Context, snapshot model.WorkflowAuto) (bool, error) {
+	return s.reconcileHumanFinished(ctx, snapshot)
+}

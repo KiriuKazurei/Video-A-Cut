@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 )
 
@@ -36,10 +37,14 @@ func (e *scoreEnv) runVersion(t *testing.T) int {
 
 // assertHumanCompleted checks the overlay is closed for good: halted by the
 // person finishing the run, hold released, both clocks stopped, the asset free.
-func assertHumanCompleted(t *testing.T, e *scoreEnv) model.WorkflowAuto {
+func assertHumanCompleted(t *testing.T, e *scoreEnv, reasons ...string) model.WorkflowAuto {
 	t.Helper()
+	reason := model.AutoHaltHumanCompleted
+	if len(reasons) != 0 {
+		reason = reasons[0]
+	}
 	a := e.auto(t)
-	if a.State != model.AutoStateHalted || a.HaltReason != model.AutoHaltHumanCompleted || a.DeliveryHold ||
+	if a.State != model.AutoStateHalted || a.HaltReason != reason || a.DeliveryHold ||
 		a.PausedAt != nil || a.DecisionDeadlineAt != nil {
 		t.Fatalf("overlay = %+v", a)
 	}
@@ -96,7 +101,66 @@ func TestFailedAcceptanceAlsoClosesTheOverlay(t *testing.T) {
 	if _, err := e.svc.RecordAcceptance(t.Context(), "human:webui", e.run.RunID, "browser", "failed", "画面不对", e.runVersion(t)); err != nil {
 		t.Fatal(err)
 	}
+	assertHumanCompleted(t, e, model.AutoHaltHumanRejected)
+	if got := auditActions(t, e.svc)["auto.human_rejected"]; len(got) != 1 {
+		t.Fatalf("failed acceptance audit = %+v", got)
+	}
+}
+
+func TestHumanFinishedReconcileRejectsAStaleAutoVersion(t *testing.T) {
+	e := newScoreEnv(t, 0.5, "钓鱼")
+	e.toWaiting(t)
+	stale := e.auto(t)
+	if err := e.st.InsertAcceptance(t.Context(), model.AcceptanceRecord{RunID: e.run.RunID,
+		ExportRevisionID: e.run.CurrentRevisionID, ManifestSHA256: "m", CheckItem: "browser",
+		Result: model.AcceptancePassed, Actor: "human:webui", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, e.st, `UPDATE workflow_auto SET auto_version=auto_version+1 WHERE run_id=?`, e.run.RunID)
+	current := e.auto(t)
+	decisions := count(t, e.svc, `SELECT COUNT(*) FROM auto_decisions WHERE run_id=?`, e.run.RunID)
+	bus, recorded := events.New(), &recordedEvents{}
+	bus.Subscribe("auto.changed", recorded.add)
+	e.svc.SetBus(bus)
+	t.Cleanup(bus.Close)
+	changed, err := e.svc.ReconcileHumanFinished(t.Context(), stale)
+	if err != nil || changed {
+		t.Fatalf("stale reconciliation changed=%v err=%v", changed, err)
+	}
+	if got := e.auto(t); got.AutoVersion != current.AutoVersion || got.State != current.State || got.DeliveryHold != current.DeliveryHold {
+		t.Fatalf("stale snapshot overwrote current overlay: %+v", got)
+	}
+	if got := count(t, e.svc, `SELECT COUNT(*) FROM auto_decisions WHERE run_id=?`, e.run.RunID); got != decisions {
+		t.Fatalf("stale reconciliation wrote %d decisions, want %d", got, decisions)
+	}
+	if got := recorded.named("auto.changed", 1); len(got) != 0 {
+		t.Fatalf("stale reconciliation published events: %+v", got)
+	}
+	changed, err = e.svc.ReconcileHumanFinished(t.Context(), current)
+	if err != nil || !changed {
+		t.Fatalf("current reconciliation changed=%v err=%v", changed, err)
+	}
 	assertHumanCompleted(t, e)
+}
+
+func TestReconcileUsesFailedHumanAcceptanceRegardlessOfRecordOrder(t *testing.T) {
+	for _, results := range [][]string{{"passed", "failed"}, {"failed", "passed"}} {
+		t.Run(results[0], func(t *testing.T) {
+			e := newScoreEnv(t, 0.5, "钓鱼")
+			e.toWaiting(t)
+			for i, result := range results {
+				if err := e.st.InsertAcceptance(t.Context(), model.AcceptanceRecord{RunID: e.run.RunID,
+					ExportRevisionID: e.run.CurrentRevisionID, ManifestSHA256: "m", CheckItem: []string{"browser", "content_fidelity"}[i],
+					Result: result, Actor: "human:webui", CreatedAt: time.Now().UTC()}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := e.svc.AutoTick(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			assertHumanCompleted(t, e, model.AutoHaltHumanRejected)
+		})
+	}
 }
 
 // A refused acceptance (stale version, bad item, not human) leaves the overlay

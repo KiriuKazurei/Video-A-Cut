@@ -729,5 +729,6 @@ class SupervisorScriptTest(unittest.TestCase):
             "if (Test-PermanentWorkerExit 1 'temporary disconnect') { exit 17 }; "
             "exit 0"
         )
-        done = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=30)
+        # The supervised script requires PowerShell 7.2; Windows PowerShell 5 cannot load it.
+        done = subprocess.run(["pwsh", "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)

@@ -481,7 +481,7 @@ func (s *Service) RecordAcceptance(ctx context.Context, actor, runID, checkItem,
 		// A person who records acceptance takes the run through the last human
 		// gate: a live auto overlay (still working, or waiting for a decision)
 		// is closed in the same transaction, so the asset is not held by it.
-		closed, err = autoHumanCompletedTx(ctx, tx, runID, actor, "acceptance:"+checkItem)
+		closed, err = autoHumanAcceptanceTx(ctx, tx, runID, actor, "acceptance:"+checkItem, result)
 		return err
 	})
 	if err != nil {

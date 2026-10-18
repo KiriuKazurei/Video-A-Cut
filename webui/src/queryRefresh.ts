@@ -20,7 +20,7 @@ export const REFRESH_DOMAINS = [
   'mp4Previews',
   'deliveryVariants',
   'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities',
-  'auto'
+  'auto', 'auto-notice'
 ] as const;
 
 export type RefreshDomain = (typeof REFRESH_DOMAINS)[number];

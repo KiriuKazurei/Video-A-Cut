@@ -2,3 +2,6 @@
 control-plane/internal/preview/presets/*.json text eol=lf
 contracts/delivery-variant/v1/specs/*.json text eol=lf
 control-plane/internal/deliveryvariant/specs/*.json text eol=lf
+# Golden comparisons use exact JSON bytes on Windows and Unix.
+control-plane/internal/api/testdata/*.golden.json text eol=lf
+control-plane/internal/autoreview/testdata/*.golden.json text eol=lf

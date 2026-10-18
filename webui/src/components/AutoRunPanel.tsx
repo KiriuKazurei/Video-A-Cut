@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Checkbox, Collapse, Flex, Input, InputNumber, Popconfirm, Space, Steps, Tag, Tooltip, Typography } from 'antd';
 import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -105,7 +105,7 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
           </Flex>
         )}
         {model.kind === 'decision' && a.decision && (
-          <Card size="small" type="inner" className="auto-decision" title={<span>待你确认{holdLabel && <> <Tag bordered={false}>{holdLabel}</Tag></>}</span>}>
+          <Card size="small" type="inner" className="auto-decision" title={<span>待你确认 <Tag bordered={false}>{a.decision.can_export ? '成片可导出' : '尚无可导出成片'}</Tag>{holdLabel && <> <Tag bordered={false}>{holdLabel}</Tag></>}</span>}>
             <Flex vertical gap={12}>
               <Typography.Text>{decisionHeadline(a.decision.reason, a.decision.can_export).description}</Typography.Text>
               {deadline && <Typography.Text type="secondary" className="auto-deadline">请在 {deadline} 前决定；超时会停止，不会自动导出。</Typography.Text>}
@@ -119,9 +119,9 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
                 <Tooltip title={a.decision.reason === 'visible_set_changed' ? '可见集变了，请先确认新的可见集' : a.decision.can_revise ? undefined : '重剪次数或额度已用完，不能再提修改意见'}>
                   <Button disabled={!a.decision.can_revise || act.isPending || a.decision.reason === 'visible_set_changed'} aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(o => !o)}>提出修改意见</Button>
                 </Tooltip>
-                <Popconfirm title="放弃这次结果？" okText="放弃" cancelText="再想想" okButtonProps={{ danger: true }}
-                  description="自动剪辑会停在这里，不会导出。之后可以改为手动处理。" onConfirm={() => decide('discard')}>
-                  <Button disabled={act.isPending}>放弃</Button>
+                <Popconfirm title="放弃这次自动剪辑结果？" okText="放弃结果" cancelText="继续保留"
+                  description="自动模式会停止，已有文件会保留，你仍可手动处理。" onConfirm={() => decide('discard')}>
+                  <Button danger disabled={act.isPending}>放弃本次结果</Button>
                 </Popconfirm>
               </Space>
               {feedbackOpen && a.decision.can_revise && (
@@ -166,7 +166,12 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
   const notice = useQuery({ queryKey: ['auto-notice', profile?.profile_id, rev], queryFn: () => api.autoNotice(profile!.profile_id, rev), enabled: Boolean(profile) && rev > 0, retry: false });
   const preflight = useQuery({ queryKey: ['prepared', assetId, profile?.profile_id, rev], queryFn: () => api.preparedPreflight(assetId, profile!.profile_id, rev), enabled: Boolean(assetId && profile && rev > 0), retry: false });
   const [brief, setBrief] = useState('');
-  const [authorized, setAuthorized] = useState(false);
+  const noticeReady = !notice.isError && Boolean(notice.data?.notice_sha256) && notice.data?.profile_id === profile?.profile_id && notice.data?.revision === rev;
+  const identity = assetId && profile && noticeReady ? JSON.stringify([assetId, profile.profile_id, rev, notice.data!.notice_sha256]) : null;
+  const [authorization, setAuthorization] = useState({ identity, accepted: false });
+  // 在渲染新说明时就清除旧勾选，避免等待 effect 的窗口，也防止切回旧身份时恢复授权。
+  if (authorization.identity !== identity) setAuthorization({ identity, accepted: false });
+  const authorized = identity !== null && authorization.identity === identity && authorization.accepted;
   const [maxRounds, setMaxRounds] = useState(1);
   const [relaxOn, setRelaxOn] = useState(false);
   const [relaxValue, setRelaxValue] = useState<number | undefined>(0.8);
@@ -179,19 +184,23 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
   const preflightOk = Boolean(preflight.data) && Boolean(preflight.data?.expected_asset_version) && blockers.length === 0;
   const inVisibleSet = Boolean(notice.data?.visible_assets?.some((item) => item.asset_id === assetId && item.agent_visible));
   const ok = canStartAuto({
-    authorized, profileOk: Boolean(profile), noticeReady: Boolean(notice.data), preflightOk, busy: false, relaxOn, relaxValue, relaxConfirmed,
+    authorized, profileOk: Boolean(profile), noticeReady, preflightOk, busy: false, relaxOn, relaxValue, relaxConfirmed,
     visibleReady: Boolean(notice.data?.visible_set_sha) && inVisibleSet
   });
+  const currentStart = useRef({ identity, ok });
+  useLayoutEffect(() => { currentStart.current = { identity, ok }; }, [identity, ok]);
 
   const start = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (requestedIdentity: string) => {
       try {
+        // mutation 可能排队执行；发送前再次核对当前已提交到界面的授权上下文。
+        if (!ok || !currentStart.current.ok || identity !== requestedIdentity || currentStart.current.identity !== requestedIdentity) throw new Error('自动授权已变化，请重新勾选授权。');
         const base = {
           profileId: profile!.profile_id, revision: rev, expectedAssetVersion: preflight.data!.expected_asset_version!, brief, maxRounds,
           relaxHighScore: relaxOn ? relaxValue : undefined, relaxConfirmed, noticeSha: notice.data!.notice_sha256,
           external: notice.data!.external, visibleSetSha: notice.data!.visible_set_sha
         };
-        const sig = JSON.stringify(base);
+        const sig = JSON.stringify({ assetId, ...base });
         // 相同内容重试沿用同一幂等键（网络抖动不会起两个 run）；内容变了换新键。
         if (attempt.current.sig !== sig) attempt.current = { sig, key: crypto.randomUUID() };
         return await api.startAutoRun(assetId, buildAutoRunBody({ ...base, idempotencyKey: attempt.current.key }));
@@ -205,7 +214,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
     },
     onError: async (e) => { setError(autoErrorText(e)); await Promise.all(['prepared', 'auto-notice'].map(k => client.invalidateQueries({ queryKey: [k] }))); }
   });
-  const go = () => { if (starting.current || !ok) return; starting.current = true; setError(''); start.mutate(); };
+  const go = () => { if (starting.current || !ok || !identity) return; starting.current = true; setError(''); start.mutate(identity); };
 
   if (profiles.isError) {
     return <Alert type="error" showIcon role="alert" message="读取预设失败" description="已暂停自动重试。" action={<Button type="link" size="small" onClick={() => void profiles.refetch()}>重试</Button>} />;
@@ -227,7 +236,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
       {usable.length > 1 && (
         <Flex vertical gap={4}>
           <Typography.Text strong>使用预设</Typography.Text>
-          <ValueSelect<string> className="auto-profile-select" aria-label="自动剪辑预设" style={{ maxWidth: 360 }} value={profile?.profile_id} onChange={v => { setPicked(v); setAuthorized(false); }}
+          <ValueSelect<string> className="auto-profile-select" aria-label="自动剪辑预设" style={{ maxWidth: 360 }} value={profile?.profile_id} onChange={v => { setPicked(v); setAuthorization({ identity, accepted: false }); }}
             options={usable.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
         </Flex>
       )}
@@ -248,7 +257,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
             </div>
           </Flex>} />
       )}
-      <Checkbox className="auto-authorize" checked={authorized} onChange={e => setAuthorized(e.target.checked)}>
+      <Checkbox className="auto-authorize" disabled={!identity} checked={authorized} onChange={e => setAuthorization({ identity, accepted: e.target.checked })}>
         <b>全局授权</b>：同意对上面列出的可见素材和脚本定稿授权，Agent 不再逐步询问，自动完成剪辑、配音、字幕和导出。我可以随时撤销。
       </Checkbox>
       <Collapse size="small" ghost className="auto-advanced" items={[{

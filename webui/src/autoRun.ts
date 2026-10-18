@@ -113,6 +113,8 @@ export function reasonLines(review: AutoReviewInfo | null | undefined, n = 4): s
 }
 
 const HALT_TEXT: Record<string, string> = {
+  human_completed: '你已记录人工验收，自动模式已结束，后续由你处理。',
+  human_rejected: '人工验收未通过，自动模式已停止。请根据验收意见修改内容。',
   human_takeover: '你手动改动了内容，自动模式已停止，后续请你接着处理。',
   human_decision_conflict: '你的手动确认与自动检查冲突，自动模式已停止，请你接着处理。',
   deadline: '自动剪辑用时超过了授权的时间上限，已停止。',

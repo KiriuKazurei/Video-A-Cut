@@ -12,6 +12,15 @@ const view = (over = {}) => ({
   delivery: { delivered: false, package_ready: false, preview_is_current: false, spec: '720p' }, decision: null, delivery_hold_enforced: false, ...over
 });
 
+test('human acceptance failure is distinct from a completed human review', () => {
+  const rejected = autoPanelModel(view({ state: 'halted', halt_reason: 'human_rejected' }));
+  assert.match(rejected.description, /人工验收未通过/);
+  assert.equal(rejected.canTakeOver, true);
+  const legacy = autoPanelModel(view({ state: 'halted', halt_reason: 'human_completed' }));
+  assert.match(legacy.description, /已记录人工验收/);
+  assert.doesNotMatch(legacy.description, /验收通过/);
+});
+
 test('phases: seven human-readable steps map from the run stage', () => {
   assert.deepEqual([...AUTO_PHASES], ['识别画面', '确认场景', '撰写解说', '配音', '字幕', '混音', '导出成片']);
   assert.equal(phaseIndex('recognize'), 0);

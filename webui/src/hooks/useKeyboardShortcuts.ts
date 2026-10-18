@@ -218,6 +218,7 @@ export function useKeyboardShortcuts({
       if (workspace === 'editing' && (route.editingSection === 'content' || route.editingSection === 'review') && !e.shiftKey) {
         const action = REVIEW_KEYS[e.key.toLowerCase()];
         if (action && !lettersBlocked(e.target)) {
+          if (action !== 'next' && !(e.target instanceof Element && e.target.closest('.workflow-card, .timeline-clip'))) return;
           e.preventDefault();
           window.dispatchEvent(new CustomEvent(REVIEW_SHORTCUT_EVENT, { detail: { action } }));
           return;

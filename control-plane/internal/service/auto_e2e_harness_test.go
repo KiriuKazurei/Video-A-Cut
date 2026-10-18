@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -222,6 +223,8 @@ type e2eEnv struct {
 	// delivering it: the review is then LOW for preview_failed, which no rerun
 	// can mend.
 	failPreview bool
+	// Opt-in Windows acceptance test uses the real exporter and media prober.
+	realPreview bool
 	workerLogs  []string
 }
 
@@ -237,9 +240,23 @@ func needTools(t *testing.T, names ...string) {
 	}
 }
 
+func e2ePython() string {
+	if executable := os.Getenv("VAC_TEST_PYTHON"); executable != "" {
+		return executable
+	}
+	if runtime.GOOS == "windows" {
+		return "python"
+	}
+	return "python3"
+}
+
 func newE2EEnv(t *testing.T) *e2eEnv {
+	return newE2EEnvWithCanvas(t, "320x180")
+}
+
+func newE2EEnvWithCanvas(t *testing.T, canvas string) *e2eEnv {
 	t.Helper()
-	needTools(t, "python3", "ffmpeg", "ffprobe", "node")
+	needTools(t, e2ePython(), "ffmpeg", "ffprobe", "node")
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +286,7 @@ func newE2EEnv(t *testing.T) *e2eEnv {
 	}
 	for i, name := range []string{"a.mp4", "b.mp4"} {
 		pattern := []string{"testsrc2", "smptebars"}[i]
-		e.run(nil, "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", pattern+"=size=320x180:rate=30:duration=4",
+		e.run(nil, "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", pattern+"=size="+canvas+":rate=30:duration=4",
 			"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4", "-c:v", "libx264", "-preset", "ultrafast",
 			"-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", filepath.Join(src, name))
 	}
@@ -465,7 +482,11 @@ func (e *e2eEnv) runTask(q queuedTask) {
 	case model.TaskTypeExport:
 		e.node()
 	case model.TaskTypePreview:
-		e.simulatePreview(q)
+		if e.realPreview {
+			e.node()
+		} else {
+			e.simulatePreview(q)
+		}
 	default:
 		e.t.Fatalf("no worker for task %+v", q)
 	}
@@ -480,7 +501,7 @@ func (e *e2eEnv) python(role string) {
 	writeJSON(e.t, cfg, map[string]any{"mcp_url": e.server.URL + "/mcp", "token_env": "VAC_E2E_WORKER_TOKEN", "delivery_root": e.root,
 		"role": role, "profile_sha256": e.sha, "processing_profile": profile, "poll_interval_ms": 50, "heartbeat_interval_ms": 500,
 		"task_timeout_ms": 120000, "content_provider": "builtin"})
-	cmd := exec.CommandContext(e.t.Context(), "python3", "-m", "vac_worker", "--config", cfg, "--once")
+	cmd := exec.CommandContext(e.t.Context(), e2ePython(), "-m", "vac_worker", "--config", cfg, "--once")
 	cmd.Dir = filepath.Join(e.repo, "workers", "python")
 	cmd.Env = append(os.Environ(), "VAC_E2E_WORKER_TOKEN="+e.tokens[role], "VAC_E2E_MODEL_TOKEN="+e2eDummyToken, "VAC_E2E_DUMMY_TTS="+e2eDummyToken, "PYTHONDONTWRITEBYTECODE=1")
 	out, err := cmd.CombinedOutput()

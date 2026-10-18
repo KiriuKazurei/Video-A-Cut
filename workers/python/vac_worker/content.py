@@ -142,6 +142,11 @@ class ContentError(ValueError):
     """Provider output is missing, unsafe, or inconsistent with the timeline."""
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ContentError('provider redirects are refused; configure the final API base URL')
+
+
 MAX_BRIEF_CHARS = 2000
 AUTO_FEEDBACK_CODES = frozenset({
     "low_confidence", "tts_incomplete", "av_misaligned", "pacing_out_of_range",
@@ -321,7 +326,7 @@ class VisionContentProvider:
         self.allow_external = allow_external
         self.timeout_seconds = float(timeout_seconds)
         self.model = model
-        self._opener = opener or urllib.request.urlopen
+        self._opener = opener or urllib.request.build_opener(NoRedirect()).open
         self._auto_fields = auto_request_fields(auto)
 
     def recognize(self, clips: Sequence[ClipEvidence]) -> list[SceneDecision]:
@@ -487,7 +492,7 @@ class NarrationContentProvider:
         self.allow_external = allow_external
         self.timeout_seconds = float(timeout_seconds)
         self.model = model
-        self._opener = opener or urllib.request.urlopen
+        self._opener = opener or urllib.request.build_opener(NoRedirect()).open
         self._auto_fields = auto_request_fields(auto)
 
     def recognize(self, clips: Sequence[ClipEvidence]) -> Sequence[SceneDecision]:

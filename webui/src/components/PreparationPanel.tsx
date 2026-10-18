@@ -10,7 +10,7 @@ import type {WorkflowRun} from '../types';
 import type {RouteState} from '../navigation';
 import {ValueSelect} from './ui';
 
-const initial:ProcessingProfile={schema_version:1,profile_id:'local_regression',revision:0,name:'本地工程回归',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'Microsoft Huihui Desktop',export_target:'premiere'};
+const initial:ProcessingProfile={schema_version:1,profile_id:'local_regression',revision:0,name:'本地工程回归',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'',export_target:'premiere'};
 const externalEndpoint=(endpoint?:string)=>{if(!endpoint)return false;try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(endpoint).hostname)}catch{return false}};
 const checkLabel={passed:'已满足',not_checked:'未检查',blocked:'受阻'} as const;
 
@@ -35,6 +35,12 @@ export function PreparationPanel({
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const profiles=useQuery({queryKey:['processing-profiles'],queryFn:api.listProfiles});
+  const voices=useQuery({queryKey:['tts-capabilities','VAC_TTS_TOKEN'],queryFn:()=>api.ttsCapabilities(),
+    enabled:draft.revision===0&&!draft.tts_voice&&!draft.tts_template,retry:false});
+  useEffect(()=>{
+    const voice=voices.data?.sapi_voices?.[0];
+    if(voice)setDraft(current=>current.revision===0&&!current.tts_voice&&!current.tts_template?{...current,tts_voice:voice}:current);
+  },[voices.data]);
   const unsaved=notice.startsWith('有未保存');
   const autoCheck=Boolean(assetId)&&draft.revision>0&&!unsaved;
   const report=useQuery({
@@ -152,7 +158,7 @@ export function PreparationPanel({
         <InputNumber aria-label="历史版本" style={{width:'100%'}} min={0} step={1} precision={0} value={version} onChange={v=>setVersion(Number(v??0))}/>
       </Form.Item>
       <Button disabled={busy||!selected} onClick={()=>action.mutate(async()=>{const p=await api.getProfile(selected,version);setDraft(p.profile);setNotice(`已加载 ${p.profile.profile_id} / v${p.profile.revision}`)})}>加载版本</Button>
-      <Button disabled={busy} onClick={()=>{setDraft({...initial,profile_id:'profile_'+Date.now()});setNotice('新预设尚未保存')}}>新建预设</Button>
+      <Button disabled={busy} onClick={()=>{setDraft({...initial,profile_id:'profile_'+Date.now(),tts_voice:voices.data?.sapi_voices?.[0]??''});setNotice('新预设尚未保存')}}>新建预设</Button>
     </Flex>
   );
 
@@ -258,7 +264,7 @@ export function PreparationPanel({
             <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>
             <Col xs={12} md={6}><Form.Item label="取样预算（MiB）"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_bytes/1048576} onChange={v=>sampling({max_bytes:Number(v??0)*1048576})}/></Form.Item></Col>
             <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
-            <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
           </Row>
           {saveButtons}
         </Form>
@@ -312,7 +318,7 @@ export function PreparationPanel({
                 <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>
                 <Col xs={12} md={6}><Form.Item label="取样预算（MiB）"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_bytes/1048576} onChange={v=>sampling({max_bytes:Number(v??0)*1048576})}/></Form.Item></Col>
                 <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
-                <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
+                <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
               </Row>
               {saveButtons}
             </Form>

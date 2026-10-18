@@ -27,8 +27,8 @@ const SHORTCUTS: ShortcutItem[] = [
   { key: 'l', keys: ['L'], action: '快进 2 秒', category: '播放控制' },
   { key: 'left', keys: ['←'], action: '快退 2 秒', category: '播放控制' },
   { key: 'right', keys: ['→'], action: '快进 2 秒', category: '播放控制' },
-  { key: 'review-confirm', keys: ['C'], action: '确认当前场景（场景待确认时，审查页）', category: '审查' },
-  { key: 'review-approve', keys: ['A'], action: '批准当前解说（解说待批准时，审查页）', category: '审查' },
+  { key: 'review-confirm', keys: ['C'], action: '确认当前场景（审查页，聚焦卡片或时间线后）', category: '审查' },
+  { key: 'review-approve', keys: ['A'], action: '批准当前解说（审查页，聚焦卡片或时间线后）', category: '审查' },
   { key: 'review-next', keys: ['N'], action: '跳到下一个待处理的场景 / 解说', category: '审查' },
   { key: 'help', keys: ['?'], action: '打开 / 关闭快捷键帮助', category: '通用' },
   { key: 'esc', keys: ['Esc'], action: '关闭当前弹窗 / 抽屉', category: '通用' }

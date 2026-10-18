@@ -156,9 +156,9 @@ class TestVisionContentProvider(unittest.TestCase):
             finally:
                 os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_connection_error(self, mock_urlopen):
-        mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_connection_error(self, mock_open):
+        mock_open.side_effect = urllib.error.URLError("Connection refused")
         env_var = "TEST_VAC_TOKEN"
         os.environ[env_var] = "secret-token"
         try:
@@ -172,9 +172,9 @@ class TestVisionContentProvider(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_timeout_error(self, mock_urlopen):
-        mock_urlopen.side_effect = TimeoutError("timed out")
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_timeout_error(self, mock_open):
+        mock_open.side_effect = TimeoutError("timed out")
         env_var = "TEST_VAC_TOKEN"
         os.environ[env_var] = "secret-token"
         try:
@@ -188,14 +188,14 @@ class TestVisionContentProvider(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_http_error_redacts_token(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_http_error_redacts_token(self, mock_open):
         secret = "super_secret_bearer_token"
         error_file = io.BytesIO(b"Unauthorized access")
         http_err = urllib.error.HTTPError(
             "http://example.com/api", 401, f"Unauthorized with token {secret}", {}, error_file
         )
-        mock_urlopen.side_effect = http_err
+        mock_open.side_effect = http_err
         env_var = "TEST_VAC_TOKEN"
         os.environ[env_var] = secret
         try:
@@ -213,12 +213,12 @@ class TestVisionContentProvider(unittest.TestCase):
             http_err.close()
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_bad_json_response(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_bad_json_response(self, mock_open):
         mock_resp = mock.MagicMock()
         mock_resp.read.return_value = b"Not valid json <html"
         mock_resp.__enter__.return_value = mock_resp
-        mock_urlopen.return_value = mock_resp
+        mock_open.return_value = mock_resp
 
         env_var = "TEST_VAC_TOKEN"
         os.environ[env_var] = "secret-token"
@@ -233,8 +233,8 @@ class TestVisionContentProvider(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_valid_response_creates_decisions(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_valid_response_creates_decisions(self, mock_open):
         mock_resp = mock.MagicMock()
         resp_data = {
             "decisions": [
@@ -249,7 +249,7 @@ class TestVisionContentProvider(unittest.TestCase):
         }
         mock_resp.read.return_value = json.dumps(resp_data).encode("utf-8")
         mock_resp.__enter__.return_value = mock_resp
-        mock_urlopen.return_value = mock_resp
+        mock_open.return_value = mock_resp
 
         env_var = "TEST_VAC_TOKEN"
         os.environ[env_var] = "secret-token"
@@ -270,7 +270,7 @@ class TestVisionContentProvider(unittest.TestCase):
             self.assertEqual(d.sequence_rank, 1)
 
             # verify Authorization header and payload
-            req = mock_urlopen.call_args[0][0]
+            req = mock_open.call_args[0][0]
             self.assertEqual(req.get_header("Authorization"), "Bearer secret-token")
             payload = json.loads(req.data.decode("utf-8"))
             self.assertEqual(len(payload["clips"]), 1)
@@ -389,9 +389,9 @@ class NarrationContentProviderTest(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_network_failure_fails_closed(self, mock_urlopen):
-        mock_urlopen.side_effect = urllib.error.URLError("connection refused")
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_network_failure_fails_closed(self, mock_open):
+        mock_open.side_effect = urllib.error.URLError("connection refused")
         env_var = "TEST_NARRATION_TOKEN"
         os.environ[env_var] = "token123"
         try:
@@ -405,8 +405,8 @@ class NarrationContentProviderTest(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_http_error_fails_closed(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_http_error_fails_closed(self, mock_open):
         err_fp = io.BytesIO(b"bad gateway")
         err = urllib.error.HTTPError(
             url="http://example.com/api",
@@ -415,7 +415,7 @@ class NarrationContentProviderTest(unittest.TestCase):
             hdrs={},
             fp=err_fp,
         )
-        mock_urlopen.side_effect = err
+        mock_open.side_effect = err
         env_var = "TEST_NARRATION_TOKEN"
         os.environ[env_var] = "token123"
         try:
@@ -430,12 +430,12 @@ class NarrationContentProviderTest(unittest.TestCase):
             err.close()
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_invalid_json_fails_closed(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_invalid_json_fails_closed(self, mock_open):
         mock_resp = mock.MagicMock()
         mock_resp.status = 200
         mock_resp.read.return_value = b"not json"
-        mock_urlopen.return_value = mock_resp
+        mock_open.return_value = mock_resp
 
         env_var = "TEST_NARRATION_TOKEN"
         os.environ[env_var] = "token123"
@@ -450,8 +450,8 @@ class NarrationContentProviderTest(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_successful_narration(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_successful_narration(self, mock_open):
         api_response = {
             "model_version": "gpt-4o-2024-08-06",
             "narrations": [
@@ -468,7 +468,7 @@ class NarrationContentProviderTest(unittest.TestCase):
         mock_resp = mock.MagicMock()
         mock_resp.status = 200
         mock_resp.read.return_value = json.dumps(api_response).encode("utf-8")
-        mock_urlopen.return_value = mock_resp
+        mock_open.return_value = mock_resp
 
         env_var = "TEST_NARRATION_TOKEN"
         os.environ[env_var] = "secret-token"
@@ -492,7 +492,7 @@ class NarrationContentProviderTest(unittest.TestCase):
             self.assertTrue(d.needs_review)
 
             # verify Authorization header and payload
-            req = mock_urlopen.call_args[0][0]
+            req = mock_open.call_args[0][0]
             self.assertEqual(req.get_header("Authorization"), "Bearer secret-token")
             payload = json.loads(req.data.decode("utf-8"))
             self.assertEqual(len(payload["clips"]), 1)
@@ -500,15 +500,15 @@ class NarrationContentProviderTest(unittest.TestCase):
         finally:
             os.environ.pop(env_var, None)
 
-    @mock.patch("urllib.request.urlopen")
-    def test_model_cannot_clear_needs_review(self, mock_urlopen):
+    @mock.patch("urllib.request.OpenerDirector.open")
+    def test_model_cannot_clear_needs_review(self, mock_open):
         api_response = {"narrations": [{
             "clip_index": 0, "text": "模型自称免审", "start": 0.5, "end": 3.5, "needs_review": False,
         }]}
         mock_resp = mock.MagicMock()
         mock_resp.status = 200
         mock_resp.read.return_value = json.dumps(api_response).encode("utf-8")
-        mock_urlopen.return_value = mock_resp
+        mock_open.return_value = mock_resp
         env_var = "TEST_NARRATION_TOKEN"
         os.environ[env_var] = "secret-token"
         try:

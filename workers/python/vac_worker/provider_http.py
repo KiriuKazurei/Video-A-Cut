@@ -14,12 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .content import ContentError, _read_limited_response
-
-
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ContentError('provider redirects are refused; configure the final API base URL')
+from .content import ContentError, NoRedirect, _read_limited_response
 
 
 def api_base(endpoint: str, api_format: str) -> str:

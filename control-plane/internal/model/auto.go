@@ -71,6 +71,7 @@ const (
 	// AutoHaltHumanCompleted: a person recorded acceptance on the run, so the
 	// run left the automatic path. The overlay is closed, the hold released.
 	AutoHaltHumanCompleted = "human_completed"
+	AutoHaltHumanRejected  = "human_rejected"
 )
 
 // Reasons an auto run waits for the user (workflow_auto.halt_reason while the

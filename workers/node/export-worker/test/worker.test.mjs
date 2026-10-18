@@ -234,4 +234,5 @@ test('a brief whose hash does not match fails the task before the CLI runs', asy
   assert.equal(fail[1].reason.includes(brief), false);
   assert.ok(!client.calls.some(([name]) => name === 'submit_delivery'));
   await assert.rejects(readFile(join(dir, 'deliveries', 'clip', 't1', 'worker-receipt.json')));
+  assert.ok(!JSON.stringify(client.calls).includes('别的'));
 });

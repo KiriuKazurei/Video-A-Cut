@@ -8,6 +8,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME, args
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); } catch { /* ignore */ } });
 const page = await context.newPage();
+page.on('pageerror', error => console.error('PAGEERROR', error));
 const posts = [];
 const run = (stage) => ({ run_id: 'run_kb', asset_id: '_selfcheck', base_revision_id: 'b', current_revision_id: 'rev1', status: 'awaiting_review', stage, version: 3, content_mode: 'builtin' });
 const state = { stage: 'scene_review' };
@@ -39,6 +40,9 @@ ok('内容编辑 hides approval buttons; 审查 shows them plus a pending counte
 
 // 2) N 跳到下一个待处理场景（循环），C 确认当前聚焦的场景
 await page.locator('body').click({ position: { x: 5, y: 400 } });
+posts.length = 0;
+await page.keyboard.press('c'); await page.keyboard.press('a'); await page.waitForTimeout(300);
+assert.equal(posts.length, 0, 'approval shortcuts do nothing outside a review card or timeline');
 await page.keyboard.press('n'); await page.waitForTimeout(300);
 assert.match(await visible('.workflow-card.is-focused').innerText(), /场景二/);
 await page.keyboard.press('n'); await page.waitForTimeout(300);
@@ -49,6 +53,17 @@ await page.keyboard.press('c'); await page.waitForTimeout(500);
 const confirm = posts.find((p) => /scene-reviews/.test(p.url));
 assert.ok(confirm, 'confirm request sent'); assert.equal(confirm.body.scene_id, 's2'); assert.equal(confirm.body.decision, 'confirmed'); assert.equal(confirm.body.expected_version, 3);
 ok('N cycles pending scenes; C confirms the focused scene (request body checked)');
+
+// Direct keyboard focus must select its own card; completed cards must not approve another item.
+posts.length = 0;
+await visible('.scene-card[data-focus-key="scene:s3"]').focus();
+await page.keyboard.press('c'); await page.waitForTimeout(500);
+assert.equal(posts.find(p => /scene-reviews/.test(p.url))?.body.scene_id, 's3');
+posts.length = 0;
+await visible('.scene-card[data-focus-key="scene:s1"]').focus();
+await page.keyboard.press('c'); await page.waitForTimeout(300);
+assert.equal(posts.length, 0, 'an already confirmed card must not approve a different scene');
+ok('keyboard focus selects the exact card; confirmed cards never approve another item');
 
 // 3) 打字时不触发：焦点在输入框里按 c/n/a 不会发请求，也不会移动聚焦
 posts.length = 0;
@@ -92,6 +107,7 @@ await page.locator('body').click({ position: { x: 5, y: 400 } });
 posts.length = 0;
 await page.keyboard.press('c'); await page.waitForTimeout(300);
 assert.equal(posts.length, 0);
+await page.keyboard.press('n'); await page.waitForTimeout(300);
 await page.keyboard.press('a'); await page.waitForTimeout(500);
 const approve = posts.find((p) => /narration-reviews/.test(p.url));
 assert.ok(approve); assert.equal(approve.body.narration_id, 'n2');

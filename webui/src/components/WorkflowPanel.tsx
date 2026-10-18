@@ -185,30 +185,34 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
     const t = e.target as HTMLElement;
     if (t.closest('button, input, textarea, .ant-select, a, .ant-input-number')) return;
     fn();
+    (e.currentTarget as HTMLElement).focus({ preventScroll: true });
   };
 
   // 审查提速：待处理项与快捷键（C 确认场景 / A 批准解说 / N 下一待处理）。只有当前可见的面板响应，且仅在对应闸口开启时生效。
   const pendingScenes = scenes.filter(sc => sc.decision !== 'confirmed' && sc.decision !== 'rejected');
   const pendingLines = lines.filter(l => !l.approved_hash);
+  const focusCard = (key: string) => rootRef.current?.querySelector<HTMLElement>(`.workflow-card[data-focus-key="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
   const jumpNext = () => {
     if (activeTab === 'scenes') {
       const list = pendingScenes; if (!list.length) return false;
       const at = list.findIndex(sc => focus === `scene:${sc.scene_id}`);
-      showScene(list[(at + 1) % list.length]); return true;
+      const next = list[(at + 1) % list.length];
+      showScene(next); focusCard(`scene:${next.scene_id}`); return true;
     }
     const list = pendingLines; if (!list.length) return false;
     const at = list.findIndex(l => focus === `line:${l.id}`);
-    showLine(list[(at + 1) % list.length]); return true;
+    const next = list[(at + 1) % list.length];
+    showLine(next); focusCard(`line:${next.id}`); return true;
   };
   const onShortcut = (action: ReviewShortcutAction) => {
     if (!current || !review.data || busy) return;
     if (action === 'next') { jumpNext(); return; }
     if (action === 'confirm' && isReview && sceneGate) {
-      const sc = scenes.find(x => focus === `scene:${x.scene_id}` && x.decision !== 'confirmed') ?? pendingScenes[0];
+      const sc = pendingScenes.find(x => focus === `scene:${x.scene_id}`);
       if (sc?.scene_id) invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: sc.scene_id!, decision: 'confirmed', note }));
     }
     if (action === 'approve' && isReview && draftGate) {
-      const ln = lines.find(x => focus === `line:${x.id}` && !x.approved_hash) ?? pendingLines[0];
+      const ln = pendingLines.find(x => focus === `line:${x.id}`);
       if (ln?.id) invoke(() => api.approveNarration(current.run_id, { ...context(), narration_id: ln.id! }));
     }
   };
@@ -301,7 +305,8 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
                 {!scenes.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="识别完成后会在这里列出场景画面。" />}
                 {review.data?.scenes?.map(scene => <Card size="small" key={scene.scene_id}
                   data-focus-key={`scene:${scene.scene_id}`}
-                  className={`workflow-card scene-card${focus === `scene:${scene.scene_id}` ? ' is-focused' : ''}`}
+                  className={`workflow-card scene-card${focus === `scene:${scene.scene_id}` ? ' is-focused' : ''}`} tabIndex={0}
+                  onFocus={e => { if (e.target === e.currentTarget) showScene(scene); }}
                   onClick={e => cardActivate(e, () => showScene(scene))}
                   title={<Typography.Text strong className="scene-title">{scene.label} · {scene.decision || '待确认'}</Typography.Text>}
                   extra={<Tag color={decisionColor(scene.decision)}>{scene.decision || '待确认'}</Tag>}>
@@ -324,7 +329,8 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
                 {!lines.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="场景确认、排序后生成草稿。" />}
                 {review.data?.narration?.map(line => <Card size="small" key={line.id}
                   data-focus-key={`line:${line.id}`}
-                  className={`workflow-card narration-card${focus === `line:${line.id}` ? ' is-focused' : ''}`}
+                  className={`workflow-card narration-card${focus === `line:${line.id}` ? ' is-focused' : ''}`} tabIndex={0}
+                  onFocus={e => { if (e.target === e.currentTarget) showLine(line); }}
                   onClick={e => cardActivate(e, () => showLine(line))}>
                   <DraftEdit key={`${review.data!.revision.revision_id}-${line.id}`} line={line} scenes={scenes} disabled={busy || !['draft_review', 'acceptance'].includes(current.stage)} save={fields => invoke(() => api.editWorkflow(current.run_id, { ...context(), narration_id: line.id, ...fields }))} />
                   <Flex align="center" gap={8} wrap style={{ margin: '8px 0' }}>

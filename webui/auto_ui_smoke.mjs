@@ -16,6 +16,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-cor
 // ---------- mock 后端 ----------
 const now = () => new Date().toISOString();
 const asset = { asset_id: 'clip_auto', status: 'ingested', agent_visible: true, human_approved: true, locked: false, allowed_agents: [], artifacts: {}, created_at: now(), updated_at: now(), input_kind: 'edl_package' };
+const assets = [asset, { ...asset, asset_id: 'clip_other' }];
 const mkProfile = (id, name, revision, mode = 'configured') => ({ schema_version: 1, profile_id: id, revision, name, content_mode: mode, vision: { adapter: 'vision', api_format: 'openai', endpoint: 'https://api.example.com/v1', model: 'm', token_env: 'VAC_VISION_TOKEN' }, narration: { adapter: 'narration', api_format: 'openai', endpoint: 'https://api.example.com/v1', model: 'm', token_env: 'VAC_NARRATION_TOKEN' }, sampling: { max_frames: 12, max_bytes: 12582912, timeout_seconds: 60 }, tts_voice: 'v', export_target: 'premiere' });
 const profiles = [mkProfile('cloud_cut', '云端剪辑', 2), mkProfile('local_cut', '本机剪辑', 1), mkProfile('regress', '工程回归', 1, 'builtin')];
 const NOTICES = {
@@ -42,12 +43,13 @@ const err = (res, status, code, message) => json(res, status, { error: { code, m
 const readBody = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b ? JSON.parse(b) : {})); });
 
 async function api(req, res, url) {
-  const p = url.pathname; const m = req.method;
+  // Both fixture assets use the same empty workflow and preflight responses.
+  const p = url.pathname.replace('/api/assets/clip_other', '/api/assets/clip_auto'); const m = req.method;
   if (p === '/api/events') { res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); res.write(': ok\n\n'); mk.sse.add(res); req.on('close', () => mk.sse.delete(res)); return; }
   if (p === '/api/ingest-roots') return json(res, 200, { configured: false, roots: [], policy: {}, ingesters: [] });
   if (p === '/api/visible-set' && m === 'GET') return json(res, 200, { asset_ids: ['clip_auto'], sha256: 'vis-cloud', confirmed: true, script_finalize: true, stale: false, assets: [{ asset_id: 'clip_auto', status: 'ingested', agent_visible: true, ingested: true }] });
-  if (p === '/api/assets' && m === 'GET') return json(res, 200, [asset]);
-  if (p === '/api/assets/clip_auto' && m === 'GET') return json(res, 200, asset);
+  if (p === '/api/assets' && m === 'GET') return json(res, 200, assets);
+  if (p === '/api/assets/clip_auto' && m === 'GET') return json(res, 200, assets.find(a => url.pathname.endsWith('/' + a.asset_id)));
   if (p === '/api/assets/clip_auto/workflows') return json(res, 200, mk.run ? [mk.run] : []);
   if (p === '/api/assets/clip_auto/files' || p === '/api/assets/clip_auto/recordings') return json(res, 200, []);
   if (p === '/api/processing-profiles' && m === 'GET') return json(res, 200, profiles);
@@ -67,7 +69,8 @@ async function api(req, res, url) {
   if (p === '/api/assets/clip_auto/auto-runs' && m === 'POST') {
     const body = await readBody(req); mk.calls.start++; mk.bodies.start.push(body);
     if (mk.startMode === 'slow') await new Promise(r => setTimeout(r, 700));
-    if (mk.startMode === 'fail500') return err(res, 500, 'internal', 'sql: boom');
+    if (mk.startMode === 'heldFail') await new Promise(resolve => { mk.releaseStart = resolve; });
+    if (mk.startMode === 'fail500' || mk.startMode === 'heldFail') return err(res, 500, 'internal', 'sql: boom');
     if (mk.startMode === 'conflict') return err(res, 409, 'conflict', 'service: auto_run_in_progress');
     mk.run = newRun('recognize'); mk.auto = baseAuto();
     return json(res, 201, { run: mk.run, auto: mk.auto });
@@ -121,7 +124,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 // ---------- 浏览器 ----------
 const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox'] });
 const context = await browser.newContext({ viewport: { width: 1500, height: 1000 } });
-await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); } catch { /* ignore */ } });
+await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); localStorage.setItem('vac_start_mode_v1', 'auto'); } catch { /* ignore */ } });
 const page = await context.newPage();
 process.on('uncaughtException', async (e) => { console.error(e); console.error('PAGEERRORS', pageErrors); try { await page.screenshot({ path: path.join(shots, '_failure.png') }); console.error('URL', page.url()); console.error((await page.locator('body').innerText()).slice(0, 1500)); } catch { /* ignore */ } process.exit(1); });
 page.on('console', (m) => { if (process.env.DEBUG_SMOKE) console.log('[console]', m.type(), m.text().slice(0, 300)); }); page.on('requestfailed', (r) => { if (process.env.DEBUG_SMOKE) console.log('[reqfail]', r.url()); });
@@ -146,6 +149,7 @@ const doneCount = async () => (await progress.locator('.ant-steps-item-finish').
 await page.goto(`${base}/#/editing/import`, { waitUntil: 'domcontentloaded' });
 await card.waitFor();
 assert.equal(await progress.count(), 0, 'no progress panel before any run');
+assert.match(await card.locator('.start-mode .ant-segmented-item-selected').innerText(), /分步生成/, 'a new session ignores the old stored automatic mode');
 await card.locator('.start-mode .ant-segmented-item', { hasText: '自动模式' }).click();
 await startBtn.waitFor();
 await card.locator('.auto-notice').waitFor();
@@ -162,6 +166,106 @@ await page.waitForFunction(() => { const b = document.querySelector('.page:not([
 await authBox.uncheck();
 assert.equal(await startBtn.isDisabled(), true, 'unchecking authorization disables start again');
 ok('start is disabled until 全局授权 is ticked (and again after unticking); egress notice with endpoints is shown');
+
+// CR02: a previous tick cannot authorize a new revision, notice, fallback preset or asset.
+{
+  const originalNotice = { ...NOTICES.cloud_cut };
+  const refresh = async () => {
+    const refreshed = page.waitForResponse(r => new URL(r.url()).pathname === '/api/processing-profiles' && r.request().method() === 'GET');
+    await page.locator('.app-header-right button').filter({ hasText: '刷新' }).first().click();
+    await refreshed;
+  };
+  const authorize = async () => {
+    await authBox.check();
+    await page.waitForFunction(() => !document.querySelector('.page:not([hidden]) .auto-start-btn')?.disabled);
+  };
+  const unauthorized = async (reason, expectedCalls = 0) => {
+    assert.equal(await authBox.isChecked(), false, reason + ': old tick must clear');
+    assert.equal(await startBtn.isDisabled(), true, reason + ': start must stay disabled');
+    assert.equal(mk.calls.start, expectedCalls, reason + ': no start request without a new tick');
+  };
+  await authorize();
+  profiles[0].revision = 3;
+  NOTICES.cloud_cut = { ...originalNotice, notice_sha256: 'sha-cloud-v3', notice: 'CR02 version 3: changed provider destination' };
+  await refresh();
+  await card.getByTestId('auto-notice-text').filter({ hasText: 'CR02 version 3' }).waitFor();
+  await unauthorized('preset revision refresh');
+  await authorize();
+  NOTICES.cloud_cut = { ...NOTICES.cloud_cut, notice_sha256: 'sha-cloud-v3-new', notice: 'CR02 same revision: updated disclosure' };
+  await refresh();
+  await card.getByTestId('auto-notice-text').filter({ hasText: 'CR02 same revision' }).waitFor();
+  await unauthorized('notice hash refresh at the same revision');
+  await authorize();
+  profiles[0].content_mode = 'builtin';
+  await refresh();
+  await card.locator('.auto-notice', { hasText: '数据只在本机处理' }).waitFor();
+  await unauthorized('selected preset disappears and falls back to another preset');
+  profiles[0].content_mode = 'configured';
+  profiles[0].revision = 2;
+  NOTICES.cloud_cut = originalNotice;
+  await refresh();
+  await card.getByTestId('auto-notice-text').filter({ hasText: originalNotice.notice.split('\n')[0] }).waitFor();
+  await unauthorized('return to a previously authorized identity');
+  await authorize();
+  await page.locator('.asset-list [data-asset-id="clip_other"]').click();
+  await page.waitForFunction(() => document.querySelector('.asset-list [data-asset-id="clip_other"]')?.getAttribute('aria-pressed') === 'true');
+  await unauthorized('asset changes');
+  await page.locator('.asset-list [data-asset-id="clip_auto"]').click();
+  await page.waitForFunction(() => document.querySelector('.asset-list [data-asset-id="clip_auto"]')?.getAttribute('aria-pressed') === 'true');
+  await unauthorized('return to the previous asset');
+  await authorize();
+  // An offline mutation is queued before mutationFn executes. Changing to an already
+  // cached preset and ticking it must not retarget that earlier start click on resume.
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await startBtn.click();
+  assert.equal(mk.calls.start, 0, 'offline start is queued without sending');
+  await card.locator('.auto-profile-select').click();
+  await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option', { hasText: '本机剪辑' }).click();
+  await card.locator('.auto-notice', { hasText: '数据只在本机处理' }).waitFor();
+  assert.equal(await authBox.isChecked(), false);
+  await authBox.check();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await card.locator('.auto-start-error').waitFor();
+  assert.equal(mk.calls.start, 0, 'resuming cannot retarget the queued start to a newly authorized preset');
+  await card.locator('.auto-profile-select').click();
+  await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option', { hasText: '云端剪辑' }).click();
+  await card.locator('.auto-notice', { hasText: '数据会发送到外部服务' }).waitFor();
+  await unauthorized('return after rejecting a queued start');
+  await authorize();
+  mk.startMode = 'heldFail';
+  const firstResponse = page.waitForResponse(r => r.url().endsWith('/auto-runs') && r.request().method() === 'POST');
+  await startBtn.click();
+  const holdDeadline = Date.now() + 8000;
+  while (!mk.releaseStart && Date.now() < holdDeadline) await wait(10);
+  assert.equal(typeof mk.releaseStart, 'function', 'start reaches the held mock request within its timeout');
+  profiles[0].revision = 4;
+  NOTICES.cloud_cut = { ...originalNotice, notice_sha256: 'sha-cloud-v4', notice: 'CR02 version 4: changed during a pending request' };
+  await refresh();
+  await card.getByTestId('auto-notice-text').filter({ hasText: 'CR02 version 4' }).waitFor();
+  await unauthorized('identity changes while a start request is pending', 1);
+  mk.releaseStart();
+  await firstResponse;
+  await card.locator('.auto-start-error').waitFor();
+  assert.equal(mk.calls.start, 1, 'new explicit authorization permits exactly one request');
+  assert.equal(mk.bodies.start[0].revision, 2);
+  assert.deepEqual(mk.bodies.start[0].authorization, { notice_sha256: originalNotice.notice_sha256, accept_external_egress: true });
+  await unauthorized('old request completion cannot authorize the new identity', 1);
+  await authorize();
+  mk.startMode = 'fail500';
+  const newResponse = page.waitForResponse(r => r.url().endsWith('/auto-runs') && r.request().method() === 'POST');
+  await startBtn.click();
+  await newResponse;
+  assert.equal(mk.calls.start, 2);
+  assert.equal(mk.bodies.start[1].revision, 4);
+  assert.equal(mk.bodies.start[1].authorization.notice_sha256, 'sha-cloud-v4');
+  assert.notEqual(mk.bodies.start[0].idempotency_key, mk.bodies.start[1].idempotency_key);
+  profiles[0].revision = 2; NOTICES.cloud_cut = originalNotice;
+  await refresh();
+  await card.getByTestId('auto-notice-text').filter({ hasText: originalNotice.notice.split('\n')[0] }).waitFor();
+  await unauthorized('restoring the original fixture also requires a new tick', 2);
+  mk.calls.start = 0; mk.bodies.start.length = 0; mk.startMode = 'ok';
+  ok('CR02: revision, notice, preset fallback, asset, queued and in-flight identity changes clear consent; returning cannot revive it; explicit reauthorization can start');
+}
 
 // 新手引导（antd Tour）：有「自动模式」切换的页面多一步介绍，并高亮该切换；没有切换的页面不出现这一步
 {
@@ -296,6 +400,7 @@ setAuto(baseAuto({ auto_version: 6, state: 'awaiting_user_decision', delivery_ho
 await kind('decision');
 const dec = progress.locator('.auto-decision');
 assert.match(await dec.innerText(), /待你确认/);
+assert.match(await dec.innerText(), /成片可导出/);
 assert.match(await dec.innerText(), /尚未导出/);
 assert.doesNotMatch(await dec.innerText(), /已确认/);
 setAuto(baseAuto({ auto_version: 6, state: 'awaiting_user_decision', delivery_hold: false, round: 1, total_rounds: 1, latest_review: review('medium', 0.78, ['item_below_floor']), delivery: delivered,
@@ -339,7 +444,25 @@ assert.equal(mk.bodies.decision[0].decision, 'export'); assert.equal('feedback' 
 assert.equal(mk.bodies.decision[0].expected_auto_version, 8);
 ok('MEDIUM → 直接导出: decision=export once (dblclick-safe) → done panel');
 
+// 放弃需二次确认；取消确认不发送决定，确认后才停止。
+setAuto(baseAuto({ auto_version: 8, state: 'awaiting_user_decision', delivery_hold: true, delivery: delivered,
+  decision: { reason: 'medium', can_export: true, can_revise: true } }), newRun('acceptance', 'ready_for_acceptance'));
+await kind('decision');
+mk.calls.decision = 0; mk.bodies.decision.length = 0;
+await dec.getByRole('button', { name: '放弃本次结果', exact: true }).click();
+await page.getByRole('button', { name: '继续保留', exact: true }).click();
+assert.equal(mk.calls.decision, 0);
+await dec.getByRole('button', { name: '放弃本次结果', exact: true }).click();
+await page.getByRole('button', { name: '放弃结果', exact: true }).click();
+await kind('halted');
+assert.equal(mk.calls.decision, 1);
+assert.equal(mk.bodies.decision[0].decision, 'discard');
+assert.match(await progress.innerText(), /你已放弃这次自动结果/);
+ok('discard needs confirmation; cancelling sends nothing; confirming posts once and halts');
+
 // 7) 高档 / 完成：下载入口
+setAuto(baseAuto({ auto_version: 9, state: 'completed', latest_review: review('medium', 0.7), delivery: delivered }), newRun('acceptance', 'ready_for_acceptance'));
+await kind('done');
 const mp4 = progress.locator('a[href*="/api/previews/pv1/files/mp4"]');
 assert.equal(await mp4.count(), 1);
 assert.match(await mp4.innerText(), /720p 预览规格/);
@@ -472,13 +595,16 @@ await card.waitFor();
 await page.waitForFunction(() => document.querySelector('.page:not([hidden]) .start-mode'));
 await card.locator('.start-mode .ant-segmented-item', { hasText: '自动模式' }).click();
 await page.getByText('读取授权说明失败').waitFor();
-await card.locator('.auto-authorize input[type=checkbox]').check();
+assert.equal(await card.locator('.auto-authorize input[type=checkbox]').isDisabled(), true, 'no authorization before the notice is readable');
 assert.equal(await startBtn.isDisabled(), true, 'no start without a readable notice');
 const noticeCalls = mk.calls.notice; await wait(2500);
 assert.equal(mk.calls.notice, noticeCalls, 'notice failure does not loop');
 await card.locator('.auto-notice').count();
 await page.getByRole('button', { name: '重试' }).first().click();
 await card.locator('.auto-notice').waitFor();
+assert.equal(await authBox.isChecked(), false, 'authorization before the notice loaded cannot carry over');
+assert.equal(await startBtn.isDisabled(), true, 'read the recovered notice and explicitly authorize it');
+await authBox.check();
 await page.waitForFunction(() => { const b = document.querySelector('.page:not([hidden]) .auto-start-btn'); return b && !b.disabled; });
 ok('notice read failure: start stays disabled, no loop; 重试 recovers');
 

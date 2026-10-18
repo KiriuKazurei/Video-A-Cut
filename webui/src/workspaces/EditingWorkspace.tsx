@@ -19,9 +19,7 @@ import { NoAssetEmpty } from '../components/NoAssetEmpty';
 import { AutoRunProgress, AutoRunStart, useAutoView } from '../components/AutoRunPanel';
 import { autoPolling } from '../autoRun';
 
-const START_MODE_KEY = 'vac_start_mode_v1';
 type StartMode = 'manual' | 'auto';
-const readStartMode = (): StartMode => { try { return localStorage.getItem(START_MODE_KEY) === 'auto' ? 'auto' : 'manual'; } catch { return 'manual'; } };
 
 /** 「开始生成」卡：分步生成（预设 + 预检 + 开始）与自动模式（一句话 + 全局授权 + 一键）并存；当前流程是自动模式时先展示进度。 */
 function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
@@ -31,8 +29,7 @@ function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
   navigate: (state: Partial<RouteState>) => void;
   onPreparedStarted: (run: WorkflowRun) => void;
 }) {
-  const [mode, setMode] = useState<StartMode>(readStartMode);
-  const pick = (m: StartMode) => { setMode(m); try { localStorage.setItem(START_MODE_KEY, m); } catch { /* 隐私模式：本次会话内有效即可 */ } };
+  const [mode, setMode] = useState<StartMode>('manual');
   const auto = useAutoView(run?.run_id);
   const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
   const live = autoPolling(auto.data?.state);
@@ -59,7 +56,7 @@ function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
       )}
       {!live && (!ended || showForm) && canGenerate && (
         <div className={auto.data ? 'auto-after-progress' : undefined}>
-          <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={pick}
+          <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={setMode}
             options={[{ value: 'manual', label: '分步生成' }, { value: 'auto', label: '自动模式' }]} />
           <div className="start-mode-body">
             {mode === 'auto'

@@ -1006,10 +1006,17 @@ func finishedByPerson(ctx context.Context, st *store.Store, a model.WorkflowAuto
 		if err != nil {
 			return "", "", "", false, err
 		}
+		found, reason := false, model.AutoHaltHumanCompleted
 		for _, r := range recs {
 			if r.ExportRevisionID == run.CurrentRevisionID && isHumanActor(r.Actor) {
-				return model.AutoStateHalted, model.AutoHaltHumanCompleted, model.AutoDecisionHumanAcceptance, true, nil
+				found = true
+				if r.Result == model.AcceptanceFailed {
+					reason = model.AutoHaltHumanRejected
+				}
 			}
+		}
+		if found {
+			return model.AutoStateHalted, reason, model.AutoDecisionHumanAcceptance, true, nil
 		}
 	}
 	return "", "", "", false, nil

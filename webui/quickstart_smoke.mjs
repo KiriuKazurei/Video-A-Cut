@@ -13,6 +13,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME, args
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); } catch { /* ignore */ } });
 const page = await context.newPage();
+await page.route(/\/api\/tts\/capabilities(?:\?.*)?$/, route => route.fulfill({ json: { sapi_voices: ['Fixture Local Voice'], stepfun_voices: [] } }));
 
 const mk = (id, name, revision) => ({ schema_version: 1, profile_id: id, revision, name, content_mode: 'builtin', vision: { adapter: 'builtin' }, narration: { adapter: 'builtin' }, sampling: { max_frames: 12, max_bytes: 12582912, timeout_seconds: 60 }, tts_voice: 'v', export_target: 'premiere' });
 const profiles = { alpha_profile: mk('alpha_profile', 'Alpha 预设', 1), beta_profile: mk('beta_profile', 'Beta 预设', 1) };
@@ -175,6 +176,18 @@ fail.alpha_profile = false; await errAlert.locator('button:has-text("重试")').
 starts.length = 0; await startBtn.click(); await page.waitForTimeout(400);
 assert.equal(starts[0].revision, 7);
 ok('(ii) 500 on list-revision change: ≤3 requests in 4s, start disabled; recovers on newer list revision and on 重试');
+
+// 新预设使用发现的本机声音，加载已有预设保留其声音。
+await page.goto(`${base}/#/settings/profiles`, { waitUntil: 'domcontentloaded' });
+const settings = page.locator('.page:not([hidden]) .preparation-panel');
+await settings.getByRole('button', { name: '新建预设', exact: true }).click();
+const voice = settings.locator('.ant-form-item', { hasText: 'SAPI 声音名称' }).locator('input');
+await page.waitForFunction(() => [...document.querySelectorAll('.page:not([hidden]) .preparation-panel input')].some(input => input.value === 'Fixture Local Voice'));
+assert.equal(await voice.inputValue(), 'Fixture Local Voice');
+await voice.fill('User Selected Voice');
+await page.waitForTimeout(300);
+assert.equal(await voice.inputValue(), 'User Selected Voice');
+ok('new profiles use an installed SAPI voice and retain an explicit user choice');
 
 await browser.close();
 console.log(`quickstart smoke passed (${n} groups)`);
