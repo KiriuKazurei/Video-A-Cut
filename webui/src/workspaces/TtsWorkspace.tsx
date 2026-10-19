@@ -8,6 +8,11 @@ import { ValueSelect, errorText } from '../components/ui';
 import { TtsPlayer } from '../components/TtsPlayer';
 import type { RouteState } from '../navigation';
 import { scriptTimelineStarts, type ScriptVoiceSave } from '../scriptWorkbench';
+import { skillApi } from '../skillApi';
+import { skillQueryKeys } from '../skillContracts';
+import { useSkillWorkspace } from '../skillWorkspace';
+import { isVersionConflict, protectedQueryRetry, runDetailKey, versionConflictMessage } from '../skillView';
+import { ProtectedError } from '../components/HumanSessionControl';
 
 const SAMPLE_TEXT = '欢迎来到声音调控台。调整音色、语速和语气，找到适合你的表达方式。';
 const stateLabels = { queued: '等待生成', running: '正在合成', succeeded: '试听已生成', failed: '生成失败', cancelled: '已取消' };
@@ -36,6 +41,15 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   const [jobID, setJobID] = useState(''), [historyRevision, setHistoryRevision] = useState(1);
   const [capabilityEnv, setCapabilityEnv] = useState('VAC_TTS_TOKEN');
   const [notice, setNotice] = useState(''), [error, setError] = useState('');
+  const skillWorkspace = useSkillWorkspace();
+  const skillRunId = skillWorkspace.runId;
+  const skillProjectId = skillWorkspace.projectId;
+  const skillRun = useQuery({
+    queryKey: skillProjectId && skillRunId ? skillQueryKeys.run(skillProjectId, skillRunId) : ['vu-run', 'tts-idle'],
+    queryFn: ({ signal }) => skillApi.run(skillRunId, signal),
+    enabled: active && Boolean(skillProjectId && skillRunId),
+    retry: protectedQueryRetry
+  });
   const scriptId = route?.scriptId;
   const segmentIndex = route?.scriptSegment ?? 0;
   const script = useQuery({ queryKey: ['script-workbench', scriptId], queryFn: () => api.scriptWorkbench(scriptId!), enabled: active && Boolean(scriptId), retry: false });
@@ -47,6 +61,11 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voiceConsent, setVoiceConsent] = useState(false);
   const [loadedVoiceForm, setLoadedVoiceForm] = useState('');
+  const [skillSegment, setSkillSegment] = useState(0);
+  const [skillOffset, setSkillOffset] = useState(0);
+  const [skillEnabled, setSkillEnabled] = useState(true);
+  const [skillConsent, setSkillConsent] = useState(false);
+  const [skillLoadedVersion, setSkillLoadedVersion] = useState(-1);
   const voiceFormKey = JSON.stringify([ttsDraftKey(text, settings), voiceOffset, voiceEnabled, voiceConsent]);
   const voiceDirty = Boolean(scriptId && loadedVoiceKey && voiceFormKey !== loadedVoiceForm);
   const staleVoice = Boolean(script.data && (voiceVersion !== script.data.version || loadedVoiceKey !== voiceKey));
@@ -109,6 +128,50 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
     if (route?.scriptVersion !== undefined && route.scriptVersion !== script.data.version) return;
     loadVoiceTarget();
   }, [active, script.data, voiceKey, loadedVoiceKey, dirty, voiceDirty]);
+  const skillPlan = skillRun.data?.plan;
+  const skillTarget = skillPlan?.segments[skillSegment];
+  useEffect(() => {
+    setSkillConsent(false);
+    setSkillLoadedVersion(-1);
+  }, [skillRunId, skillWorkspace.epoch]);
+  useEffect(() => {
+    const reset = () => { if (document.visibilityState === 'hidden') setSkillConsent(false); };
+    document.addEventListener('visibilitychange', reset);
+    return () => document.removeEventListener('visibilitychange', reset);
+  }, []);
+  const loadSkillSegment = () => {
+    if (!skillRun.data || !skillTarget) return;
+    audio.current?.pause();
+    const nextSettings: TtsSettings = skillTarget.voice ?? { engine: 'sapi', voice: capability.data?.sapi_voices[0] ?? '', language: 'zh', speed: 1, volume: 1, pitch_semitones: 0, sapi_rate: 0, instruction: '' };
+    setSettings({ ...nextSettings });
+    setText(skillTarget.narration);
+    setSkillOffset(skillTarget.voice_offset ?? 0);
+    setSkillEnabled(skillTarget.tts_enabled);
+    setSkillConsent(false);
+    setSkillLoadedVersion(skillRun.data.version);
+    setDirty(false);
+    setNotice(`已载入 Skill 运行 v${skillRun.data.version} 第 ${skillSegment + 1} 段。这不会写入旧脚本。`);
+    setError('');
+  };
+  const skillVoiceSave = useMutation({
+    mutationFn: () => skillApi.saveVoice(skillRunId, {
+      expected_version: skillLoadedVersion,
+      segment_index: skillSegment,
+      enabled: skillEnabled,
+      settings: { ...settings },
+      offset_seconds: skillOffset,
+      accept_external: skillConsent
+    }),
+    onSuccess: (updated) => {
+      client.setQueryData(skillQueryKeys.run(skillProjectId, skillRunId), updated);
+      setSkillLoadedVersion(updated.version);
+      setSkillConsent(false);
+      setNotice(`已回写 Skill 运行 v${updated.version}。旧定稿已撤销，请回到编辑页重新人工定稿。`);
+      setError('');
+      void client.invalidateQueries({ queryKey: runDetailKey(skillProjectId, updated.id, 'workbench') });
+    },
+    onError: (reason) => setError(isVersionConflict(reason) ? versionConflictMessage() : errorText(reason))
+  });
   const voiceSave = useMutation({
     mutationFn: (snapshot: { id: string; key: string; form: string; body: ScriptVoiceSave }) => api.saveScriptVoice(snapshot.id, snapshot.body),
     onSuccess: (w, snapshot) => {
@@ -141,6 +204,29 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   const saveSnapshot = (copy: boolean) => save.mutate({ copy, source: loaded, name, text, settings: { ...settings } });
 
   return <div className="page-body tts-workspace">
+    {skillRunId && <Card size="small" title="Skill 运行配音">
+      <Flex vertical gap={8}>
+        <Typography.Text type="secondary">这条声音写回当前 Skill 运行的计划段落，不会改旧脚本。回写后需要重新人工定稿。</Typography.Text>
+        {skillRun.error ? <ProtectedError error={skillRun.error} onRetry={() => void skillRun.refetch()} /> : null}
+        {skillRun.data && <Typography.Text>运行 {skillRun.data.id} · v{skillRun.data.version} · 计划 v{skillPlan?.version ?? '—'}</Typography.Text>}
+        {skillRun.data && !skillPlan && <Alert type="warning" showIcon message="这次运行还没有计划，暂时不能回写段落声音。" />}
+        {skillPlan && <>
+          <ValueSelect<number> aria-label="Skill 声音段落" value={skillSegment} options={skillPlan.segments.map((segment, index) => ({ value: index, label: `第 ${index + 1} 段 · ${segment.narration.slice(0, 30)}` }))} onChange={setSkillSegment} />
+          {skillLoadedVersion !== skillRun.data?.version && <Alert type="warning" showIcon message="运行版本已变化。请载入当前段后再回写，避免覆盖新版本。" />}
+          <Space wrap>
+            <Checkbox checked={skillEnabled} onChange={(event) => setSkillEnabled(event.target.checked)}>启用本段配音</Checkbox>
+            <span>段内偏移（秒）</span>
+            <InputNumber aria-label="Skill 段内偏移" min={0} step={0.05} value={skillOffset} onChange={(value) => setSkillOffset(value ?? 0)} />
+            <Checkbox checked={skillConsent} onChange={(event) => setSkillConsent(event.target.checked)}>允许本段声音外发</Checkbox>
+          </Space>
+          <Space wrap>
+            <Button onClick={loadSkillSegment}>载入当前段</Button>
+            <Button type="primary" loading={skillVoiceSave.isPending} disabled={skillLoadedVersion !== skillRun.data?.version || (skillEnabled && Boolean(draftError))} onClick={() => skillVoiceSave.mutate()}>回写到 Skill 运行</Button>
+            <Button onClick={() => navigate?.({ workspace: 'editing', scriptId: '' })}>回到 Skill 运行定稿</Button>
+          </Space>
+        </>}
+      </Flex>
+    </Card>}
     {scriptId && <Card size="small" title="脚本段落配音">
       <Flex vertical gap={8}>
         {script.error && <Alert type="error" message={errorText(script.error)} />}

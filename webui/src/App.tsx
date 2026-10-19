@@ -29,6 +29,8 @@ import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
 import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 import { TtsWorkspace } from './workspaces/TtsWorkspace';
+import { SkillWorkspaceProvider, useSkillWorkspace } from './skillWorkspace';
+import { protectedQueryRetry } from './skillView';
 
 const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
   resources: <FolderOpenOutlined />,
@@ -42,6 +44,13 @@ const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
  * 四工作区外壳：顶部导航切换主工作区，左右侧栏响应式折叠。
  * 资源管理、编辑、导出为主流程；设置页独立，从右上角齿轮进入。
  */
+function SessionEntry({ onOpen }: { onOpen: () => void }) {
+  const workspace = useSkillWorkspace();
+  return workspace.unlocked
+    ? <Button size="small" onClick={() => void workspace.lock()}>退出人工会话</Button>
+    : <Button size="small" onClick={onOpen}>人工会话</Button>;
+}
+
 export default function App() {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
@@ -146,7 +155,7 @@ export default function App() {
   const { status: connection, ...events } = useEvents(queryClient, watchedTaskId);
 
   const assets = useQuery({ queryKey: ['assets'], queryFn: api.listAssets });
-  const audit = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100) });
+  const audit = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100), retry: protectedQueryRetry });
   const task = useQuery({
     queryKey: ['task', watchedTaskId],
     queryFn: () => api.getTask(watchedTaskId!),
@@ -270,6 +279,7 @@ export default function App() {
   );
 
   return (
+    <SkillWorkspaceProvider>
     <PipelineContext.Provider value={{ stages: pipeline.stages, goTo }}>
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
@@ -359,6 +369,8 @@ export default function App() {
           )}
           
           
+          <SessionEntry onOpen={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })} />
+
           <Button 
             size="small"
             icon={<ReloadOutlined />} 
@@ -558,5 +570,6 @@ export default function App() {
       />
     </Layout>
     </PipelineContext.Provider>
+    </SkillWorkspaceProvider>
   );
 }

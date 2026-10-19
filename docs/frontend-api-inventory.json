@@ -36,7 +36,16 @@
     "webui/src/components/PreviewPanel.tsx",
     "webui/src/components/PreparationPanel.tsx",
     "webui/src/components/DesktopRuntime.tsx",
-    "webui/src/components/DesktopUpdates.tsx"
+    "webui/src/components/DesktopUpdates.tsx",
+    "webui/src/components/ProjectModule.tsx",
+    "webui/src/components/SkillManagerModule.tsx",
+    "webui/src/components/SkillRunModule.tsx",
+    "webui/src/components/SkillDeliveryModule.tsx",
+    "webui/src/components/AgentOperationPanel.tsx",
+    "webui/src/components/HumanSessionControl.tsx",
+    "webui/src/components/TranscriptionFields.tsx",
+    "webui/src/skillView.ts",
+    "webui/src/humanSession.ts"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -716,20 +725,20 @@
       "method": "POST",
       "path": "/api/processing-profiles",
       "frontend_function": "api.saveProfile",
-      "frontend_ui": "PreparationPanel：保存新版本",
+      "frontend_ui": "PreparationPanel / TranscriptionFields：保存预设并编辑可选转录",
       "request": "JSON：profile:ProcessingProfile, expected_revision:number, idempotency_key:string",
       "success_response": "201 ProcessingProfile",
       "behavior": "首次 expected_revision=0/profile.revision=1；后续 revision=expected_revision+1。已保存版本不可覆盖",
-      "usage": "部分接入，待补齐；已有预设保存页面；新增 transcription 仅有类型/外发判定，缺配置编辑控件。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "saveProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 47
       },
-      "frontend_status": "partial",
-      "frontend_status_label": "部分接入，待补齐",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "已有预设保存页面；新增 transcription 仅有类型/外发判定，缺配置编辑控件。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
@@ -1732,20 +1741,20 @@
       "method": "GET",
       "path": "/api/audit",
       "frontend_function": "api.listAudit / fetchAuditLogs",
-      "frontend_ui": "App 历史列表 / AuditLogViewer / AssetManager",
+      "frontend_ui": "AuditLogViewer：审计列表；403 提示解锁，不回退其它地址",
       "request": "query limit 默认200，正整数，上限1000；过大截为1000",
       "success_response": "200 AuditLog[]",
       "behavior": "最新在前；无 offset、时间/类型/actor 服务端过滤。筛选仅作用于已加载记录",
-      "usage": "部分接入，待补齐；审计列表已接线；新增人工会话尚无页面解锁/到期处理，未解锁返回 403。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listAudit",
       "backend_source": {
         "file": "control-plane/internal/api/audit.go",
         "line": 64
       },
-      "frontend_status": "partial",
-      "frontend_status_label": "部分接入，待补齐",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "审计列表已接线；新增人工会话尚无页面解锁/到期处理，未解锁返回 403。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
@@ -3699,27 +3708,32 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/revisions",
       "frontend_function": "skillApi.revisions",
-      "frontend_ui": "运行修订列表/比较未接入。",
+      "frontend_ui": "编辑页：运行修订列表",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；运行修订列表/比较未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillRevisions",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 42
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "运行修订列表/比较未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 46
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 100
+        }
+      ]
     },
     {
       "id": "VU-02",
@@ -3727,27 +3741,32 @@
       "method": "PUT",
       "path": "/api/skill-runs/{id}/voice",
       "frontend_function": "skillApi.saveVoice",
-      "frontend_ui": "SkillRun 段落声音回写/授权未接入；现有 TTS 页仅处理旧脚本。",
+      "frontend_ui": "TTS 专页：Skill 运行段落声音回写",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；SkillRun 段落声音回写/授权未接入；现有 TTS 页仅处理旧脚本。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillVoice",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 46
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "SkillRun 段落声音回写/授权未接入；现有 TTS 页仅处理旧脚本。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 47
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 157
+        }
+      ]
     },
     {
       "id": "VU-03",
@@ -3755,27 +3774,32 @@
       "method": "POST",
       "path": "/api/projects/{id}/media",
       "frontend_function": "skillApi.importMedia",
-      "frontend_ui": "项目素材导入/显式可见集选择未接入。",
+      "frontend_ui": "资源页：导入项目素材",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目素材导入/显式可见集选择未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillImportMedia",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 55
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目素材导入/显式可见集选择未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 30
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 113
+        }
+      ]
     },
     {
       "id": "VU-04",
@@ -3783,27 +3807,32 @@
       "method": "GET",
       "path": "/api/projects",
       "frontend_function": "skillApi.projects",
-      "frontend_ui": "项目列表/切换未接入。",
+      "frontend_ui": "资源页：项目列表",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目列表/切换未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillProjects",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 71
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目列表/切换未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 24
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 27
+        }
+      ]
     },
     {
       "id": "VU-05",
@@ -3811,27 +3840,32 @@
       "method": "POST",
       "path": "/api/projects",
       "frontend_function": "skillApi.createProject",
-      "frontend_ui": "项目创建未接入。",
+      "frontend_ui": "资源页：创建项目",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目创建未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillSaveProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 79
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目创建未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 26
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 85
+        }
+      ]
     },
     {
       "id": "VU-06",
@@ -3839,27 +3873,36 @@
       "method": "GET",
       "path": "/api/projects/{id}",
       "frontend_function": "skillApi.project",
-      "frontend_ui": "项目详情/状态未接入。",
+      "frontend_ui": "资源页与编辑页：项目详情",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目详情/状态未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 75
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目详情/状态未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 25
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 32
+        },
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 51
+        }
+      ]
     },
     {
       "id": "VU-07",
@@ -3867,27 +3910,36 @@
       "method": "PUT",
       "path": "/api/projects/{id}",
       "frontend_function": "skillApi.saveProject",
-      "frontend_ui": "项目流程/默认 Skill/固定预设/授权保存未接入。",
+      "frontend_ui": "资源页项目配置；编辑页保存流程",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目流程/默认 Skill/固定预设/授权保存未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillSaveProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 79
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目流程/默认 Skill/固定预设/授权保存未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 27
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 94
+        },
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 195
+        }
+      ]
     },
     {
       "id": "VU-08",
@@ -3895,27 +3947,36 @@
       "method": "GET",
       "path": "/api/projects/{id}/visible-set",
       "frontend_function": "skillApi.visibleSet",
-      "frontend_ui": "项目 scope v2 媒体/摘要状态未接入。",
+      "frontend_ui": "资源页与编辑页：项目可见集",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目 scope v2 媒体/摘要状态未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillVisible",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 88
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目 scope v2 媒体/摘要状态未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 32
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 38
+        },
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 57
+        }
+      ]
     },
     {
       "id": "VU-09",
@@ -3923,27 +3984,32 @@
       "method": "POST",
       "path": "/api/projects/{id}/visible-set/confirm",
       "frontend_function": "skillApi.confirmVisible",
-      "frontend_ui": "项目级可见集人工确认未接入；全局 F1 确认不能替代。",
+      "frontend_ui": "资源页：确认项目可见集",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目级可见集人工确认未接入；全局 F1 确认不能替代。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillConfirmVisible",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 92
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目级可见集人工确认未接入；全局 F1 确认不能替代。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 33
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProjectModule.tsx",
+          "line": 103
+        }
+      ]
     },
     {
       "id": "VU-10",
@@ -3951,27 +4017,32 @@
       "method": "POST",
       "path": "/api/projects/{id}/exports/ffmpeg",
       "frontend_function": "skillApi.exportProject",
-      "frontend_ui": "项目归属校验后的共享导出未接入。",
+      "frontend_ui": "导出页：导出当前定稿",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目归属校验后的共享导出未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillExport",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 210
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目归属校验后的共享导出未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 28
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillDeliveryModule.tsx",
+          "line": 35
+        }
+      ]
     },
     {
       "id": "VU-11",
@@ -3979,27 +4050,32 @@
       "method": "GET",
       "path": "/api/skills",
       "frontend_function": "skillApi.skills",
-      "frontend_ui": "Skill 管理列表未接入。",
+      "frontend_ui": "设置 → Skill：列表",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；Skill 管理列表未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillList",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 104
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "Skill 管理列表未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 35
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillManagerModule.tsx",
+          "line": 17
+        }
+      ]
     },
     {
       "id": "VU-12",
@@ -4007,27 +4083,32 @@
       "method": "POST",
       "path": "/api/skills",
       "frontend_function": "skillApi.importSkill",
-      "frontend_ui": "本地 Skill 导入未接入。",
+      "frontend_ui": "设置 → Skill：导入",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；本地 Skill 导入未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillImport",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 112
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "本地 Skill 导入未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 37
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillManagerModule.tsx",
+          "line": 49
+        }
+      ]
     },
     {
       "id": "VU-13",
@@ -4035,27 +4116,32 @@
       "method": "GET",
       "path": "/api/skills/{id}",
       "frontend_function": "skillApi.skill",
-      "frontend_ui": "Skill 正文/资源/摘要展示未接入。",
+      "frontend_ui": "设置 → Skill：正文与资源",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；Skill 正文/资源/摘要展示未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillGet",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 108
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "Skill 正文/资源/摘要展示未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 36
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillManagerModule.tsx",
+          "line": 20
+        }
+      ]
     },
     {
       "id": "VU-14",
@@ -4063,27 +4149,32 @@
       "method": "PATCH",
       "path": "/api/skills/{id}",
       "frontend_function": "skillApi.enableSkill",
-      "frontend_ui": "Skill 启停未接入。",
+      "frontend_ui": "设置 → Skill：启停",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；Skill 启停未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillEnable",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 123
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "Skill 启停未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 38
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillManagerModule.tsx",
+          "line": 57
+        }
+      ]
     },
     {
       "id": "VU-15",
@@ -4114,27 +4205,32 @@
       "method": "POST",
       "path": "/api/skills/{id}/validate",
       "frontend_function": "skillApi.validateSkill",
-      "frontend_ui": "Skill 校验/依赖阻塞提示未接入。",
+      "frontend_ui": "设置 → Skill：校验",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；Skill 校验/依赖阻塞提示未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillValidate",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 134
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "Skill 校验/依赖阻塞提示未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 39
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillManagerModule.tsx",
+          "line": 36
+        }
+      ]
     },
     {
       "id": "VU-17",
@@ -4142,27 +4238,32 @@
       "method": "GET",
       "path": "/api/system/ffmpeg",
       "frontend_function": "skillApi.ffmpeg",
-      "frontend_ui": "FFmpeg 能力/依赖状态未接入。",
+      "frontend_ui": "设置 → Skill：FFmpeg 能力",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；FFmpeg 能力/依赖状态未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillFFmpeg",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 138
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "FFmpeg 能力/依赖状态未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 40
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillManagerModule.tsx",
+          "line": 26
+        }
+      ]
     },
     {
       "id": "VU-18",
@@ -4170,27 +4271,32 @@
       "method": "GET",
       "path": "/api/skill-runs",
       "frontend_function": "skillApi.runs",
-      "frontend_ui": "项目运行列表/选择未接入。",
+      "frontend_ui": "编辑页：运行列表",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；项目运行列表/选择未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillRuns",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 142
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "项目运行列表/选择未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 42
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 64
+        }
+      ]
     },
     {
       "id": "VU-19",
@@ -4198,27 +4304,32 @@
       "method": "POST",
       "path": "/api/skill-runs",
       "frontend_function": "skillApi.createRun",
-      "frontend_ui": "双素材流程、external_mcp/builtin_api 模式、目标/预算/授权创建引导未接入。",
+      "frontend_ui": "编辑页：创建运行",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；双素材流程、external_mcp/builtin_api 模式、目标/预算/授权创建引导未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillCreateRun",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 146
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "双素材流程、external_mcp/builtin_api 模式、目标/预算/授权创建引导未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 41
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 148
+        }
+      ]
     },
     {
       "id": "VU-20",
@@ -4226,27 +4337,36 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}",
       "frontend_function": "skillApi.run",
-      "frontend_ui": "运行状态/暂停原因/预算未接入。",
+      "frontend_ui": "编辑页与 TTS：运行状态",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；运行状态/暂停原因/预算未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillRun",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 155
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "运行状态/暂停原因/预算未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 43
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 70
+        },
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 49
+        }
+      ]
     },
     {
       "id": "VU-21",
@@ -4254,27 +4374,32 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/context",
       "frontend_function": "skillApi.context",
-      "frontend_ui": "冻结 Skill/媒体/工具上下文未接入。",
+      "frontend_ui": "编辑页：冻结上下文",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；冻结 Skill/媒体/工具上下文未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillContext",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 159
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "冻结 Skill/媒体/工具上下文未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 44
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 76
+        }
+      ]
     },
     {
       "id": "VU-22",
@@ -4282,27 +4407,32 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/steps",
       "frontend_function": "skillApi.steps",
-      "frontend_ui": "人工步骤/失败详情未接入，不得向 Agent 开放。",
+      "frontend_ui": "编辑页：人工步骤",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；人工步骤/失败详情未接入，不得向 Agent 开放。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillSteps",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 163
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "人工步骤/失败详情未接入，不得向 Agent 开放。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 45
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 94
+        }
+      ]
     },
     {
       "id": "VU-23",
@@ -4310,27 +4440,32 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/artifacts/{key}",
       "frontend_function": "skillApi.artifactURL",
-      "frontend_ui": "SkillRun 产物播放/下载未接入；旧脚本播放器不能自动消费。",
+      "frontend_ui": "导出页：当前成片下载",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；SkillRun 产物播放/下载未接入；旧脚本播放器不能自动消费。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillArtifact",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 199
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "SkillRun 产物播放/下载未接入；旧脚本播放器不能自动消费。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 54
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillDeliveryModule.tsx",
+          "line": 83
+        }
+      ]
     },
     {
       "id": "VU-24",
@@ -4338,27 +4473,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/tools",
       "frontend_function": "skillApi.tool",
-      "frontend_ui": "受控工具交互未接入；按产品流程调用，无需提供任意工具参数编辑器。",
+      "frontend_ui": "编辑页：三项只读受控工具",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；受控工具交互未接入；按产品流程调用，无需提供任意工具参数编辑器。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillTool",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 167
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "受控工具交互未接入；按产品流程调用，无需提供任意工具参数编辑器。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 48
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 279
+        }
+      ]
     },
     {
       "id": "VU-25",
@@ -4366,27 +4506,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/finalize",
       "frontend_function": "skillApi.action",
-      "frontend_ui": "新计划精确版本人工定稿未接入。",
+      "frontend_ui": "编辑页：人工定稿",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；新计划精确版本人工定稿未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 176
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "新计划精确版本人工定稿未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 50
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 263
+        }
+      ]
     },
     {
       "id": "VU-26",
@@ -4394,27 +4539,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/resume",
       "frontend_function": "skillApi.action",
-      "frontend_ui": "暂停原因及人工恢复确认未接入。",
+      "frontend_ui": "编辑页：恢复执行",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；暂停原因及人工恢复确认未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 176
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "暂停原因及人工恢复确认未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 50
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 264
+        }
+      ]
     },
     {
       "id": "VU-27",
@@ -4422,27 +4572,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/cancel",
       "frontend_function": "skillApi.action",
-      "frontend_ui": "SkillRun 取消/进程状态反馈未接入。",
+      "frontend_ui": "编辑页：取消运行",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；SkillRun 取消/进程状态反馈未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 176
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "SkillRun 取消/进程状态反馈未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 50
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 265
+        }
+      ]
     },
     {
       "id": "VU-28",
@@ -4450,27 +4605,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/execute",
       "frontend_function": "skillApi.execute",
-      "frontend_ui": "内置 API Agent 执行/暂停/完成状态未接入；外部模式由 MCP Agent 执行。",
+      "frontend_ui": "编辑页：执行内置 Agent",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "仅 SDK，页面未接入；内置 API Agent 执行/暂停/完成状态未接入；外部模式由 MCP Agent 执行。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillExecute",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 188
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "内置 API Agent 执行/暂停/完成状态未接入；外部模式由 MCP Agent 执行。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 52
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 267
+        }
+      ]
     },
     {
       "id": "SAFE-01",
@@ -4478,27 +4638,32 @@
       "method": "POST",
       "path": "/api/human-session",
       "frontend_function": "skillApi.unlockHumanSession",
-      "frontend_ui": "人工解锁输入/失败/到期提示未接入，是受保护接口的前置条件。",
+      "frontend_ui": "设置 → 日志：解锁人工会话",
       "request": "JSON {token}；人工凭证至少 32 字符",
       "success_response": "200 {unlocked:true}；一小时 HttpOnly 会话 cookie",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；人工解锁输入/失败/到期提示未接入，是受保护接口的前置条件。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "humanSkillSession",
       "backend_source": {
         "file": "control-plane/internal/api/human_skill.go",
         "line": 52
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "人工解锁输入/失败/到期提示未接入，是受保护接口的前置条件。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 10
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/HumanSessionControl.tsx",
+          "line": 18
+        }
+      ]
     },
     {
       "id": "SAFE-02",
@@ -4506,27 +4671,32 @@
       "method": "DELETE",
       "path": "/api/human-session",
       "frontend_function": "skillApi.lockHumanSession",
-      "frontend_ui": "退出/锁定及清除缓存、选择、播放地址未接入。",
+      "frontend_ui": "退出人工会话并清空受保护缓存",
       "request": "人工会话；无请求体",
       "success_response": "200 {locked:true}；清除 cookie/预览票据",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；退出/锁定及清除缓存、选择、播放地址未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "humanSkillLogout",
       "backend_source": {
         "file": "control-plane/internal/api/human_skill.go",
         "line": 93
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "退出/锁定及清除缓存、选择、播放地址未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 14
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/humanSession.ts",
+          "line": 27
+        }
+      ]
     },
     {
       "id": "SAFE-03",
@@ -4534,27 +4704,32 @@
       "method": "GET",
       "path": "/api/agent-operations",
       "frontend_function": "skillApi.agentOperations",
-      "frontend_ui": "人工日志分页/run 筛选未接入。",
+      "frontend_ui": "设置 → 日志：按运行读取人工操作日志",
       "request": "query run_id、after、limit；SDK 默认 after=0,limit=100",
       "success_response": "200 AgentOperation[]",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；人工日志分页/run 筛选未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "agentOperations",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 26
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "人工日志分页/run 筛选未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 21
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AgentOperationPanel.tsx",
+          "line": 19
+        }
+      ]
     },
     {
       "id": "SAFE-04",
@@ -4562,27 +4737,32 @@
       "method": "GET",
       "path": "/api/agent-operations/verify",
       "frontend_function": "skillApi.verifyAgentOperations",
-      "frontend_ui": "日志摘要链核验/结果未接入。",
+      "frontend_ui": "设置 → 日志：核验摘要链",
       "request": "无请求体；人工会话",
       "success_response": "200 {verified_through:number}",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；日志摘要链核验/结果未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "verifyAgentOperations",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 32
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "日志摘要链核验/结果未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 22
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AgentOperationPanel.tsx",
+          "line": 25
+        }
+      ]
     },
     {
       "id": "SAFE-05",
@@ -4590,27 +4770,32 @@
       "method": "POST",
       "path": "/api/agent-operations/notes",
       "frontend_function": "skillApi.appendOperationNote",
-      "frontend_ui": "人工追加注释未接入；不提供原记录修改/删除。",
+      "frontend_ui": "设置 → 日志：追加注释",
       "request": "JSON {run_id,note}；非空且最多 8192 字节",
       "success_response": "200 {appended:true}",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；人工追加注释未接入；不提供原记录修改/删除。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "agentOperationNote",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 36
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "人工追加注释未接入；不提供原记录修改/删除。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 23
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AgentOperationPanel.tsx",
+          "line": 29
+        }
+      ]
     },
     {
       "id": "SAFE-06",
@@ -4618,27 +4803,36 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/workbench",
       "frontend_function": "skillApi.workbench",
-      "frontend_ui": "SkillRun 工作台、源/成片时间映射及当前/历史预览未接入。",
+      "frontend_ui": "编辑页 Skill 运行与导出页交付：工作台",
       "request": "路径 id=run_id；人工会话",
       "success_response": "200 SkillWorkbench：run、双时间轴 segments、history 游标、previews 含 preview_url",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；SkillRun 工作台、源/成片时间映射及当前/历史预览未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 53
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "SkillRun 工作台、源/成片时间映射及当前/历史预览未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 15
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 82
+        },
+        {
+          "file": "webui/src/components/SkillDeliveryModule.tsx",
+          "line": 29
+        }
+      ]
     },
     {
       "id": "SAFE-07",
@@ -4646,27 +4840,32 @@
       "method": "PUT",
       "path": "/api/skill-runs/{id}/plan",
       "frontend_function": "skillApi.savePlan",
-      "frontend_ui": "人工计划编辑/拆段/版本冲突反馈未接入。",
+      "frontend_ui": "编辑页：保存人工计划",
       "request": "JSON {expected_version,plan:SkillPlan}",
       "success_response": "200 SkillRun；新修订，清除定稿",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；人工计划编辑/拆段/版本冲突反馈未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillSavePlan",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 73
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "人工计划编辑/拆段/版本冲突反馈未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 16
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 332
+        }
+      ]
     },
     {
       "id": "SAFE-08",
@@ -4674,27 +4873,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/edits",
       "frontend_function": "skillApi.requestEdit",
-      "frontend_ui": "片段/时间点/完整区间选择、提示词提交与修改确认未接入。",
+      "frontend_ui": "编辑页：三选一加提示词的定向修改",
       "request": "JSON SkillEditRequest；expected_version、plan_version、artifact_id/sha256、prompt、idempotency_key；segment_index / at_seconds / timeline_start+timeline_end 三选一",
       "success_response": "200 SkillRun；edit_request.windows 含源/成片起止时间",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；片段/时间点/完整区间选择、提示词提交与修改确认未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillRequestEdit",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 82
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "片段/时间点/完整区间选择、提示词提交与修改确认未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 17
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 187
+        }
+      ]
     },
     {
       "id": "SAFE-09",
@@ -4702,27 +4906,32 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/checkpoints",
       "frontend_function": "skillApi.history",
-      "frontend_ui": "备份节点/游标/旧分支展示未接入。",
+      "frontend_ui": "编辑页：备份节点",
       "request": "路径 id=run_id；人工会话",
       "success_response": "200 SkillHistory：cursor + checkpoints",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；备份节点/游标/旧分支展示未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillCheckpoints",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 91
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "备份节点/游标/旧分支展示未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 18
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 88
+        }
+      ]
     },
     {
       "id": "SAFE-10",
@@ -4730,27 +4939,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/undo",
       "frontend_function": "skillApi.moveHistory",
-      "frontend_ui": "撤销按钮/可用状态及恢复后重新确认未接入。",
+      "frontend_ui": "编辑页：撤销",
       "request": "JSON {expected_version}；人工会话",
       "success_response": "200 SkillRun；版本递增并清除旧确认",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；撤销按钮/可用状态及恢复后重新确认未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillHistoryMove",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 95
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "撤销按钮/可用状态及恢复后重新确认未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 19
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 341
+        }
+      ]
     },
     {
       "id": "SAFE-11",
@@ -4758,27 +4972,32 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/redo",
       "frontend_function": "skillApi.moveHistory",
-      "frontend_ui": "重做按钮/栈状态及恢复后重新确认未接入。",
+      "frontend_ui": "编辑页：重做",
       "request": "JSON {expected_version}；人工会话",
       "success_response": "200 SkillRun；版本递增并清除旧确认",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；重做按钮/栈状态及恢复后重新确认未接入。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillHistoryMove",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 95
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "重做按钮/栈状态及恢复后重新确认未接入。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 19
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 342
+        }
+      ]
     },
     {
       "id": "SAFE-12",
@@ -4786,27 +5005,32 @@
       "method": "GET",
       "path": "/api/skill-runs/{id}/checkpoints/{checkpoint}/artifacts/{key}",
       "frontend_function": "skillApi.checkpointPreviewURL",
-      "frontend_ui": "历史节点视频浏览未接入；不能据此直接授权新修改。",
+      "frontend_ui": "编辑页：历史节点预览",
       "request": "run/checkpoint/artifact；人工会话或工作台签发的精确路径票据",
       "success_response": "200/206 video/mp4；Range/HEAD，摘要与权限复核",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
-      "usage": "仅 SDK，页面未接入；历史节点视频浏览未接入；不能据此直接授权新修改。",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "skillHistoryPreview",
       "backend_source": {
         "file": "control-plane/internal/api/skill_editing.go",
         "line": 107
       },
-      "frontend_status": "sdk_only",
-      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
       "frontend_requirement": "required",
-      "frontend_gap": "历史节点视频浏览未接入；不能据此直接授权新修改。",
+      "frontend_gap": "",
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
           "line": 20
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/SkillRunModule.tsx",
+          "line": 347
+        }
+      ]
     }
   ],
   "routes_source_sha256": "e0fad6a34aea4836ff05395658660e1b648a37d2848edc58d563a6d43ea75291",

@@ -9,6 +9,9 @@ import { StageDot } from '../components/PipelineContext';
 import { PreparationPanel } from '../components/PreparationPanel';
 import AuditLogViewer from '../components/AuditLogViewer';
 import { StatusMonitor } from '../components/StatusMonitor';
+import { SkillManagerModule } from '../components/SkillManagerModule';
+import { HumanSessionControl } from '../components/HumanSessionControl';
+import { AgentOperationPanel } from '../components/AgentOperationPanel';
 
 interface SettingsWorkspaceProps {
   route: RouteState;
@@ -92,12 +95,16 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
             />
           </div>
 
+          {settingsCategory === 'skills' && <SkillManagerModule />}
+
           {settingsCategory === 'logs' && (
             <Card 
               title="日志与诊断" 
               bordered={false}
             >
+              <HumanSessionControl />
               <AuditLogViewer />
+              <AgentOperationPanel />
             </Card>
           )}
 

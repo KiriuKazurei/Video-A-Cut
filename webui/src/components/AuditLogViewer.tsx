@@ -5,6 +5,8 @@ import dayjs from 'dayjs';
 import { ValueSelect } from './ui';
 import { auditEndpointInUse, fetchAuditLogs } from '../api';
 import type { AuditFilters, AuditLog } from '../types';
+import { isHumanUnlockRequired, protectedQueryRetry } from '../skillView';
+import { ProtectedError } from './HumanSessionControl';
 import {
   AUDIT_ACTOR_KINDS,
   AUDIT_ACTOR_KIND_LABELS,
@@ -53,6 +55,7 @@ export default function AuditLogViewer() {
   const auditQuery = useQuery({
     queryKey: ['audit', 'panel', limit],
     queryFn: () => fetchAuditLogs(limit),
+    retry: protectedQueryRetry,
     staleTime: 15_000
   });
 
@@ -130,7 +133,8 @@ export default function AuditLogViewer() {
         </Form>
 
         {auditQuery.isPending && <Typography.Text type="secondary">正在读取审计记录…</Typography.Text>}
-        {auditQuery.isError && <Alert type="error" showIcon role="alert" message={`审计读取失败：${describeError(auditQuery.error)}`}
+        {auditQuery.isError && isHumanUnlockRequired(auditQuery.error) && <ProtectedError error={auditQuery.error} onRetry={() => void auditQuery.refetch()} />}
+        {auditQuery.isError && !isHumanUnlockRequired(auditQuery.error) && <Alert type="error" showIcon role="alert" message={`审计读取失败：${describeError(auditQuery.error)}`}
           action={<Button size="small" onClick={() => void auditQuery.refetch()}>重试</Button>} />}
         {auditQuery.isSuccess && logs.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无审计记录。资产入库、治理变更和任务创建都会记录在这里。" />}
         {auditQuery.isSuccess && logs.length > 0 && visible.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`已加载 ${logs.length} 条，但没有命中当前过滤。可尝试重置过滤，或调大单页条数。`} />}

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import './skill_api_test.mjs';
+import './skill_workspace_test.mjs';
 import assert from 'node:assert/strict';
 import { isCurrentMp4 } from './src/previewContracts.ts';
 
