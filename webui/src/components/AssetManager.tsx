@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, fetchTasksByIds } from '../api';
+import { protectedQueryRetry } from '../skillView';
 import type {
   Asset,
   AssetCategory,
@@ -97,7 +98,7 @@ export default function AssetManager({ onSelect, activeId }: AssetManagerProps) 
 
   const assetsQuery = useQuery({ queryKey: ['assets'], queryFn: api.listAssets });
   const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
-  const auditQuery = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100) });
+  const auditQuery = useQuery({ queryKey: ['audit', 'recent', 100], queryFn: () => api.listAudit(100), retry: protectedQueryRetry });
 
   /* --- 治理 PATCH：只发允许字段，成功后以服务端返回的 Asset 更新缓存 --- */
   const patch = useMutation({

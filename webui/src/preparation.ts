@@ -16,7 +16,7 @@ export interface ProviderDiagnostic {
   truncated?: boolean;
 }
 export interface ProcessingProfile {
-  transcription?: { api_format: 'elevenlabs'; endpoint: string; model: 'scribe_v1'; token_env: string };
+  transcription?: { api_format: 'elevenlabs'; endpoint: string; model: string; token_env: string };
   schema_version: 1;
   profile_id: string;
   revision: number;

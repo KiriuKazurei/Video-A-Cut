@@ -3,6 +3,7 @@ import type { Asset } from '../types';
 import { Monitor, type PreviewSource } from '../components/Monitor';
 import { filePreview, useDeliveryFiles } from '../components/DeliveryPanel';
 import AssetManager from '../components/AssetManager';
+import { ProjectModule } from '../components/ProjectModule';
 import { kindLabel } from '../components/MediaBin';
 import { stamp } from '../components/ui';
 
@@ -57,6 +58,9 @@ export function ResourcesWorkspace({ asset, onSelect }: ResourcesWorkspaceProps)
           </Card>
         </Col>
 
+        <Col span={24}>
+          <ProjectModule />
+        </Col>
         <Col span={24}>
           <AssetManager onSelect={onSelect} activeId={asset?.asset_id} />
         </Col>

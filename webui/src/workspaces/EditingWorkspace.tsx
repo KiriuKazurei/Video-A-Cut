@@ -19,6 +19,7 @@ import { NoAssetEmpty } from '../components/NoAssetEmpty';
 import { AutoRunProgress, AutoRunStart, useAutoView } from '../components/AutoRunPanel';
 import { autoPolling } from '../autoRun';
 import { ScriptWorkbench } from '../components/ScriptWorkbench';
+import { SkillRunModule } from '../components/SkillRunModule';
 
 type StartMode = 'manual' | 'auto';
 
@@ -86,6 +87,7 @@ interface EditingWorkspaceProps {
  */
 export function EditingWorkspace({ route, navigate, asset, selection, onSelect, onPreparedStarted }: EditingWorkspaceProps) {
   const { editingSection = 'import' } = route;
+  const [lane, setLane] = useState<'legacy' | 'skill'>('legacy');
   const assetId = asset?.asset_id;
   const workflowData = useWorkflowData(assetId ?? '', selection);
   const owner = workflowPreviewContext(workflowData.current);
@@ -133,7 +135,10 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
 
   return (
     <div className="page-body">
-      <Tabs
+      <Segmented className="skill-lane" aria-label="编辑模块" value={lane} onChange={(value) => setLane(value as 'legacy' | 'skill')}
+        options={[{ value: 'legacy', label: '现有剪辑' }, { value: 'skill', label: 'Skill 运行' }]} style={{ marginBottom: 16 }} />
+      {lane === 'skill' && <SkillRunModule navigate={navigate} />}
+      {lane === 'legacy' && <Tabs
         activeKey={editingSection}
         onChange={(key) => navigate({ editingSection: key as typeof editingSection })}
         items={EDITING_SECTIONS.map((section) => ({
@@ -225,7 +230,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
             </div>
           )
         }))}
-      />
+      />}
     </div>
   );
 }

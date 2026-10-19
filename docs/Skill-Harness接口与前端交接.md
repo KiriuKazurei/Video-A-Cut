@@ -13,11 +13,9 @@
 
 ## 前端实现状态（2026-10-19）
 
-以下 HTTP 表逐项标明接入状态；全量 144 项及前端待实现顺序以[前端接口清单与实现状态](前端接口清单与重构交接.md)为准。新架构 40 项均未接入页面：39 项已有 SDK，`GET /api/skills/{id}/content` 是无独立封装的详情别名，直接使用 `skillApi.skill` 的详情路由即可。
+以下 HTTP 表逐项标明接入状态；全量 144 项以[前端接口清单与实现状态](前端接口清单与重构交接.md)为准。必做的新接口已接到现有五大工作区，没有新增顶栏：人工会话在设置 → 日志；项目与 scope v2 在资源页；Skill 管理在设置 → Skill；双流程和 SkillRun 工作台在编辑页内模块切换；声音回写在 TTS 专页；同版交付在导出页。`GET /api/skills/{id}/content` 仍无独立封装，页面读取 `skillApi.skill`。
 
-`skillContracts.ts` 类型、`skillApi.ts` 调用、SSE 失效领域及 `createSkillEdit` / `skillPreviewSource` 辅助函数已提供；尚无 TSX 页面调用这些新入口。人工解锁/锁定、项目/Skill 管理、双流程/双 Agent 引导、SkillRun 工作台/同版播放、段落声音回写、定向修改、日志及撤销/重做界面均待接入。已有旧 script/workflow 页面不能算作新 SkillRun 功能完成。
-
-优先补齐人工会话入口；原 `/api/audit` 也已受保护，现有审计页需适配解锁/到期。`preview_url` 只作短时只读播放，历史预览需标记；恢复/修改后重新定稿。本文工程验证记录不代表新界面已验收。
+旧 script/workflow 页面继续保留，不能单独当成 SkillRun 完成。`preview_url` 只在当次播放使用，历史预览带标记；修改或恢复后需要重新定稿。本文只记录源码接线，不代表真实模型、听感或 Premiere 实机验收。
 
 ## HTTP
 
@@ -25,34 +23,34 @@
 
 | 方法与路径 | 请求 / 返回 | 前端入口 | 前端状态 |
 |---|---|---|---|
-| GET /api/projects | Project[]，含只读 legacy 项目 | projects | 仅 SDK，页面未接入 |
-| POST /api/projects | ProjectSave → Project | createProject | 仅 SDK，页面未接入 |
-| GET /api/projects/{id} | Project | project | 仅 SDK，页面未接入 |
-| PUT /api/projects/{id} | 完整 ProjectSave + expected_version → Project | saveProject | 仅 SDK，页面未接入 |
-| POST /api/projects/{id}/media | root_id、relative_path、expected_version、idempotency_key → Project | importMedia | 仅 SDK，页面未接入 |
-| GET /api/projects/{id}/visible-set | 项目 scope v2、内容 SHA、确认状态、媒体目录 | visibleSet | 仅 SDK，页面未接入 |
-| POST /api/projects/{id}/visible-set/confirm | visible_set_sha、expected_version → VisibleSet | confirmVisible | 仅 SDK，页面未接入 |
-| POST /api/projects/{id}/exports/ffmpeg | run_id、expected_version、idempotency_key → run/result | exportProject | 仅 SDK，页面未接入 |
-| GET /api/skills | SkillPackage[] | skills | 仅 SDK，页面未接入 |
-| POST /api/skills | 本地目录 path；要求 SKILL.md + skill.json | importSkill | 仅 SDK，页面未接入 |
-| GET /api/skills/{id} | 元数据、正文、文本资源、内容摘要 | skill | 仅 SDK，页面未接入 |
-| PATCH /api/skills/{id} | enabled | enableSkill | 仅 SDK，页面未接入 |
+| GET /api/projects | Project[]，含只读 legacy 项目 | projects | 页面已接入 |
+| POST /api/projects | ProjectSave → Project | createProject | 页面已接入 |
+| GET /api/projects/{id} | Project | project | 页面已接入 |
+| PUT /api/projects/{id} | 完整 ProjectSave + expected_version → Project | saveProject | 页面已接入 |
+| POST /api/projects/{id}/media | root_id、relative_path、expected_version、idempotency_key → Project | importMedia | 页面已接入 |
+| GET /api/projects/{id}/visible-set | 项目 scope v2、内容 SHA、确认状态、媒体目录 | visibleSet | 页面已接入 |
+| POST /api/projects/{id}/visible-set/confirm | visible_set_sha、expected_version → VisibleSet | confirmVisible | 页面已接入 |
+| POST /api/projects/{id}/exports/ffmpeg | run_id、expected_version、idempotency_key → run/result | exportProject | 页面已接入 |
+| GET /api/skills | SkillPackage[] | skills | 页面已接入 |
+| POST /api/skills | 本地目录 path；要求 SKILL.md + skill.json | importSkill | 页面已接入 |
+| GET /api/skills/{id} | 元数据、正文、文本资源、内容摘要 | skill | 页面已接入 |
+| PATCH /api/skills/{id} | enabled | enableSkill | 页面已接入 |
 | GET /api/skills/{id}/content | 与详情相同，正文内含资源索引 | 无独立封装；skill 调用详情路径 | 未封装/未接入 |
-| POST /api/skills/{id}/validate | 元数据/摘要、ffmpeg/ffprobe/Python/Node 探测 | validateSkill | 仅 SDK，页面未接入 |
-| GET /api/system/ffmpeg | 版本、编码器、字幕、硬件能力 | ffmpeg | 仅 SDK，页面未接入 |
-| GET /api/skill-runs?project_id=... | Run[] | runs | 仅 SDK，页面未接入 |
-| POST /api/skill-runs | SkillRunCreate → Run | createRun | 仅 SDK，页面未接入 |
-| GET /api/skill-runs/{id} | Run | run | 仅 SDK，页面未接入 |
-| GET /api/skill-runs/{id}/context | 锁定 Skill、已确认媒体视图和工具名单 | context | 仅 SDK，页面未接入 |
-| GET /api/skill-runs/{id}/steps | 模型/工具步骤、结果、失败原因 | steps | 仅 SDK，页面未接入 |
-| GET /api/skill-runs/{id}/revisions | run_version + plan 的不可覆盖快照 | revisions | 仅 SDK，页面未接入 |
-| GET /api/skill-runs/{id}/artifacts/{key} | 已登记、当前上下文有效且摘要一致的文件 | artifactURL | 仅 SDK，页面未接入 |
-| PUT /api/skill-runs/{id}/voice | 精确段落声音配置；生成新计划修订，需再定稿 | saveVoice | 仅 SDK，页面未接入 |
-| POST /api/skill-runs/{id}/tools | SkillToolRequest → run/result | tool | 仅 SDK，页面未接入 |
-| POST /api/skill-runs/{id}/finalize | expected_version；仅人工 | action(finalize) | 仅 SDK，页面未接入 |
-| POST /api/skill-runs/{id}/resume | expected_version；工具/预算/重启暂停后人工恢复 | action(resume) | 仅 SDK，页面未接入 |
-| POST /api/skill-runs/{id}/cancel | expected_version；取消本次运行及进程树 | action(cancel) | 仅 SDK，页面未接入 |
-| POST /api/skill-runs/{id}/execute | expected_version；内置 API Agent 运行到暂停/完成 | execute | 仅 SDK，页面未接入 |
+| POST /api/skills/{id}/validate | 元数据/摘要、ffmpeg/ffprobe/Python/Node 探测 | validateSkill | 页面已接入 |
+| GET /api/system/ffmpeg | 版本、编码器、字幕、硬件能力 | ffmpeg | 页面已接入 |
+| GET /api/skill-runs?project_id=... | Run[] | runs | 页面已接入 |
+| POST /api/skill-runs | SkillRunCreate → Run | createRun | 页面已接入 |
+| GET /api/skill-runs/{id} | Run | run | 页面已接入 |
+| GET /api/skill-runs/{id}/context | 锁定 Skill、已确认媒体视图和工具名单 | context | 页面已接入 |
+| GET /api/skill-runs/{id}/steps | 模型/工具步骤、结果、失败原因 | steps | 页面已接入 |
+| GET /api/skill-runs/{id}/revisions | run_version + plan 的不可覆盖快照 | revisions | 页面已接入 |
+| GET /api/skill-runs/{id}/artifacts/{key} | 已登记、当前上下文有效且摘要一致的文件 | artifactURL | 页面已接入 |
+| PUT /api/skill-runs/{id}/voice | 精确段落声音配置；生成新计划修订，需再定稿 | saveVoice | 页面已接入 |
+| POST /api/skill-runs/{id}/tools | SkillToolRequest → run/result | tool | 页面已接入 |
+| POST /api/skill-runs/{id}/finalize | expected_version；仅人工 | action(finalize) | 页面已接入 |
+| POST /api/skill-runs/{id}/resume | expected_version；工具/预算/重启暂停后人工恢复 | action(resume) | 页面已接入 |
+| POST /api/skill-runs/{id}/cancel | expected_version；取消本次运行及进程树 | action(cancel) | 页面已接入 |
+| POST /api/skill-runs/{id}/execute | expected_version；内置 API Agent 运行到暂停/完成 | execute | 页面已接入 |
 
 ProjectSave 包含 name、flow、expected_version、assets、visible、default_skills、disabled_skills、accept_external、accept_transcription，以及可选 profile_id/profile_revision。更新是完整替换，先读取最新对象再 PUT；切换配置清除旧确认及旧运行上下文。外部访问与转录是两项独立授权。导入只接受现有 ingest_roots 的 root_id/相对路径，复制后入资产表，不接受 Agent 提交任意绝对路径。导入后素材已入库，visible 仍需用户显式选择并确认。
 

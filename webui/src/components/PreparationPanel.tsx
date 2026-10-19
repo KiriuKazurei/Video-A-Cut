@@ -9,6 +9,7 @@ import {CheckCircleOutlined,ExclamationCircleOutlined,LockOutlined,QuestionCircl
 import type {WorkflowRun} from '../types';
 import type {RouteState} from '../navigation';
 import {ValueSelect} from './ui';
+import {TranscriptionFields} from './TranscriptionFields';
 
 const initial:ProcessingProfile={schema_version:1,profile_id:'local_regression',revision:0,name:'本地工程回归',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'',export_target:'premiere'};
 const externalEndpoint=(endpoint?:string)=>{if(!endpoint)return false;try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(endpoint).hostname)}catch{return false}};
@@ -266,6 +267,7 @@ export function PreparationPanel({
             <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
             <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
           </Row>
+          <TranscriptionFields draft={draft} disabled={busy} onChange={edit}/>
           {saveButtons}
         </Form>
       )}
@@ -320,6 +322,7 @@ export function PreparationPanel({
                 <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
                 <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
               </Row>
+              <TranscriptionFields draft={draft} disabled={busy} onChange={edit}/>
               {saveButtons}
             </Form>
           </Col>
