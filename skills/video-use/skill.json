@@ -2,7 +2,7 @@
   "id": "video-use",
   "name": "Video Use",
   "description": "VAC adapted conversation-driven editor",
-  "version": "0.1.0-vac.1",
+  "version": "0.1.0-vac.2",
   "source": "builtin",
   "runtime": "harness",
   "compatible_flows": [

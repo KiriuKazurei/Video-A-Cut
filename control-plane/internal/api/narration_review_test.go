@@ -33,6 +33,7 @@ func postJSON(t *testing.T, srv *Server, path, body string) *httptest.ResponseRe
 	rec := httptest.NewRecorder()
 	req := localRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-VAC-Human-Token", "vac-human-test-credential-00000000000001")
 	srv.Handler().ServeHTTP(rec, req)
 	return rec
 }

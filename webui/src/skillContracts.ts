@@ -55,8 +55,10 @@ export interface ContentSummary {
     confidence: 'high' | 'medium' | 'low'; frame_ids: string[] }[];
 }
 export interface SkillRun {
+	edit_request?: SkillEditContext;
   lease_until?: string;
   transcription_authorized: boolean; agent_role?: string; elapsed_milliseconds: number;
+  budget_step_base: number; budget_elapsed_base: number;
   inspection?: { plan_version: number; frame_ids: string[]; verdict: 'pending' | 'passed' | 'needs_changes'; issues: string[] };
   id: string; project_id: string; project_version: number; skill_id: string;
   skill_sha256: string; skill_version: string; execution_mode: SkillExecutionMode;
@@ -65,7 +67,27 @@ export interface SkillRun {
   reason?: string; owner: string; version: number; steps: number; budget: SkillBudget;
   goal: string; profile_id?: string; profile_revision?: number; profile_sha256?: string;
   external_authorized: boolean; plan?: SkillPlan; summary?: ContentSummary;
-  frames: SkillFrame[]; artifacts: SkillArtifact[]; created_at: string; updated_at: string;
+  frames: SkillFrame[]; frames_spent: number; artifacts: SkillArtifact[]; created_at: string; updated_at: string;
+}
+export interface SkillEditWindow {
+  segment_index: number; media_id: string; timeline_start: number; timeline_end: number;
+  source_start: number; source_end: number;
+}
+export interface SkillEditContext {
+  prompt: string; base_plan_version: number; base_plan: SkillPlan; windows: SkillEditWindow[];
+  requested_start?: number; requested_end?: number; source_artifact_id: string; source_artifact_sha256: string;
+}
+export interface SkillEditRequest {
+  expected_version: number; plan_version: number; prompt: string; artifact_id: string; artifact_sha256: string;
+  idempotency_key: string; segment_index?: number; at_seconds?: number; timeline_start?: number; timeline_end?: number;
+}
+export interface SkillCheckpoint { id: string; run_id: string; parent_id: string; snapshot: Partial<SkillRun>; sha256: string }
+export interface SkillHistory { cursor: { checkpoint_id: string; redo: string[] }; checkpoints: SkillCheckpoint[] }
+export interface AgentOperation { sequence: number; run_id: string; previous_sha256: string; sha256: string;
+  body: { actor: string; action: string; at: string; detail: unknown } }
+export interface SkillWorkbench {
+  run: SkillRun; segments: SkillEditWindow[]; history: SkillHistory['cursor'];
+  previews: { artifact: SkillArtifact; available: boolean; is_current: boolean; historical: boolean; checkpoint_id: string; exportable: boolean; preview_url?: string }[];
 }
 export interface SkillRunCreate {
   accept_transcription?: boolean;

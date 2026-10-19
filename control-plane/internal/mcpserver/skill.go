@@ -46,13 +46,6 @@ func requireSkillSessionRole(ctx context.Context, svc *service.Service, id strin
 	return nil
 }
 func registerSkillTools(server *mcp.Server, svc *service.Service) {
-	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.steps", Description: "Read this Agent run's durable tool results and decision details"}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillRunIDArgs) (*mcp.CallToolResult, map[string]any, error) {
-		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
-			return nil, nil, e
-		}
-		v, e := svc.SkillRunSteps(ctx, mcpSkillActor(ctx), a.RunID)
-		return nil, map[string]any{"steps": v}, e
-	})
 	mcp.AddTool(server, &mcp.Tool{Name: "skills.list", Description: "List VAC Skill packages and their declared tool contracts"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, map[string]any, error) {
 		v, e := svc.ListSkills(ctx)
 		return nil, map[string]any{"skills": v}, e

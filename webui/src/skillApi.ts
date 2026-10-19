@@ -1,11 +1,26 @@
-import { request } from './api.ts';
+import { request, setHumanAccessToken } from './api.ts';
 import { apiURL } from './runtimeUrl.ts';
 import type { VacProject, ProjectSave, SkillPackage, ProjectVisibleSet, SkillRun, SkillRunCreate,
-  SkillRunContext, SkillToolRequest, SkillStep, FFmpegCapabilities, SkillVoiceSave } from './skillContracts';
+  SkillRunContext, SkillToolRequest, SkillStep, FFmpegCapabilities, SkillVoiceSave,
+  SkillEditRequest, SkillWorkbench, SkillHistory, SkillPlan, AgentOperation } from './skillContracts';
 const id = encodeURIComponent;
 const json = (value: unknown, method = 'POST'): RequestInit =>
   ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 export const skillApi = {
+  unlockHumanSession: async (token: string) => {
+    const result = await request<{ unlocked: boolean }>('/api/human-session', json({ token }));
+    if (result.unlocked) setHumanAccessToken(token); return result;
+  },
+  lockHumanSession: async () => { const result = await request<{ locked: boolean }>('/api/human-session', { method: 'DELETE' }); setHumanAccessToken(''); return result; },
+  workbench: (run: string, signal?: AbortSignal) => request<SkillWorkbench>(`/api/skill-runs/${id(run)}/workbench`, { signal }),
+  savePlan: (run: string, expected_version: number, plan: SkillPlan) => request<SkillRun>(`/api/skill-runs/${id(run)}/plan`, json({ expected_version, plan }, 'PUT')),
+  requestEdit: (run: string, value: SkillEditRequest) => request<SkillRun>(`/api/skill-runs/${id(run)}/edits`, json(value)),
+  history: (run: string) => request<SkillHistory>(`/api/skill-runs/${id(run)}/checkpoints`),
+  moveHistory: (run: string, action: 'undo' | 'redo', expected_version: number) => request<SkillRun>(`/api/skill-runs/${id(run)}/${action}`, json({ expected_version })),
+  checkpointPreviewURL: (run: string, checkpoint: string, artifact: string) => apiURL(`/api/skill-runs/${id(run)}/checkpoints/${id(checkpoint)}/artifacts/${id(artifact)}`),
+  agentOperations: (run: string, after = 0, limit = 100) => request<AgentOperation[]>(`/api/agent-operations?run_id=${id(run)}&after=${after}&limit=${limit}`),
+  verifyAgentOperations: () => request<{ verified_through: number }>('/api/agent-operations/verify'),
+  appendOperationNote: (run_id: string, note: string) => request<{ appended: boolean }>('/api/agent-operations/notes', json({ run_id, note })),
   projects: (signal?: AbortSignal) => request<VacProject[]>('/api/projects', { signal }),
   project: (project: string, signal?: AbortSignal) => request<VacProject>(`/api/projects/${id(project)}`, { signal }),
   createProject: (value: ProjectSave) => request<VacProject>('/api/projects', json(value)),

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { skillApi } from './src/skillApi.ts';
+import { createSkillEdit, skillPreviewSource } from './src/skillEditing.ts';
 import { handleSSEEvent, REFRESH_DOMAINS, SUPPORTED_SSE_EVENTS } from './src/queryRefresh.ts';
 
 test('Skill client preserves CAS/idempotency and AbortSignal, and encodes object identifiers', async () => {
@@ -30,4 +31,18 @@ test('Skill SSE invalidates project-scoped queries; payload is never treated as 
     assert(REFRESH_DOMAINS.includes(key));
     assert(invalidated.includes(key));
   }
+});
+
+test('local edits bind the displayed film revision/hash and reject a historical-only selection', () => {
+  const current = { artifact: { id: 'film', sha256: 'sha-current' }, is_current: true,
+    available: true, exportable: true, historical: false, checkpoint_id: '' };
+  const view = { run: { version: 12, plan: { version: 3 } }, previews: [current] };
+  assert.deepEqual(createSkillEdit(view, '修改开头', { at_seconds: 2.5 }, 'once'), {
+    expected_version: 12, plan_version: 3, artifact_id: 'film', artifact_sha256: 'sha-current',
+    prompt: '修改开头', at_seconds: 2.5, idempotency_key: 'once',
+  });
+  const old = { ...current, is_current: false, historical: true, exportable: false, checkpoint_id: 'cp' };
+  assert.throws(() => createSkillEdit({ ...view, previews: [old] }, 'change', { segment_index: 0 }, 'key'));
+  assert.equal(skillPreviewSource('run', old).historical, true);
+  assert.match(skillPreviewSource('run', old).src, /checkpoints\/cp\/artifacts\/film$/);
 });

@@ -86,6 +86,7 @@ type Budget struct {
 	MaxFrames  int `json:"max_frames,omitempty"`
 }
 type Run struct {
+	EditRequest             *EditRequest    `json:"edit_request,omitempty"`
 	LeaseUntil              *time.Time      `json:"lease_until,omitempty"`
 	AgentRole               string          `json:"agent_role,omitempty"`
 	TranscriptionAuthorized bool            `json:"transcription_authorized"`
@@ -103,6 +104,8 @@ type Run struct {
 	Owner                   string          `json:"owner"`
 	Version                 int             `json:"version"`
 	Steps                   int             `json:"steps"`
+	BudgetStepBase          int             `json:"budget_step_base"`
+	BudgetElapsedBase       int64           `json:"budget_elapsed_base"`
 	ElapsedMilliseconds     int64           `json:"elapsed_milliseconds"`
 	Budget                  Budget          `json:"budget"`
 	Goal                    string          `json:"goal"`
@@ -114,9 +117,28 @@ type Run struct {
 	Inspection              *Inspection     `json:"inspection,omitempty"`
 	Summary                 json.RawMessage `json:"summary,omitempty"`
 	Frames                  []Frame         `json:"frames"`
+	FramesSpent             int             `json:"frames_spent"`
 	Artifacts               []Artifact      `json:"artifacts"`
 	CreatedAt               time.Time       `json:"created_at"`
 	UpdatedAt               time.Time       `json:"updated_at"`
+}
+type EditWindow struct {
+	SegmentIndex  int     `json:"segment_index"`
+	MediaID       string  `json:"media_id"`
+	TimelineStart float64 `json:"timeline_start"`
+	TimelineEnd   float64 `json:"timeline_end"`
+	SourceStart   float64 `json:"source_start"`
+	SourceEnd     float64 `json:"source_end"`
+}
+type EditRequest struct {
+	Prompt            string       `json:"prompt"`
+	BasePlanVersion   int          `json:"base_plan_version"`
+	BasePlan          Plan         `json:"base_plan"`
+	Windows           []EditWindow `json:"windows"`
+	RequestedStart    *float64     `json:"requested_start,omitempty"`
+	RequestedEnd      *float64     `json:"requested_end,omitempty"`
+	SourceArtifactID  string       `json:"source_artifact_id"`
+	SourceArtifactSHA string       `json:"source_artifact_sha256"`
 }
 type Frame struct {
 	ID       string  `json:"id"`

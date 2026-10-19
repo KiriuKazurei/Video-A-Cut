@@ -51,6 +51,7 @@ func (w *flushErrorWriter) FlushError() error { return w.err }
 // every test here until the first real handler dereferenced it, which is the
 // one failure a skeleton must not hide.
 func newServer(t *testing.T) *Server {
+	t.Setenv("VAC_HUMAN_ACCESS_TOKEN", "vac-human-test-credential-00000000000001")
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
@@ -64,7 +65,9 @@ func newServer(t *testing.T) *Server {
 func do(t *testing.T, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	newServer(t).Handler().ServeHTTP(rec, localRequest(method, path, nil))
+	req := localRequest(method, path, nil)
+	req.Header.Set("X-VAC-Human-Token", "vac-human-test-credential-00000000000001")
+	newServer(t).Handler().ServeHTTP(rec, req)
 	return rec
 }
 

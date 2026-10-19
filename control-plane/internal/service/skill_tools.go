@@ -87,7 +87,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	if !internalModel && !slices.Contains(snap.Package.Tools, req.Name) {
 		return r, nil, model.ErrForbidden
 	}
-	if r.Steps >= r.Budget.MaxSteps || r.ElapsedMilliseconds >= int64(r.Budget.MaxSeconds)*1000 {
+	if r.Steps-r.BudgetStepBase >= r.Budget.MaxSteps || r.ElapsedMilliseconds-r.BudgetElapsedBase >= int64(r.Budget.MaxSeconds)*1000 {
 		return r, nil, fmt.Errorf("skill step budget exhausted: %w", model.ErrInvalidState)
 	}
 	step = skill.Step{ID: newID("step"), RunID: id, Name: req.Name, State: "running", RequestSHA: hash, CreatedAt: s.autoNow()}
@@ -107,13 +107,16 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		if e := tx.PutSkillStep(ctx, step.ID, id, step); e != nil {
 			return e
 		}
+		if e := s.journalTx(ctx, tx, actor, id, "tool.requested", map[string]any{"name": req.Name, "arguments": journalPayload(req.Arguments), "request_sha256": hash, "step_id": step.ID}); e != nil {
+			return e
+		}
 		return tx.SkillRemember(ctx, scope, req.IdempotencyKey, hash, step.ID)
 	})
 	if err != nil {
 		return r, nil, err
 	}
 	started := time.Now()
-	runCtx, cancel := context.WithTimeout(ctx, time.Duration(int64(r.Budget.MaxSeconds)*1000-r.ElapsedMilliseconds)*time.Millisecond)
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(int64(r.Budget.MaxSeconds)*1000-(r.ElapsedMilliseconds-r.BudgetElapsedBase))*time.Millisecond)
 	defer cancel()
 	s.harnessMu.Lock()
 	if s.harnessCancel == nil {
@@ -133,8 +136,10 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	}
 	if toolErr != nil {
 		elapsed := r.ElapsedMilliseconds
+		framesSpent := r.FramesSpent
 		r = beforeTool
 		r.ElapsedMilliseconds = elapsed
+		r.FramesSpent = framesSpent
 		step.State = "failed"
 		step.Result = result
 		step.Error = "tool_failed"
@@ -173,6 +178,9 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 			return e
 		}
 		if e := tx.PutSkillStep(saveCtx, step.ID, id, step); e != nil {
+			return e
+		}
+		if e := s.journalTx(saveCtx, tx, actor, id, "tool."+step.State, map[string]any{"name": req.Name, "step_id": step.ID, "result_sha256": skillHash(string(result)), "reason": r.Reason}); e != nil {
 			return e
 		}
 		return auditTx(saveCtx, tx, actor, "skill.tool."+step.State, id, req.Name)
@@ -248,25 +256,44 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		if err := validateHarnessPlan(plan, snap); err != nil {
 			return nil, err
 		}
-		plan.Version = 1
-		if r.Plan != nil {
-			plan.Version = r.Plan.Version + 1
+		if err := enforceTargetedEdit(r, &plan); err != nil {
+			return nil, err
+		}
+		var versionErr error
+		plan.Version, versionErr = s.st.NextSkillPlanVersion(ctx, r.ID)
+		if versionErr != nil {
+			return nil, versionErr
 		}
 		plan.FinalizedBy = ""
 		plan.FinalizedAt = nil
 		// Agent proposals cannot create a voice configuration or external consent.
 		for i := range plan.Segments {
+			if r.EditRequest != nil {
+				selected := false
+				for _, window := range r.EditRequest.Windows {
+					if window.SegmentIndex == i {
+						selected = true
+					}
+				}
+				if !selected {
+					continue
+				}
+			}
 			plan.Segments[i].TTSEnabled = false
 			plan.Segments[i].Voice = nil
 			plan.Segments[i].VoiceConsent = false
 			plan.Segments[i].VoiceOffset = 0
 		}
 		r.Plan = &plan
+		r.EditRequest = nil
 		r.Inspection = nil
 		r.State = "waiting_human"
 		r.Reason = "plan_confirmation"
 		return respond(plan)
 	case "renders.create":
+		if r.EditRequest != nil {
+			return nil, model.ErrInvalidState
+		}
 		r.Inspection = nil
 		if r.Plan == nil || !isHumanActor(r.Plan.FinalizedBy) || r.Plan.FinalizedAt == nil {
 			return nil, model.ErrForbidden
@@ -317,6 +344,9 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		}
 		return respond(map[string]any{"artifact": art, "base64": base64.StdEncoding.EncodeToString(raw)})
 	case "run.finish":
+		if r.EditRequest != nil {
+			return nil, model.ErrInvalidState
+		}
 		if r.Inspection == nil || r.Plan == nil || r.Inspection.PlanVersion != r.Plan.Version || r.Inspection.Verdict != "passed" {
 			return nil, model.ErrInvalidState
 		}
@@ -413,7 +443,7 @@ func (s *Service) skillProcess(ctx context.Context, operation string, payload an
 	}
 	cmd := exec.CommandContext(ctx, python, "-B", "-m", "vac_worker.skill_runtime", operation)
 	cmd.Dir = filepath.Join(root, "workers", "python")
-	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "PYTHONDONTWRITEBYTECODE=1")
+	cmd.Env = toolEnvironment(payloadCredentialNames(payload, "provider", "vision_provider")...)
 	configureMediaCommand(cmd)
 	cmd.WaitDelay = time.Second
 	cmd.Stdin = bytes.NewReader(raw)
@@ -569,7 +599,7 @@ func (s *Service) extractSkillFrames(ctx context.Context, r *skill.Run, snap har
 	if len(sources) == 0 {
 		return nil, model.ErrArgument
 	}
-	data, err := s.skillProcess(ctx, "extract", map[string]any{"sources": sources, "output": output, "max_frames": r.Budget.MaxFrames - len(r.Frames), "every": req.Every, "interval": req.Interval, "threshold": req.Threshold, "coverage": req.Coverage})
+	data, err := s.skillProcess(ctx, "extract", map[string]any{"sources": sources, "output": output, "max_frames": r.Budget.MaxFrames - r.FramesSpent, "every": req.Every, "interval": req.Interval, "threshold": req.Threshold, "coverage": req.Coverage})
 	if err != nil {
 		return data, err
 	}
@@ -582,9 +612,10 @@ func (s *Service) extractSkillFrames(ctx context.Context, r *skill.Run, snap har
 			Strategy string  `json:"strategy"`
 		} `json:"frames"`
 	}
-	if json.Unmarshal(data, &result) != nil || len(result.Frames) > r.Budget.MaxFrames-len(r.Frames) {
+	if json.Unmarshal(data, &result) != nil || len(result.Frames) > r.Budget.MaxFrames-r.FramesSpent {
 		return nil, model.ErrInvalidState
 	}
+	r.FramesSpent += len(result.Frames)
 	frames := []skill.Frame{}
 	for _, row := range result.Frames {
 		if !filepath.IsLocal(row.File) || filepath.Base(row.File) != row.File {

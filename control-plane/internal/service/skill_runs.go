@@ -19,6 +19,7 @@ import (
 func (s *Service) GetSkillRun(ctx context.Context, actor, id string) (skill.Run, error) {
 	var r skill.Run
 	err := s.st.SkillGet(ctx, "run", id, &r)
+	r.FramesSpent = max(r.FramesSpent, len(r.Frames))
 	if err == nil && !isHumanActor(actor) && r.Owner != actor {
 		err = model.ErrForbidden
 	}
@@ -354,6 +355,9 @@ func (s *Service) UpdateSkillRun(ctx context.Context, actor, id, action string, 
 		until := s.autoNow().Add(2 * time.Minute)
 		r.LeaseUntil = &until
 	}
+	if action != "cancel" {
+		r.BudgetStepBase, r.BudgetElapsedBase = r.Steps, r.ElapsedMilliseconds
+	}
 	r.UpdatedAt = s.autoNow()
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		if err := tx.SkillPut(ctx, "run", id, version, r); err != nil {
@@ -384,12 +388,18 @@ func (s *Service) skillRunDir(r skill.Run) (string, error) {
 	return filepath.Dir(full), err
 }
 func (s *Service) SkillRunSteps(ctx context.Context, actor, id string) ([]json.RawMessage, error) {
+	if err := requireHumanConfirm(actor, "read operation steps"); err != nil {
+		return nil, err
+	}
 	if _, err := s.GetSkillRun(ctx, actor, id); err != nil {
 		return nil, err
 	}
 	return s.st.SkillSteps(ctx, id)
 }
 func (s *Service) SkillRunRevisions(ctx context.Context, actor, id string) ([]json.RawMessage, error) {
+	if err := requireHumanConfirm(actor, "read operation revisions"); err != nil {
+		return nil, err
+	}
 	if _, err := s.GetSkillRun(ctx, actor, id); err != nil {
 		return nil, err
 	}

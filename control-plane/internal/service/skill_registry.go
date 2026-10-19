@@ -21,10 +21,17 @@ var skillTools = []string{"media.list", "media.get_frames", "media.transcribe", 
 func packageSHA(p skill.Package) string { p.Enabled = false; p.SHA = ""; return skillHash(p) }
 func (s *Service) loadBuiltinSkills(ctx context.Context) error {
 	for _, p := range skill.Builtins() {
+		p.SHA = packageSHA(p)
 		// Keep disabled settings and immutable run snapshots across upgrades.
 		var old skill.Package
 		err := s.st.SkillGet(ctx, "skill", p.ID, &old)
 		if err == nil {
+			if old.Builtin && old.SHA != p.SHA {
+				p.Enabled = old.Enabled
+				if e := s.st.SkillSetEnabled(ctx, p.ID, p); e != nil {
+					return e
+				}
+			}
 			continue
 		}
 		if err != model.ErrNotFound {

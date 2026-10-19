@@ -8,6 +8,7 @@ import (
 )
 
 func TestSkillHTTPProjectAndBuiltinResources(t *testing.T) {
+	t.Setenv("VAC_HUMAN_ACCESS_TOKEN", "vac-human-test-credential-00000000000001")
 	srv := newSeededServer(t)
 	if err := srv.svc.ConfigureDeliveryRoot(t.TempDir()); err != nil {
 		t.Fatal(err)

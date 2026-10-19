@@ -22,6 +22,8 @@ $start.CreateNoWindow=$true
 $start.RedirectStandardInput=$true
 $start.RedirectStandardOutput=$true
 $start.RedirectStandardError=$true
+$humanToken=[guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')
+$start.Environment['VAC_HUMAN_ACCESS_TOKEN']=$humanToken
 foreach($arg in @('-config',$config,'-db',(Join-Path $dir 'vac.db'),'-desktop')){$start.ArgumentList.Add($arg)}
 $process=[Diagnostics.Process]::Start($start)
 $stderr=$process.StandardError.ReadToEndAsync()
@@ -33,13 +35,18 @@ try {
  $base=$ready.api_base_url
  $skills=Invoke-RestMethod -Uri "$base/api/skills" -TimeoutSec 5 -NoProxy
  if(@($skills|Where-Object {$_.id -eq 'video-use' -and $_.builtin}).Count -ne 1){throw 'Builtin video-use missing'}
- $project=Invoke-RestMethod -Uri "$base/api/projects" -Method Post -ContentType 'application/json' -Body (@{name='Runtime smoke';flow='visual_heavy';expected_version=0;assets=@();visible=@()}|ConvertTo-Json) -TimeoutSec 5 -NoProxy
+ $project=Invoke-RestMethod -Uri "$base/api/projects" -Method Post -Headers @{'X-VAC-Human-Token'=$humanToken} -ContentType 'application/json' -Body (@{name='Runtime smoke';flow='visual_heavy';expected_version=0;assets=@();visible=@()}|ConvertTo-Json) -TimeoutSec 5 -NoProxy
  if(!$project.id -or $project.version -ne 1){throw 'Project creation failed'}
  $headers=@{Authorization="Bearer $token";Accept='application/json, text/event-stream';'Mcp-Protocol-Version'='2026-07-28';'Mcp-Method'='tools/call';'Mcp-Name'='skills.get'}
  $body=@{jsonrpc='2.0';id=1;method='tools/call';params=@{name='skills.get';arguments=@{id='video-use'};_meta=@{'io.modelcontextprotocol/protocolVersion'='2026-07-28';'io.modelcontextprotocol/clientCapabilities'=@{}}}}|ConvertTo-Json -Depth 8
  $response=Invoke-RestMethod -Uri "$base/mcp" -Method Post -ContentType 'application/json' -Headers $headers -Body $body -TimeoutSec 5 -NoProxy
  if($response.error -or $response.result.isError -or $response.result.structuredContent.id -ne 'video-use'){throw 'MCP Skill distribution failed'}
- $result=@{runtime='passed';http_project='passed';mcp_skill='passed';builtin_count=@($skills).Count;model_calls=0;human_ui='not_run'}
+ $forbidden=Invoke-WebRequest -Uri "$base/api/agent-operations" -SkipHttpErrorCheck -TimeoutSec 5 -NoProxy
+ if([int]$forbidden.StatusCode -ne 403){throw 'Journal is not human-only'}
+ $journal=Invoke-RestMethod -Uri "$base/api/agent-operations" -Headers @{'X-VAC-Human-Token'=$humanToken} -TimeoutSec 5 -NoProxy
+ $chain=Invoke-RestMethod -Uri "$base/api/agent-operations/verify" -Headers @{'X-VAC-Human-Token'=$humanToken} -TimeoutSec 5 -NoProxy
+ if(@($journal).Count -lt 1 -or $chain.verified_through -lt 1){throw 'Agent operation journal missing'}
+ $result=@{runtime='passed';http_project='passed';mcp_skill='passed';human_journal='passed';unauthorized_journal='denied';builtin_count=@($skills).Count;model_calls=0;human_ui='not_run'}
  $result|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $env:VAC_TEST_OUTPUT 'vu-runtime-result.json') -Encoding utf8
  $result|ConvertTo-Json -Compress
 } finally {

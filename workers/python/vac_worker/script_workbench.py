@@ -50,7 +50,7 @@ def call_model(spec, prompt, images, opener=None):
 
 def sample_frame(media):
     at = media['in'] + min(.5, (media['out'] - media['in']) / 2)
-    result = subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-ss', str(at),
+    result = subprocess.run(['ffmpeg', '-protocol_whitelist', 'file,pipe', '-hide_banner', '-loglevel', 'error', '-ss', str(at),
                              '-i', media['path'], '-frames:v', '1', '-vf', 'scale=640:-2',
                              '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'],
                             capture_output=True, timeout=20,

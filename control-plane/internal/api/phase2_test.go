@@ -98,7 +98,12 @@ func TestPhase2RESTServiceStoreSSEAudit(t *testing.T) {
 		t.Fatalf("GET after PATCH differs from stored response:\nGET:   %+v\nPATCH: %+v", persisted, patched)
 	}
 
-	auditResp, err := client.Get(base + "/api/audit")
+	auditRequest, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/api/audit", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditRequest.Header.Set("X-VAC-Human-Token", "vac-human-test-credential-00000000000001")
+	auditResp, err := client.Do(auditRequest)
 	if err != nil {
 		t.Fatal(err)
 	}

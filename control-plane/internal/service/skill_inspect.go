@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
-	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/scriptsyntax"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
-	"math"
 )
 
 func (s *Service) inspectSkillRender(ctx context.Context, r *skill.Run) (json.RawMessage, error) {
@@ -38,19 +36,11 @@ func (s *Service) inspectSkillRender(ctx context.Context, r *skill.Run) (json.Ra
 		return nil, err
 	}
 	cuts := []float64{}
-	cursor := 0.
-	document := scriptsyntax.Parse(r.Plan.Body)
-	for i, seg := range r.Plan.Segments {
-		if i > 0 && document.Paragraphs[i].Effect == "交叉溶解" {
-			prior := r.Plan.Segments[i-1]
-			overlap := math.Floor(math.Min(.35, math.Min((prior.End-prior.Start)/3, (seg.End-seg.Start)/3))*30) / 30
-			cuts = append(cuts, cursor-overlap)
-			cursor -= overlap
-		}
+	windows := editWindows(r.Plan)
+	for i, window := range windows {
 		if i > 0 {
-			cuts = append(cuts, cursor)
+			cuts = append(cuts, window.TimelineStart, windows[i-1].TimelineEnd)
 		}
-		cursor += seg.End - seg.Start
 	}
 	data, err := s.skillProcess(ctx, "inspect", map[string]any{"path": source, "output": out, "cuts": cuts, "max_frames": 48})
 	if err != nil {

@@ -2,11 +2,41 @@ import unittest
 import tempfile
 from pathlib import Path
 from unittest import mock
+import http.server
+import shutil
+import threading
 from vac_worker.stages import StageContext, Tools, narrate, tts, subtitle
-from vac_worker.skill_runtime import select_frames, extract, ToolFailure
+from vac_worker.skill_runtime import select_frames, extract, ToolFailure, run
 
 
 class SkillSamplingTests(unittest.TestCase):
+    def test_media_playlist_cannot_make_hidden_network_requests(self):
+        if not shutil.which('ffprobe'):
+            self.skipTest('ffprobe not installed')
+        requests = []
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path)
+                self.send_response(404)
+                self.end_headers()
+            def log_message(self, *_):
+                pass
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp)/'untrusted.mp4'
+                path.write_text('#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n'
+                    f'http://127.0.0.1:{server.server_port}/hidden.ts\n#EXT-X-ENDLIST\n')
+                with self.assertRaises(ToolFailure):
+                    run(['ffprobe', '-v', 'error', '-show_format', str(path)], 10)
+            self.assertEqual(requests, [])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_continuous_changes_thin_one_in_three(self):
         samples = [bytes([0])*576, bytes([255])*576, bytes([0])*576,
                    bytes([255])*576, bytes([0])*576, bytes([255])*576]

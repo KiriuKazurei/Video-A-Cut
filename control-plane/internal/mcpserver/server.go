@@ -124,7 +124,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration) http.Handler
 		for _, a := range agents {
 			stored, _ := hex.DecodeString(a.TokenSHA256)
 			if len(stored) == sha256.Size && subtle.ConstantTimeCompare(stored, hash[:]) == 1 {
-				base.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, a)))
+				serveJournaledMCP(base, svc, a, w, r.WithContext(context.WithValue(r.Context(), identityKey{}, a)))
 				return
 			}
 		}

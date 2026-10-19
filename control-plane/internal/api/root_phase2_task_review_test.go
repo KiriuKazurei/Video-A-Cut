@@ -68,7 +68,12 @@ func TestReviewPhase2TaskHTTPStoreSSEAudit(t *testing.T) {
 		t.Fatalf("SSE task differs from SQLite-backed GET: SSE=%+v GET=%+v", eventTask, persisted)
 	}
 
-	auditResp, err := client.Get(base + "/api/audit")
+	auditRequest, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/api/audit", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditRequest.Header.Set("X-VAC-Human-Token", "vac-human-test-credential-00000000000001")
+	auditResp, err := client.Do(auditRequest)
 	if err != nil {
 		t.Fatal(err)
 	}

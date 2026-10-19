@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 
 export function runTool(command, args, { signal, timeoutMs, maxOutputBytes = 8 * 1024 * 1024, cwd } = {}) {
+  // Local footage must not cause FFmpeg to fetch URLs hidden in a playlist.
+  const name = basename(command).replace(/\.exe$/i, '').toLowerCase();
+  if (name === 'ffprobe') args = ['-protocol_whitelist', 'file,pipe', '-format_whitelist', 'mov,matroska,webm,avi,mpegts,mpegvideo,flv,ogg,wav,mp3,aac,flac', ...args];
+  if (name === 'ffmpeg') args = args.flatMap(value => value === '-i' ? ['-protocol_whitelist', 'file,pipe', value] : [value]);
   signal?.throwIfAborted();
   return new Promise((done, fail) => {
     const child = spawn(command, args, { windowsHide: true, cwd });

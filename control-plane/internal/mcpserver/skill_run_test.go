@@ -1,10 +1,14 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,5 +56,28 @@ func TestSkillMCPExternalAgentCanRunWithoutVACModelKey(t *testing.T) {
 	_, bad, _ = f.call("other", "skill_runs.get", map[string]any{"run_id": id})
 	if !bad {
 		t.Fatal("another Agent read this run")
+	}
+	for _, name := range []string{"skill_runs.steps", "agent_operations.list", "skill_runs.undo"} {
+		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": map[string]any{"run_id": id}, "_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": map[string]any{}}}})
+		req, _ := http.NewRequest("POST", f.server.URL, strings.NewReader(string(body)))
+		for k, v := range map[string]string{"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Mcp-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": name, "Authorization": "Bearer " + f.tokens["editor"]} {
+			req.Header.Set(k, v)
+		}
+		response, e := f.server.Client().Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		raw, e := io.ReadAll(response.Body)
+		response.Body.Close()
+		if e != nil || response.StatusCode != 400 || !strings.Contains(string(raw), "unknown tool") {
+			t.Fatalf("human-only tool exposed: %s %s %v", name, raw, e)
+		}
+	}
+	rows, err := f.svc.AgentOperations(ctx, "human:test", id, 0, 100)
+	if err != nil || len(rows) < 4 {
+		t.Fatalf("MCP attempts not journaled: %d %v", len(rows), err)
+	}
+	if _, err = f.svc.VerifyAgentOperations(ctx, "human:test"); err != nil {
+		t.Fatal(err)
 	}
 }

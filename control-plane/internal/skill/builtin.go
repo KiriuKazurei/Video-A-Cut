@@ -18,8 +18,8 @@ func Builtins() []Package {
 	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish"}
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
-		{ID: "video-use", Name: "Video Use", Version: "0.1.0-vac.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
-		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.0.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
+		{ID: "video-use", Name: "Video Use", Version: "0.1.0-vac.2", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
+		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.1.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
 		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "1.0.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
 	}
 	_ = fs.WalkDir(upstream, "builtin/video-use", func(path string, d fs.DirEntry, err error) error {
@@ -42,6 +42,11 @@ func Builtins() []Package {
 }
 
 const VideoUseAdapter = `# Video Use — VAC adapter
+Local edits arrive in run.edit_request with the human prompt and explicit
+timeline/source start/end windows. Keep the segment count, body and global
+subtitle option; change only selected segments and submit scripts.propose.
+Never read operation logs or checkpoints. Human approval and undo/redo are not
+Agent tools. Use skill_runs.get and idempotent tool replay for current state.
 For an external MCP Agent, skills.get provides this package. Execute each media,
 summary, script and render tool through skill_runs.tool using {run_id,request:
 {name,arguments,expected_version,idempotency_key}}. Use skill_runs.get to refresh
@@ -66,6 +71,10 @@ run.finish only when deliverables exist. No success claim from an unrendered pla
 Use at most the run budget. Do not fabricate visual evidence or human acceptance.
 `
 const VisualAdapter = `# VAC visual summary
+For run.edit_request, apply the human prompt only to its listed timeline/source
+windows; preserve body, global subtitles, segment count and unselected segments.
+Propose the edited plan and stop for human approval. Operation logs/checkpoints
+and undo/redo are human-only and are never available through MCP.
 External MCP Agents invoke the named tools through skill_runs.tool with run_id
 and a versioned, idempotent request. Human approval remains in the VAC UI/API.
 No ASR dependency. List visible media; extract frames with media.get_frames.

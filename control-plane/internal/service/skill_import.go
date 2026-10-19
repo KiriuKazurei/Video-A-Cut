@@ -91,7 +91,7 @@ func (s *Service) ImportProjectMedia(ctx context.Context, actor, id string, req 
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(probeCtx, "ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", dest)
+	cmd := exec.CommandContext(probeCtx, "ffprobe", "-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,mpegts,mpegvideo,flv,ogg", "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", dest)
 	hideTTSCommand(cmd)
 	var out scriptOutput
 	cmd.Stdout = &out

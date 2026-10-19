@@ -178,7 +178,9 @@ func (s *Server) routes() {
 // 404 and 405 answers. Without the wrapper a client would receive a text/plain
 // error body for every unmatched path and every wrong method, which is the
 // case exactly when the caller cannot tell what went wrong.
-func (s *Server) Handler() http.Handler { return localRequestGate(wrapJSONErrors(s.mux)) }
+func (s *Server) Handler() http.Handler {
+	return localRequestGate(protectHumanSkill(wrapJSONErrors(s.mux)))
+}
 
 // localRequestGate protects this unauthenticated local control surface from
 // DNS-rebinding and cross-origin browser writes. Requests without Origin are
@@ -190,7 +192,7 @@ func localRequestGate(next http.Handler) http.Handler {
 
 // HandlerWithOrigin keeps the local Host/JSON gate and trusts one configured UI.
 func (s *Server) HandlerWithOrigin(origin string) http.Handler {
-	return localRequestGateWithOrigin(wrapJSONErrors(s.mux), origin)
+	return localRequestGateWithOrigin(protectHumanSkill(wrapJSONErrors(s.mux)), origin)
 }
 
 func localRequestGateWithOrigin(next http.Handler, desktopOrigin string) http.Handler {
@@ -207,6 +209,7 @@ func localRequestGateWithOrigin(next http.Handler, desktopOrigin string) http.Ha
 		}
 		if trustedDesktop {
 			w.Header().Set("Access-Control-Allow-Origin", desktopOrigin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Add("Vary", "Origin")
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Content-Disposition")
 			if r.Method == http.MethodOptions {
@@ -217,13 +220,14 @@ func localRequestGateWithOrigin(next http.Handler, desktopOrigin string) http.Ha
 				}
 				for _, header := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
 					h := strings.ToLower(strings.TrimSpace(header))
-					if h != "" && h != "content-type" && h != "accept" && h != "range" {
+					if h != "" && h != "content-type" && h != "accept" && h != "range" && h != "x-vac-human-token" {
 						writeError(w, http.StatusForbidden, codeForbidden, "preflight header is not allowed")
 						return
 					}
 				}
 				w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PATCH, PUT, DELETE")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Range")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Range, X-VAC-Human-Token")
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}

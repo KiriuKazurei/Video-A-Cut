@@ -1,4 +1,9 @@
 # Video Use — VAC adapter
+Local edits arrive in run.edit_request with the human prompt and explicit
+timeline/source start/end windows. Keep the segment count, body and global
+subtitle option; change only selected segments and submit scripts.propose.
+Never read operation logs or checkpoints. Human approval and undo/redo are not
+Agent tools. Use skill_runs.get and idempotent tool replay for current state.
 For an external MCP Agent, skills.get provides this package. Execute each media,
 summary, script and render tool through skill_runs.tool using {run_id,request:
 {name,arguments,expected_version,idempotency_key}}. Use skill_runs.get to refresh

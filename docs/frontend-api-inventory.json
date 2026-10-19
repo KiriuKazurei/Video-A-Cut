@@ -2,8 +2,8 @@
   "schema_version": 1,
   "verified_date": "2026-10-19",
   "scope": "当前改造分支 Go HTTP/SSE 与前端调用契约，含 MCP 配套说明",
-  "registered_route_count": 131,
-  "expanded_endpoint_count": 132,
+  "registered_route_count": 143,
+  "expanded_endpoint_count": 144,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -30,7 +30,13 @@
     "webui/src/navigation.ts",
     "webui/src/workspaces/ExportWorkspace.tsx",
     "webui/src/skillApi.ts",
-    "webui/src/skillContracts.ts"
+    "webui/src/skillContracts.ts",
+    "webui/src/skillEditing.ts",
+    "webui/src/previewContracts.ts",
+    "webui/src/components/PreviewPanel.tsx",
+    "webui/src/components/PreparationPanel.tsx",
+    "webui/src/components/DesktopRuntime.tsx",
+    "webui/src/components/DesktopUpdates.tsx"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -44,12 +50,32 @@
       "request": "无",
       "success_response": "200 Asset[]",
       "behavior": "裸数组；前端搜索与媒体类别筛选在本地进行，没有服务端搜索分页",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listAssets",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 515
-      }
+        "line": 519
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 134
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 148
+        },
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 98
+        }
+      ]
     },
     {
       "id": "API-02",
@@ -61,12 +87,23 @@
       "request": "路径 id=asset_id",
       "success_response": "200 Asset",
       "behavior": "当前组件使用列表中的资产快照；该封装暂未被页面调用",
-      "usage": "已封装，页面未调用",
+      "usage": "仅 SDK，页面未接入；详情封装未调用；页面使用资产列表快照。",
       "backend_handler": "getAsset",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 536
-      }
+        "line": 540
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "operations_optional",
+      "frontend_gap": "详情封装未调用；页面使用资产列表快照。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 135
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "API-03",
@@ -78,12 +115,36 @@
       "request": "JSON：agent_visible?:boolean, locked?:boolean, human_approved?:boolean, allowed_agents?:string[]",
       "success_response": "200 Asset",
       "behavior": "只发修改的治理字段；返回完整资产。人工批准资产不等于批准某句解说。修改权限可能影响活动任务",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "patchAsset",
       "backend_source": {
         "file": "control-plane/internal/api/asset_governance.go",
         "line": 66
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 136
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 158
+        },
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 104
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 138
+        }
+      ]
     },
     {
       "id": "API-04",
@@ -95,12 +156,36 @@
       "request": "无",
       "success_response": "200 IngestRoots",
       "behavior": "roots 仅含 root_id/name，不提供绝对路径；configured=false 时先配置服务端",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listIngestRoots",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 55
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 172
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 50
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 113
+        },
+        {
+          "file": "webui/src/components/StatusMonitor.tsx",
+          "line": 49
+        }
+      ]
     },
     {
       "id": "API-05",
@@ -112,12 +197,28 @@
       "request": "JSON：asset_id, root_id, relative_path, idempotency_key",
       "success_response": "201 {source:RecordingSource, source_version:string, asset:Asset}",
       "behavior": "登记本机受控根目录内文件，不上传文件；后续另行开始导入",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "registerRecording",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 64
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 173
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 65
+        }
+      ]
     },
     {
       "id": "API-06",
@@ -129,12 +230,28 @@
       "request": "路径 id",
       "success_response": "200 RecordingSource[]",
       "behavior": "source_version 是开始导入的并发校验值；按服务端返回值提交",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listRecordings",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 78
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 176
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 123
+        }
+      ]
     },
     {
       "id": "API-07",
@@ -146,12 +263,28 @@
       "request": "JSON：source_id, expected_source_version, idempotency_key；可选 resource_policy",
       "success_response": "202 IngestStartResult",
       "behavior": "仅受理，随后查询状态；默认拒绝已有资源占用。资产需可见、未锁定、允许 ingester",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "startIngest",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 91
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 177
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 167
+        }
+      ]
     },
     {
       "id": "API-08",
@@ -163,12 +296,32 @@
       "request": "query：limit 默认20、范围1..50；offset 默认0、范围0..100000",
       "success_response": "200 IngestRun[]",
       "behavior": "接口支持分页；当前组件只取首批",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listIngestRuns",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 109
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 180
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 209
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 124
+        }
+      ]
     },
     {
       "id": "API-09",
@@ -180,12 +333,28 @@
       "request": "路径 run=导入 run_id",
       "success_response": "200 IngestRunView",
       "behavior": "run.state 与 run.stage 配合显示；execution 提供等待排空、重连和清理阻断信息",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getIngestRun",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 127
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 181
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 187
+        }
+      ]
     },
     {
       "id": "API-10",
@@ -197,12 +366,28 @@
       "request": "query：limit=50（1..200）, offset=0（0..100000）",
       "success_response": "200 SegmentPage",
       "behavior": "只返回当前分析版本的候选；缩略图使用 thumbnail_key 请求文件接口",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listIngestSegments",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 136
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 182
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 311
+        }
+      ]
     },
     {
       "id": "API-11",
@@ -214,12 +399,28 @@
       "request": "JSON AnalysisRequest，见请求示例",
       "success_response": "202 IngestStartResult",
       "behavior": "异步生成新分析；重新分析后以新 analysis_revision 重建选段编辑状态",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "postAnalysisPlan",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 150
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 183
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 273
+        }
+      ]
     },
     {
       "id": "API-12",
@@ -231,12 +432,28 @@
       "request": "JSON SelectionRequest，见请求示例",
       "success_response": "201 IngestRun",
       "behavior": "选择/排除/边界编辑/拆分/合并共用本接口；提交完整已选列表，不是单片段 PATCH",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "postSelection",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 164
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 185
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 468
+        }
+      ]
     },
     {
       "id": "API-13",
@@ -248,12 +465,28 @@
       "request": "JSON：expected_version, plan_revision, profile_id, profile_revision, idempotency_key；可选 resource_policy",
       "success_response": "202 IngestStartResult",
       "behavior": "仅针对已保存选择版本；绑定预设后生成媒体，不能把受理显示成生成完成",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "postPrepare",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 178
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 187
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 484
+        }
+      ]
     },
     {
       "id": "API-14",
@@ -265,12 +498,28 @@
       "request": "JSON：expected_version:number, reason:string",
       "success_response": "200 IngestRun",
       "behavior": "取消与进程排空不同步；继续展示 execution 清理状态，不提前允许冲突运行",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "cancelIngest",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 192
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 189
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 224
+        }
+      ]
     },
     {
       "id": "API-15",
@@ -282,12 +531,28 @@
       "request": "JSON：expected_version, stage, idempotency_key；可选 resource_policy",
       "success_response": "202 IngestStartResult",
       "behavior": "stage 使用当前失败步骤；复用后端已校验检查点，前端不自行宣布可复用",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "retryIngest",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 206
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 191
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 226
+        }
+      ]
     },
     {
       "id": "API-16",
@@ -299,12 +564,40 @@
       "request": "路径 key 为服务端登记键",
       "success_response": "200 文件或 probe JSON；媒体 Range 可返回206",
       "behavior": "key=probe 返回探测 JSON；其他键来自 thumbnail_key 或 files。不能传磁盘路径",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getIngestFile",
       "backend_source": {
         "file": "control-plane/internal/api/ingest.go",
         "line": 222
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 195
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 363
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 416
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 497
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 506
+        }
+      ]
     },
     {
       "id": "API-17",
@@ -316,12 +609,28 @@
       "request": "JSON：provider:ProcessingProvider, api_key?:string",
       "success_response": "200 ProviderDiagnostic",
       "behavior": "models 可不填写 model；HTTP 200 不代表诊断成功，必须检查 ok/code",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "diagnoseProvider",
       "backend_source": {
         "file": "control-plane/internal/api/provider_diagnostics.go",
         "line": 8
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 97
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProviderEditor.tsx",
+          "line": 42
+        }
+      ]
     },
     {
       "id": "API-18",
@@ -333,12 +642,28 @@
       "request": "JSON：provider:ProcessingProvider, api_key?:string",
       "success_response": "200 ProviderDiagnostic",
       "behavior": "需要 model；固定文字/合成图片测试，不会生成供试听的语音。真实端点可能计费",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "diagnoseProvider",
       "backend_source": {
         "file": "control-plane/internal/api/provider_diagnostics.go",
         "line": 8
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 97
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ProviderEditor.tsx",
+          "line": 42
+        }
+      ]
     },
     {
       "id": "API-19",
@@ -350,12 +675,40 @@
       "request": "query：limit 默认20，1..50；offset 默认0，0..100000；前端 limit=50",
       "success_response": "200 ProcessingProfile[]",
       "behavior": "当前前端未继续翻页；重构若支持更多预设需读取后续页",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listProfiles",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 23
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 99
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 165
+        },
+        {
+          "file": "webui/src/components/IngestPanel.tsx",
+          "line": 344
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 37
+        },
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 17
+        }
+      ]
     },
     {
       "id": "API-20",
@@ -367,12 +720,28 @@
       "request": "JSON：profile:ProcessingProfile, expected_revision:number, idempotency_key:string",
       "success_response": "201 ProcessingProfile",
       "behavior": "首次 expected_revision=0/profile.revision=1；后续 revision=expected_revision+1。已保存版本不可覆盖",
-      "usage": "页面已使用",
+      "usage": "部分接入，待补齐；已有预设保存页面；新增 transcription 仅有类型/外发判定，缺配置编辑控件。",
       "backend_handler": "saveProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 47
-      }
+      },
+      "frontend_status": "partial",
+      "frontend_status_label": "部分接入，待补齐",
+      "frontend_requirement": "required",
+      "frontend_gap": "已有预设保存页面；新增 transcription 仅有类型/外发判定，缺配置编辑控件。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 101
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 103
+        }
+      ]
     },
     {
       "id": "API-21",
@@ -384,29 +753,55 @@
       "request": "路径 id=profile_id，revision>=0；0 表示当前版本",
       "success_response": "200 {profile:ProcessingProfile, profile_sha256:string}",
       "behavior": "加载历史版本后保存仍受乐观并发约束；不要在前端自造指纹",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 64
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 100
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 69
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 160
+        }
+      ]
     },
     {
       "id": "API-22",
       "group": "处理预设与运行准备",
       "method": "POST",
       "path": "/api/processing-profiles/{id}/revisions",
-      "frontend_function": "无",
-      "frontend_ui": "可选的保存预设路由",
+      "frontend_function": "无独立封装",
+      "frontend_ui": "独立路由未封装；页面使用 POST /api/processing-profiles 保存版本。",
       "request": "与 POST /api/processing-profiles 相同；路径 id 必须等于 profile.profile_id",
       "success_response": "201 ProcessingProfile",
       "behavior": "与通用保存入口使用同一 handler；目前页面不用此别名",
-      "usage": "后端已提供，前端未封装",
+      "usage": "未封装/未接入；独立路由未封装；页面使用 POST /api/processing-profiles 保存版本。",
       "backend_handler": "saveProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 47
-      }
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "optional_equivalent",
+      "frontend_gap": "独立路由未封装；页面使用 POST /api/processing-profiles 保存版本。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "API-23",
@@ -418,12 +813,40 @@
       "request": "无请求体；revision>=1",
       "success_response": "200 {granted:true}",
       "behavior": "授权绑定预设版本及其指纹；不等于存储 API key，也不属于某个资产",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "profileConsent",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 77
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 102
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 202
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 215
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 216
+        },
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 166
+        }
+      ]
     },
     {
       "id": "API-24",
@@ -435,12 +858,40 @@
       "request": "无请求体；revision>=1",
       "success_response": "200 {granted:false}",
       "behavior": "撤销后刷新运行准备检查；不能仅改变按钮颜色而继续使用旧 can_start",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "profileConsent",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 77
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 102
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 202
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 215
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 216
+        },
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 166
+        }
+      ]
     },
     {
       "id": "API-25",
@@ -452,12 +903,32 @@
       "request": "JSON：profile_id:string, revision:number>=1",
       "success_response": "200 PreparationReport",
       "behavior": "以 can_start、checks、expected_asset_version 决定能否启动；阻断也是 HTTP 200",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "preparedPreflight",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 90
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 103
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 171
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 48
+        }
+      ]
     },
     {
       "id": "API-26",
@@ -469,12 +940,28 @@
       "request": "JSON：profile_id, revision, expected_asset_version, idempotency_key；可选 revision_id",
       "success_response": "201 WorkflowRun",
       "behavior": "使用最近预检的资产版本；后端再次检查治理/凭证/Worker/授权，201 不是交付完成",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "startPrepared",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
         "line": 107
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 104
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 111
+        }
+      ]
     },
     {
       "id": "API-27",
@@ -486,12 +973,23 @@
       "request": "JSON：ProcessingProfile（不包 profile 外壳）",
       "success_response": "200 PreparationReport",
       "behavior": "当前页面使用 prepared-preflight；本入口保留早期基础预检语义，包含 prepared_launch 阻断项，不会创建任务，也不能替代固定版本启动的预检",
-      "usage": "已封装，页面未调用",
+      "usage": "仅 SDK，页面未接入；草稿预检未调用；页面使用固定版本 prepared-preflight。",
       "backend_handler": "preflightWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/preparation.go",
         "line": 8
-      }
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "operations_optional",
+      "frontend_gap": "草稿预检未调用；页面使用固定版本 prepared-preflight。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 113
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "API-28",
@@ -503,12 +1001,28 @@
       "request": "query：limit=20, offset=0",
       "success_response": "200 WorkflowRun[]",
       "behavior": "较新/较早按 offset 翻页；当前选中的 run 独立于资产导出状态",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listWorkflows",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 56
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 145
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 40
+        }
+      ]
     },
     {
       "id": "API-29",
@@ -520,12 +1034,28 @@
       "request": "JSON：idempotency_key, content_mode:builtin或configured；可选 revision_id",
       "success_response": "201 WorkflowRun",
       "behavior": "固定预设流程优先使用 prepared-workflows；builtin 只是工程回归，不能显示为真实识别",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "startWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 38
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 146
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 259
+        }
+      ]
     },
     {
       "id": "API-30",
@@ -537,12 +1067,32 @@
       "request": "路径 run=内容流程 run_id",
       "success_response": "200 WorkflowSnapshot",
       "behavior": "任务进度来自 tasks；stages 关联输入/输出修订及失效状态",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 86
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 150
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 44
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 42
+        }
+      ]
     },
     {
       "id": "API-31",
@@ -554,12 +1104,28 @@
       "request": "路径 run",
       "success_response": "200 ReviewView",
       "behavior": "返回最新审查修订及其批准状态；编辑必须使用该修订与 run.version",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "reviewWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 137
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 151
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 43
+        }
+      ]
     },
     {
       "id": "API-32",
@@ -571,12 +1137,36 @@
       "request": "JSON：expected_version, revision_id, scene_id, decision:confirmed或rejected, note?:string",
       "success_response": "200 WorkflowRun",
       "behavior": "当前 UI 仅在 awaiting_review/scene_review 启用；全部确认才推进 sort",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "reviewScene",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 165
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 152
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 212
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 323
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 324
+        }
+      ]
     },
     {
       "id": "API-33",
@@ -588,12 +1178,32 @@
       "request": "JSON：expected_version, revision_id, narration_id",
       "success_response": "200 WorkflowRun",
       "behavior": "当前 UI 仅在 awaiting_review/draft_review 启用；全部批准可自动推进 TTS",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "reviewNarration",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 179
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 154
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 216
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 342
+        }
+      ]
     },
     {
       "id": "API-34",
@@ -605,12 +1215,28 @@
       "request": "路径 narration=解说 id；query expected_version:number",
       "success_response": "200 WorkflowRun",
       "behavior": "撤销会停止/失效下游；刷新 run、review、tasks，不能只清空本地勾选",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "revokeWorkflowNarration",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 193
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 162
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 343
+        }
+      ]
     },
     {
       "id": "API-35",
@@ -622,12 +1248,32 @@
       "request": "JSON：expected_version, base_revision_id（或兼容 revision_id）；场景/解说编辑字段见示例",
       "success_response": "200 WorkflowRun",
       "behavior": "产生新修订并重新审查；批准和下游失效由服务端处理；一次编辑明确指定 scene_id 或 narration_id",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "editWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 146
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 156
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 320
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 335
+        }
+      ]
     },
     {
       "id": "API-36",
@@ -639,12 +1285,28 @@
       "request": "JSON：expected_version, reason",
       "success_response": "200 WorkflowRun",
       "behavior": "界面要求非空原因；停止流程后仍以服务器状态为准",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "cancelWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 109
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 158
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 376
+        }
+      ]
     },
     {
       "id": "API-37",
@@ -656,12 +1318,28 @@
       "request": "JSON：expected_version, failed_stage, idempotency_key",
       "success_response": "200 WorkflowRun",
       "behavior": "当前 UI 仅 failed 启用；与导入 retry 的 stage 字段名不同",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "retryWorkflow",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 123
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 161
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 377
+        }
+      ]
     },
     {
       "id": "API-38",
@@ -673,12 +1351,23 @@
       "request": "query revision_id=ReviewView.revision.revision_id；key=evidence_files[].key",
       "success_response": "200 图像；支持 ServeContent",
       "behavior": "绑定展示修订，不能用本地 package_ref 拼文件 URL",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "workflowEvidence",
       "backend_source": {
         "file": "control-plane/internal/api/workflow_delivery.go",
         "line": 11
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 36
+        }
+      ]
     },
     {
       "id": "API-39",
@@ -690,12 +1379,28 @@
       "request": "路径 run",
       "success_response": "200 AcceptanceRecord[]",
       "behavior": "按 check_item 和当前 export_revision_id 过滤后取最新结果；保留历史记录",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getAcceptance",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 203
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 160
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 44
+        }
+      ]
     },
     {
       "id": "API-40",
@@ -707,12 +1412,32 @@
       "request": "JSON：expected_version, check_item, result:passed或failed, note?:string",
       "success_response": "200 AcceptanceRecord",
       "behavior": "只在 ready_for_acceptance 启用；失败需原因；记录绑定导出修订和 manifest 指纹",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "postAcceptance",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 212
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 163
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 477
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 485
+        }
+      ]
     },
     {
       "id": "API-41",
@@ -724,12 +1449,27 @@
       "request": "路径 run",
       "success_response": "200 application/zip",
       "behavior": "下载该流程当前可验收导出；与资产级 ZIP 不同。重修订后应重新读取流程再确定下载版本",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "workflowZIP",
       "backend_source": {
         "file": "control-plane/internal/api/workflow_delivery.go",
         "line": 32
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 145
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 503
+        }
+      ]
     },
     {
       "id": "API-42",
@@ -741,12 +1481,28 @@
       "request": "JSON：asset_id, package_dir",
       "success_response": "201 Asset",
       "behavior": "package_dir 为 delivery_root 内的相对包目录，含清单；不是文件上传接口",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "importDelivery",
       "backend_source": {
         "file": "control-plane/internal/api/delivery.go",
         "line": 25
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 141
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/DeliveryPanel.tsx",
+          "line": 38
+        }
+      ]
     },
     {
       "id": "API-43",
@@ -758,12 +1514,28 @@
       "request": "无请求体",
       "success_response": "200 Asset",
       "behavior": "导出资产重新进入可处理状态；刷新资产和相关视图",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "reopenAsset",
       "backend_source": {
         "file": "control-plane/internal/api/delivery.go",
         "line": 45
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 144
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/DeliveryPanel.tsx",
+          "line": 75
+        }
+      ]
     },
     {
       "id": "API-44",
@@ -775,12 +1547,32 @@
       "request": "路径 id",
       "success_response": "200 DeliveryFile[]",
       "behavior": "每项返回 key/name/mime/size/playable；文件地址用 key，不用 name 或 artifacts 本机路径",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listDeliveryFiles",
       "backend_source": {
         "file": "control-plane/internal/api/delivery.go",
         "line": 59
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 143
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/DeliveryPanel.tsx",
+          "line": 21
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 422
+        }
+      ]
     },
     {
       "id": "API-45",
@@ -792,12 +1584,32 @@
       "request": "可选 query download=1；媒体可发 Range 请求",
       "success_response": "200 文件 / 206 范围内容",
       "behavior": "非可播放内容强制 attachment；音量滑块只调浏览器试听音量，不写入混音或后端",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getDeliveryFile",
       "backend_source": {
         "file": "control-plane/internal/api/delivery.go",
         "line": 73
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 197
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/DeliveryPanel.tsx",
+          "line": 29
+        },
+        {
+          "file": "webui/src/components/DeliveryPanel.tsx",
+          "line": 118
+        }
+      ]
     },
     {
       "id": "API-46",
@@ -809,12 +1621,28 @@
       "request": "路径 id",
       "success_response": "200 application/zip",
       "behavior": "以资产当前产物为准；ZIP 中保留目录结构，跨目录迁移可能需要 Premiere 重新链接媒体",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "downloadDelivery",
       "backend_source": {
         "file": "control-plane/internal/api/delivery.go",
         "line": 102
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 200
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/DeliveryPanel.tsx",
+          "line": 103
+        }
+      ]
     },
     {
       "id": "API-47",
@@ -826,12 +1654,28 @@
       "request": "JSON：task_id, asset_id, type, agent_role, depends_on?:string[]",
       "success_response": "201 Task",
       "behavior": "手动创建单任务；depends_on 必须属于同一资产并已存在，不是启动完整内容流程的替代入口",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "createTask",
       "backend_source": {
         "file": "control-plane/internal/api/task.go",
         "line": 82
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 138
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 167
+        }
+      ]
     },
     {
       "id": "API-48",
@@ -843,12 +1687,44 @@
       "request": "路径 id=task_id",
       "success_response": "200 Task",
       "behavior": "无 GET /api/tasks 列表；关联任务由已加载审计 task.create 推导，并发最多8、默认最多查120条",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getTask",
       "backend_source": {
         "file": "control-plane/internal/api/task.go",
         "line": 150
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 139
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 152
+        },
+        {
+          "file": "webui/src/components/TaskOrchestrator.tsx",
+          "line": 69
+        },
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 123
+        },
+        {
+          "file": "webui/src/workspaces/ExportWorkspace.tsx",
+          "line": 122
+        },
+        {
+          "file": "webui/src/workspaces/ExportWorkspace.tsx",
+          "line": 123
+        }
+      ]
     },
     {
       "id": "API-49",
@@ -860,12 +1736,36 @@
       "request": "query limit 默认200，正整数，上限1000；过大截为1000",
       "success_response": "200 AuditLog[]",
       "behavior": "最新在前；无 offset、时间/类型/actor 服务端过滤。筛选仅作用于已加载记录",
-      "usage": "页面已使用",
+      "usage": "部分接入，待补齐；审计列表已接线；新增人工会话尚无页面解锁/到期处理，未解锁返回 403。",
       "backend_handler": "listAudit",
       "backend_source": {
         "file": "control-plane/internal/api/audit.go",
         "line": 64
-      }
+      },
+      "frontend_status": "partial",
+      "frontend_status_label": "部分接入，待补齐",
+      "frontend_requirement": "required",
+      "frontend_gap": "审计列表已接线；新增人工会话尚无页面解锁/到期处理，未解锁返回 403。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 140
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 149
+        },
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 100
+        },
+        {
+          "file": "webui/src/components/AuditLogViewer.tsx",
+          "line": 55
+        }
+      ]
     },
     {
       "id": "API-50",
@@ -877,131 +1777,307 @@
       "request": "EventSource，无 JSON 请求体",
       "success_response": "200 text/event-stream",
       "behavior": "11种事件（含 audit.changed）；15秒心跳；无历史回放。每次 open/reconnect 都重新取 REST 快照",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "streamEvents",
       "backend_source": {
         "file": "control-plane/internal/api/sse.go",
         "line": 45
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/useEvents.ts",
+          "line": 68
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 146
+        }
+      ]
     },
     {
       "id": "API-51",
       "group": "兼容接口（当前页面未接入）",
       "method": "POST",
       "path": "/api/assets/{id}/narration-reviews",
-      "frontend_function": "无",
-      "frontend_ui": "旧资产级解说批准",
+      "frontend_function": "无独立封装",
+      "frontend_ui": "旧资产级批准兼容入口；页面使用 workflow 级批准，无需重复。",
       "request": "JSON：text:string, start:number, end:number, source:string",
       "success_response": "200 {asset_id, draft_hash}",
       "behavior": "草稿哈希由后端计算；新页面应优先保留流程级审查，避免混用两套批准上下文",
-      "usage": "后端已提供，前端未封装",
+      "usage": "未封装/未接入；旧资产级批准兼容入口；页面使用 workflow 级批准，无需重复。",
       "backend_handler": "approveNarration",
       "backend_source": {
         "file": "control-plane/internal/api/narration_review.go",
         "line": 27
-      }
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "compatibility",
+      "frontend_gap": "旧资产级批准兼容入口；页面使用 workflow 级批准，无需重复。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "API-52",
       "group": "兼容接口（当前页面未接入）",
       "method": "DELETE",
       "path": "/api/assets/{id}/narration-reviews/{hash}",
-      "frontend_function": "无",
-      "frontend_ui": "旧资产级解说撤销",
+      "frontend_function": "无独立封装",
+      "frontend_ui": "旧资产级撤销兼容入口；页面使用 workflow 级撤销，无需重复。",
       "request": "路径 hash=draft_hash；无请求体",
       "success_response": "200 {asset_id, draft_hash}",
       "behavior": "当前 WorkflowPanel 使用流程级 narration-reviews/{narration}",
-      "usage": "后端已提供，前端未封装",
+      "usage": "未封装/未接入；旧资产级撤销兼容入口；页面使用 workflow 级撤销，无需重复。",
       "backend_handler": "revokeNarration",
       "backend_source": {
         "file": "control-plane/internal/api/narration_review.go",
         "line": 47
-      }
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "compatibility",
+      "frontend_gap": "旧资产级撤销兼容入口；页面使用 workflow 级撤销，无需重复。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "API-53",
       "group": "合成成片 MP4 预览",
       "method": "POST",
       "path": "/api/workflows/{run}/previews",
-      "frontend_function": "api.startPreview",
-      "frontend_ui": "交付页 / Monitor：生成 MP4 预览",
+      "frontend_function": "previewApi.start",
+      "frontend_ui": "PreviewPanel / AssStyleEditor / ExportWorkspace（旧 workflow MP4 预览）",
       "request": "revision_id, expected_version, request_id, preset_id；可选 subtitle_variant_id",
       "success_response": "202 / 200 PreviewView",
       "behavior": "不传 ASS ID 沿用 SRT；传入时冻结同 run/revision 成功 ASS 与样式哈希，按 Worker ASS/字体能力派发",
-      "usage": "后端已提供，前端待接入",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "startPreview",
       "backend_source": {
         "file": "control-plane/internal/api/preview.go",
         "line": 18
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 204
+        },
+        {
+          "file": "webui/src/previewContracts.ts",
+          "line": 104
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 246
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 82
+        }
+      ]
     },
     {
       "id": "API-54",
       "group": "合成成片 MP4 预览",
       "method": "GET",
       "path": "/api/workflows/{run}/previews",
-      "frontend_function": "api.listPreviews",
-      "frontend_ui": "交付页 / Monitor：预览列表、前置检查与生成入口状态",
+      "frontend_function": "previewApi.list",
+      "frontend_ui": "PreviewPanel / AssStyleEditor / ExportWorkspace（旧 workflow MP4 预览）",
       "request": "路径 run=run_id；无请求体",
       "success_response": "200 PreviewList",
       "behavior": "返回当前 revision、expected_version、can_start/checks 和历史 preview 列表",
-      "usage": "后端已提供，前端待接入",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listPreviews",
       "backend_source": {
         "file": "control-plane/internal/api/preview.go",
         "line": 42
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 206
+        },
+        {
+          "file": "webui/src/previewContracts.ts",
+          "line": 110
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 90
+        },
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 245
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 68
+        },
+        {
+          "file": "webui/src/components/WorkflowPanel.tsx",
+          "line": 417
+        },
+        {
+          "file": "webui/src/workspaces/ExportWorkspace.tsx",
+          "line": 75
+        }
+      ]
     },
     {
       "id": "API-55",
       "group": "合成成片 MP4 预览",
       "method": "GET",
       "path": "/api/previews/{id}",
-      "frontend_function": "api.getPreview",
-      "frontend_ui": "交付页 / Monitor：单个预览任务状态、进度与媒体详情",
+      "frontend_function": "previewApi.get",
+      "frontend_ui": "PreviewPanel / AssStyleEditor / ExportWorkspace（旧 workflow MP4 预览）",
       "request": "路径 id=preview_id；无请求体",
       "success_response": "200 PreviewView",
       "behavior": "投影 Task 状态、进度、错误，结合关联产物与媒体元数据",
-      "usage": "后端已提供，前端待接入",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getPreview",
       "backend_source": {
         "file": "control-plane/internal/api/preview.go",
         "line": 57
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 208
+        },
+        {
+          "file": "webui/src/previewContracts.ts",
+          "line": 112
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 247
+        }
+      ]
     },
     {
       "id": "API-56",
       "group": "合成成片 MP4 预览",
       "method": "POST",
       "path": "/api/previews/{id}/cancel",
-      "frontend_function": "api.cancelPreview",
-      "frontend_ui": "交付页 / Monitor：取消当前进行中的预览合成",
+      "frontend_function": "previewApi.cancel",
+      "frontend_ui": "PreviewPanel / AssStyleEditor / ExportWorkspace（旧 workflow MP4 预览）",
       "request": "路径 id=preview_id；空 JSON 对象 {}",
       "success_response": "200 PreviewView",
       "behavior": "仅取消该预览任务，不影响整个工作流；重复取消幂等，已终态返回原终态不删产物",
-      "usage": "后端已提供，前端待接入",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "cancelPreview",
       "backend_source": {
         "file": "control-plane/internal/api/preview.go",
         "line": 72
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 210
+        },
+        {
+          "file": "webui/src/previewContracts.ts",
+          "line": 114
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 310
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 95
+        }
+      ]
     },
     {
       "id": "API-57",
       "group": "合成成片 MP4 预览",
       "method": "GET",
       "path": "/api/previews/{id}/files/{key}",
-      "frontend_function": "api.getPreviewFileUrl",
-      "frontend_ui": "交付页 / Monitor：播放 MP4 视频流或下载 MP4/报告/回执",
+      "frontend_function": "previewFileURL",
+      "frontend_ui": "PreviewPanel / AssStyleEditor / ExportWorkspace（旧 workflow MP4 预览）",
       "request": "路径 id=preview_id, key=mp4|report|receipt；查询参数 ?download=1 强制下载",
       "success_response": "200 / 206 媒体流或附件",
       "behavior": "受控媒体读取；MP4 默认 inline 支持 Range 206 拖动播放，?download=1 明确 attachment；report/receipt 为附件",
-      "usage": "后端已提供，前端待接入",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getPreviewFile",
       "backend_source": {
         "file": "control-plane/internal/api/preview.go",
         "line": 87
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/previewContracts.ts",
+          "line": 17
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 478
+        },
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 482
+        },
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 144
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 145
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 451
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 497
+        },
+        {
+          "file": "webui/src/components/PreviewPanel.tsx",
+          "line": 518
+        },
+        {
+          "file": "webui/src/workspaces/ExportWorkspace.tsx",
+          "line": 78
+        }
+      ]
     },
     {
       "id": "API-58",
@@ -1013,12 +2089,32 @@
       "request": "revision_id, expected_version, request_id, spec_id；ass-basic-v2 另传 draft_version/style_sha256",
       "success_response": "202/200 VariantView",
       "behavior": "独立 ASS 交付任务；支持固定 v1 与冻结草稿 v2，保留父交付包",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "startDeliveryVariant",
       "backend_source": {
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 61
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 224
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 243
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 32
+        }
+      ]
     },
     {
       "id": "API-59",
@@ -1030,12 +2126,36 @@
       "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
       "success_response": "200 VariantList",
       "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listDeliveryVariants",
       "backend_source": {
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 85
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 226
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 84
+        },
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 242
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 26
+        }
+      ]
     },
     {
       "id": "API-60",
@@ -1043,16 +2163,32 @@
       "method": "GET",
       "path": "/api/delivery-variants/{id}",
       "frontend_function": "deliveryVariantApi.get",
-      "frontend_ui": "ExportWorkspace / DeliveryVariantPanel",
+      "frontend_ui": "AssStyleEditor 导出轮询；DeliveryVariantPanel 列表快照",
       "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
       "success_response": "200 VariantView",
-      "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
-      "usage": "已封装，页面使用列表快照",
+      "behavior": "单个派生交付状态；AssStyleEditor 已调用 deliveryVariantApi.get 轮询，列表页使用快照",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getDeliveryVariant",
       "backend_source": {
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 100
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 227
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 244
+        }
+      ]
     },
     {
       "id": "API-61",
@@ -1064,12 +2200,32 @@
       "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
       "success_response": "200 VariantView",
       "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "cancelDeliveryVariant",
       "backend_source": {
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 115
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 228
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 311
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 43
+        }
+      ]
     },
     {
       "id": "API-62",
@@ -1081,12 +2237,44 @@
       "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
       "success_response": "200 registered file",
       "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getDeliveryVariantFile",
       "backend_source": {
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 130
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/deliveryVariantContracts.ts",
+          "line": 5
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 463
+        },
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 464
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 86
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 87
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 94
+        }
+      ]
     },
     {
       "id": "API-63",
@@ -1098,12 +2286,36 @@
       "request": "固定 revision/version/request/spec；路径身份由 Go 校验",
       "success_response": "200 application/zip",
       "behavior": "独立交付任务，原包不变；受当前修订、治理、租约及固定样式指纹约束",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getDeliveryVariantZIP",
       "backend_source": {
         "file": "control-plane/internal/api/delivery_variant.go",
         "line": 19
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/deliveryVariantContracts.ts",
+          "line": 7
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 465
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 88
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 94
+        }
+      ]
     },
     {
       "id": "API-64",
@@ -1115,12 +2327,32 @@
       "request": "无",
       "success_response": "200 SubtitleStyleDraft",
       "behavior": "读取当前成功导出字幕与草稿，正文只读",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getSubtitleStyle",
       "backend_source": {
         "file": "control-plane/internal/api/subtitle_style.go",
         "line": 8
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 217
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 72
+        },
+        {
+          "file": "webui/src/components/DeliveryVariantPanel.tsx",
+          "line": 53
+        }
+      ]
     },
     {
       "id": "API-65",
@@ -1132,12 +2364,32 @@
       "request": "revision_id, expected_draft_version, document",
       "success_response": "200 SubtitleStyleDraft",
       "behavior": "独立草稿 CAS；源/修订/旧版本冲突409，非法参数400，锁定403",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "putSubtitleStyle",
       "backend_source": {
         "file": "control-plane/internal/api/subtitle_style.go",
         "line": 16
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 218
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 227
+        },
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 270
+        }
+      ]
     },
     {
       "id": "API-66",
@@ -1149,12 +2401,28 @@
       "request": "无",
       "success_response": "200 SubtitleFontFamily[]",
       "behavior": "活跃 Exporter 字体族及哈希，不暴露本机路径",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getSubtitleFonts",
       "backend_source": {
         "file": "control-plane/internal/api/subtitle_style.go",
         "line": 29
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 220
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssStyleEditor.tsx",
+          "line": 78
+        }
+      ]
     },
     {
       "id": "API-67",
@@ -1166,12 +2434,28 @@
       "request": "无",
       "success_response": "200 AutoNotice，含预设、notice_sha256、visible_set_sha、visible_assets 与授权 grants",
       "behavior": "固定预设版本与当前可见集的告知摘要；素材、预设 ID/版本或摘要变化清除前端授权，发送前再次核对",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "autoNotice",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
         "line": 55
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 105
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 170
+        }
+      ]
     },
     {
       "id": "API-68",
@@ -1183,12 +2467,28 @@
       "request": "JSON：profile_id, revision, expected_asset_version, idempotency_key, brief?, scope?{max_rounds,max_total_rounds,max_stage_retries,max_actions,max_tts_chars,max_wall_seconds,decision_timeout_seconds,thresholds}, authorization{notice_sha256, accept_external_egress?}；可选 revision_id；authorization.visible_set_sha 必须与已确认的当前可见集一致",
       "success_response": "201 {run: WorkflowRun, auto: AutoView}",
       "behavior": "授权并启动自动模式 run；notice_sha256 缺失或不符 400；仅 profile.External() 时要求 accept_external_egress=true 并在同一事务内设置外发同意；同资产已有 active/awaiting_user_decision 的 auto run 返回 409；actor 固定 human:webui",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "startAutoRun",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
         "line": 69
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 106
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 210
+        }
+      ]
     },
     {
       "id": "API-69",
@@ -1200,12 +2500,28 @@
       "request": "无",
       "success_response": "200 AutoView：版本、状态、授权、预算、轮次、latest_review、delivery、可用 decision；新增 scope 的 visible_set_sha/script_id/script_version",
       "behavior": "非自动 run 返回 404；当前评分器投影真实自评；交付 hold 与可见集/脚本过期门在服务层执行",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getAuto",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
         "line": 92
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 107
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 27
+        }
+      ]
     },
     {
       "id": "API-70",
@@ -1217,12 +2533,23 @@
       "request": "无",
       "success_response": "200 AutoReview[]",
       "behavior": "持久化自评记录列表；非自动 run 返回 404，不把自评写成人工验收",
-      "usage": "已封装；当前页面读取 auto.latest_review",
+      "usage": "仅 SDK，页面未接入；历史自评列表未接入；自动页读取 auto.latest_review。",
       "backend_handler": "listAutoReviews",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
         "line": 101
-      }
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "operations_optional",
+      "frontend_gap": "历史自评列表未接入；自动页读取 auto.latest_review。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 108
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "API-71",
@@ -1234,12 +2561,28 @@
       "request": "decision(export|revise|discard|confirm_visible_set|confirm_script), expected_auto_version, idempotency_key, feedback?；confirm_script 的 feedback 是 script_id/script_version JSON",
       "success_response": "200 {auto, run}",
       "behavior": "CAS 与幂等；可见集变化仅人工 confirm_visible_set 恢复；脚本变化仅人工确认精确定稿修订后恢复；export/revise 受当前门、交付与预算限制；discard 停止并保留已有文件",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "decideAuto",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
         "line": 110
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 109
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 76
+        }
+      ]
     },
     {
       "id": "API-72",
@@ -1251,12 +2594,28 @@
       "request": "JSON：reason, expected_auto_version, also_revoke_consent?（默认 false）",
       "success_response": "200 {auto}",
       "behavior": "撤销后不再有任何自动动作（已排队/运行中的 worker 任务不会被杀；已打开的评审关口保持给人）；事务内记录 consent_at_revoke 与 human:webui 的 auto.revoke 审计；已 revoked/cancelled 返回 409",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "revokeAuto",
       "backend_source": {
         "file": "control-plane/internal/api/auto.go",
         "line": 128
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 111
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 79
+        }
+      ]
     },
     {
       "id": "API-TTS-01",
@@ -1268,12 +2627,36 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsCapabilities",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 24
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 86
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 38
+        },
+        {
+          "file": "webui/src/components/StatusMonitor.tsx",
+          "line": 44
+        },
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 57
+        }
+      ]
     },
     {
       "id": "API-TTS-02",
@@ -1285,12 +2668,32 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsTemplates",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 32
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 87
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/TtsTemplateBindingEditor.tsx",
+          "line": 8
+        },
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 54
+        }
+      ]
     },
     {
       "id": "API-TTS-03",
@@ -1302,12 +2705,28 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "201 TtsTemplate",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsSaveTemplate",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 40
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 89
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 66
+        }
+      ]
     },
     {
       "id": "API-TTS-04",
@@ -1319,29 +2738,55 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsTemplate",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 57
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 88
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 183
+        },
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 184
+        }
+      ]
     },
     {
       "id": "API-TTS-05",
       "group": "TTS 调控台",
       "method": "POST",
       "path": "/api/tts/templates/{id}/revisions",
-      "frontend_function": "api.saveTtsTemplate",
-      "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
+      "frontend_function": "无独立封装（页面使用 POST /api/tts/templates）",
+      "frontend_ui": "无独立调用；api.saveTtsTemplate 使用 POST /api/tts/templates 保存新版本，无需重复入口。",
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "201 TtsTemplate",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "客户端用 POST /api/tts/templates 保存新版本；此路由同一契约",
+      "usage": "未封装/未接入；无独立调用；api.saveTtsTemplate 使用 POST /api/tts/templates 保存新版本，无需重复入口。",
       "backend_handler": "ttsSaveTemplate",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 40
-      }
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "optional_equivalent",
+      "frontend_gap": "无独立调用；api.saveTtsTemplate 使用 POST /api/tts/templates 保存新版本，无需重复入口。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "API-TTS-06",
@@ -1353,12 +2798,28 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsArchiveTemplate",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 70
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 91
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 186
+        }
+      ]
     },
     {
       "id": "API-TTS-07",
@@ -1370,12 +2831,28 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsPreviews",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 97
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 92
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 58
+        }
+      ]
     },
     {
       "id": "API-TTS-08",
@@ -1387,12 +2864,28 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "202 TtsPreview",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsStartPreview",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 84
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 94
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 77
+        }
+      ]
     },
     {
       "id": "API-TTS-09",
@@ -1404,12 +2897,28 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsPreview",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 105
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 93
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 59
+        }
+      ]
     },
     {
       "id": "API-TTS-10",
@@ -1421,12 +2930,28 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsCancelPreview",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 113
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 95
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 205
+        }
+      ]
     },
     {
       "id": "API-TTS-11",
@@ -1438,29 +2963,55 @@
       "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
       "success_response": "200 audio/wav",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "ttsAudio",
       "backend_source": {
         "file": "control-plane/internal/api/tts.go",
         "line": 121
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 96
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 64
+        },
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 219
+        }
+      ]
     },
     {
       "id": "API-FLOW-01",
       "group": "运行状态",
       "method": "GET",
       "path": "/api/runtime/activity",
-      "frontend_function": "未在 WebUI 使用；运行状态读取",
-      "frontend_ui": "本机运行状态",
+      "frontend_function": "无独立封装",
+      "frontend_ui": "WebUI 未封装；桌面状态使用 runtime_status IPC。",
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "兼容/运维接口",
+      "usage": "未封装/未接入；WebUI 未封装；桌面状态使用 runtime_status IPC。",
       "backend_handler": "runtimeActivity",
       "backend_source": {
         "file": "control-plane/internal/api/runtime.go",
         "line": 5
-      }
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "operations_optional",
+      "frontend_gap": "WebUI 未封装；桌面状态使用 runtime_status IPC。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "API-FLOW-02",
@@ -1472,12 +3023,48 @@
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "getVisibleSet",
       "backend_source": {
         "file": "control-plane/internal/api/visible_set.go",
         "line": 19
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 115
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/App.tsx",
+          "line": 210
+        },
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 99
+        },
+        {
+          "file": "webui/src/components/PreparationPanel.tsx",
+          "line": 52
+        },
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 14
+        },
+        {
+          "file": "webui/src/workspaces/EditingWorkspace.tsx",
+          "line": 35
+        },
+        {
+          "file": "webui/src/workspaces/EditingWorkspace.tsx",
+          "line": 127
+        }
+      ]
     },
     {
       "id": "API-FLOW-03",
@@ -1489,12 +3076,28 @@
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "confirmVisibleSet",
       "backend_source": {
         "file": "control-plane/internal/api/visible_set.go",
         "line": 28
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 116
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 239
+        }
+      ]
     },
     {
       "id": "API-FLOW-04",
@@ -1506,12 +3109,28 @@
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "batchVisibility",
       "backend_source": {
         "file": "control-plane/internal/api/visible_set.go",
         "line": 42
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 117
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AssetManager.tsx",
+          "line": 235
+        }
+      ]
     },
     {
       "id": "API-FLOW-05",
@@ -1523,12 +3142,28 @@
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "enterScript",
       "backend_source": {
         "file": "control-plane/internal/api/visible_set.go",
         "line": 60
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 119
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 108
+        }
+      ]
     },
     {
       "id": "API-FLOW-06",
@@ -1540,29 +3175,59 @@
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "listScripts",
       "backend_source": {
         "file": "control-plane/internal/api/visible_set.go",
         "line": 74
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 120
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 45
+        },
+        {
+          "file": "webui/src/components/ScriptDeliveryPanel.tsx",
+          "line": 12
+        },
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 13
+        }
+      ]
     },
     {
       "id": "API-FLOW-07",
       "group": "可见集 F1",
       "method": "POST",
       "path": "/api/scripts/{id}/finalize",
-      "frontend_function": "legacy F1 caller",
-      "frontend_ui": "AssetManager / 可见集入口",
+      "frontend_function": "无独立封装",
+      "frontend_ui": "旧 F1 兼容入口；页面使用 /workbench/finalize，无需重复。",
       "request": "见 Go 注册处理器与 visible_set.go",
       "success_response": "200 JSON",
       "behavior": "以 Go 服务校验为准",
-      "usage": "兼容/运维接口",
+      "usage": "未封装/未接入；旧 F1 兼容入口；页面使用 /workbench/finalize，无需重复。",
       "backend_handler": "finalizeScript",
       "backend_source": {
         "file": "control-plane/internal/api/visible_set.go",
         "line": 88
-      }
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "compatibility",
+      "frontend_gap": "旧 F1 兼容入口；页面使用 /workbench/finalize，无需重复。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "API-FLOW-08",
@@ -1574,12 +3239,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "parseScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 48
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 121
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 56
+        }
+      ]
     },
     {
       "id": "API-FLOW-09",
@@ -1591,12 +3272,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptMedia",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 58
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 122
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 15
+        }
+      ]
     },
     {
       "id": "API-FLOW-10",
@@ -1608,12 +3305,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptFonts",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 66
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 123
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 16
+        }
+      ]
     },
     {
       "id": "API-FLOW-11",
@@ -1625,12 +3338,40 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 74
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 124
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/AutoRunPanel.tsx",
+          "line": 47
+        },
+        {
+          "file": "webui/src/components/ScriptDeliveryPanel.tsx",
+          "line": 14
+        },
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 21
+        },
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 41
+        }
+      ]
     },
     {
       "id": "API-FLOW-12",
@@ -1642,12 +3383,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "saveScriptWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 82
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 127
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 148
+        }
+      ]
     },
     {
       "id": "API-FLOW-13",
@@ -1659,12 +3416,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptRevisions",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 95
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 128
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 22
+        }
+      ]
     },
     {
       "id": "API-FLOW-14",
@@ -1676,12 +3449,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "generateScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 103
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 129
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 169
+        }
+      ]
     },
     {
       "id": "API-FLOW-15",
@@ -1693,12 +3482,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "rejectScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 122
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 131
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 206
+        }
+      ]
     },
     {
       "id": "API-FLOW-16",
@@ -1710,12 +3515,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "finalizeScriptWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 135
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 132
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptWorkbench.tsx",
+          "line": 205
+        }
+      ]
     },
     {
       "id": "API-FLOW-17",
@@ -1727,12 +3548,28 @@
       "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "exportScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 148
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 133
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptDeliveryPanel.tsx",
+          "line": 19
+        }
+      ]
     },
     {
       "id": "API-FLOW-18",
@@ -1744,12 +3581,23 @@
       "request": "version=N & sha256=成片摘要（前端固定携带）",
       "success_response": "200 video/mp4",
       "behavior": "当前人工定稿/可见集有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
-      "usage": "页面已接线，未运行验证",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptPreview",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 161
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptDeliveryPanel.tsx",
+          "line": 24
+        }
+      ]
     },
     {
       "id": "API-FLOW-19",
@@ -1761,12 +3609,23 @@
       "request": "version=N & sha256=成片摘要（前端固定携带）",
       "success_response": "200 application/zip",
       "behavior": "当前人工定稿/可见集有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
-      "usage": "页面已接线，未运行验证",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptZIP",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 175
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptDeliveryPanel.tsx",
+          "line": 41
+        }
+      ]
     },
     {
       "id": "API-FLOW-20",
@@ -1778,12 +3637,28 @@
       "request": "expected_version, visible_set_sha, segment_index, narration, settings, offset_seconds, enabled, accept_external",
       "success_response": "200 ScriptWorkbenchView（修订递增）",
       "behavior": "人工动作；CAS/可见集/权限校验；写 voice 修订，旧预览/交付失效；需重新人工定稿",
-      "usage": "页面已接线，未运行验证",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "saveScriptVoice",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 34
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 125
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/TtsWorkspace.tsx",
+          "line": 113
+        }
+      ]
     },
     {
       "id": "API-FLOW-21",
@@ -1795,505 +3670,1196 @@
       "request": "可选 version=N；前端固定请求当前修订",
       "success_response": "200 ScriptDeliveryInfo（规格、时长、帧数、成片和逐文件 SHA256）",
       "behavior": "只读当前有效人工定稿与已发布的同修订交付；旧清单需重新渲染；无磁盘绝对路径",
-      "usage": "页面已接线，未运行验证",
+      "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptDeliveryInfo",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 250
-      }
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 126
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ScriptDeliveryPanel.tsx",
+          "line": 17
+        }
+      ]
     },
     {
       "id": "VU-01",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skill-runs/{id}/revisions",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.revisions",
+      "frontend_ui": "运行修订列表/比较未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；运行修订列表/比较未接入。",
       "backend_handler": "skillRevisions",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 41
-      }
+        "line": 42
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "运行修订列表/比较未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 46
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-02",
       "group": "Skill Harness",
       "method": "PUT",
       "path": "/api/skill-runs/{id}/voice",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.saveVoice",
+      "frontend_ui": "SkillRun 段落声音回写/授权未接入；现有 TTS 页仅处理旧脚本。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；SkillRun 段落声音回写/授权未接入；现有 TTS 页仅处理旧脚本。",
       "backend_handler": "skillVoice",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 45
-      }
+        "line": 46
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "SkillRun 段落声音回写/授权未接入；现有 TTS 页仅处理旧脚本。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 47
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-03",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/projects/{id}/media",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.importMedia",
+      "frontend_ui": "项目素材导入/显式可见集选择未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目素材导入/显式可见集选择未接入。",
       "backend_handler": "skillImportMedia",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 54
-      }
+        "line": 55
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目素材导入/显式可见集选择未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 30
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-04",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/projects",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.projects",
+      "frontend_ui": "项目列表/切换未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目列表/切换未接入。",
       "backend_handler": "skillProjects",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 70
-      }
+        "line": 71
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目列表/切换未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 24
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-05",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/projects",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.createProject",
+      "frontend_ui": "项目创建未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目创建未接入。",
       "backend_handler": "skillSaveProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 78
-      }
+        "line": 79
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目创建未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 26
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-06",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/projects/{id}",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.project",
+      "frontend_ui": "项目详情/状态未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目详情/状态未接入。",
       "backend_handler": "skillProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 74
-      }
+        "line": 75
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目详情/状态未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 25
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-07",
       "group": "Skill Harness",
       "method": "PUT",
       "path": "/api/projects/{id}",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.saveProject",
+      "frontend_ui": "项目流程/默认 Skill/固定预设/授权保存未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目流程/默认 Skill/固定预设/授权保存未接入。",
       "backend_handler": "skillSaveProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 78
-      }
+        "line": 79
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目流程/默认 Skill/固定预设/授权保存未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 27
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-08",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/projects/{id}/visible-set",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.visibleSet",
+      "frontend_ui": "项目 scope v2 媒体/摘要状态未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目 scope v2 媒体/摘要状态未接入。",
       "backend_handler": "skillVisible",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 87
-      }
+        "line": 88
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目 scope v2 媒体/摘要状态未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 32
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-09",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/projects/{id}/visible-set/confirm",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.confirmVisible",
+      "frontend_ui": "项目级可见集人工确认未接入；全局 F1 确认不能替代。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目级可见集人工确认未接入；全局 F1 确认不能替代。",
       "backend_handler": "skillConfirmVisible",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 91
-      }
+        "line": 92
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目级可见集人工确认未接入；全局 F1 确认不能替代。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 33
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-10",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/projects/{id}/exports/ffmpeg",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.exportProject",
+      "frontend_ui": "项目归属校验后的共享导出未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目归属校验后的共享导出未接入。",
       "backend_handler": "skillExport",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 208
-      }
+        "line": 210
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目归属校验后的共享导出未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 28
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-11",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skills",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.skills",
+      "frontend_ui": "Skill 管理列表未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；Skill 管理列表未接入。",
       "backend_handler": "skillList",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 103
-      }
+        "line": 104
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "Skill 管理列表未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 35
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-12",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skills",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.importSkill",
+      "frontend_ui": "本地 Skill 导入未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；本地 Skill 导入未接入。",
       "backend_handler": "skillImport",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 111
-      }
+        "line": 112
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "本地 Skill 导入未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 37
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-13",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skills/{id}",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.skill",
+      "frontend_ui": "Skill 正文/资源/摘要展示未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；Skill 正文/资源/摘要展示未接入。",
       "backend_handler": "skillGet",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 107
-      }
+        "line": 108
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "Skill 正文/资源/摘要展示未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 36
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-14",
       "group": "Skill Harness",
       "method": "PATCH",
       "path": "/api/skills/{id}",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.enableSkill",
+      "frontend_ui": "Skill 启停未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；Skill 启停未接入。",
       "backend_handler": "skillEnable",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 122
-      }
+        "line": 123
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "Skill 启停未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 38
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-15",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skills/{id}/content",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "无独立封装（详情别名）",
+      "frontend_ui": "别名无独立封装；详情 GET /api/skills/{id} 已返回同一正文/资源，无需重复入口。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
-      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "behavior": "与 GET /api/skills/{id} 同一处理器；skillApi.skill 调用详情，不调用 /content 别名",
+      "usage": "未封装/未接入；别名无独立封装；详情 GET /api/skills/{id} 已返回同一正文/资源，无需重复入口。",
       "backend_handler": "skillGet",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 107
-      }
+        "line": 108
+      },
+      "frontend_status": "not_wrapped",
+      "frontend_status_label": "未封装/未接入",
+      "frontend_requirement": "optional_equivalent",
+      "frontend_gap": "别名无独立封装；详情 GET /api/skills/{id} 已返回同一正文/资源，无需重复入口。",
+      "frontend_wrapper": [],
+      "frontend_calls": []
     },
     {
       "id": "VU-16",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skills/{id}/validate",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.validateSkill",
+      "frontend_ui": "Skill 校验/依赖阻塞提示未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；Skill 校验/依赖阻塞提示未接入。",
       "backend_handler": "skillValidate",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 133
-      }
+        "line": 134
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "Skill 校验/依赖阻塞提示未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 39
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-17",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/system/ffmpeg",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.ffmpeg",
+      "frontend_ui": "FFmpeg 能力/依赖状态未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；FFmpeg 能力/依赖状态未接入。",
       "backend_handler": "skillFFmpeg",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 137
-      }
+        "line": 138
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "FFmpeg 能力/依赖状态未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 40
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-18",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skill-runs",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.runs",
+      "frontend_ui": "项目运行列表/选择未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；项目运行列表/选择未接入。",
       "backend_handler": "skillRuns",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 141
-      }
+        "line": 142
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "项目运行列表/选择未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 42
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-19",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skill-runs",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.createRun",
+      "frontend_ui": "双素材流程、external_mcp/builtin_api 模式、目标/预算/授权创建引导未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；双素材流程、external_mcp/builtin_api 模式、目标/预算/授权创建引导未接入。",
       "backend_handler": "skillCreateRun",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 145
-      }
+        "line": 146
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "双素材流程、external_mcp/builtin_api 模式、目标/预算/授权创建引导未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 41
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-20",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skill-runs/{id}",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.run",
+      "frontend_ui": "运行状态/暂停原因/预算未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；运行状态/暂停原因/预算未接入。",
       "backend_handler": "skillRun",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 154
-      }
+        "line": 155
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "运行状态/暂停原因/预算未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 43
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-21",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skill-runs/{id}/context",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.context",
+      "frontend_ui": "冻结 Skill/媒体/工具上下文未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；冻结 Skill/媒体/工具上下文未接入。",
       "backend_handler": "skillContext",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 158
-      }
+        "line": 159
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "冻结 Skill/媒体/工具上下文未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 44
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-22",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skill-runs/{id}/steps",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.steps",
+      "frontend_ui": "人工步骤/失败详情未接入，不得向 Agent 开放。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；人工步骤/失败详情未接入，不得向 Agent 开放。",
       "backend_handler": "skillSteps",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 162
-      }
+        "line": 163
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "人工步骤/失败详情未接入，不得向 Agent 开放。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 45
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-23",
       "group": "Skill Harness",
       "method": "GET",
       "path": "/api/skill-runs/{id}/artifacts/{key}",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.artifactURL",
+      "frontend_ui": "SkillRun 产物播放/下载未接入；旧脚本播放器不能自动消费。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；SkillRun 产物播放/下载未接入；旧脚本播放器不能自动消费。",
       "backend_handler": "skillArtifact",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 198
-      }
+        "line": 199
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "SkillRun 产物播放/下载未接入；旧脚本播放器不能自动消费。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 54
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-24",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skill-runs/{id}/tools",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.tool",
+      "frontend_ui": "受控工具交互未接入；按产品流程调用，无需提供任意工具参数编辑器。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；受控工具交互未接入；按产品流程调用，无需提供任意工具参数编辑器。",
       "backend_handler": "skillTool",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 166
-      }
+        "line": 167
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "受控工具交互未接入；按产品流程调用，无需提供任意工具参数编辑器。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 48
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-25",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skill-runs/{id}/finalize",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.action",
+      "frontend_ui": "新计划精确版本人工定稿未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；新计划精确版本人工定稿未接入。",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 175
-      }
+        "line": 176
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "新计划精确版本人工定稿未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 50
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-26",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skill-runs/{id}/resume",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.action",
+      "frontend_ui": "暂停原因及人工恢复确认未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；暂停原因及人工恢复确认未接入。",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 175
-      }
+        "line": 176
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "暂停原因及人工恢复确认未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 50
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-27",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skill-runs/{id}/cancel",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.action",
+      "frontend_ui": "SkillRun 取消/进程状态反馈未接入。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；SkillRun 取消/进程状态反馈未接入。",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 175
-      }
+        "line": 176
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "SkillRun 取消/进程状态反馈未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 50
+        }
+      ],
+      "frontend_calls": []
     },
     {
       "id": "VU-28",
       "group": "Skill Harness",
       "method": "POST",
       "path": "/api/skill-runs/{id}/execute",
-      "frontend_function": "skillApi (webui/src/skillApi.ts)",
-      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "frontend_function": "skillApi.execute",
+      "frontend_ui": "内置 API Agent 执行/暂停/完成状态未接入；外部模式由 MCP Agent 执行。",
       "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "已实现后端；布局待接入",
+      "usage": "仅 SDK，页面未接入；内置 API Agent 执行/暂停/完成状态未接入；外部模式由 MCP Agent 执行。",
       "backend_handler": "skillExecute",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 187
-      }
+        "line": 188
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "内置 API Agent 执行/暂停/完成状态未接入；外部模式由 MCP Agent 执行。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 52
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-01",
+      "group": "可控编辑与操作历史",
+      "method": "POST",
+      "path": "/api/human-session",
+      "frontend_function": "skillApi.unlockHumanSession",
+      "frontend_ui": "人工解锁输入/失败/到期提示未接入，是受保护接口的前置条件。",
+      "request": "JSON {token}；人工凭证至少 32 字符",
+      "success_response": "200 {unlocked:true}；一小时 HttpOnly 会话 cookie",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；人工解锁输入/失败/到期提示未接入，是受保护接口的前置条件。",
+      "backend_handler": "humanSkillSession",
+      "backend_source": {
+        "file": "control-plane/internal/api/human_skill.go",
+        "line": 52
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "人工解锁输入/失败/到期提示未接入，是受保护接口的前置条件。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 10
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-02",
+      "group": "可控编辑与操作历史",
+      "method": "DELETE",
+      "path": "/api/human-session",
+      "frontend_function": "skillApi.lockHumanSession",
+      "frontend_ui": "退出/锁定及清除缓存、选择、播放地址未接入。",
+      "request": "人工会话；无请求体",
+      "success_response": "200 {locked:true}；清除 cookie/预览票据",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；退出/锁定及清除缓存、选择、播放地址未接入。",
+      "backend_handler": "humanSkillLogout",
+      "backend_source": {
+        "file": "control-plane/internal/api/human_skill.go",
+        "line": 93
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "退出/锁定及清除缓存、选择、播放地址未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 14
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-03",
+      "group": "可控编辑与操作历史",
+      "method": "GET",
+      "path": "/api/agent-operations",
+      "frontend_function": "skillApi.agentOperations",
+      "frontend_ui": "人工日志分页/run 筛选未接入。",
+      "request": "query run_id、after、limit；SDK 默认 after=0,limit=100",
+      "success_response": "200 AgentOperation[]",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；人工日志分页/run 筛选未接入。",
+      "backend_handler": "agentOperations",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 26
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "人工日志分页/run 筛选未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 21
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-04",
+      "group": "可控编辑与操作历史",
+      "method": "GET",
+      "path": "/api/agent-operations/verify",
+      "frontend_function": "skillApi.verifyAgentOperations",
+      "frontend_ui": "日志摘要链核验/结果未接入。",
+      "request": "无请求体；人工会话",
+      "success_response": "200 {verified_through:number}",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；日志摘要链核验/结果未接入。",
+      "backend_handler": "verifyAgentOperations",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 32
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "日志摘要链核验/结果未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 22
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-05",
+      "group": "可控编辑与操作历史",
+      "method": "POST",
+      "path": "/api/agent-operations/notes",
+      "frontend_function": "skillApi.appendOperationNote",
+      "frontend_ui": "人工追加注释未接入；不提供原记录修改/删除。",
+      "request": "JSON {run_id,note}；非空且最多 8192 字节",
+      "success_response": "200 {appended:true}",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；人工追加注释未接入；不提供原记录修改/删除。",
+      "backend_handler": "agentOperationNote",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 36
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "人工追加注释未接入；不提供原记录修改/删除。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 23
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-06",
+      "group": "可控编辑与操作历史",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/workbench",
+      "frontend_function": "skillApi.workbench",
+      "frontend_ui": "SkillRun 工作台、源/成片时间映射及当前/历史预览未接入。",
+      "request": "路径 id=run_id；人工会话",
+      "success_response": "200 SkillWorkbench：run、双时间轴 segments、history 游标、previews 含 preview_url",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；SkillRun 工作台、源/成片时间映射及当前/历史预览未接入。",
+      "backend_handler": "skillWorkbench",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 53
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "SkillRun 工作台、源/成片时间映射及当前/历史预览未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 15
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-07",
+      "group": "可控编辑与操作历史",
+      "method": "PUT",
+      "path": "/api/skill-runs/{id}/plan",
+      "frontend_function": "skillApi.savePlan",
+      "frontend_ui": "人工计划编辑/拆段/版本冲突反馈未接入。",
+      "request": "JSON {expected_version,plan:SkillPlan}",
+      "success_response": "200 SkillRun；新修订，清除定稿",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；人工计划编辑/拆段/版本冲突反馈未接入。",
+      "backend_handler": "skillSavePlan",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 73
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "人工计划编辑/拆段/版本冲突反馈未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 16
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-08",
+      "group": "可控编辑与操作历史",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/edits",
+      "frontend_function": "skillApi.requestEdit",
+      "frontend_ui": "片段/时间点/完整区间选择、提示词提交与修改确认未接入。",
+      "request": "JSON SkillEditRequest；expected_version、plan_version、artifact_id/sha256、prompt、idempotency_key；segment_index / at_seconds / timeline_start+timeline_end 三选一",
+      "success_response": "200 SkillRun；edit_request.windows 含源/成片起止时间",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；片段/时间点/完整区间选择、提示词提交与修改确认未接入。",
+      "backend_handler": "skillRequestEdit",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 82
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "片段/时间点/完整区间选择、提示词提交与修改确认未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 17
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-09",
+      "group": "可控编辑与操作历史",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/checkpoints",
+      "frontend_function": "skillApi.history",
+      "frontend_ui": "备份节点/游标/旧分支展示未接入。",
+      "request": "路径 id=run_id；人工会话",
+      "success_response": "200 SkillHistory：cursor + checkpoints",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；备份节点/游标/旧分支展示未接入。",
+      "backend_handler": "skillCheckpoints",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 91
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "备份节点/游标/旧分支展示未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 18
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-10",
+      "group": "可控编辑与操作历史",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/undo",
+      "frontend_function": "skillApi.moveHistory",
+      "frontend_ui": "撤销按钮/可用状态及恢复后重新确认未接入。",
+      "request": "JSON {expected_version}；人工会话",
+      "success_response": "200 SkillRun；版本递增并清除旧确认",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；撤销按钮/可用状态及恢复后重新确认未接入。",
+      "backend_handler": "skillHistoryMove",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 95
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "撤销按钮/可用状态及恢复后重新确认未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 19
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-11",
+      "group": "可控编辑与操作历史",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/redo",
+      "frontend_function": "skillApi.moveHistory",
+      "frontend_ui": "重做按钮/栈状态及恢复后重新确认未接入。",
+      "request": "JSON {expected_version}；人工会话",
+      "success_response": "200 SkillRun；版本递增并清除旧确认",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；重做按钮/栈状态及恢复后重新确认未接入。",
+      "backend_handler": "skillHistoryMove",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 95
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "重做按钮/栈状态及恢复后重新确认未接入。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 19
+        }
+      ],
+      "frontend_calls": []
+    },
+    {
+      "id": "SAFE-12",
+      "group": "可控编辑与操作历史",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/checkpoints/{checkpoint}/artifacts/{key}",
+      "frontend_function": "skillApi.checkpointPreviewURL",
+      "frontend_ui": "历史节点视频浏览未接入；不能据此直接授权新修改。",
+      "request": "run/checkpoint/artifact；人工会话或工作台签发的精确路径票据",
+      "success_response": "200/206 video/mp4；Range/HEAD，摘要与权限复核",
+      "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
+      "usage": "仅 SDK，页面未接入；历史节点视频浏览未接入；不能据此直接授权新修改。",
+      "backend_handler": "skillHistoryPreview",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill_editing.go",
+        "line": 107
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "历史节点视频浏览未接入；不能据此直接授权新修改。",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/skillApi.ts",
+          "line": 20
+        }
+      ],
+      "frontend_calls": []
     }
   ],
-  "routes_source_sha256": "848fd4bd2f58fa18004b1525fee360c258c1c263398215cae5ed05cd7ac8b93e",
+  "routes_source_sha256": "e0fad6a34aea4836ff05395658660e1b648a37d2848edc58d563a6d43ea75291",
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/script_workbench.go",
     "control-plane/internal/api/tts.go",
-    "control-plane/internal/api/skill.go"
+    "control-plane/internal/api/skill.go",
+    "control-plane/internal/api/skill_editing.go"
   ],
   "sse_new_events_note": "project.changed / skill.changed / skill.run.changed；32 个刷新域；事件只触发 REST 失效。",
   "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
   "source_hashes": {
-    "control-plane/internal/api/api.go": "848fd4bd2f58fa18004b1525fee360c258c1c263398215cae5ed05cd7ac8b93e",
+    "control-plane/internal/api/api.go": "e0fad6a34aea4836ff05395658660e1b648a37d2848edc58d563a6d43ea75291",
     "control-plane/internal/api/script_workbench.go": "1b3168344b29f05a38f482256041ce8fcf6eb745be3d9fa45ac94f70b3327178",
     "control-plane/internal/api/tts.go": "a1c1f9d44151101e32c196c1e4d7d59951d1fe6b4fcb4d0114dc3d57115edddb",
-    "control-plane/internal/api/skill.go": "9e0ffe0bc68a24a070c5ec567e76c6e3dd030987d750a167ee38d9a23a5e77a3"
+    "control-plane/internal/api/skill.go": "1b9912e90df2e11e19d9d617df9e1640c94777802c98dc9e4aee516f8afacafd",
+    "control-plane/internal/api/skill_editing.go": "f9fbc50f8d4a8a263a290904a48eb218f65456450513c47d78e137185128d882"
   },
   "verified_checkout": "agent/vu-skill",
-  "verification_note": "源码注册/处理器/摘要静态更新；实际测试与未验边界见 Skill架构实施与验证-2026-10-19.md。"
+  "verification_note": "2026-10-19 agent/vu-skill 当前工作区：143 HTTP 注册/144 展开项。逐项标记 frontend_status、frontend_requirement、frontend_gap、frontend_wrapper 和 frontend_calls；页面状态为静态接线证据，工程验证见实施文档。",
+  "frontend_status_legend": {
+    "page_integrated": {
+      "label": "页面已接入",
+      "meaning": "存在实际组件调用或媒体 URL 消费，仅证明静态接线。"
+    },
+    "partial": {
+      "label": "部分接入，待补齐",
+      "meaning": "已有页面调用，但新契约有必要交互未补齐。"
+    },
+    "sdk_only": {
+      "label": "仅 SDK，页面未接入",
+      "meaning": "存在封装，无页面调用；类型、测试、辅助函数不算页面。"
+    },
+    "not_wrapped": {
+      "label": "未封装/未接入",
+      "meaning": "精确路由无独立客户端/页面；兼容或等价入口可不重复。"
+    }
+  },
+  "frontend_status_summary": {
+    "verified_date": "2026-10-19",
+    "method": "静态对照后端注册、SDK 定义、TSX 组件调用及媒体 URL；不启动应用、不替代 UI 验收",
+    "counts": {
+      "page_integrated": 93,
+      "sdk_only": 42,
+      "partial": 2,
+      "not_wrapped": 7
+    },
+    "new_40_endpoints": {
+      "sdk_only": 39,
+      "not_wrapped": 1
+    },
+    "required_pending_count": 41,
+    "optional_or_compatibility_pending_count": 10
+  }
 }

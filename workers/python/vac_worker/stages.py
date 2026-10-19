@@ -63,6 +63,11 @@ class Tools:
     allow_test_tone: bool = False
 
     def run(self, args: list[str]) -> str:
+        if Path(args[0]).stem.lower() == 'ffprobe':
+            args = [args[0], '-protocol_whitelist', 'file,pipe', '-format_whitelist',
+                    'mov,matroska,webm,avi,mpegts,mpegvideo,flv,ogg,wav,mp3,aac,flac', *args[1:]]
+        elif Path(args[0]).stem.lower() == 'ffmpeg':
+            args = [part for value in args for part in (['-protocol_whitelist', 'file,pipe', value] if value == '-i' else [value])]
         try:
             done = subprocess.run(args, capture_output=True, text=True, timeout=self.timeout,
                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

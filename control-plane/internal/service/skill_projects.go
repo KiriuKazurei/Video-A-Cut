@@ -343,6 +343,9 @@ func (s *Service) ConfigureSkillHarness(ctx context.Context) error {
 		if json.Unmarshal(raw, &r) != nil {
 			return model.ErrInvalidState
 		}
+		if err = s.st.EnsureSkillCheckpoint(ctx, r.ID); err != nil {
+			return err
+		}
 		if r.State == "running" {
 			v := r.Version
 			r.Version++

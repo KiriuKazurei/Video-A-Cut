@@ -59,6 +59,12 @@ func (s *Store) SkillList(ctx context.Context, kind string) ([]json.RawMessage, 
 
 // expected=0 inserts; positive versions use a compare-and-swap.
 func (s *Store) SkillPut(ctx context.Context, kind, id string, expected int, value any) error {
+	if kind == "run" && !s.tx {
+		return s.Transaction(ctx, func(tx *Store) error { return tx.skillPut(ctx, kind, id, expected, value, true) })
+	}
+	return s.skillPut(ctx, kind, id, expected, value, true)
+}
+func (s *Store) skillPut(ctx context.Context, kind, id string, expected int, value any, checkpoint bool) error {
 	table, err := skillTable(kind)
 	if err != nil {
 		return err
@@ -72,7 +78,13 @@ func (s *Store) SkillPut(ctx context.Context, kind, id string, expected int, val
 		if err != nil {
 			return err
 		}
-		return s.skillRecordRevision(ctx, kind, id, raw)
+		if err = s.skillRecordRevision(ctx, kind, id, raw); err != nil {
+			return err
+		}
+		if kind == "run" && checkpoint {
+			return s.checkpointRun(ctx, id, raw)
+		}
+		return nil
 	}
 	result, err := s.q.ExecContext(ctx, "UPDATE "+table+" SET version=version+1,body=? WHERE id=? AND version=?", string(raw), id, expected)
 	if err != nil {
@@ -85,7 +97,13 @@ func (s *Store) SkillPut(ctx context.Context, kind, id string, expected int, val
 	if n != 1 {
 		return model.ErrConflict
 	}
-	return s.skillRecordRevision(ctx, kind, id, raw)
+	if err = s.skillRecordRevision(ctx, kind, id, raw); err != nil {
+		return err
+	}
+	if kind == "run" && checkpoint {
+		return s.checkpointRun(ctx, id, raw)
+	}
+	return nil
 }
 func (s *Store) skillRecordRevision(ctx context.Context, kind, id string, raw []byte) error {
 	if kind != "run" {

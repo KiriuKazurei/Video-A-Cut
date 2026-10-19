@@ -9,6 +9,7 @@ import (
 )
 
 func (s *Server) skillRoutes() {
+	s.skillEditRoutes()
 	s.mux.HandleFunc("GET /api/skill-runs/{id}/revisions", s.skillRevisions)
 	s.mux.HandleFunc("PUT /api/skill-runs/{id}/voice", s.skillVoice)
 	s.mux.HandleFunc("POST /api/projects/{id}/media", s.skillImportMedia)
@@ -203,6 +204,7 @@ func (s *Server) skillArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Content-SHA256", a.SHA)
 	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	http.ServeFile(w, r, path)
 }
 func (s *Server) skillExport(w http.ResponseWriter, r *http.Request) {

@@ -70,9 +70,12 @@ func (s *Service) scriptProcess(ctx context.Context, node bool, operation string
 		cmd = exec.CommandContext(ctx, python, "-B", "-m", "vac_worker.script_workbench")
 		cmd.Dir = filepath.Join(root, "workers", "python")
 	}
- configureMediaCommand(cmd)
+	configureMediaCommand(cmd)
 	cmd.WaitDelay = time.Second
-	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "PYTHONDONTWRITEBYTECODE=1")
+	cmd.Env = toolEnvironment()
+	if !node {
+		cmd.Env = toolEnvironment(payloadCredentialNames(payload, "profile.vision", "profile.narration")...)
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err

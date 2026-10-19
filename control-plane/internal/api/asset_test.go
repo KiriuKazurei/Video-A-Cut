@@ -34,7 +34,9 @@ func newSeededServer(t *testing.T, assets ...model.Asset) *Server {
 func get(t *testing.T, srv *Server, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, localRequest(http.MethodGet, path, nil))
+	req := localRequest(http.MethodGet, path, nil)
+	req.Header.Set("X-VAC-Human-Token", "vac-human-test-credential-00000000000001")
+	srv.Handler().ServeHTTP(rec, req)
 	return rec
 }
 

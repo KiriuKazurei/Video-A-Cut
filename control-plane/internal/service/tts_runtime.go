@@ -145,8 +145,8 @@ func (s *Service) runTTSProcess(ctx context.Context, payload any) (ttsProcessRes
 	}
 	cmd := exec.CommandContext(ctx, r.python, "-m", "vac_worker.tts_console")
 	cmd.Dir = r.dir
-	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "PYTHONDONTWRITEBYTECODE=1")
-	hideTTSCommand(cmd)
+	cmd.Env = toolEnvironment(payloadCredentialNames(payload, "settings")...)
+	configureMediaCommand(cmd)
 	cmd.Stdin = bytes.NewReader(b)
 	var out boundedTTSOutput
 	cmd.Stdout = &out

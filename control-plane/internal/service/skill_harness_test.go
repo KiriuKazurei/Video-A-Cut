@@ -52,6 +52,15 @@ func TestSkillRealMediaFramesAndDelivery(t *testing.T) {
 	if err != nil || len(r.Frames) < 2 {
 		t.Fatalf("frames %+v %v", r, err)
 	}
+	spent := r.FramesSpent
+	r, err = svc.MoveSkillHistory(ctx, "human:test", r.ID, "undo", r.Version)
+	if err != nil || len(r.Frames) != 0 || r.FramesSpent != spent {
+		t.Fatalf("frame undo reset budget: %+v %v", r, err)
+	}
+	r, err = svc.MoveSkillHistory(ctx, "human:test", r.ID, "redo", r.Version)
+	if err != nil || len(r.Frames) < 2 || r.FramesSpent != spent {
+		t.Fatalf("frame redo reset budget: %+v %v", r, err)
+	}
 	summary, _ := json.Marshal(map[string]any{
 		"model": "external-fixture", "narrative": "Synthetic test scene", "beats": []string{"Opening"},
 		"timeline": []any{map[string]any{"media_id": v.Media[0].ID, "start": 0, "end": 1,
@@ -73,7 +82,7 @@ func TestSkillRealMediaFramesAndDelivery(t *testing.T) {
 	if summaries != 2 {
 		t.Fatalf("expected JSON and Markdown summaries, got %d", summaries)
 	}
-	plan := skill.Plan{Body: "Show scene", Segments: []skill.Segment{{MediaID: v.Media[0].ID, Start: 0, End: 1, Narration: "Scene"}}}
+	plan := skill.Plan{Body: "Show opening\n\nShow ending", Segments: []skill.Segment{{MediaID: v.Media[0].ID, Start: 0, End: .5, Narration: "Opening"}, {MediaID: v.Media[0].ID, Start: .5, End: 1, Narration: "Ending"}}}
 	raw, _ := json.Marshal(plan)
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "plan"})
 	if err != nil {
@@ -104,11 +113,76 @@ func TestSkillRealMediaFramesAndDelivery(t *testing.T) {
 	if err != nil || r.Inspection == nil || len(r.Inspection.FrameIDs) < 2 {
 		t.Fatalf("render inspection: %+v %v", r.Inspection, err)
 	}
+	index := 0
+	r, err = svc.RequestSkillEdit(ctx, "human:test", r.ID, service.SkillEditRequest{ExpectedVersion: r.Version, PlanVersion: r.Plan.Version, Prompt: "Change only the opening narration", SegmentIndex: &index, ArtifactID: mp4.ID, ArtifactSHA: mp4.SHA, IdempotencyKey: "local-edit"})
+	if err != nil || r.EditRequest == nil || r.EditRequest.Windows[0].TimelineStart != 0 || r.EditRequest.Windows[0].TimelineEnd != .5 || r.EditRequest.Windows[0].SourceStart != 0 || r.EditRequest.Windows[0].SourceEnd != .5 {
+		t.Fatalf("target windows %+v %v", r.EditRequest, err)
+	}
+	proposed := *r.Plan
+	proposed.Segments = append([]skill.Segment{}, r.Plan.Segments...)
+	proposed.Segments[1].Narration = "Unauthorized outside rewrite"
+	raw, _ = json.Marshal(proposed)
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "outside"})
+	if !errors.Is(err, model.ErrForbidden) {
+		t.Fatalf("accepted unrelated edit: %v", err)
+	}
+	r, err = svc.UpdateSkillRun(ctx, "human:test", r.ID, "resume", r.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposed.Segments[1] = plan.Segments[1]
+	proposed.Segments[0].Narration = "New opening"
+	proposed.Segments[0].End = .4
+	raw, _ = json.Marshal(proposed)
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "inside"})
+	if err != nil || r.Plan.Segments[1].Narration != "Ending" || r.Plan.FinalizedBy != "" {
+		t.Fatalf("local edit: %+v %v", r.Plan, err)
+	}
+	workbench, err := svc.SkillWorkbench(ctx, "human:test", r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previews := workbench["previews"].([]map[string]any)
+	if len(previews) == 0 || previews[0]["available"] != true || previews[0]["historical"] != true {
+		t.Fatal("old film cannot be previewed during editing", previews)
+	}
+	checkpoint := previews[0]["checkpoint_id"].(string)
+	if _, _, err = svc.SkillCheckpointPreview(ctx, "human:test", r.ID, checkpoint, mp4.ID); err != nil {
+		t.Fatal(err)
+	}
+	r, err = svc.UpdateSkillRun(ctx, "human:test", r.ID, "finalize", r.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "renders.create", ExpectedVersion: r.Version, IdempotencyKey: "edited-render"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var editedMP4 skill.Artifact
+	for _, a := range r.Artifacts {
+		if a.Kind == "mp4" && a.PlanVersion == r.Plan.Version {
+			editedMP4 = a
+		}
+	}
+	if editedMP4.ID == "" || editedMP4.SHA == mp4.SHA {
+		t.Fatal("edited video was not regenerated")
+	}
+	at := .6
+	r, err = svc.RequestSkillEdit(ctx, "human:test", r.ID, service.SkillEditRequest{ExpectedVersion: r.Version, PlanVersion: r.Plan.Version, Prompt: "Adjust the ending", At: &at, ArtifactID: editedMP4.ID, ArtifactSHA: editedMP4.SHA, IdempotencyKey: "point-edit"})
+	if err != nil || r.EditRequest.Windows[0].SegmentIndex != 1 || r.EditRequest.Windows[0].TimelineStart != .4 || r.EditRequest.Windows[0].SourceStart != .5 {
+		t.Fatalf("render/source time mapping %+v %v", r.EditRequest, err)
+	}
+	if _, err = svc.AgentOperations(ctx, "agent:test", r.ID, 0, 100); !errors.Is(err, model.ErrForbidden) {
+		t.Fatal("Agent read logs", err)
+	}
 	if err = os.WriteFile(path, []byte("tampered"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err = svc.SkillArtifactPath(ctx, "human:test", r.ID, mp4.ID); !errors.Is(err, model.ErrConflict) {
 		t.Fatalf("tampered media remained downloadable: %v", err)
+	}
+	if _, _, err = svc.SkillCheckpointPreview(ctx, "human:test", r.ID, checkpoint, mp4.ID); !errors.Is(err, model.ErrConflict) {
+		t.Fatal("historical preview ignored tamper", err)
 	}
 }
 
