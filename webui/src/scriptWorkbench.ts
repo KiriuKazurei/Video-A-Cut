@@ -2,7 +2,10 @@ export interface ScriptSubtitle { text: string; size_px?: number; font?: string 
 export interface ScriptParagraph { index: number; source: string; instruction: string; video?: string; subtitle?: ScriptSubtitle; effect?: string }
 export interface ScriptDocument { version: number; paragraphs: ScriptParagraph[]; diagnostics: { paragraph: number; column: number; message: string }[] }
 export interface ScriptMedia { id: string; asset_id: string; name: string; in: number; out: number }
-export interface ScriptSegment { index: number; narration: string; media_id: string; start: number; end: number; source_urls?: string[] }
+import type { TtsSettings } from './ttsContracts';
+
+export interface ScriptVoice { settings: TtsSettings; offset_seconds: number; accept_external: boolean }
+export interface ScriptSegment { index: number; narration: string; media_id: string; start: number; end: number; source_urls?: string[]; tts_enabled?: boolean; subtitles_enabled?: boolean; voice?: ScriptVoice }
 export interface ScriptSource { url: string; title: string; excerpt?: string }
 export interface ScriptRecord { script_id: string; asset_id: string; status: string; visible_set_sha: string; title?: string; body?: string; stale_reason?: string }
 export interface ScriptWorkbenchView {
@@ -17,6 +20,45 @@ export interface ScriptSave {
 }
 export interface ScriptRevision { version: number; action: string; actor: string; snapshot: string; created_at: string }
 export interface ScriptDelivery { version: number; visible_set_sha: string; created_at: string }
+export interface ScriptVoiceSave {
+  expected_version: number; visible_set_sha: string; segment_index: number;
+  narration: string; settings: TtsSettings; offset_seconds: number; enabled: boolean; accept_external: boolean;
+}
+export interface ScriptDeliveryInfo {
+  script_id: string; version: number; visible_set_sha: string; width: number; height: number;
+  duration: number; frames: number; sha256: string; tts_enabled: boolean;
+  files: { path: string; size_bytes: number; sha256: string }[];
+}
+
+/** Preserve manual edits when a paragraph is changed or another paragraph is inserted. */
+export function reconcileScriptSegments(before: ScriptDocument | undefined, after: ScriptDocument, segments: ScriptSegment[], media: ScriptMedia[]): ScriptSegment[] {
+  const used = new Set<number>();
+  return after.paragraphs.map((paragraph, index) => {
+    let old = before?.paragraphs.findIndex((p, i) => !used.has(i) && p.source === paragraph.source) ?? -1;
+    if (old < 0 && before?.paragraphs.length === after.paragraphs.length && !used.has(index)) old = index;
+    if (old < 0 || !segments[old]) return initialScriptSegment(paragraph, media);
+    used.add(old);
+    const segment = { ...segments[old], index };
+    if (paragraph.video && media.find(m => m.id === segment.media_id)?.name !== paragraph.video) {
+      const bound = initialScriptSegment(paragraph, media);
+      segment.media_id = bound.media_id; segment.start = bound.start; segment.end = bound.end;
+    }
+    return segment;
+  });
+}
+
+export function scriptTimelineStarts(w: Pick<ScriptWorkbenchView, 'segments' | 'document'>): number[] {
+  let cursor = 0;
+  return w.segments.map((segment, index) => {
+    const duration = Math.max(0, Math.round((segment.end - segment.start) * 30) / 30);
+    if (index > 0 && w.document.paragraphs[index]?.effect === '交叉溶解') {
+      const previous = w.segments[index - 1];
+      const previousDuration = Math.max(0, Math.round((previous.end - previous.start) * 30) / 30);
+      cursor -= Math.floor(Math.min(.35, previousDuration / 3, duration / 3) * 30) / 30;
+    }
+    const start = cursor; cursor += duration; return start;
+  });
+}
 
 /** Lightweight lexical highlighting; the Go parser remains authoritative. */
 export function scriptTokens(source: string): { text: string; kind: 'text' | 'directive' | 'invalid' }[] {

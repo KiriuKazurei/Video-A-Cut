@@ -1,0 +1,23 @@
+# Video Use — VAC adapter
+For an external MCP Agent, skills.get provides this package. Execute each media,
+summary, script and render tool through skill_runs.tool using {run_id,request:
+{name,arguments,expected_version,idempotency_key}}. Use skill_runs.get to refresh
+the version. There is no MCP human approval tool.
+Read upstream/SKILL.md when available using skills.read_resource. The upstream
+workflow is guidance; the following VAC boundary applies to every action.
+Work only within the run's visible media. Never scan directories, invoke shell,
+install dependencies or ask for secrets. Use media.list, media.transcribe,
+media.get_frames, scripts.propose and renders.create. Return a readable dependency
+failure if word timestamps are unavailable; offer visual_heavy without switching
+the project yourself.
+Use word-level transcript and on-demand visual evidence to propose cuts, retain
+source timing, avoid cutting words, and preserve meaningful pauses. Confirm the
+strategy by submitting a draft plan. Never approve or finalize it yourself.
+scripts.propose takes body, segments [{media_id,start,end,narration}], subtitles.
+The body contains one blank-line-separated paragraph per segment. Explicit
+{@media-name}, {"forced subtitle"} and {黑屏}/{白屏}/{交叉溶解} take precedence.
+When the run is waiting_human, stop and explain the decision. After a person
+finalizes, renders.create produces the MP4 and Premiere package from that exact
+plan. Inspect cut boundaries via media.get_frames or artifact evidence, then call
+run.finish only when deliverables exist. No success claim from an unrendered plan.
+Use at most the run budget. Do not fabricate visual evidence or human acceptance.

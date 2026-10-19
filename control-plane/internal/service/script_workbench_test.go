@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
@@ -217,6 +218,14 @@ func scriptChangeRoundTrip(t *testing.T, legacy bool) {
 	if string(before) != string(after) {
 		t.Fatalf("script edited workflow JSON: %s => %s", before, after)
 	}
+	task, err := env.svc.ClaimTask(ctx, "recognizer", "recognizer", time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := env.svc.GetTaskInput(ctx, "recognizer", "recognizer", task.TaskID)
+	if err != nil || input.Script == nil || input.Script.Version != w.Version || input.Script.Workbench.Segments[0].Narration != "进入这个关卡。" || input.Script.Sources[media[0].ID] == "" {
+		t.Fatalf("legacy worker lost fixed script: %+v %v", input.Script, err)
+	}
 	req.ExpectedVersion = w.Version
 	if _, err = env.svc.SaveScriptWorkbench(ctx, "human:test", sc.ScriptID, req); err != nil {
 		t.Fatal(err)
@@ -224,6 +233,9 @@ func scriptChangeRoundTrip(t *testing.T, legacy bool) {
 	a, err = env.svc.GetAuto(ctx, run.RunID)
 	if err != nil || a.State != model.AutoStateAwaitingDecision {
 		t.Fatalf("second edit did not park: %+v %v", a, err)
+	}
+	if _, err = env.svc.GetTaskInput(ctx, "recognizer", "recognizer", task.TaskID); !errors.Is(err, model.ErrConflict) {
+		t.Fatalf("stale script still delivered to worker: %v", err)
 	}
 }
 

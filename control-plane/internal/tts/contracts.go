@@ -30,6 +30,9 @@ type Settings struct {
 	PitchSemitones float64 `json:"pitch_semitones"`
 	SAPIRate       int     `json:"sapi_rate"`
 	Instruction    string  `json:"instruction"`
+	LowGainDB      float64 `json:"low_gain_db,omitempty"`
+	MidGainDB      float64 `json:"mid_gain_db,omitempty"`
+	HighGainDB     float64 `json:"high_gain_db,omitempty"`
 }
 
 func (s Settings) External() bool {
@@ -53,7 +56,7 @@ func (s Settings) Validate() error {
 	for _, v := range []struct {
 		n            string
 		v, low, high float64
-	}{{"speed", s.Speed, .5, 2}, {"volume", s.Volume, .1, 2}, {"pitch_semitones", s.PitchSemitones, -12, 12}} {
+	}{{"speed", s.Speed, .5, 2}, {"volume", s.Volume, .1, 2}, {"pitch_semitones", s.PitchSemitones, -12, 12}, {"low_gain_db", s.LowGainDB, -12, 12}, {"mid_gain_db", s.MidGainDB, -12, 12}, {"high_gain_db", s.HighGainDB, -12, 12}} {
 		if math.IsNaN(v.v) || math.IsInf(v.v, 0) || v.v < v.low || v.v > v.high {
 			return fmt.Errorf("参数 %s 超出范围", v.n)
 		}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preparation"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 	"strings"
 )
@@ -49,6 +50,9 @@ func (s *Service) SetProcessingConsent(ctx context.Context, actor, id string, re
 		return tx.WriteAudit(ctx, model.AuditLog{Actor: actor, Action: "profile.consent", Target: id, Detail: fmt.Sprintf("revision=%d granted=%t", revision, granted)})
 	})
 	if e == nil {
+		if !granted {
+			s.cancelSkillExecutions(ctx, func(r skill.Run) bool { return r.ProfileID == id && r.ProfileRevision == revision })
+		}
 		s.publish("profile.changed", map[string]any{"profile_id": id})
 	}
 	return e

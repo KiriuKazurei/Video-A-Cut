@@ -86,6 +86,9 @@ export interface RouteState {
   editingSection?: EditingSection;
   exportSection?: ExportSection;
   settingsCategory?: SettingsCategory;
+  scriptId?: string;
+  scriptVersion?: number;
+  scriptSegment?: number;
 }
 
 /**
@@ -93,7 +96,8 @@ export interface RouteState {
  * 旧路径兼容：#/import → #/editing/import，#/monitor → #/export/tasks 等
  */
 function parseHash(): RouteState {
-  const raw = window.location.hash.replace(/^#\/?/, '').split('/');
+  const [path, query = ''] = window.location.hash.replace(/^#\/?/, '').split('?');
+  const raw = path.split('/');
   const [first, second] = raw;
 
   // 旧路径兼容：仅当没有二级子路径（单段旧 URL，如 #/import、#/export、#/monitor 等）时触发
@@ -110,6 +114,12 @@ function parseHash(): RouteState {
   // 新路径解析
   const workspace = WORKSPACES.find((w) => w.id === first)?.id ?? DEFAULT_WORKSPACE;
   const state: RouteState = { workspace };
+  const parameters = new URLSearchParams(query);
+  if (parameters.get('script')) state.scriptId = parameters.get('script')!;
+  const version = Number(parameters.get('version'));
+  if (Number.isInteger(version) && version >= 0 && parameters.has('version')) state.scriptVersion = version;
+  const segment = Number(parameters.get('segment'));
+  if (Number.isInteger(segment) && segment >= 0 && parameters.has('segment')) state.scriptSegment = segment;
 
   if (workspace === 'editing') {
     state.editingSection = EDITING_SECTIONS.find((s) => s.id === second)?.id ?? DEFAULT_EDITING_SECTION;
@@ -124,10 +134,16 @@ function parseHash(): RouteState {
 
 function buildHash(state: RouteState): string {
   const { workspace, editingSection, exportSection, settingsCategory } = state;
-  if (workspace === 'editing' && editingSection) return `/${workspace}/${editingSection}`;
-  if (workspace === 'export' && exportSection) return `/${workspace}/${exportSection}`;
-  if (workspace === 'settings' && settingsCategory) return `/${workspace}/${settingsCategory}`;
-  return `/${workspace}`;
+  const path = workspace === 'editing' && editingSection ? `/${workspace}/${editingSection}`
+    : workspace === 'export' && exportSection ? `/${workspace}/${exportSection}`
+    : workspace === 'settings' && settingsCategory ? `/${workspace}/${settingsCategory}` : `/${workspace}`;
+  const query = new URLSearchParams();
+  if (state.scriptId && (workspace === 'tts' || (workspace === 'editing' && editingSection === 'content'))) {
+    query.set('script', state.scriptId);
+    if (state.scriptVersion !== undefined) query.set('version', String(state.scriptVersion));
+    if (state.scriptSegment !== undefined) query.set('segment', String(state.scriptSegment));
+  }
+  return path + (query.size ? `?${query}` : '');
 }
 
 /** 路由 Hook：返回当前路由状态和导航函数 */
@@ -142,6 +158,9 @@ export function useWorkspaceRoute() {
 
   const navigate = useCallback((state: Partial<RouteState>) => {
     const next: RouteState = { ...route, ...state };
+    if (next.workspace !== 'tts' && !(next.workspace === 'editing' && next.editingSection === 'content')) {
+      delete next.scriptId; delete next.scriptVersion; delete next.scriptSegment;
+    }
     const hash = buildHash(next);
     if (window.location.hash !== `#${hash}`) {
       window.location.hash = hash;

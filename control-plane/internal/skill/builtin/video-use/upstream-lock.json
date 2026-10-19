@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/browser-use/video-use",
+  "commit": "43cfc566833548093455c9d4a46bd69913b7e552",
+  "selection": "Agent instructions and transcription reference; VAC executes adapted tools",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "66854ce1bc8ed7c497b4e4c9c06caa4a7250e780800058c4901b62a4b6272810"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "e391f5c9dbe5731f30647d1a07d64ff76e9d69fec0d9f770896e896287322e22"
+    },
+    {
+      "path": "README.md",
+      "sha256": "05bf8a70adf16ff466e7f61a5d56347ddb5dfa9e4cd1e1a49a15e380f1fa95d2"
+    },
+    {
+      "path": "SKILL.md",
+      "sha256": "2ff43990e88285d088bbd5c58c9046a2aa07a4674c4f233c4c772f2b12957005"
+    },
+    {
+      "path": "helpers/transcribe.py",
+      "sha256": "8199775536665fb984f84768648d7e0d669af40fd1b2349f4f033409b2149fb2"
+    }
+  ]
+}

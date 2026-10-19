@@ -93,6 +93,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration) http.Handler
 		SupportedProtocolVersions: []string{"2026-07-28"},
 	})
 	registerTools(server, svc)
+	registerSkillTools(server, svc)
 	registerTaskTools(server, svc, lease)
 	base := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

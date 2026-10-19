@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -69,7 +70,7 @@ func (s *Service) scriptProcess(ctx context.Context, node bool, operation string
 		cmd = exec.CommandContext(ctx, python, "-B", "-m", "vac_worker.script_workbench")
 		cmd.Dir = filepath.Join(root, "workers", "python")
 	}
-	hideTTSCommand(cmd)
+ configureMediaCommand(cmd)
 	cmd.WaitDelay = time.Second
 	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "PYTHONDONTWRITEBYTECODE=1")
 	raw, err := json.Marshal(payload)
@@ -210,6 +211,13 @@ func (s *Service) GenerateScriptWorkbench(ctx context.Context, actor, id string,
 	if err = json.Unmarshal(raw, &result); err != nil {
 		return w, err
 	}
+	// Model output proposes text and visible source windows, never a voice
+	// configuration or authorization to send a later narration externally.
+	for i := range result.Segments {
+		result.Segments[i].Voice = nil
+		result.Segments[i].TTSEnabled = nil
+		result.Segments[i].SubtitlesEnabled = nil
+	}
 	if len(result.Questions) > 10 {
 		return w, model.ErrArgument
 	}
@@ -268,6 +276,8 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 		return store.ScriptDelivery{}, err
 	}
 	defer release()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
 	w, err := s.GetScriptWorkbench(ctx, id)
 	if err != nil {
 		return store.ScriptDelivery{}, err
@@ -277,9 +287,6 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 	}
 	if err = s.requireVisibleConfirmation(ctx, s.st, w.Script.AssetID); err != nil {
 		return store.ScriptDelivery{}, err
-	}
-	if w.TTSEnabled {
-		return store.ScriptDelivery{}, fmt.Errorf("当前交付包含画面、原视频声音和字幕，暂不合成配音；请先关闭配音选项再交付: %w", model.ErrInvalidState)
 	}
 	media, err := s.ScriptMediaCatalogue(ctx)
 	if err != nil {
@@ -295,10 +302,6 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 	for _, m := range media {
 		byID[m.ID] = m
 	}
-	segments := []map[string]any{}
-	for _, seg := range w.Segments {
-		segments = append(segments, map[string]any{"path": byID[seg.MediaID].Path, "media_id": seg.MediaID, "source_ref": byID[seg.MediaID].Source, "start": seg.Start, "end": seg.End, "narration": seg.Narration, "source_urls": seg.SourceURLs})
-	}
 	rel := filepath.ToSlash(filepath.Join("script-deliveries", id, newID("export")))
 	out := filepath.Join(s.deliveryRoot, filepath.FromSlash(rel))
 	if err = os.MkdirAll(out, 0700); err != nil {
@@ -307,8 +310,29 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 	if _, _, err = s.deliveryPath(filepath.FromSlash(rel), true); err != nil {
 		return store.ScriptDelivery{}, err
 	}
+	segments := []map[string]any{}
+	for i, seg := range w.Segments {
+		if err = s.checkScriptContext(ctx, id, version, sha, media, false); err != nil {
+			return store.ScriptDelivery{}, err
+		}
+		row := map[string]any{"path": byID[seg.MediaID].Path, "media_id": seg.MediaID, "source_ref": byID[seg.MediaID].Source, "start": seg.Start, "end": seg.End, "narration": seg.Narration, "source_urls": seg.SourceURLs, "subtitles_enabled": scriptOption(seg.SubtitlesEnabled, w.SubtitlesEnabled)}
+		if scriptOption(seg.TTSEnabled, w.TTSEnabled) && strings.TrimSpace(seg.Narration) != "" {
+			voicePath := filepath.Join(out, fmt.Sprintf("voice-%03d.wav", i+1))
+			if err = s.synthesizeScriptVoice(ctx, seg, voicePath); err != nil {
+				return store.ScriptDelivery{}, fmt.Errorf("第 %d 段：%w", i+1, err)
+			}
+			row["voice_file"], row["voice_offset"] = voicePath, seg.Voice.OffsetSeconds
+		}
+		segments = append(segments, row)
+	}
 	_, err = s.scriptProcess(ctx, true, "render", map[string]any{"script": map[string]any{"script_id": id, "version": version, "visible_set_sha": sha, "finalized_by": w.Script.FinalizedBy, "finalized_at": w.Script.FinalizedAt}, "segments": segments, "document": w.Document, "subtitles_enabled": w.SubtitlesEnabled, "sources": w.Sources, "output_dir": out})
 	if err != nil {
+		return store.ScriptDelivery{}, err
+	}
+	if _, err = s.verifyScriptDelivery(ctx, rel, id, version, sha); err != nil {
+		return store.ScriptDelivery{}, err
+	}
+	if err = s.checkScriptContext(ctx, id, version, sha, media, false); err != nil {
 		return store.ScriptDelivery{}, err
 	}
 	d := store.ScriptDelivery{Version: version, VisibleSetSHA: sha, PackageRef: rel, CreatedAt: time.Now().UTC()}
@@ -323,21 +347,36 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 		if e = s.requireVisibleConfirmation(ctx, tx, cur.Script.AssetID); e != nil {
 			return e
 		}
+		for _, m := range media {
+			a, e := tx.GetAsset(ctx, m.AssetID)
+			if e != nil {
+				return e
+			}
+			if a.Locked || !a.AgentVisible {
+				return model.ErrForbidden
+			}
+		}
 		if e = tx.PutScriptDelivery(ctx, id, d); e != nil {
 			return e
 		}
 		return auditTx(ctx, tx, actor, "script.export", id, fmt.Sprint(version))
 	})
+	if err == nil {
+		s.publish("script.rendered", map[string]any{"script_id": id, "asset_id": w.Script.AssetID, "version": version})
+	}
 	return d, err
 }
 
-func (s *Service) ScriptDeliveryPath(ctx context.Context, id, name string) (string, error) {
+func (s *Service) ScriptDeliveryPath(ctx context.Context, id, name string, expected ...int) (string, error) {
 	w, err := s.GetScriptWorkbench(ctx, id)
 	if err != nil {
 		return "", err
 	}
 	if w.Script.Status != model.ScriptFinalized {
 		return "", model.ErrInvalidState
+	}
+	if len(expected) > 0 && expected[0] > 0 && w.Version != expected[0] {
+		return "", model.ErrConflict
 	}
 	if err = s.requireVisibleConfirmation(ctx, s.st, w.Script.AssetID); err != nil {
 		return "", err
@@ -348,6 +387,16 @@ func (s *Service) ScriptDeliveryPath(ctx context.Context, id, name string) (stri
 	}
 	if view.SHA256 != w.Script.VisibleSetSHA {
 		return "", model.ErrConflict
+	}
+	media, err := s.ScriptMediaCatalogue(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err = validateScriptPlan(w, media, true); err != nil {
+		return "", err
+	}
+	if err = s.checkScriptContext(ctx, id, w.Version, w.Script.VisibleSetSHA, media, false); err != nil {
+		return "", err
 	}
 	d, err := s.st.GetScriptDelivery(ctx, id, w.Version)
 	if err != nil {

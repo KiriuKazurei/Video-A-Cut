@@ -55,3 +55,13 @@ Thumbs.db
 !/docs/script-workbench-syntax.md
 /IDEA.md
 /视频剪辑流程方案.txt
+
+# Skill architecture and implementation contracts
+!/docs/Skill双流程架构设计.md
+!/docs/Skill管理与双流程改造方案-2026-10-19.md
+!/docs/Skill-Harness接口与前端交接.md
+!/docs/Skill架构实施与验证-2026-10-19.md
+!/docs/当前工作与待办.md
+!/docs/当前项目状态.md
+!/docs/当前架构与接口.md
+!/docs/README.md

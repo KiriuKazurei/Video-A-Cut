@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Checkbox, Collapse, Flex, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Tag, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { api } from '../api';
-import { apiURL } from '../runtimeUrl';
 import { errorText } from './ui';
-import { initialScriptSegment, scriptTokens, type ScriptRevision, type ScriptSegment, type ScriptWorkbenchView } from '../scriptWorkbench';
+import { initialScriptSegment, reconcileScriptSegments, scriptTokens, type ScriptDocument, type ScriptRevision, type ScriptSegment, type ScriptWorkbenchView } from '../scriptWorkbench';
+import type { RouteState } from '../navigation';
+import { ScriptDeliveryPanel } from './ScriptDeliveryPanel';
 
-export function ScriptWorkbench({ assetId }: { assetId: string }) {
+export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean }) {
   const client = useQueryClient();
   const list = useQuery({ queryKey: ['scripts', assetId], queryFn: () => api.listScripts(assetId), retry: false });
   const visible = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet, retry: false });
@@ -15,7 +16,8 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
   const fonts = useQuery({ queryKey: ['script-fonts'], queryFn: api.scriptFonts, retry: false, staleTime: 60_000 });
   const profiles = useQuery({ queryKey: ['processing-profiles'], queryFn: api.listProfiles });
   const [picked, setPicked] = useState('');
-  const scriptId = list.data?.find(s => s.script_id === picked)?.script_id ?? list.data?.at(-1)?.script_id;
+  useEffect(() => { if (selectedScriptId) setPicked(selectedScriptId); }, [selectedScriptId]);
+  const scriptId = list.data?.find(s => s.script_id === (picked || selectedScriptId))?.script_id ?? list.data?.at(-1)?.script_id;
   const record = useQuery({ queryKey: ['script-workbench', scriptId], queryFn: () => api.scriptWorkbench(scriptId!), enabled: Boolean(scriptId), retry: false });
   const revisions = useQuery({ queryKey: ['script-revisions', scriptId], queryFn: () => api.scriptRevisions(scriptId!), enabled: Boolean(scriptId), retry: false });
   const [title, setTitle] = useState('');
@@ -34,15 +36,17 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
   const [notice, setNotice] = useState('');
   const [generating, setGenerating] = useState(false);
   const [history, setHistory] = useState<ScriptRevision>();
-  const [exported, setExported] = useState<number>();
   const overlay = useRef<HTMLPreElement>(null);
   const stop = useRef<AbortController | null>(null);
   const locked = useRef(false);
   const mounted = useRef(true);
   const editor = useRef<TextAreaRef>(null);
   const selection = useRef({ start: 0, end: 0 });
+  const previousDocument = useRef<ScriptDocument | undefined>(undefined);
+  const previousBody = useRef('');
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; stop.current?.abort(); }; }, []);
   const apply = (w: ScriptWorkbenchView) => {
+    previousDocument.current = w.document; previousBody.current = w.script.body ?? '';
     setTitle(w.script.title ?? ''); setBody(w.script.body ?? ''); setParseBody(w.script.body ?? '');
     setSegments(w.segments ?? []); setTts(w.tts_enabled); setSubtitles(w.subtitles_enabled);
     setResearch(w.allow_web_research); setDirty(false); setLoadedId(w.script.script_id); setLoadedVersion(w.version); setConsent('');
@@ -53,6 +57,12 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
   const doc = parsed.data;
   const paragraphs = doc?.paragraphs ?? [];
   const currentMedia = media.data ?? [];
+  useEffect(() => {
+    if (!doc || parseBody !== body || previousBody.current === body) return;
+    const before = previousDocument.current;
+    previousDocument.current = doc; previousBody.current = body;
+    setSegments(current => reconcileScriptSegments(before, doc, current, currentMedia));
+  }, [doc, parseBody, body, currentMedia]);
   const drafts = paragraphs.map((p, i) => segments[i] ?? initialScriptSegment(p, currentMedia));
   const usableProfiles = (profiles.data ?? []).filter(p => p.content_mode === 'configured');
   const profile = usableProfiles.find(p => p.profile_id === profileId) ?? usableProfiles[0];
@@ -68,7 +78,7 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
     networkMode: 'always'
   });
   const invoke = (fn: () => Promise<unknown>) => { if (locked.current) return; locked.current = true; setFailure(''); setNotice(''); mutate.mutate(fn); };
-  const changed = () => { setDirty(true); setExported(undefined); setConsent(''); };
+  const changed = () => { setDirty(true); setConsent(''); };
   const accept = async (w: ScriptWorkbenchView) => {
     client.setQueryData(['script-workbench', w.script.script_id], w); apply(w);
     await Promise.all(['scripts', 'script-revisions', 'auto', 'workflow', 'audit'].map(k => client.invalidateQueries({ queryKey: [k] })));
@@ -80,7 +90,7 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
   const editSegment = (i: number, value: Partial<ScriptSegment>) => { const next = [...drafts]; next[i] = { ...next[i], ...value }; setSegments(next); changed(); };
   const insert = (text: string) => {
     const { start, end } = selection.current;
-    setBody(previous => previous.slice(0, start) + text + previous.slice(end)); setSegments([]); changed();
+    setBody(previous => previous.slice(0, start) + text + previous.slice(end)); changed();
     selection.current = { start: start + text.length, end: start + text.length };
     requestAnimationFrame(() => {
       const el = editor.current?.resizableTextArea?.textArea;
@@ -97,7 +107,7 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
       {!list.isPending && !list.data?.length && <Button type="primary" loading={busy} onClick={() => invoke(async () => {
         const sc = await api.enterScript(assetId); setPicked(sc.script_id); await client.invalidateQueries({ queryKey: ['scripts', assetId] });
       })}>新建脚本</Button>}
-      {list.data && list.data.length > 1 && <Select aria-label="脚本版本组" value={scriptId} disabled={busy || dirty} onChange={v => { setPicked(v); setLoadedId(''); setExported(undefined); }}
+      {list.data && list.data.length > 1 && <Select aria-label="脚本版本组" value={scriptId} disabled={busy || dirty} onChange={v => { setPicked(v); setLoadedId(''); }}
         options={list.data.map(s => ({ value: s.script_id, label: s.title || s.script_id }))} />}
       {record.isError && <Alert type="error" message={errorText(record.error)} />}
       {scriptId && <Spin spinning={record.isLoading}>
@@ -115,7 +125,7 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
               onSelect={e => { const el = e.currentTarget; selection.current = { start: el.selectionStart, end: el.selectionEnd }; }}
               placeholder={'{@抽卡演示.mp4}介绍抽卡机制\n\n{"重点说明", 字号:32px, 字体:"Microsoft YaHei",}{白屏}展示结果'}
               onScroll={e => { if (overlay.current) overlay.current.scrollTop = e.currentTarget.scrollTop; }}
-              onChange={e => { setBody(e.target.value); setSegments([]); changed(); }} />
+              onChange={e => { setBody(e.target.value); changed(); }} />
           </div>
           <Space wrap>
             <Select aria-label="插入指定视频" placeholder="插入指定视频" disabled={!canEdit} value={undefined} style={{ minWidth: 180 }}
@@ -128,11 +138,11 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
           {parsed.isError && <Alert type="error" message="语法检查暂不可用，请稍后重试" />}
           {doc && doc.diagnostics.length > 0 && <Alert type="error" role="alert" message="请修正特殊语法" description={doc.diagnostics.map((d, i) => <div key={i}>第 {d.paragraph + 1} 段，第 {d.column} 字：{d.message}</div>)} />}
           <Space wrap>
-            <Checkbox checked={tts} disabled={!canEdit} onChange={e => { setTts(e.target.checked); changed(); }}>启用配音（当前仅保存选项）</Checkbox>
+            <Checkbox checked={tts} disabled={!canEdit} onChange={e => { setTts(e.target.checked); changed(); }}>默认启用配音</Checkbox>
             <Checkbox checked={subtitles} disabled={!canEdit} onChange={e => { setSubtitles(e.target.checked); changed(); }}>自动字幕</Checkbox>
             <Checkbox checked={research} disabled={!canEdit} onChange={e => { setResearch(e.target.checked); changed(); }}>允许联网查证文字知识</Checkbox>
           </Space>
-          <Typography.Text type="secondary">显式字幕优先于自动字幕开关；画面只使用已确认可见素材。黑白屏和转场将预渲染进交付视频。当前交付保留原视频声音，暂不合成配音。</Typography.Text>
+          <Typography.Text type="secondary">每段可覆盖配音和字幕开关；声音细调在 TTS 专页保存回当前脚本修订。显式字幕始终生效，画面只使用已确认可见素材。</Typography.Text>
           <Space wrap>
             <Button type="primary" disabled={!canEdit || !canParse} onClick={() => invoke(async () => {
               await accept(await api.saveScript(scriptId!, { ...versionBody(), title, body, segments: drafts,
@@ -169,17 +179,22 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
             return <Card size="small" title={`第 ${i + 1} 段`} key={`${i}-${p.source}`} className="script-paragraph">
               <Flex vertical gap={8}>
                 <Typography.Text>{p.instruction || '仅特殊语法段'}</Typography.Text>
+                <Space wrap>
+                  <Checkbox checked={seg.tts_enabled ?? tts} disabled={!canEdit || !canParse} onChange={e => editSegment(i, { tts_enabled: e.target.checked })}>本段配音</Checkbox>
+                  <Checkbox checked={seg.subtitles_enabled ?? subtitles} disabled={!canEdit || !canParse} onChange={e => editSegment(i, { subtitles_enabled: e.target.checked })}>本段自动字幕</Checkbox>
+                  {(seg.tts_enabled ?? tts) && <Button disabled={dirty || busy || !navigate} onClick={() => navigate?.({ workspace: 'tts', scriptId, scriptVersion: loadedVersion, scriptSegment: i })}>到 TTS 专页调整第 {i + 1} 段</Button>}
+                </Space>
                 <Space wrap>{p.video && <Tag>强制视频：{p.video}</Tag>}{p.subtitle && <Tag>强制字幕：{p.subtitle.text}</Tag>}{p.effect && <Tag>画面效果：{p.effect}</Tag>}</Space>
                 <label htmlFor={`script-narration-${i}`}>实际旁白文稿（可手写，也可由 Agent 生成）</label>
-                <Input.TextArea id={`script-narration-${i}`} value={seg.narration} disabled={!canEdit} rows={3} maxLength={2000}
+                <Input.TextArea id={`script-narration-${i}`} value={seg.narration} disabled={!canEdit || !canParse} rows={3} maxLength={2000}
                   onChange={e => editSegment(i, { narration: e.target.value })} />
-                <Select aria-label={`第${i + 1}段视频`} value={seg.media_id || undefined} disabled={!canEdit} placeholder="选择搭配的视频"
+                <Select aria-label={`第${i + 1}段视频`} value={seg.media_id || undefined} disabled={!canEdit || !canParse} placeholder="选择搭配的视频"
                   options={choices.map(m => ({ value: m.id, label: `${m.name} · ${m.asset_id}` }))} onChange={id => {
                     const m = currentMedia.find(m => m.id === id)!; editSegment(i, { media_id: id, start: m.in, end: Math.min(m.out, m.in + 8) });
                   }} />
                 <Space wrap>
-                  <span>源视频起点（秒）</span><InputNumber aria-label={`第${i + 1}段起点`} min={0} value={seg.start} disabled={!canEdit} onChange={v => editSegment(i, { start: v ?? 0 })} />
-                  <span>终点（秒）</span><InputNumber aria-label={`第${i + 1}段终点`} min={0} value={seg.end} disabled={!canEdit} onChange={v => editSegment(i, { end: v ?? 0 })} />
+                  <span>源视频起点（秒）</span><InputNumber aria-label={`第${i + 1}段起点`} min={0} value={seg.start} disabled={!canEdit || !canParse} onChange={v => editSegment(i, { start: v ?? 0 })} />
+                  <span>终点（秒）</span><InputNumber aria-label={`第${i + 1}段终点`} min={0} value={seg.end} disabled={!canEdit || !canParse} onChange={v => editSegment(i, { end: v ?? 0 })} />
                 </Space>
               </Flex>
             </Card>;
@@ -191,14 +206,8 @@ export function ScriptWorkbench({ assetId }: { assetId: string }) {
             <Popconfirm title="否决当前文稿？" description="保留指令和历史修订，清除当前生成文稿。" onConfirm={() => invoke(async () => accept(await api.rejectScript(scriptId!, versionBody())))}>
               <Button danger disabled={!canEdit}>否决文稿</Button>
             </Popconfirm>
-            <Button disabled={!canEdit || dirty || latest?.script.status !== 'finalized' || tts} onClick={() => invoke(async () => {
-              const result = await api.exportScript(scriptId!, versionBody()); setExported(result.version);
-            })}>生成画面与 Premiere 交付包</Button>
           </Space>
-          {!dirty && latest?.script.status === 'finalized' && (exported === latest?.version || latest?.delivery?.version === latest?.version) && <Space wrap>
-            <Button href={apiURL(`/api/scripts/${encodeURIComponent(scriptId!)}/delivery.zip`)}>下载 Premiere 交付包</Button>
-            <Typography.Link href={apiURL(`/api/scripts/${encodeURIComponent(scriptId!)}/preview.mp4`)} target="_blank">查看同版成片</Typography.Link>
-          </Space>}
+          {!dirty && latest && <ScriptDeliveryPanel scriptId={scriptId} active={active} />}
           <Collapse items={[{ key: 'history', label: `修订历史（${revisions.data?.length ?? 0}）`, children: <Space wrap>{revisions.data?.map(r => <Button key={r.version} onClick={() => setHistory(r)}>修订 {r.version} · {r.action}</Button>)}</Space> }]} />
         </Flex>
       </Spin>}

@@ -1,5 +1,5 @@
 import { apiURL } from './runtimeUrl.ts';
-import type { ScriptDocument, ScriptMedia, ScriptWorkbenchView, ScriptSave, ScriptRevision, ScriptDelivery, ScriptRecord as WorkbenchScriptRecord } from './scriptWorkbench';
+import type { ScriptDocument, ScriptMedia, ScriptWorkbenchView, ScriptSave, ScriptRevision, ScriptDelivery, ScriptDeliveryInfo, ScriptVoiceSave, ScriptRecord as WorkbenchScriptRecord } from './scriptWorkbench';
 import type {
   AcceptanceRecord,
   Asset,
@@ -60,7 +60,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(apiURL(path), {
     ...init,
     headers: { Accept: 'application/json', ...init.headers }
@@ -118,6 +118,8 @@ export const api = {
   scriptMedia: () => request<ScriptMedia[]>('/api/script-workbench/media'),
   scriptFonts: () => request<string[]>('/api/script-workbench/fonts'),
   scriptWorkbench: (id: string) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/workbench`),
+  saveScriptVoice: (id: string, body: ScriptVoiceSave) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/voice`, json('PUT', body)),
+  scriptDelivery: (id: string, version: number) => request<ScriptDeliveryInfo>(`/api/scripts/${encodeURIComponent(id)}/delivery?version=${version}`),
   saveScript: (id: string, body: ScriptSave) => request<ScriptWorkbenchView>(`/api/scripts/${encodeURIComponent(id)}/workbench`, json('PUT', body)),
   scriptRevisions: (id: string) => request<ScriptRevision[]>(`/api/scripts/${encodeURIComponent(id)}/revisions`),
   generateScript: (id: string, body: { expected_version: number; visible_set_sha: string; profile_id: string; profile_revision: number; allow_web_research: boolean }, signal?: AbortSignal) =>

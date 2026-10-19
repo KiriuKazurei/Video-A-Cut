@@ -51,6 +51,10 @@ def validate_settings(s, *, legacy=False):
             raise TTSError(f"无效参数：{name}")
     if int(s["sapi_rate"]) != s["sapi_rate"]:
         raise TTSError("SAPI 语速必须为整数")
+    for name in ("low_gain_db", "mid_gain_db", "high_gain_db"):
+        value = s.get(name, 0)
+        if type(value) not in (int, float) or not math.isfinite(value) or not -12 <= value <= 12:
+            raise TTSError(f"无效频段增益：{name}")
     instruction = s.get("instruction", "")
     if not isinstance(instruction, str) or len(instruction) > 200 or "\x00" in instruction:
         raise TTSError("表达指令不得超过 200 字符")
@@ -132,6 +136,10 @@ def audio_filters(settings, sample_rate=48000):
     filters = []
     if pitch:
         filters.append(f"rubberband=tempo=1:pitch={2 ** (pitch / 12):.12f}:formant=preserved:pitchq=quality")
+    for name, frequency in (("low_gain_db", 120), ("mid_gain_db", 1000), ("high_gain_db", 4000)):
+        gain = settings.get(name, 0)
+        if gain:
+            filters.append(f"equalizer=f={frequency}:t=q:w=1:g={gain}")
     filters.append(f"aresample={sample_rate}")
     return ",".join(filters)
 

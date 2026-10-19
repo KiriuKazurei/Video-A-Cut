@@ -10,6 +10,9 @@ export interface TtsSettings {
   pitch_semitones: number;
   sapi_rate: number;
   instruction: string;
+  low_gain_db?: number;
+  mid_gain_db?: number;
+  high_gain_db?: number;
 }
 export interface TtsTemplate {
   template_id: string; revision: number; name: string; settings: TtsSettings;
@@ -45,7 +48,8 @@ export function ttsInstruction(mood: number, custom: string) {
 // Explicit field order makes snapshots returned by Go comparable to local drafts.
 export function ttsDraftKey(text: string, s: TtsSettings) {
   return JSON.stringify([text, s.engine, s.endpoint ?? '', s.model ?? '', s.token_env ?? '', s.voice,
-    s.language, s.speed, s.volume, s.pitch_semitones, s.sapi_rate, s.instruction]);
+    s.language, s.speed, s.volume, s.pitch_semitones, s.sapi_rate, s.instruction,
+    s.low_gain_db ?? 0, s.mid_gain_db ?? 0, s.high_gain_db ?? 0]);
 }
 export function currentTtsPreview(p: TtsPreview | undefined, text: string, s: TtsSettings) {
   return !!p && !p.expired && p.status === 'succeeded' && ttsDraftKey(p.text, p.settings) === ttsDraftKey(text, s);
@@ -53,6 +57,7 @@ export function currentTtsPreview(p: TtsPreview | undefined, text: string, s: Tt
 export function ttsDraftError(text: string, s: TtsSettings, requireText = true): string {
   if ((requireText && !text.trim()) || Array.from(text).length > 1000 || text.includes('\0')) return '文本须为 1–1,000 字符';
   if (Array.from(s.instruction).length > 200) return '合并后的表达指令超过 200 字符';
+  if ([s.low_gain_db ?? 0, s.mid_gain_db ?? 0, s.high_gain_db ?? 0].some(v => !Number.isFinite(v) || v < -12 || v > 12)) return '频段增益须在 -12～12 dB 内';
   if (!s.voice.trim()) return '请选择音色';
   if (s.engine === 'stepfun' && (!s.endpoint?.trim() || !s.token_env?.trim())) return '请填写服务地址和凭证变量';
   return '';

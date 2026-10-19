@@ -344,6 +344,7 @@ func TestSSESubscribesEveryKnownEventName(t *testing.T) {
 		"tts.template.changed",
 		"tts.preview.changed",
 		"script.changed",
+		"script.rendered",
 	}
 
 	srv := newBusServer(t)
@@ -364,7 +365,7 @@ func TestSSEStreamsMediaCompletionEvents(t *testing.T) {
 	srv := newBusServer(t)
 	st, _ := connectSSE(t, srv)
 	defer st.stop()
-	for _, name := range []string{"preview_updated", "delivery_variant.changed", "tts.template.changed", "tts.preview.changed", "script.changed"} {
+	for _, name := range []string{"preview_updated", "delivery_variant.changed", "tts.template.changed", "tts.preview.changed", "script.changed", "script.rendered"} {
 		srv.svc.Bus().Publish(events.Envelope{Name: name, Payload: map[string]any{"status": "succeeded"}})
 		frame := st.waitFrameName(t, name)
 		var payload map[string]any

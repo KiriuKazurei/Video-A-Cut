@@ -1,7 +1,8 @@
 // The script control plane supplies only frozen, validated local source windows.
 // Effects are baked into the media referenced by Premiere XML, not merely labels.
-import { readFile, writeFile, mkdir, copyFile, unlink } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { writeFile, mkdir, copyFile, unlink, readdir, lstat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { resolve, join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runTool, probeMedia } from './media.mjs';
@@ -10,6 +11,11 @@ import { assText, assTime, wrapAssText } from '../adapters/ass.mjs';
 import { formatsAdapter } from '../adapters/formats.mjs';
 
 const frameRate = 30;
+async function fileSHA256(file) {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  return hash.digest('hex');
+}
 const overlapDuration = (previous, current) => Math.floor(Math.min(.35, previous / 3, current / 3) * frameRate) / frameRate;
 const filterPath = p => resolve(p).replaceAll('\\', '/').replaceAll(':', '\\:').replaceAll("'", "'\\''").replaceAll('[', '\\[').replaceAll(']', '\\]');
 
@@ -41,15 +47,27 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
       vf.push(`fade=t=out:st=${duration - fade}:d=${fade}:color=${next === '黑屏' ? 'black' : 'white'}`);
     }
     const cut = join(output, `paragraph-${index + 1}.mp4`);
-    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(seg.start), '-i', seg.path,
-      '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-map', '0:v:0', '-map', info.audio ? '0:a:0' : '1:a:0',
-      '-t', String(duration), '-vf', vf.join(','), '-af', 'aresample=48000,apad', '-c:v', 'libx264', '-preset', 'ultrafast',
+    const voice = seg.voice_file;
+    const audio = info.audio ? '0:a:0' : '1:a:0';
+    const inputs = ['-ss', String(seg.start), '-i', seg.path, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
+    const fades = `afade=t=in:st=0:d=0.03,afade=t=out:st=${Math.max(0,duration-.03)}:d=0.03`;
+    let audioArgs = ['-map', audio, '-af', `aresample=48000,apad,${fades}`];
+    if (voice) {
+      const offset = seg.voice_offset ?? 0;
+      const spoken = await probe(voice);
+      if (!Number.isFinite(offset) || offset < 0 || !spoken.audio || spoken.duration + offset > duration + 1 / frameRate) throw new Error('配音超出片段时间窗');
+      inputs.push('-i', voice);
+      const delay = Math.round(offset * 1000);
+      audioArgs = ['-filter_complex', `[${audio}]aresample=48000,volume=0.25,apad[game];[2:a]aresample=48000,adelay=${delay}|${delay},apad[voice];[game][voice]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95,${fades}[mixed]`, '-map', '[mixed]'];
+    }
+    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...inputs, '-map', '0:v:0', ...audioArgs,
+      '-t', String(duration), '-vf', vf.join(','), '-c:v', 'libx264', '-preset', 'ultrafast',
       '-crf', '20', '-threads', '1', '-c:a', 'aac', '-ac', '2', '-ar', '48000', '-movflags', '+faststart', cut], { timeoutMs: 120_000 });
     const overlap = index > 0 && p.effect === '交叉溶解' ? overlapDuration(durations[index - 1], duration) : 0;
     cursor -= overlap;
 	if (overlap && cues.length) cues[cues.length - 1].end = Math.min(cues[cues.length - 1].end, cursor);
     const sub = p.subtitle;
-    if (sub || input.subtitles_enabled) {
+    if (sub || (seg.subtitles_enabled ?? input.subtitles_enabled)) {
       const font = sub?.font || defaultFont;
       if (!font || !available.includes(font)) throw new Error(`字体不可用：${font || '没有已安装字体'}`);
       const resolved = await resolveFont([font]);
@@ -94,18 +112,43 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', final, '-vn', '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', join(output, 'audio_Game.wav')], { timeoutMs: 60_000 });
   const timeline = { fps: frameRate, sample_rate: 48000, total_frames: frames, media: { baked: media }, tracks: [
     { id: 'Video', name: '脚本画面（效果已渲染）', kind: 'video', items: [{ id: 'script-film', src: 'baked', in_frame: 0, out_frame: frames, timeline_in_frame: 0, timeline_out_frame: frames, frames }] },
-    { id: 'Game', name: '原视频声音', kind: 'audio', items: [] }
+    { id: 'Game', name: segments.some(s => s.voice_file) ? '原声与旁白混音' : '原视频声音', kind: 'audio', items: [] }
   ] };
   const artifacts = await formatsAdapter.run({ stagingDir: output, outputDir: output, timeline });
   await writeFile(join(output, 'script.json'), JSON.stringify({ schema_version: 1, script: input.script, document: input.document,
-    segments: segments.map(({ path, ...segment }) => segment) }, null, 2));
+    segments: segments.map(({ path, voice_file, ...segment }) => ({ ...segment, ...(voice_file ? { voice_file: basename(voice_file) } : {}) })) }, null, 2));
   await writeFile(join(output, 'narration.txt'), segments.map((s, i) => `${i + 1}. ${s.narration}`).join('\n\n'), 'utf8');
   await writeFile(join(output, 'knowledge-sources.json'), JSON.stringify(input.sources ?? [], null, 2));
-  await writeFile(join(output, 'IMPORT.txt'), '在 Premiere 中导入 edit.xml。画面效果和强制字幕已渲染进 media/ 中的视频；不是原生可编辑转场。\n若移动了交付目录，请将素材重新链接到 media/。final.mp4 是同一画面的站内预览。旁白文本在 narration.txt，本次画面交付不包含 TTS 配音。\n', 'utf8');
-  const hash = createHash('sha256').update(await readFile(final)).digest('hex');
-  const report = { schema_version: 1, baked_effects: true, width: media.video.width, height: media.video.height, duration: media.duration, frames, fonts: fontRecords, sha256: hash, artifacts };
-  await writeFile(join(output, 'script-delivery.json'), JSON.stringify(report, null, 2));
+  await writeFile(join(output, 'IMPORT.txt'), '在 Premiere 中导入 edit.xml。画面效果和强制字幕已渲染进 media/ 中的视频；不是原生可编辑转场。\n若移动了交付目录，请将素材重新链接到 media/。final.mp4 是同一画面的站内预览。旁白文本在 narration.txt，启用配音的段落已按声音设置与段内起点合成、混音；audio_Game.wav 是与成片对应的混音轨。\n', 'utf8');
+  const hash = await fileSHA256(final);
   for (const file of [...paths, joined]) await unlink(file);
+  // The shared renderer also supports the old workflow's package importer.
+  const bakedEDL = { timeline: { fps: frameRate, sample_rate: 48000 },
+    video: [{ src: 'final.mp4', in: 0, out: media.duration, timeline_in: 0 }],
+    game_audio: [{ src: 'audio_Game.wav', in: 0, out: media.duration, timeline_in: 0, gain_db: 0 }],
+    voice: [], subtitle: [], music: [], script_binding: input.script };
+  await writeFile(join(output,'edl.json'),JSON.stringify(bakedEDL,null,2));
+  await writeFile(join(output,'delivery-manifest.json'),JSON.stringify({ schema_version:1,source_edl:'edl.json',
+    artifacts:[...artifacts,{kind:'preview_mp4',path:'final.mp4'},{kind:'audio',path:'audio_Game.wav'},
+      {kind:'script',path:'script.json'},{kind:'instructions',path:'IMPORT.txt'}] },null,2));
+  const files = [];
+  const collect = async (directory, prefix = '') => {
+    for (const name of (await readdir(directory)).sort()) {
+      const full = join(directory, name), stat = await lstat(full), relative = prefix + name;
+      if (stat.isSymbolicLink()) throw new Error('交付目录不能包含符号链接');
+      if (stat.isDirectory()) await collect(full, relative + '/');
+      else if (stat.isFile() && relative !== 'script-delivery.json') {
+        files.push({ path: relative, size_bytes: stat.size, sha256: await fileSHA256(full) });
+      } else if (!stat.isFile()) throw new Error('交付文件类型无效');
+      if (files.length > 500) throw new Error('交付文件数量超出限制');
+    }
+  };
+  await collect(output);
+  const report = { schema_version: 2, script_id: input.script?.script_id, version: input.script?.version,
+    visible_set_sha: input.script?.visible_set_sha, tts_enabled: segments.some(s => Boolean(s.voice_file)),
+    baked_effects: true, width: media.video.width, height: media.video.height, duration: media.duration, frames,
+    fonts: fontRecords, sha256: hash, artifacts, files };
+  await writeFile(join(output, 'script-delivery.json'), JSON.stringify(report, null, 2));
   return report;
 }
 

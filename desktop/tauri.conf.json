@@ -38,6 +38,7 @@
       "../workers/node/timeline-cli/adapters/": "runtime/workers/node/timeline-cli/adapters/",
       "../workers/node/timeline-cli/node_modules/": "runtime/workers/node/timeline-cli/node_modules/",
       "../contracts/": "runtime/contracts/",
+      "../skills/vac-script-syntax/": "runtime/skills/vac-script-syntax/",
       "../scripts/runtime_state.py": "runtime/scripts/runtime_state.py",
       "../configs/phase6/profile.builtin.example.json": "runtime/default-profile.json",
       "../workers/python/vac_worker/*.py": "runtime/workers/python/vac_worker/",

@@ -451,7 +451,7 @@ export default function App() {
           />
 
           <WorkspacePage pageId="tts" active={workspace === 'tts'}>
-            <TtsWorkspace active={workspace === 'tts'} />
+            <TtsWorkspace active={workspace === 'tts'} route={route} navigate={navigate} onReturnToScript={(assetId, scriptId) => { setSelectedId(assetId); navigate({ workspace: 'editing', editingSection: 'content', scriptId }); }} />
           </WorkspacePage>
           <WorkspacePage pageId="resources" active={workspace === 'resources'}>
             <ResourcesWorkspace asset={selected} onSelect={setSelectedId} />

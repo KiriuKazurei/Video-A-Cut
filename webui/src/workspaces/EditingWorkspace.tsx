@@ -169,7 +169,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
               )}
               {section.id === 'content' && asset && scriptOpen && (
                 <PreviewScope onPreview={setProgramPreview}>
-                  <ScriptWorkbench key={`script-${asset.asset_id}`} assetId={asset.asset_id} />
+                  <ScriptWorkbench key={`script-${asset.asset_id}`} assetId={asset.asset_id} navigate={navigate} selectedScriptId={route.scriptId} active={route.workspace === 'editing' && editingSection === 'content'} />
                   <WorkflowPanel 
                     mode="content"
                     onGoStart={goStart}

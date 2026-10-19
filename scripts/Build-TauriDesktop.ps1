@@ -67,6 +67,10 @@ try {
     & robocopy (Join-Path $desktopRepo $directory) (Join-Path $runtime $directory) /E /XD tests test scripts fixtures __pycache__ .venv .run-data /XF '*.pyc' /NFL /NDL /NJH /NJS /NP
     if($LASTEXITCODE -gt 7){throw 'Runtime resource copy failed'}
   }
+  $scriptSkillTarget=Join-Path $runtime 'skills/vac-script-syntax'
+  New-Item -ItemType Directory -Force $scriptSkillTarget|Out-Null
+  & robocopy (Join-Path $desktopRepo 'skills/vac-script-syntax') $scriptSkillTarget /E /NFL /NDL /NJH /NJS /NP
+  if($LASTEXITCODE -gt 7){throw 'Script skill resource copy failed'}
   New-Item -ItemType Directory -Force (Join-Path $runtime 'scripts')|Out-Null
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'runtime_state.py') -Destination (Join-Path $runtime 'scripts/runtime_state.py') -Force
   Copy-Item -LiteralPath (Join-Path $desktopRepo 'configs/phase6/profile.builtin.example.json') -Destination (Join-Path $runtime 'default-profile.json') -Force

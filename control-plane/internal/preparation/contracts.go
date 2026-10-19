@@ -25,17 +25,24 @@ type Sampling struct {
 // Profile contains references to credentials, never credentials themselves.
 // Revision and fingerprint bind a future run to the selected configuration.
 type Profile struct {
-	SchemaVersion int          `json:"schema_version"`
-	ProfileID     string       `json:"profile_id"`
-	Revision      int          `json:"revision"`
-	Name          string       `json:"name"`
-	ContentMode   string       `json:"content_mode"`
-	Vision        Provider     `json:"vision"`
-	Narration     Provider     `json:"narration"`
-	Sampling      Sampling     `json:"sampling"`
-	TTSVoice      string       `json:"tts_voice"`
-	ExportTarget  string       `json:"export_target"`
-	TTSTemplate   *tts.Binding `json:"tts_template,omitempty"`
+	Transcription *TranscriptionProvider `json:"transcription,omitempty"`
+	SchemaVersion int                    `json:"schema_version"`
+	ProfileID     string                 `json:"profile_id"`
+	Revision      int                    `json:"revision"`
+	Name          string                 `json:"name"`
+	ContentMode   string                 `json:"content_mode"`
+	Vision        Provider               `json:"vision"`
+	Narration     Provider               `json:"narration"`
+	Sampling      Sampling               `json:"sampling"`
+	TTSVoice      string                 `json:"tts_voice"`
+	ExportTarget  string                 `json:"export_target"`
+	TTSTemplate   *tts.Binding           `json:"tts_template,omitempty"`
+}
+type TranscriptionProvider struct {
+	APIFormat string `json:"api_format"`
+	Endpoint  string `json:"endpoint"`
+	Model     string `json:"model"`
+	TokenEnv  string `json:"token_env"`
 }
 
 type Check struct {

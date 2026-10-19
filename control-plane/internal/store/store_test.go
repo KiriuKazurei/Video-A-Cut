@@ -472,6 +472,12 @@ func TestUpdateAssetRefreshesUpdatedAt(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateAsset: %v", err)
 	}
+	// Seed an older persisted row instead of assuming successive wall-clock reads
+	// differ on Windows. Removing UpdateAsset's timestamp write must still fail.
+	past := time.Now().UTC().Add(-time.Hour)
+	if _, err := s.DB().ExecContext(ctx, "UPDATE assets SET created_at=?,updated_at=? WHERE asset_id=?", past, past, "clip-upd"); err != nil {
+		t.Fatal(err)
+	}
 	original, err := s.GetAsset(ctx, "clip-upd")
 	if err != nil {
 		t.Fatalf("GetAsset before update: %v", err)

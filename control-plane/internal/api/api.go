@@ -87,6 +87,7 @@ const (
 // server sees one error shape from day one and a later task only replaces the
 // response behind the status.
 func (s *Server) routes() {
+	s.skillRoutes()
 	s.mux.HandleFunc("GET /api/runtime/activity", s.runtimeActivity)
 	s.ttsRoutes()
 	s.scriptWorkbenchRoutes()

@@ -19,8 +19,9 @@ test('forced media has an empty narration until a person or Agent actually write
 test('script events and reconnect refresh authoritative script data', async () => {
   const keys = [];
   await handleSSEEvent({ invalidateQueries: async ({queryKey}) => { keys.push(queryKey[0]); } }, 'script.changed', { script_id: 's' });
-  for (const key of ['scripts', 'script-workbench', 'script-revisions', 'script-media', 'visible-set']) {
+  for (const key of ['scripts', 'script-workbench', 'script-revisions', 'script-media', 'script-delivery', 'visible-set']) {
     assert.ok(keys.includes(key)); assert.ok(REFRESH_DOMAINS.includes(key));
   }
   assert.ok(SUPPORTED_SSE_EVENTS.includes('script.changed'));
+  assert.ok(SUPPORTED_SSE_EVENTS.includes('script.rendered'));
 });

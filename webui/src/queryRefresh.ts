@@ -6,6 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
  * prepared、workflows、workflow、review、acceptance、ingest。
  */
 export const REFRESH_DOMAINS = [
+ 'vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context',
   'assets',
   'deliveryFiles',
   'audit',
@@ -20,7 +21,7 @@ export const REFRESH_DOMAINS = [
   'mp4Previews',
   'deliveryVariants',
   'tts-templates', 'tts-previews', 'tts-preview', 'tts-capabilities',
-  'auto', 'auto-notice', 'visible-set', 'scripts', 'script-workbench', 'script-media', 'script-revisions'
+  'auto', 'auto-notice', 'visible-set', 'scripts', 'script-workbench', 'script-media', 'script-revisions', 'script-delivery'
 ] as const;
 
 export type RefreshDomain = (typeof REFRESH_DOMAINS)[number];
@@ -118,6 +119,7 @@ function extractFromObject(obj: Record<string, unknown>): EventPayloadMeta {
 
 /** 支持的所有 SSE 事件名单 */
 export const SUPPORTED_SSE_EVENTS = [
+ 'project.changed','skill.changed','skill.run.changed',
   'asset_created',
   'asset_updated',
   'task_created',
@@ -132,7 +134,7 @@ export const SUPPORTED_SSE_EVENTS = [
   'preview_updated',
   'delivery_variant.changed',
   'tts.template.changed', 'tts.preview.changed',
-  'auto.changed', 'auto.reviewed', 'script.changed'
+  'auto.changed', 'auto.reviewed', 'script.changed', 'script.rendered'
 ] as const;
 
 export type SupportedSSEEvent = (typeof SUPPORTED_SSE_EVENTS)[number];
@@ -153,9 +155,13 @@ export function handleSSEEvent(
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
   const promises: Promise<void>[] = [];
-  if (['script.changed', 'asset_created', 'asset_updated'].includes(eventName)) {
-    promises.push(...['scripts', 'script-workbench', 'script-media', 'script-revisions', 'visible-set', 'auto'].map(k => queryClient.invalidateQueries({ queryKey: [k] })));
-    if (eventName === 'script.changed') { promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] })); return Promise.all(promises); }
+  if (['project.changed','skill.changed','skill.run.changed'].includes(eventName)) {
+    return Promise.all(['vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context','audit']
+      .map(key => queryClient.invalidateQueries({ queryKey: [key] })));
+  }
+  if (['script.changed', 'script.rendered', 'asset_created', 'asset_updated'].includes(eventName)) {
+    promises.push(...['scripts', 'script-workbench', 'script-media', 'script-revisions', 'script-delivery', 'visible-set', 'auto'].map(k => queryClient.invalidateQueries({ queryKey: [k] })));
+    if (eventName === 'script.changed' || eventName === 'script.rendered') { promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] })); return Promise.all(promises); }
   }
   // 自动模式：只让 auto 视图与对应流程失效，事件负载不当作权威状态。
   if (eventName === 'auto.changed' || eventName === 'auto.reviewed') {

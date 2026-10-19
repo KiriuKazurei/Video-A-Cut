@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { renderFixedScript } from './script.mjs';
 import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ToolError } from './mcp.mjs';
@@ -189,6 +190,7 @@ export async function processTask({ client, cfg, task, executionScope, log = () 
       }
       receipt.brief_sha256 = declared;
     }
+    if (taskInput?.script) receipt.script = Object.fromEntries(['script_id','version','visible_set_sha'].map(key => [key,taskInput.script[key]]));
     const attachProfileMetadata = async () => {
       if (!taskInput?.processing_profile) return;
       await writeFile(join(outputDir, 'processing-profile.json'), JSON.stringify({profile:taskInput.processing_profile, profile_sha256:taskInput.profile_sha256}, null, 2));
@@ -210,7 +212,10 @@ export async function processTask({ client, cfg, task, executionScope, log = () 
       }
     }
     await client.call('report_progress', { task_id: id, progress: 0.2, message: 'running timeline cli' });
-    await runCliImpl({
+    if (taskInput?.script) {
+      await renderFixedScript({ snapshot: taskInput.script, edl: taskInput.edl, edlPath, cfg,
+        outputDir, signal: taskAbort.signal, resolveUnderRoot });
+    } else await runCliImpl({
       nodePath: cfg.nodePath, cliPath: cfg.cliPath, edlPath, outputDir,
       adaptersPath: cfg.adaptersPath, timeoutMs: cfg.taskTimeoutMs, signal:taskAbort.signal
     });

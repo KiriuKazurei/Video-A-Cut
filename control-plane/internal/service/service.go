@@ -20,6 +20,8 @@ import (
 // handlers own their protocols. A Service is safe for concurrent use as long
 // as its collaborators are, which store.Store and events.Bus both are.
 type Service struct {
+	harnessMu     sync.Mutex
+	harnessCancel map[string]context.CancelFunc
 	// st is the persistence layer. It never sees a business rule.
 	st         *store.Store
 	ttsRuntime *ttsRuntime

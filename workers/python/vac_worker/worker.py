@@ -235,6 +235,8 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
             target = cfg.delivery_root.joinpath(*out_rel.split("/"))
             auto_ctx = validate_auto(task_input.get("auto"))
             receipt = {"task_id": task_id, "revision_id": task_input.get("revision_id"), "content_mode": task_input.get("content_mode")}
+            if task_input.get('script'):
+                receipt['script'] = {key: task_input['script'][key] for key in ('script_id', 'version', 'visible_set_sha')}
             if auto_ctx is not None and auto_ctx.brief:
                 receipt['brief_sha256'] = auto_ctx.brief_sha256
             if task_input.get('profile_sha256'):
@@ -268,7 +270,8 @@ def process_task(client: Client, cfg: Config, task: dict, log, stages=STAGES) ->
                                progress=progress, content_provider=make_content_provider(cfg.content_provider, **provider_config),
                                work_dir=work_dir, sampling_limits=cfg.sampling_limits,
                                 tts_auto_approve=cfg.tts_auto_approve, narration_approvals=approvals, tts_voice=cfg.tts_voice,
-                                tts_settings=cfg.tts_settings)
+                                 tts_settings=cfg.tts_settings, script_snapshot=task_input.get('script'),
+                                 delivery_root=cfg.delivery_root)
             summary = stages[kind](ctx)
             if work_dir.exists():
                 shutil.rmtree(work_dir, ignore_errors=True)

@@ -163,6 +163,11 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 		return nil, fmt.Errorf("control plane: TTS: %w", err)
 	}
 	svc.SetMaxAttempts(cfg.MaxAttempts)
+	if err := svc.ConfigureSkillHarness(context.Background()); err != nil {
+		svc.CloseTTS()
+		_ = st.Close()
+		return nil, fmt.Errorf("control plane: Skill Harness: %w", err)
+	}
 	a := &app{
 		st:   st,
 		svc:  svc,

@@ -1,0 +1,43 @@
+{
+  "id": "video-use",
+  "name": "Video Use",
+  "description": "VAC adapted conversation-driven editor",
+  "version": "0.1.0-vac.1",
+  "source": "builtin",
+  "runtime": "harness",
+  "compatible_flows": [
+    "lightweight"
+  ],
+  "execution_modes": [
+    "external_mcp",
+    "builtin_api"
+  ],
+  "tools": [
+    "media.list",
+    "media.get_frames",
+    "media.transcribe",
+    "summaries.get",
+    "summaries.submit",
+    "scripts.propose",
+    "renders.create",
+    "renders.inspect",
+    "renders.review",
+    "artifacts.list",
+    "artifacts.get",
+    "run.finish"
+  ],
+  "permissions": [
+    "project_media",
+    "provider",
+    "ffmpeg"
+  ],
+  "inputs": [
+    "visible_media",
+    "goal"
+  ],
+  "outputs": [
+    "plan",
+    "mp4",
+    "premiere_package"
+  ]
+}

@@ -6,7 +6,7 @@ from urllib.parse import unquote
 parser=argparse.ArgumentParser()
 parser.add_argument('--root',type=Path,action='append',required=True)
 args=parser.parse_args()
-excluded={'.git','.run-data','node_modules','target','dist','build','release','__pycache__','.agents','.codex','.venv','venv','legacy'}
+excluded={'.git','.run-data','node_modules','target','dist','build','release','__pycache__','.agents','.codex','.venv','venv','legacy','upstream','builtin'}
 errors=[]; counts={'documents':0,'historical':0,'links':0,'routes':0}
 current={}
 for root in args.root:

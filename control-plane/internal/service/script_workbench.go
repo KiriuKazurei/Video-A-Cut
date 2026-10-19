@@ -17,6 +17,7 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/scriptsyntax"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/tts"
 )
 
 type ScriptMedia struct {
@@ -34,13 +35,29 @@ type ScriptSource struct {
 	Excerpt string `json:"excerpt,omitempty"`
 }
 type ScriptSegment struct {
-	Index      int      `json:"index"`
-	Narration  string   `json:"narration"`
-	MediaID    string   `json:"media_id"`
-	Start      float64  `json:"start"`
-	End        float64  `json:"end"`
-	SourceURLs []string `json:"source_urls,omitempty"`
+	Index            int          `json:"index"`
+	Narration        string       `json:"narration"`
+	MediaID          string       `json:"media_id"`
+	Start            float64      `json:"start"`
+	End              float64      `json:"end"`
+	SourceURLs       []string     `json:"source_urls,omitempty"`
+	TTSEnabled       *bool        `json:"tts_enabled,omitempty"`
+	SubtitlesEnabled *bool        `json:"subtitles_enabled,omitempty"`
+	Voice            *ScriptVoice `json:"voice,omitempty"`
 }
+type ScriptVoice struct {
+	Settings       tts.Settings `json:"settings"`
+	OffsetSeconds  float64      `json:"offset_seconds"`
+	AcceptExternal bool         `json:"accept_external"`
+}
+
+func scriptOption(override *bool, fallback bool) bool {
+	if override != nil {
+		return *override
+	}
+	return fallback
+}
+
 type ScriptWorkbench struct {
 	Script           model.Script          `json:"script"`
 	Version          int                   `json:"version"`
@@ -143,6 +160,10 @@ func (s *Service) ScriptMediaCatalogue(ctx context.Context) ([]ScriptMedia, erro
 	if err != nil {
 		return nil, err
 	}
+	return s.scriptMediaFromAssets(assets)
+}
+
+func (s *Service) scriptMediaFromAssets(assets []model.Asset) ([]ScriptMedia, error) {
 	out := []ScriptMedia{}
 	seen := map[string]bool{}
 	for _, a := range assets {
@@ -238,6 +259,14 @@ func validateScriptPlan(w ScriptWorkbench, media []ScriptMedia, requireGenerated
 		urls[src.URL] = true
 	}
 	for i, seg := range w.Segments {
+		if seg.Voice != nil {
+			if err := seg.Voice.Settings.Validate(); err != nil {
+				return fmt.Errorf("第 %d 段配音：%v: %w", i+1, err, model.ErrArgument)
+			}
+			if !finiteScriptTime(seg.Voice.OffsetSeconds) || seg.Voice.OffsetSeconds < 0 || seg.Voice.OffsetSeconds >= seg.End-seg.Start {
+				return fmt.Errorf("第 %d 段配音起点超出片段: %w", i+1, model.ErrArgument)
+			}
+		}
 		if !requireGenerated && seg.MediaID == "" && seg.Index == i && utf8.RuneCountInString(seg.Narration) <= 2000 {
 			continue // An unfinished manual draft is saveable, never finalizable.
 		}
@@ -372,6 +401,7 @@ func (s *Service) SaveScriptWorkbench(ctx context.Context, actor, id string, req
 		return ScriptWorkbench{}, model.ErrArgument
 	}
 	return s.scriptWrite(ctx, actor, id, req.ExpectedVersion, req.VisibleSetSHA, "save", func(w *ScriptWorkbench) error {
+		previousSegments := w.Segments
 		changed := w.Script.Body != req.Body
 		w.Script.Title = strings.TrimSpace(req.Title)
 		w.Script.Body = req.Body
@@ -381,11 +411,27 @@ func (s *Service) SaveScriptWorkbench(ctx context.Context, actor, id string, req
 		w.AllowWebResearch = req.AllowWebResearch
 		if changed {
 			w.Segments = []ScriptSegment{}
-			w.Sources = []ScriptSource{}
+			// Explicitly supplied manual segments retain their recorded source references.
+			if req.Segments == nil {
+				w.Sources = []ScriptSource{}
+			}
 			w.Questions = []string{}
 		}
 		if req.Segments != nil {
 			w.Segments = req.Segments
+			for i := range w.Segments {
+				seg := &w.Segments[i]
+				if seg.Voice == nil {
+					continue
+				}
+				// Only the dedicated voice action can grant consent. Editing the
+				// narration or voice settings invalidates the old authorization.
+				voice := *seg.Voice
+				voice.AcceptExternal = voice.AcceptExternal && i < len(previousSegments) && previousSegments[i].Voice != nil &&
+					previousSegments[i].Voice.AcceptExternal && previousSegments[i].Narration == seg.Narration &&
+					previousSegments[i].Voice.Settings == voice.Settings
+				seg.Voice = &voice
+			}
 			w.Questions = []string{}
 		}
 		if w.Script.Status == model.ScriptFinalized || w.Script.Status == model.ScriptNeedsRefinalize {

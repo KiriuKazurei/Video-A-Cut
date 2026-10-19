@@ -14,11 +14,12 @@ import (
 )
 
 var sseEventNames = []string{
+	"project.changed", "skill.changed", "skill.run.changed",
 	"asset_created", "asset_updated", "task_created", "task_updated",
 	"workflow.changed", "review.changed", "acceptance.changed", "profile.changed",
 	"capability.changed", "ingest.changed", "audit.changed", "preview_updated",
 	"delivery_variant.changed", "tts.template.changed", "tts.preview.changed",
-	"auto.changed", "auto.reviewed", "script.changed",
+	"auto.changed", "auto.reviewed", "script.changed", "script.rendered",
 }
 
 var sseHeartbeatInterval = 15 * time.Second

@@ -50,6 +50,8 @@ class StageContext:
     narration_approvals: tuple[str, ...] = ()
     tts_voice: str = ""
     tts_settings: dict | None = None
+    script_snapshot: dict | None = None
+    delivery_root: Path | None = None
 
 
 @dataclass
@@ -601,6 +603,8 @@ def narrate(ctx: StageContext) -> dict:
     contract (``narration`` entries with id/text/start/end inside the
     timeline) is what tts and subtitle consume.
     """
+    if ctx.script_snapshot is not None:
+        return _narrate_script(ctx)
     edl = json.loads(json.dumps(ctx.edl))
     _require_edl(edl)
     clips = _clip_evidence(edl)
@@ -642,6 +646,49 @@ def narrate(ctx: StageContext) -> dict:
     edl["narration"] = lines
     package(ctx, edl, {})
     return {"lines": len(lines)}
+
+
+def _narrate_script(ctx: StageContext) -> dict:
+    snapshot = ctx.script_snapshot
+    workbench = snapshot['workbench']
+    segments = workbench['segments']
+    if not segments or len(segments) > 20 or ctx.delivery_root is None:
+        raise StageFailure('invalid fixed script input')
+    root = ctx.delivery_root.resolve()
+    edl = json.loads(json.dumps(ctx.edl))
+    edl.update(video=[], game_audio=[], narration=[], voice=[], subtitle=[], scenes=[])
+    local_sources = ctx.out_dir/'script-sources'
+    local_sources.mkdir()
+    generated, cursor = {}, 0.
+    paragraphs = workbench['document']['paragraphs']
+    for index, segment in enumerate(segments):
+        ref = snapshot['sources'][segment['media_id']]
+        path = (root/ref).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise StageFailure('fixed script source is unavailable')
+        span = segment['end']-segment['start']
+        if not math.isfinite(span) or not .1 <= span <= 120:
+            raise StageFailure('fixed script source window is invalid')
+        key = f'__script_media_{index}'
+        local_source = local_sources/(str(index)+path.suffix)
+        shutil.copy2(path, local_source)
+        generated[key] = local_source
+        edl['video'].append({'id': f'v{index+1}', 'src': key, 'in': segment['start'],
+                             'out': segment['end'], 'timeline_in': cursor})
+        edl['game_audio'].append({'src': key, 'in': segment['start'], 'out': segment['end'],
+                                  'timeline_in': cursor, 'gain_db': 0})
+        paragraph = paragraphs[index]
+        edl['narration'].append({'id': f'nar{index+1}', 'text': segment['narration'],
+            'start': cursor, 'end': cursor+span, 'clip_index': index,
+            'source_scene_label': 'finalized_script', 'source_scene': 'finalized_script',
+            'model_version': 'human-script', 'needs_review': False,
+            'script_tts': segment.get('tts_enabled') if segment.get('tts_enabled') is not None else workbench['tts_enabled'],
+            'script_subtitles': segment.get('subtitles_enabled') if segment.get('subtitles_enabled') is not None else workbench['subtitles_enabled'],
+            'script_voice': segment.get('voice'), 'forced_subtitle': paragraph.get('subtitle')})
+        cursor += span
+    edl['script_binding'] = {k: snapshot[k] for k in ('script_id', 'version', 'visible_set_sha')}
+    package(ctx, edl, generated)
+    return {'lines': len(segments), 'source': 'finalized_script'}
 
 
 def _sapi_script(text: str, out: Path, voice_name: str = "") -> str:
@@ -707,7 +754,16 @@ def tts(ctx: StageContext) -> dict:
     lines = edl.get("narration") or []
     if not lines:
         raise StageFailure("edl has no narration; run narrate first")
-    _authorize_tts(ctx, lines, edl)
+    active_lines = [line for line in lines if line.get('script_tts', True) and line.get('text', '').strip()]
+    if not active_lines and ctx.script_snapshot is not None:
+        edl['voice'] = []
+        package(ctx, edl, {})
+        return {'clips': 0, 'engine': 'disabled'}
+    if ctx.script_snapshot is None:
+        _authorize_tts(ctx, active_lines, edl)
+    else:
+        edl['review_authorization'] = {'source': 'fixed_script_revision',
+                                      'script_id': ctx.script_snapshot['script_id'], 'version': ctx.script_snapshot['version']}
     rate = edl["timeline"]["sample_rate"]
     voice_dir = ctx.out_dir / "voice"
     voice_dir.mkdir()
@@ -717,11 +773,16 @@ def tts(ctx: StageContext) -> dict:
     settings = ctx.tts_settings or legacy_settings(ctx.tts_voice)
     engine = settings['engine']
     with tempfile.TemporaryDirectory() as tmp:
-        for i, line in enumerate(lines):
+        for i, line in enumerate(active_lines):
             span = line["end"] - line["start"]
+            voice_config = line.get('script_voice')
+            line_settings = voice_config['settings'] if voice_config else settings
+            offset = voice_config.get('offset_seconds', 0.) if voice_config else 0.
+            if voice_config and line_settings.get('engine') == 'stepfun' and not voice_config.get('accept_external'):
+                raise StageFailure('fixed script voice has no external consent')
             raw = Path(tmp) / f"{line['id']}.wav"
             try:
-                synthesize(line["text"], raw, settings, ctx.tools, legacy=ctx.tts_settings is None)
+                synthesize(line["text"], raw, line_settings, ctx.tools, legacy=not voice_config and ctx.tts_settings is None)
                 src_args = ["-i", str(raw)]
                 duration = ctx.tools.duration(raw)
             except (StageFailure, TTSError) as err:
@@ -731,7 +792,7 @@ def tts(ctx: StageContext) -> dict:
                 src_args = ["-f", "lavfi", "-i", f"sine=frequency=520:sample_rate={rate}:duration={span}"]
                 duration = span
             samples = round(duration * rate)
-            window_samples = round(span * rate)
+            window_samples = round((span-offset) * rate)
             if samples <= 0 or samples > window_samples:
                 raise StageFailure(f"narration {line['id']} speech duration {duration:.3f}s exceeds window {span:.3f}s")
             final = voice_dir / f"{line['id']}.wav"
@@ -740,8 +801,8 @@ def tts(ctx: StageContext) -> dict:
                            "-ar", str(rate), "-ac", "2", "-c:a", "pcm_s16le", str(final)])
             key = f"__gen_voice_{i}"
             generated[key] = final
-            voice.append({"id": line["id"].replace("nar", "vo"), "src": key, "start": line["start"],
-                          "end": round(line["start"] + samples / rate, 6), "gain_db": 0})
+            voice.append({"id": line["id"].replace("nar", "vo"), "src": key, "start": line["start"]+offset,
+                          "end": round(line["start"]+offset + samples / rate, 6), "gain_db": 0})
             ctx.progress(0.2 + 0.6 * (i + 1) / len(lines), f"tts {i + 1}/{len(lines)}")
     edl["voice"] = voice
     package(ctx, edl, generated)
@@ -756,6 +817,23 @@ def subtitle(ctx: StageContext) -> dict:
     if not lines:
         raise StageFailure("edl has no narration; run narrate first")
     voice = edl.get("voice") or []
+    if ctx.script_snapshot is not None:
+        by_id = {clip['id']: clip for clip in voice}
+        captions = []
+        for line in lines:
+            forced = line.get('forced_subtitle')
+            if not forced and not line.get('script_subtitles', True):
+                continue
+            text = forced.get('text', '') if forced else line['text']
+            if not text:
+                continue
+            clip = by_id.get(line['id'].replace('nar', 'vo'))
+            captions.append({'id': line['id'].replace('nar', 'sub'), 'text': text,
+                             'start': line['start'] if forced or not clip else clip['start'],
+                             'end': line['end'] if forced or not clip else clip['end']})
+        edl['subtitle'] = captions
+        package(ctx, edl, {})
+        return {'subtitles': len(captions)}
     if len(voice) != len(lines):
         raise StageFailure("voice and narration count differ; run tts first")
     end = _timeline_end(edl)

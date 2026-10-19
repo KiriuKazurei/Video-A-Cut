@@ -22,6 +22,7 @@ import (
 // tasks that are not part of a workflow run; those still return the asset EDL
 // so both workers share one call.
 type TaskInput struct {
+	Script             *LegacyScriptInput   `json:"script,omitempty"`
 	ProcessingProfile  *preparation.Profile `json:"processing_profile,omitempty"`
 	ProfileSHA256      string               `json:"profile_sha256,omitempty"`
 	Auto               *AutoInput           `json:"auto,omitempty"`
@@ -382,6 +383,11 @@ func (s *Service) NoteWorkflowSuccess(ctx context.Context, tx *store.Store, tk m
 			return e
 		}
 		var receipt struct {
+			Script *struct {
+				ID      string `json:"script_id"`
+				Version int    `json:"version"`
+				SHA     string `json:"visible_set_sha"`
+			} `json:"script"`
 			ProfileSHA256 string `json:"profile_sha256"`
 			TaskID        string `json:"task_id"`
 			RevisionID    string `json:"revision_id"`
@@ -390,6 +396,13 @@ func (s *Service) NoteWorkflowSuccess(ctx context.Context, tx *store.Store, tk m
 		}
 		if json.Unmarshal(raw, &receipt) != nil || receipt.TaskID != tk.TaskID || receipt.RevisionID != stg.InputRevisionID || receipt.ContentMode != run.ContentMode {
 			return fmt.Errorf("delivery receipt does not match fixed input: %w", model.ErrConflict)
+		}
+		boundScript, e := s.legacyScriptInput(ctx, tx, run.RunID)
+		if e != nil {
+			return e
+		}
+		if boundScript != nil && (receipt.Script == nil || receipt.Script.ID != boundScript.ID || receipt.Script.Version != boundScript.Version || receipt.Script.SHA != boundScript.SHA) {
+			return fmt.Errorf("delivery receipt does not match fixed script: %w", model.ErrConflict)
 		}
 		if _, sha, e := s.boundProfile(ctx, tx, run.RunID); e != nil {
 			return e
@@ -549,6 +562,9 @@ func (s *Service) WorkflowBlocks(ctx context.Context, tx *store.Store, taskID st
 	if err != nil {
 		return err
 	}
+	if _, err := s.legacyScriptInput(ctx, tx, run.RunID); err != nil {
+		return err
+	}
 	if stg.Invalidated || run.Status == model.WorkflowCancelled {
 		return fmt.Errorf("service: task %s was cancelled with its workflow: %w", taskID, model.ErrConflict)
 	}
@@ -687,7 +703,12 @@ func (s *Service) loadHistoricalTaskInput(ctx context.Context, agentID, role, ta
 	if err != nil {
 		return TaskInput{}, err
 	}
+	scriptInput, err := s.boundLegacyScript(ctx, run.RunID)
+	if err != nil {
+		return TaskInput{}, err
+	}
 	return TaskInput{
+		Script:            scriptInput,
 		ProcessingProfile: profile, ProfileSHA256: profileSHA, Auto: autoIn,
 		Versioned: true, Cancelled: stg.Invalidated || run.Status == model.WorkflowCancelled,
 		TaskID: taskID, AssetID: tk.AssetID, RevisionID: rev.RevisionID, PackageRef: rev.PackageRef, ContentMode: run.ContentMode,

@@ -1,10 +1,17 @@
 # 脚本工作台与特殊语法 v1
 
-更新：2026-10-18。脚本工作台与其他开发功能已合入 `agent/develop`（功能提交 d67e71d），原 `agent/script-workbench` 保留；尚未推送或人工全流程验收。本轮最简验证通过，工程验证进度见 [流程优化进度](flow-optimize-progress.md)；后续 F3、F4 的要求仍见 [阶段合同](flow-optimize-stages.md)。
+## 与新 Skill 架构的关系（2026-10-19，设计）
+
+[目标架构](Skill双流程架构设计.md)保留本语法与四态脚本。手写/Agent 生成是创作方式；新流程 A/B 是轻量/画面主导，二者不要混称。工作台未来可选择 Skill 和外部 MCP / 内置 API Agent；两种模式提交草案后均进入既有修订与定稿体系。
+
+显式视频、字幕和效果语法优先于自由生成；冲突报错或澄清，不由 Skill 默默覆盖。video-use 自然语言目标可由 Agent 转成可审计编排，用户无需手写 EDL；流程 B 使用内容大意与用户脚本。新 Skill 入口尚未实现，下面仍是当前语法和源码边界。
+
+
+更新：2026-10-18。脚本工作台与其他开发功能已合入 `agent/develop`（功能提交 d67e71d），原 `agent/script-workbench` 保留；尚未推送或人工全流程验收。此前最简验证只覆盖 d67e71d；本次 F2～F4 续作未测试、未构建、未运行，工程验证进度见 [流程优化进度](flow-optimize-progress.md)；后续 F3、F4 的要求仍见 [阶段合同](flow-optimize-stages.md)。
 
 ## 使用
 
-进入「编辑 → 内容编辑」。先在资源页确认 Agent 可见集，再新建脚本。普通文字是生成要求，实际旁白在各段下方独立编辑；保存指令不会把“介绍抽卡机制”冒充成已生成的旁白。
+进入「编辑 → 内容编辑」。先在资源页确认 Agent 可见集，再新建脚本。普通文字是生成要求，实际旁白在各段下方独立编辑；保存指令不会把“介绍抽卡机制”冒充成已生成的旁白。修改指令时，按原段内容匹配保留已有旁白、素材和声音；段数不变时保留同位置段。插入新段或改强制视频仍需人工检查绑定。
 
 ```text
 {@抽卡演示.mp4}介绍抽卡机制。只介绍通用原理，不编造具体游戏概率。
@@ -71,7 +78,7 @@ Go 冻结当前可见目录并校验权限；Python 优先抽取强制视频，�
 
 旧自动 run 没有 visible_set_sha 时，不因普通可见集变更被卡死；使用工作台新稿后仍需人工确认。确认当前定稿时显式补绑定可见集与脚本范围。每次 confirm_script 的历史决定同时保存脚本 ID、修订、可见集指纹及人工 actor，后续改稿不会抹去此前授权范围。
 
-此处接入的是自动流程的定稿确认门；既有 worker 串行流程完整消费工作台脚本、TTS 专页回写属于 F3。当前要交付这些特殊语法对应的画面，使用工作台内“生成画面与 Premiere 交付包”。
+此处接入的是自动流程的定稿确认门；既有自动 worker 串行流程尚未完整消费工作台段落稿，这一缺口继续保留。TTS 专页回写和直接脚本合成已接线；要交付工作台稿件，使用工作台或导出页内“生成成片与 Premiere 包”，不要把旧流程产物当作新稿成片。
 
 旧 `POST /api/scripts/{id}/finalize` 保留 F1 兼容行为，但已保存过工作台修订的稿件必须使用带版本的定稿接口，防止绕过完整性检查。
 
@@ -84,26 +91,34 @@ Go 冻结当前可见目录并校验权限；Python 优先抽取强制视频，�
 | `GET /api/script-workbench/fonts` | 本机安装的字体族。 |
 | `GET /api/scripts/{id}/workbench` | 当前正文、版本、分段、来源、问题、开关及当前交付引用。 |
 | `PUT /api/scripts/{id}/workbench` | 保存，需 expected_version / visible_set_sha / title / body / segments 与开关。 |
+| `PUT /api/scripts/{id}/voice` | 专页回写；expected_version、visible_set_sha、segment_index、narration、settings、offset_seconds、enabled、accept_external；返回递增修订的工作台。 |
 | `GET /api/scripts/{id}/revisions` | 最近 200 条修订；数据库保留全部。 |
 | `POST /api/scripts/{id}/generate` | 需 expected_version / visible_set_sha / profile_id / profile_revision / allow_web_research。 |
 | `POST /api/scripts/{id}/reject` | 否决；需 expected_version / visible_set_sha。 |
 | `POST /api/scripts/{id}/workbench/finalize` | 人工定稿；同上。 |
 | `POST /api/scripts/{id}/export` | 生成同版画面/Premiere 包；同上。 |
-| `GET /api/scripts/{id}/preview.mp4` | 当前有效版本的成片。 |
-| `GET /api/scripts/{id}/delivery.zip` | 当前有效版本交付 ZIP。 |
+| `GET /api/scripts/{id}/delivery?version=N` | 当前有效修订的规格、时长、帧数、成片摘要与文件/大小/摘要清单。 |
+| `GET /api/scripts/{id}/preview.mp4?version=N&sha256=H` | 当前有效修订成片；修订或同修订重渲染后的摘要不符则拒绝。 |
+| `GET /api/scripts/{id}/delivery.zip?version=N&sha256=H` | 与播放器同修订、同成片摘要的 Premiere ZIP。 |
 
-写操作 HTTP actor 固定 `human:webui`。乐观锁冲突返回 409，不覆盖其他会话已保存的新稿。SSE `script.changed` 仅通知失效，数据重新从 REST 读取。查询域为 scripts / script-workbench / script-revisions / script-media / visible-set；重新连接与刷新快照会一并刷新。未保存稿只在组件内，不写 localStorage。
+写操作 HTTP actor 固定 `human:webui`。乐观锁冲突返回 409，不覆盖其他会话已保存的新稿。SSE `script.changed`、`script.rendered` 仅通知失效，数据重新从 REST 读取。查询域包括 scripts / script-workbench / script-revisions / script-media / script-delivery / visible-set；重新连接与刷新快照会一并刷新。未保存稿只在组件内，不写 localStorage。
 
 ## 交付与后续验收
 
-本机需要已配置的 Python worker、Node、FFmpeg/ffprobe 与 Node 字体依赖；运行环境使用现有 Go ConfigureTTS 的 Python 目录定位项目 Skill 和工作台 worker。开发源码运行已覆盖，独立发行包资源搬运尚待发行验证。
+本机需要已配置的 Python worker、Node、FFmpeg/ffprobe 与 Node 字体依赖；运行环境使用现有 Go ConfigureTTS 的 Python 目录定位项目 Skill 和工作台 worker。此前开发源码运行已覆盖首版；本次已把 skills/vac-script-syntax 加入 Tauri 资源映射与桌面目录复制，资源配置尚未构建或发行验证。
 
-关闭 TTS 后可以生成画面交付。开启 TTS 只保存意图，实际合成/专页回写属于 F3，当前导出会明确阻止并提示关闭配音。强制字幕始终生效，自动字幕在开启时使用实际旁白文本；字幕和画面效果都预渲染到交付视频中。
+全局 TTS/自动字幕为默认值，每段可分别覆盖。两者都关时仍按源窗口出片；只开字幕时使用实际旁白文字，不依赖配音。显式字幕块始终生效，自动字幕和效果预渲染到视频。
 
-包内含 `final.mp4`、`edit.xml`、`timeline.otio`、`media/`、原视频声音轨、`script.json`、`narration.txt`、`knowledge-sources.json`、`script-delivery.json` 和 `IMPORT.txt`。script.json 保留原始指令、语法树、实际旁白、媒体 ID 与相对源引用；报告保留媒体/字体哈希。Premiere 导入 edit.xml；移动交付目录时按 IMPORT.txt 重链接 media。它是预渲染画面，不承诺原生可调整的 Premiere 转场。
+开启本段 TTS 后，保存草稿，再从段落跳到现有 TTS 专页；URL 绑定脚本 ID、修订和零起始段号，专页显示包含转场重叠的成片时间位置。选择音色、语气、三频均衡（120Hz/1kHz/4kHz，-12～12dB）及段内配音起点，回写生成新修订（voice 审计），旧定稿变为 needs_refinalize。回到脚本检查并人工重新定稿后，才能生成新成片。已有远程新修订不会被旧页面覆盖；未回写配音修改单独提示。
 
-真实 FFmpeg 工程验证已获得 720p 成片、中文抽帧、黑白亮度和溶解混合的证据。工作台 Go 8 项（含真实跨语言往返）、人工定稿门变异、Python 11、Node 21、前端 84、浏览器 7 组、类型/构建/样式、Skill 官方校验均通过；浏览器模型使用本机夹具。最新 Go service 全套仍记录 3 项 Windows rename 偶发拒绝访问，随后三个用例各 3 次复跑均通过；根因未确认，挂 B04，不能写成全套零失败。详细计数、证据与限制见 [流程优化进度](flow-optimize-progress.md)。
+每段配音文本为 1～1000 字符；不自动截断、拉伸或切换引擎。StepFun 外部请求需要本段明确授权，修改文本或声音设置清除旧授权；模型生成也不能赋予 TTS 外发授权。未指定设置时进入 TTS 页优先发现本机 SAPI 声音，不自动改用云端。均衡与音调在下次合成生效；SAPI 不支持模型语气指令。原声在有旁白的段降低到 25%，按段内起点混入旁白；配音超出源段窗口则明确失败，需调整文本、语速或窗口。
 
-Premiere 实机导入、真实提供方知识/画面质量、模型阈值、独立安装包均单独待验，不能从本轮测试推定通过。TTS 合成与既有自动 worker 完整消费工作台稿件属于 F3，本轮交付画面入口已经可用。
+声音快照是工作台 JSON 的可选 voice 字段，含 settings/offset_seconds/accept_external；段上 tts_enabled/subtitles_enabled 为空时继承全局默认。旧修订没有这些字段时沿用旧行为；不新增数据库迁移或改变 workflow_runs JSON。旧自动流程的 deliveryBlocked 保持原失效状态，不因直接脚本导出而恢复旧产物下载；脚本预览/ZIP 单独要求当前人工定稿修订、可见集和当前交付引用均有效。完整统一旧自动链仍待续作。
+
+包内含 `final.mp4`、`edit.xml`、`timeline.otio`、`media/`、成片混音轨 `audio_Game.wav`、启用配音段的 `voice-*.wav`、`script.json`、`narration.txt`、`knowledge-sources.json`、`script-delivery.json` 和 `IMPORT.txt`。script.json 保留原始指令、语法树、实际旁白、媒体 ID 与相对源引用；schema_version=2 的清单保留脚本/修订/可见集、规格、成片与逐文件大小/哈希，Go 在发布交付引用前核验文件及预览/Premiere 视频副本摘要。站内播放器与下载链接携带修订和成片摘要。混音轨已烘焙，不承诺分开的原声/旁白可编辑轨道。Premiere 导入 edit.xml；移动交付目录时按 IMPORT.txt 重链接 media。它是预渲染画面，不承诺原生可调整的 Premiere 转场。
+
+以下为续作前首版的历史工程证据，不能证明新配音/清单链路通过：真实 FFmpeg 工程验证已获得 720p 成片、中文抽帧、黑白亮度和溶解混合的证据。工作台 Go 8 项（含真实跨语言往返）、人工定稿门变异、Python 11、Node 21、前端 84、浏览器 7 组、类型/构建/样式、Skill 官方校验均通过；浏览器模型使用本机夹具。最新 Go service 全套仍记录 3 项 Windows rename 偶发拒绝访问，随后三个用例各 3 次复跑均通过；根因未确认，挂 B04，不能写成全套零失败。详细计数、证据与限制见 [流程优化进度](flow-optimize-progress.md)。
+
+Premiere 实机导入、真实提供方知识/画面质量、模型阈值、独立安装包均单独待验，不能从本轮测试推定通过。本轮 TTS/交付接线没有运行证据；既有自动 worker 完整消费工作台稿件仍未实现。详细续作状态见 [清单](F2-F4续作清单-2026-10-18.md)。
 
 扩展新语法时同时更新 Go 解析器、编辑器高亮、Skill、生成契约、渲染器和对应验收；不要让未支持的块静默失效。

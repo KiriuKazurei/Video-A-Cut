@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "verified_date": "2026-10-18",
-  "scope": "agent/develop 的全部 Go REST/SSE 注册与前端映射；含组件调用、IPC 和缓存说明的配套 Markdown；描述性清单，不是 OpenAPI",
-  "registered_route_count": 101,
-  "expanded_endpoint_count": 102,
+  "verified_date": "2026-10-19",
+  "scope": "当前改造分支 Go HTTP/SSE 与前端调用契约，含 MCP 配套说明",
+  "registered_route_count": 131,
+  "expanded_endpoint_count": 132,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -25,7 +25,12 @@
     "webui/src/tour.ts",
     "webui/src/components/AutoRunPanel.tsx",
     "webui/src/components/AssStyleEditor.tsx",
-    "webui/src/workspaces/EditingWorkspace.tsx"
+    "webui/src/workspaces/EditingWorkspace.tsx",
+    "webui/src/components/ScriptDeliveryPanel.tsx",
+    "webui/src/navigation.ts",
+    "webui/src/workspaces/ExportWorkspace.tsx",
+    "webui/src/skillApi.ts",
+    "webui/src/skillContracts.ts"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -43,7 +48,7 @@
       "backend_handler": "listAssets",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 514
+        "line": 515
       }
     },
     {
@@ -60,7 +65,7 @@
       "backend_handler": "getAsset",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 535
+        "line": 536
       }
     },
     {
@@ -876,7 +881,7 @@
       "backend_handler": "streamEvents",
       "backend_source": {
         "file": "control-plane/internal/api/sse.go",
-        "line": 44
+        "line": 45
       }
     },
     {
@@ -1573,7 +1578,7 @@
       "backend_handler": "parseScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 31
+        "line": 48
       }
     },
     {
@@ -1590,7 +1595,7 @@
       "backend_handler": "scriptMedia",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 41
+        "line": 58
       }
     },
     {
@@ -1607,7 +1612,7 @@
       "backend_handler": "scriptFonts",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 49
+        "line": 66
       }
     },
     {
@@ -1624,7 +1629,7 @@
       "backend_handler": "scriptWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 57
+        "line": 74
       }
     },
     {
@@ -1641,7 +1646,7 @@
       "backend_handler": "saveScriptWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 65
+        "line": 82
       }
     },
     {
@@ -1658,7 +1663,7 @@
       "backend_handler": "scriptRevisions",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 78
+        "line": 95
       }
     },
     {
@@ -1675,7 +1680,7 @@
       "backend_handler": "generateScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 86
+        "line": 103
       }
     },
     {
@@ -1692,7 +1697,7 @@
       "backend_handler": "rejectScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 105
+        "line": 122
       }
     },
     {
@@ -1709,7 +1714,7 @@
       "backend_handler": "finalizeScriptWorkbench",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 118
+        "line": 135
       }
     },
     {
@@ -1726,7 +1731,7 @@
       "backend_handler": "exportScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 131
+        "line": 148
       }
     },
     {
@@ -1735,15 +1740,15 @@
       "method": "GET",
       "path": "/api/scripts/{id}/preview.mp4",
       "frontend_function": "URL preview.mp4",
-      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "frontend_ui": "ScriptDeliveryPanel（ScriptWorkbench / ExportWorkspace）",
+      "request": "version=N & sha256=成片摘要（前端固定携带）",
       "success_response": "200 video/mp4",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "behavior": "当前人工定稿/可见集有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
+      "usage": "页面已接线，未运行验证",
       "backend_handler": "scriptPreview",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 144
+        "line": 161
       }
     },
     {
@@ -1752,30 +1757,543 @@
       "method": "GET",
       "path": "/api/scripts/{id}/delivery.zip",
       "frontend_function": "URL delivery.zip",
-      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "frontend_ui": "ScriptDeliveryPanel（ScriptWorkbench / ExportWorkspace）",
+      "request": "version=N & sha256=成片摘要（前端固定携带）",
       "success_response": "200 application/zip",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
-      "usage": "页面已使用",
+      "behavior": "当前人工定稿/可见集有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
+      "usage": "页面已接线，未运行验证",
       "backend_handler": "scriptZIP",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
-        "line": 153
+        "line": 175
+      }
+    },
+    {
+      "id": "API-FLOW-20",
+      "group": "脚本配音 F3",
+      "method": "PUT",
+      "path": "/api/scripts/{id}/voice",
+      "frontend_function": "api.saveScriptVoice",
+      "frontend_ui": "TtsWorkspace",
+      "request": "expected_version, visible_set_sha, segment_index, narration, settings, offset_seconds, enabled, accept_external",
+      "success_response": "200 ScriptWorkbenchView（修订递增）",
+      "behavior": "人工动作；CAS/可见集/权限校验；写 voice 修订，旧预览/交付失效；需重新人工定稿",
+      "usage": "页面已接线，未运行验证",
+      "backend_handler": "saveScriptVoice",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 34
+      }
+    },
+    {
+      "id": "API-FLOW-21",
+      "group": "脚本交付 F4",
+      "method": "GET",
+      "path": "/api/scripts/{id}/delivery",
+      "frontend_function": "api.scriptDelivery",
+      "frontend_ui": "ScriptDeliveryPanel（ScriptWorkbench / ExportWorkspace）",
+      "request": "可选 version=N；前端固定请求当前修订",
+      "success_response": "200 ScriptDeliveryInfo（规格、时长、帧数、成片和逐文件 SHA256）",
+      "behavior": "只读当前有效人工定稿与已发布的同修订交付；旧清单需重新渲染；无磁盘绝对路径",
+      "usage": "页面已接线，未运行验证",
+      "backend_handler": "scriptDeliveryInfo",
+      "backend_source": {
+        "file": "control-plane/internal/api/script_workbench.go",
+        "line": 250
+      }
+    },
+    {
+      "id": "VU-01",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/revisions",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillRevisions",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 41
+      }
+    },
+    {
+      "id": "VU-02",
+      "group": "Skill Harness",
+      "method": "PUT",
+      "path": "/api/skill-runs/{id}/voice",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillVoice",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 45
+      }
+    },
+    {
+      "id": "VU-03",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/projects/{id}/media",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillImportMedia",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 54
+      }
+    },
+    {
+      "id": "VU-04",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/projects",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillProjects",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 70
+      }
+    },
+    {
+      "id": "VU-05",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/projects",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillSaveProject",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 78
+      }
+    },
+    {
+      "id": "VU-06",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/projects/{id}",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillProject",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 74
+      }
+    },
+    {
+      "id": "VU-07",
+      "group": "Skill Harness",
+      "method": "PUT",
+      "path": "/api/projects/{id}",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillSaveProject",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 78
+      }
+    },
+    {
+      "id": "VU-08",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/projects/{id}/visible-set",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillVisible",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 87
+      }
+    },
+    {
+      "id": "VU-09",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/projects/{id}/visible-set/confirm",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillConfirmVisible",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 91
+      }
+    },
+    {
+      "id": "VU-10",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/projects/{id}/exports/ffmpeg",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillExport",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 208
+      }
+    },
+    {
+      "id": "VU-11",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skills",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillList",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 103
+      }
+    },
+    {
+      "id": "VU-12",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skills",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillImport",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 111
+      }
+    },
+    {
+      "id": "VU-13",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skills/{id}",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillGet",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 107
+      }
+    },
+    {
+      "id": "VU-14",
+      "group": "Skill Harness",
+      "method": "PATCH",
+      "path": "/api/skills/{id}",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillEnable",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 122
+      }
+    },
+    {
+      "id": "VU-15",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skills/{id}/content",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillGet",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 107
+      }
+    },
+    {
+      "id": "VU-16",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skills/{id}/validate",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillValidate",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 133
+      }
+    },
+    {
+      "id": "VU-17",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/system/ffmpeg",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillFFmpeg",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 137
+      }
+    },
+    {
+      "id": "VU-18",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skill-runs",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillRuns",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 141
+      }
+    },
+    {
+      "id": "VU-19",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skill-runs",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillCreateRun",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 145
+      }
+    },
+    {
+      "id": "VU-20",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillRun",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 154
+      }
+    },
+    {
+      "id": "VU-21",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/context",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillContext",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 158
+      }
+    },
+    {
+      "id": "VU-22",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/steps",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillSteps",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 162
+      }
+    },
+    {
+      "id": "VU-23",
+      "group": "Skill Harness",
+      "method": "GET",
+      "path": "/api/skill-runs/{id}/artifacts/{key}",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillArtifact",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 198
+      }
+    },
+    {
+      "id": "VU-24",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/tools",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillTool",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 166
+      }
+    },
+    {
+      "id": "VU-25",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/finalize",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillAction",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 175
+      }
+    },
+    {
+      "id": "VU-26",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/resume",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillAction",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 175
+      }
+    },
+    {
+      "id": "VU-27",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/cancel",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillAction",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 175
+      }
+    },
+    {
+      "id": "VU-28",
+      "group": "Skill Harness",
+      "method": "POST",
+      "path": "/api/skill-runs/{id}/execute",
+      "frontend_function": "skillApi (webui/src/skillApi.ts)",
+      "frontend_ui": "预留调用契约；本轮不实现布局",
+      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "success_response": "200 JSON；artifact 为受控媒体字节",
+      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
+      "usage": "已实现后端；布局待接入",
+      "backend_handler": "skillExecute",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 187
       }
     }
   ],
-  "routes_source_sha256": "6b3aefba6008d12da01449e3e3cb152eec4a9e154193b9eb16fa8692d85fc6af",
+  "routes_source_sha256": "848fd4bd2f58fa18004b1525fee360c258c1c263398215cae5ed05cd7ac8b93e",
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/script_workbench.go",
-    "control-plane/internal/api/tts.go"
+    "control-plane/internal/api/tts.go",
+    "control-plane/internal/api/skill.go"
   ],
-  "sse_new_events_note": "auto.changed / auto.reviewed 沿用；新增 script.changed（script_id,asset_id），仅触发 REST 快照失效。",
-  "additive_contract_note": "2026-10-18: confirm_script 使用原 auto decision 路由，feedback 内为 script_id/script_version JSON；scope 新增可选 script_id/script_version；workflow_runs JSON 不变。",
+  "sse_new_events_note": "project.changed / skill.changed / skill.run.changed；32 个刷新域；事件只触发 REST 失效。",
+  "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
   "source_hashes": {
-    "control-plane/internal/api/api.go": "6b3aefba6008d12da01449e3e3cb152eec4a9e154193b9eb16fa8692d85fc6af",
-    "control-plane/internal/api/script_workbench.go": "8a94da03dd230cd85fc8ce2dd28ba9a32a24b166e4fcbe1d0652cd7ce82735f2",
-    "control-plane/internal/api/tts.go": "a1c1f9d44151101e32c196c1e4d7d59951d1fe6b4fcb4d0114dc3d57115edddb"
+    "control-plane/internal/api/api.go": "848fd4bd2f58fa18004b1525fee360c258c1c263398215cae5ed05cd7ac8b93e",
+    "control-plane/internal/api/script_workbench.go": "1b3168344b29f05a38f482256041ce8fcf6eb745be3d9fa45ac94f70b3327178",
+    "control-plane/internal/api/tts.go": "a1c1f9d44151101e32c196c1e4d7d59951d1fe6b4fcb4d0114dc3d57115edddb",
+    "control-plane/internal/api/skill.go": "9e0ffe0bc68a24a070c5ec567e76c6e3dd030987d750a167ee38d9a23a5e77a3"
   },
-  "verified_checkout": "agent/develop"
+  "verified_checkout": "agent/vu-skill",
+  "verification_note": "源码注册/处理器/摘要静态更新；实际测试与未验边界见 Skill架构实施与验证-2026-10-19.md。"
 }
