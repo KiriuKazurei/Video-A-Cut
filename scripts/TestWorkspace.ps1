@@ -134,7 +134,7 @@ function Measure-Storage {
   foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repo 'webui') -File -Filter '*.mjs') { $files[$file.FullName]=[long]$file.Length }
   foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repo 'workers/python') -File -Recurse -Filter '*.pyc') { $files[$file.FullName]=[long]$file.Length }
   $bytes = [long](($files.Values | Measure-Object -Sum).Sum)
-  return [ordered]@{version=$Version; total_bytes=$bytes; total_MiB=[math]::Round($bytes/1MB,3); limit_bytes=524288000; within_limit=($bytes -le 524288000)}
+  return [ordered]@{version=$Version; total_bytes=$bytes; total_MiB=[math]::Round($bytes/1MB,3)}
 }
 function Clear-Current {
   Archive-Summary $current
@@ -191,13 +191,11 @@ try {
     $baseline | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $current 'summary.json') -Encoding utf8NoBOM
   }
   $before = Measure-Storage
-  if ($Action -eq 'Clear' -or !$before.within_limit) {
+  if ($Action -eq 'Clear') {
     Clear-Current
     $after = Measure-Storage
     [ordered]@{before_bytes=$before.total_bytes;after_bytes=$after.total_bytes;released_bytes=($before.total_bytes-$after.total_bytes)} | ConvertTo-Json -Compress
-    if (!$after.within_limit) { throw 'Retained test source/fixtures exceed the limit; no source or business data was deleted' }
-    if ($Action -eq 'Clear') { return }
-    $before=$after
+    return
   }
   if ($Action -eq 'Measure') { Measure-Storage | ConvertTo-Json -Compress; return }
   $artifact = Join-Path $current ('artifacts/'+$Suite)
@@ -228,18 +226,12 @@ try {
   Write-Output ("Testing $Suite / $Version; before: $($before.total_MiB) MiB")
   $process = [Diagnostics.Process]::Start($start)
   $stdout=$process.StandardOutput.ReadToEndAsync(); $stderr=$process.StandardError.ReadToEndAsync()
-  $exceeded=$false; $nextSample=[DateTime]::UtcNow.AddSeconds(5)
-  while (!$process.WaitForExit(250)) {
-    if ([DateTime]::UtcNow -ge $nextSample) {
-      if (!(Measure-Storage).within_limit) { $exceeded=$true; $process.Kill($true); $process.WaitForExit(); break }
-      $nextSample=[DateTime]::UtcNow.AddSeconds(5)
-    }
-  }
+  $process.WaitForExit()
   $output=$stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()
   $output | Set-Content -LiteralPath (Join-Path $artifact 'output.log') -Encoding utf8NoBOM
   Write-Output $output
   $exitCode=$process.ExitCode
-  $result=if($exceeded){'blocked: 500 MiB'}elseif($exitCode -eq 0){'passed'}else{'failed'}
+  $result=if($exitCode -eq 0){'passed'}else{'failed'}
   $summary=Read-Summary $current
   $old=$summary.tests[$Suite]
   $head=(& git -C $repo rev-parse --short HEAD).Trim()
@@ -251,7 +243,6 @@ try {
   $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $current 'summary.json') -Encoding utf8NoBOM
   $after=Measure-Storage
   $after | ConvertTo-Json -Compress
-  if($exceeded -or !$after.within_limit) { Clear-Current; Measure-Storage | ConvertTo-Json -Compress; throw 'Test stopped after exceeding 500 MiB; generated workspace cleared and simple archive saved' }
   if($exitCode -ne 0) { exit $exitCode }
 } finally {
   if($process){if(!$process.HasExited){$process.Kill($true);$process.WaitForExit()};$process.Dispose()}

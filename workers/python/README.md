@@ -10,7 +10,7 @@
 
 阶段输出先写 staging 再原子发布，随后提交由 Go 重验。导入任务使用固定执行身份、停止/排空、检查点和恢复协议；租约丢失后不能晚提交覆盖新执行。业务素材和配置不放在测试清理目录。
 
-Windows 日常测试通过 [统一测试入口](../../scripts/TESTING.md)，本轮 custom 的工作目录指向此目录，参数为 `-B -m unittest discover -s tests -t . -v`。兼容 `discover -s tests -v` 和单模块入口。原工作区固定媒体已迁至 timeline-cli/fixtures/media；历史独立脚本与源码恢复副本保留在 test-support/legacy，不作为生成物删除。测试版本来自 desktop/tauri.conf.json，输出经 VAC_TEST_ROOT/VAC_TEST_OUTPUT，500 MiB 与简档规则见根 AGENTS。
+Windows 日常测试通过 [统一测试入口](../../scripts/TESTING.md)，本轮 custom 的工作目录指向此目录，参数为 `-B -m unittest discover -s tests -t . -v`。兼容 `discover -s tests -v` 和单模块入口。原工作区固定媒体已迁至 timeline-cli/fixtures/media；历史独立脚本与源码恢复副本保留在 test-support/legacy，不作为生成物删除。测试版本来自 desktop/tauri.conf.json，输出经 VAC_TEST_ROOT/VAC_TEST_OUTPUT，按 test-governance Skill 管理套件与生成物，目录及简档规则见根 AGENTS。
 
 ## 脚本工作台
 

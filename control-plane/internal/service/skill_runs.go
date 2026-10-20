@@ -19,6 +19,9 @@ import (
 func (s *Service) GetSkillRun(ctx context.Context, actor, id string) (skill.Run, error) {
 	var r skill.Run
 	err := s.st.SkillGet(ctx, "run", id, &r)
+	if err == nil && s.WorkspaceEnabled() && (s.CurrentProjectID() == "" || r.ProjectID != s.CurrentProjectID()) {
+		return r, model.ErrNotFound
+	}
 	r.FramesSpent = max(r.FramesSpent, len(r.Frames))
 	if err == nil && !isHumanActor(actor) && r.Owner != actor {
 		err = model.ErrForbidden
@@ -26,6 +29,16 @@ func (s *Service) GetSkillRun(ctx context.Context, actor, id string) (skill.Run,
 	return r, err
 }
 func (s *Service) ListSkillRuns(ctx context.Context, actor, project string) ([]skill.Run, error) {
+	if s.WorkspaceEnabled() {
+		current := s.CurrentProjectID()
+		if current == "" {
+			return []skill.Run{}, nil
+		}
+		if project != "" && project != current {
+			return nil, model.ErrNotFound
+		}
+		project = current
+	}
 	list, err := s.st.SkillList(ctx, "run")
 	if err != nil {
 		return nil, err
@@ -54,6 +67,12 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 	if err != nil {
 		return r, err
 	}
+	if req.Flow != "" {
+		if !validFlow(req.Flow) {
+			return r, model.ErrArgument
+		}
+		p.Flow = req.Flow
+	}
 	if req.ProfileID == "" && p.ProfileID != "" {
 		req.ProfileID = p.ProfileID
 		req.ProfileRevision = p.ProfileRevision
@@ -61,7 +80,7 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 	if !isHumanActor(actor) && (!p.ExternalAuthorized || req.Mode != "external_mcp") {
 		return r, model.ErrForbidden
 	}
-	if !isHumanActor(actor) {
+	if !isHumanActor(actor) && !s.WorkspaceEnabled() {
 		if req.AgentRole == "" {
 			return r, model.ErrForbidden
 		}
@@ -108,7 +127,7 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 	if req.Mode == "builtin_api" && !isHumanActor(actor) {
 		return r, model.ErrForbidden
 	}
-	if req.ProfileID != "" && !isHumanActor(actor) && (req.ProfileID != p.ProfileID || req.ProfileRevision != p.ProfileRevision) {
+	if req.ProfileID != "" && !isHumanActor(actor) && !s.WorkspaceEnabled() && (req.ProfileID != p.ProfileID || req.ProfileRevision != p.ProfileRevision) {
 		return r, model.ErrForbidden
 	}
 	profileSHA := ""
@@ -130,7 +149,7 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 			return r, e
 		}
 		projectGrant := p.ExternalAuthorized && req.ProfileID == p.ProfileID && req.ProfileRevision == p.ProfileRevision
-		if profile.External() && (!ok || !(req.AcceptExternal && isHumanActor(actor) || projectGrant)) {
+		if profile.External() && (!ok || (!s.WorkspaceEnabled() && !(req.AcceptExternal && isHumanActor(actor) || projectGrant))) {
 			return r, model.ErrForbidden
 		}
 	} else if req.Mode == "builtin_api" {
@@ -170,6 +189,10 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 		now := s.autoNow()
 		r = skill.Run{ID: newID("skr"), ProjectID: p.ID, ProjectVersion: p.Version, SkillID: pack.ID, SkillSHA: pack.SHA, SkillVersion: pack.Version, Mode: req.Mode, Flow: p.Flow, VisibleSHA: view.SHA, State: "queued", Owner: actor, Version: 1, Budget: req.Budget, Goal: req.Goal, ProfileID: req.ProfileID, ProfileRevision: req.ProfileRevision, ProfileSHA: profileSHA, ExternalAuthorized: req.AcceptExternal || p.ExternalAuthorized, Frames: []skill.Frame{}, Artifacts: []skill.Artifact{}, CreatedAt: now, UpdatedAt: now}
 		r.TranscriptionAuthorized = (p.TranscriptionAuthorized && req.ProfileID == p.ProfileID && req.ProfileRevision == p.ProfileRevision) || (isHumanActor(actor) && req.AcceptTranscription)
+		if s.WorkspaceEnabled() {
+			r.TranscriptionAuthorized = true
+			r.ExternalAuthorized = true
+		}
 		r.AgentRole = req.AgentRole
 		if req.AgentRole != "" {
 			until := s.autoNow().Add(2 * time.Minute)
@@ -200,10 +223,10 @@ func (s *Service) checkSkillRun(ctx context.Context, r skill.Run) (harnessSnapsh
 	if err != nil {
 		return snap, err
 	}
-	if p.Version != r.ProjectVersion || p.ConfirmedSHA != r.VisibleSHA || slices.Contains(p.Disabled, r.SkillID) {
+	if (!s.WorkspaceEnabled() && (p.Version != r.ProjectVersion || p.ConfirmedSHA != r.VisibleSHA)) || slices.Contains(p.Disabled, r.SkillID) {
 		return snap, model.ErrConflict
 	}
-	if r.AgentRole != "" {
+	if r.AgentRole != "" && !s.WorkspaceEnabled() {
 		for _, assetID := range p.Visible {
 			a, e := s.st.GetAsset(ctx, assetID)
 			if e != nil {
@@ -224,6 +247,22 @@ func (s *Service) checkSkillRun(ctx context.Context, r skill.Run) (harnessSnapsh
 	if err = s.st.SkillSnapshot(ctx, r.ID, &snap); err != nil {
 		return snap, err
 	}
+	if s.WorkspaceEnabled() {
+		media, _, err := s.projectMedia(ctx, p)
+		if err != nil {
+			return snap, err
+		}
+		current := map[string]skill.Media{}
+		for _, item := range media {
+			current[item.ID] = item
+		}
+		for _, frozen := range snap.Media {
+			item, ok := current[frozen.ID]
+			if !ok || item.SHA != frozen.SHA || item.In != frozen.In || item.Out != frozen.Out {
+				return snap, model.ErrConflict
+			}
+		}
+	}
 	if snap.Package.SHA != r.SkillSHA || packageSHA(snap.Package) != r.SkillSHA {
 		return snap, model.ErrConflict
 	}
@@ -231,7 +270,7 @@ func (s *Service) checkSkillRun(ctx context.Context, r skill.Run) (harnessSnapsh
 	if err != nil {
 		return snap, err
 	}
-	if !view.Confirmed || view.SHA != r.VisibleSHA {
+	if !s.WorkspaceEnabled() && (!view.Confirmed || view.SHA != r.VisibleSHA) {
 		return snap, model.ErrConflict
 	}
 	if r.ProfileID != "" {

@@ -15,6 +15,7 @@ func (s *Service) ProjectAgentView(ctx context.Context, id, role string) (skill.
 		return skill.VisibleSet{}, model.ErrForbidden
 	}
 	for _, assetID := range p.Visible {
+		if s.WorkspaceEnabled() { break }
 		a, e := s.st.GetAsset(ctx, assetID)
 		if e != nil {
 			return skill.VisibleSet{}, e

@@ -24,6 +24,7 @@ type SaveScriptVoiceRequest struct {
 
 // Voice edits are script revisions, never mutable attachments to an old final.
 func (s *Service) SaveScriptVoice(ctx context.Context, actor, id string, req SaveScriptVoiceRequest) (ScriptWorkbench, error) {
+	if s.WorkspaceEnabled() { req.AcceptExternal = s.ProviderPolicy().ExternalTTS }
 	if err := req.Settings.Validate(); err != nil {
 		return ScriptWorkbench{}, fmt.Errorf("%v: %w", err, model.ErrArgument)
 	}
@@ -58,8 +59,10 @@ func (s *Service) synthesizeScriptVoice(ctx context.Context, segment ScriptSegme
 	if !tts.ValidText(segment.Narration, 1000, true) {
 		return fmt.Errorf("配音每段为 1～1000 字符: %w", model.ErrArgument)
 	}
-	if voice.Settings.External() && !voice.AcceptExternal {
-		return fmt.Errorf("请在 TTS 专页明确授权本段旁白的外发: %w", model.ErrForbidden)
+	allowed := voice.AcceptExternal
+	if s.WorkspaceEnabled() { allowed = s.ProviderPolicy().ExternalTTS }
+	if voice.Settings.External() && !allowed {
+		return fmt.Errorf("请在服务商设置中启用云端配音: %w", model.ErrForbidden)
 	}
 	r := s.ttsRuntime
 	if r == nil || !r.ready {

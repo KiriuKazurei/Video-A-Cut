@@ -62,4 +62,20 @@ func TestMCPMountIsOptIn(t *testing.T) {
 	if got := request(appWithMCP.httpSrv.Handler, token); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "list_assets") {
 		t.Fatalf("authorized /mcp status = %d body = %s", got.Code, got.Body.String())
 	}
+	// Desktop requires no separate Agent credential or agents file.
+	cfg.MCPAgentsFile, cfg.MCPLocalAccess = "", true
+	local, err := assemble(filepath.Join(t.TempDir(), "local.db"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = local.Close() })
+	req := httptest.NewRequest("POST", "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","clientInfo":{"name":"desktop-test","version":"1"},"capabilities":{}}}`))
+	req.Host, req.RemoteAddr = "127.0.0.1:8787", "127.0.0.1:45678"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	w := httptest.NewRecorder()
+	local.httpSrv.Handler.ServeHTTP(w, req)
+	if w.Code != 200 || w.Header().Get("Mcp-Session-Id") == "" {
+		t.Fatalf("desktop MCP: %d %s", w.Code, w.Body.String())
+	}
 }

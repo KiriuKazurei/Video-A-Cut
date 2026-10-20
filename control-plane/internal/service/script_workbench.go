@@ -21,6 +21,7 @@ import (
 )
 
 type ScriptMedia struct {
+	Kind    string  `json:"kind,omitempty"`
 	ID      string  `json:"id"`
 	AssetID string  `json:"asset_id"`
 	Name    string  `json:"name"`
@@ -59,19 +60,20 @@ func scriptOption(override *bool, fallback bool) bool {
 }
 
 type ScriptWorkbench struct {
-	Script           model.Script          `json:"script"`
-	Version          int                   `json:"version"`
-	Document         scriptsyntax.Document `json:"document"`
-	Segments         []ScriptSegment       `json:"segments"`
-	Sources          []ScriptSource        `json:"sources"`
-	Questions        []string              `json:"questions"`
-	TTSEnabled       bool                  `json:"tts_enabled"`
-	SubtitlesEnabled bool                  `json:"subtitles_enabled"`
-	AllowWebResearch bool                  `json:"allow_web_research"`
-	Rejected         bool                  `json:"rejected"`
-	ProfileID        string                `json:"profile_id,omitempty"`
-	ProfileRevision  int                   `json:"profile_revision,omitempty"`
-	Delivery         *store.ScriptDelivery `json:"delivery,omitempty"`
+	SourceFingerprint string                `json:"source_fingerprint,omitempty"`
+	Script            model.Script          `json:"script"`
+	Version           int                   `json:"version"`
+	Document          scriptsyntax.Document `json:"document"`
+	Segments          []ScriptSegment       `json:"segments"`
+	Sources           []ScriptSource        `json:"sources"`
+	Questions         []string              `json:"questions"`
+	TTSEnabled        bool                  `json:"tts_enabled"`
+	SubtitlesEnabled  bool                  `json:"subtitles_enabled"`
+	AllowWebResearch  bool                  `json:"allow_web_research"`
+	Rejected          bool                  `json:"rejected"`
+	ProfileID         string                `json:"profile_id,omitempty"`
+	ProfileRevision   int                   `json:"profile_revision,omitempty"`
+	Delivery          *store.ScriptDelivery `json:"delivery,omitempty"`
 }
 type SaveScriptRequest struct {
 	ExpectedVersion  int             `json:"expected_version"`
@@ -123,6 +125,13 @@ func (s *Service) GetScriptWorkbench(ctx context.Context, id string) (ScriptWork
 		}
 		return nil
 	})
+	if err == nil && s.WorkspaceEnabled() && w.Script.Status == model.ScriptFinalized {
+		if sourceErr := s.checkScriptSources(ctx, w); sourceErr != nil {
+			w.Script.Status = model.ScriptNeedsRefinalize
+			w.Script.StaleReason = "source_changed"
+			w.Delivery = nil
+		}
+	}
 	return w, err
 }
 func (s *Service) ScriptRevisions(ctx context.Context, id string) ([]store.ScriptRevision, error) {
@@ -160,13 +169,33 @@ func (s *Service) ScriptMediaCatalogue(ctx context.Context) ([]ScriptMedia, erro
 	if err != nil {
 		return nil, err
 	}
-	return s.scriptMediaFromAssets(assets)
+	media, err := s.scriptMediaFromAssets(assets)
+	if err != nil {
+		return nil, err
+	}
+	if s.WorkspaceEnabled() {
+		filtered := []ScriptMedia{}
+		for _, item := range media {
+			if item.Kind != "audio" {
+				filtered = append(filtered, item)
+			}
+		}
+		media = filtered
+	}
+	return media, nil
 }
 
 func (s *Service) scriptMediaFromAssets(assets []model.Asset) ([]ScriptMedia, error) {
 	out := []ScriptMedia{}
 	seen := map[string]bool{}
 	for _, a := range assets {
+		if resource, ok := s.registeredResource(a.AssetID); ok {
+			if (resource.Kind == "video" || resource.Kind == "audio") && !resource.Removed && !resource.Missing {
+				duration, _ := resource.Metadata["duration"].(float64)
+				out = append(out, ScriptMedia{Kind: resource.Kind, ID: resource.ID, AssetID: a.AssetID, Name: filepath.Base(resource.Source.OriginalPath), Source: "@resource/" + resource.ID, Path: resource.Source.OriginalPath, In: 0, Out: duration})
+			}
+			continue
+		}
 		if a.Locked || a.Artifacts["edl"] == "" {
 			continue
 		}
@@ -296,6 +325,7 @@ func (s *Service) scriptWrite(ctx context.Context, actor, id string, expected in
 		return ScriptWorkbench{}, err
 	}
 	var saved ScriptWorkbench
+	changedRecord := true
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		w, err := workbenchAt(ctx, tx, id)
 		if err != nil {
@@ -311,7 +341,7 @@ func (s *Service) scriptWrite(ctx context.Context, actor, id string, expected in
 		if err != nil {
 			return err
 		}
-		if set.SHA != sha {
+		if !s.WorkspaceEnabled() && set.SHA != sha {
 			return model.ErrConflict
 		}
 		asset, err := tx.GetAsset(ctx, w.Script.AssetID)
@@ -341,9 +371,46 @@ func (s *Service) scriptWrite(ctx context.Context, actor, id string, expected in
 		if err := edit(&w); err != nil {
 			return err
 		}
+		if s.WorkspaceEnabled() && action == "save" && before.Version > 0 && scriptContentFingerprint(before) == scriptContentFingerprint(w) {
+			title := w.Script.Title
+			w = before
+			if title == before.Script.Title {
+				changedRecord = false
+				saved = w
+				if d, e := tx.GetScriptDelivery(ctx, id, w.Version); e == nil {
+					saved.Delivery = &d
+				}
+				return nil
+			}
+			w.Script.Title = title
+			w.Script.UpdatedAt = s.autoNow()
+			if err := tx.UpdateScript(ctx, w.Script); err != nil {
+				return err
+			}
+			raw, err := json.Marshal(w)
+			if err != nil {
+				return err
+			}
+			if err = tx.PutScriptWorkbenchMetadata(ctx, id, w.Version, string(raw)); err != nil {
+				return err
+			}
+			saved = w
+			if d, e := tx.GetScriptDelivery(ctx, id, w.Version); e == nil {
+				saved.Delivery = &d
+			}
+			return auditTx(ctx, tx, actor, "script.rename", id, title)
+		}
 		w.Document = scriptsyntax.Parse(w.Script.Body)
-		if action != "reject" {
+		if action != "reject" && !(s.WorkspaceEnabled() && action == "save") {
 			if err := validateScriptPlan(w, media, action == "finalize"); err != nil {
+				return err
+			}
+		}
+		if s.WorkspaceEnabled() {
+			fingerprint, err := s.scriptSourceFingerprint(ctx, w)
+			if err == nil {
+				w.SourceFingerprint = fingerprint
+			} else if action != "save" && action != "reject" {
 				return err
 			}
 		}
@@ -388,7 +455,7 @@ func (s *Service) scriptWrite(ctx context.Context, actor, id string, expected in
 		saved = w
 		return nil
 	})
-	if err == nil {
+	if err == nil && changedRecord {
 		s.publish("script.changed", map[string]any{"script_id": id, "asset_id": saved.Script.AssetID})
 		s.publish("auto.changed", map[string]any{})
 		s.publish("workflow.changed", map[string]any{"asset_id": saved.Script.AssetID})
@@ -449,7 +516,7 @@ func (s *Service) FinalizeScriptWorkbench(ctx context.Context, actor, id string,
 		if w.Script.Status != model.ScriptDraft && w.Script.Status != model.ScriptNeedsRefinalize {
 			return model.ErrInvalidState
 		}
-		if w.Script.VisibleSetSHA != sha {
+		if !s.WorkspaceEnabled() && w.Script.VisibleSetSHA != sha {
 			return model.ErrConflict
 		}
 		now := time.Now().UTC()

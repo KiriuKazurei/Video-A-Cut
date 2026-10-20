@@ -55,7 +55,7 @@ export function DesktopRuntime({ children }: { children: ReactNode }) {
   return <div className="desktop-runtime-shell">
     <div className="desktop-runtime-bar" role="status" style={{ padding: '6px 16px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
       <Typography.Text>{runtime?.status === 'ready' ? '后台服务已就绪' : runtime?.message ?? '正在连接桌面服务…'}</Typography.Text>
-      <Space><DesktopUpdates onMaintenance={setMaintenance} /><Button size="small" onClick={() => command('open_data_directory')}>数据目录</Button><Button size="small" disabled={maintenance} onClick={() => command('request_exit')}>退出</Button></Space>
+      <DesktopUpdates onMaintenance={setMaintenance} />
     </div>
     {error && <Alert role="alert" type="error" showIcon message={error} />}
     {runtime?.status === 'ready' && runtime.workers.some(worker => worker.status === 'blocked') &&

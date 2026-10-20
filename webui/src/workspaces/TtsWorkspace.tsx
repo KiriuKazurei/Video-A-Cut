@@ -66,6 +66,9 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   const [skillEnabled, setSkillEnabled] = useState(true);
   const [skillConsent, setSkillConsent] = useState(false);
   const [skillLoadedVersion, setSkillLoadedVersion] = useState(-1);
+  const [skillLoadedKey, setSkillLoadedKey] = useState('');
+  const skillVoiceKey = JSON.stringify([skillProjectId, skillRunId, skillSegment]);
+  const currentSkillVoice = skillLoadedKey === skillVoiceKey && skillLoadedVersion === skillRun.data?.version;
   const voiceFormKey = JSON.stringify([ttsDraftKey(text, settings), voiceOffset, voiceEnabled, voiceConsent]);
   const voiceDirty = Boolean(scriptId && loadedVoiceKey && voiceFormKey !== loadedVoiceForm);
   const staleVoice = Boolean(script.data && (voiceVersion !== script.data.version || loadedVoiceKey !== voiceKey));
@@ -92,7 +95,6 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   }, onError: e => setError(errorText(e)) });
   const generate = useMutation({ mutationFn: () => {
     if (scriptId && (!target || staleVoice)) throw new Error('请先载入当前脚本段落，再生成试听');
-    if (scriptId && settings.engine === 'stepfun' && !voiceConsent) throw new Error('请确认本段文字的 TTS 发送授权');
     return api.startTtsPreview(text, settings);
   }, onSuccess: p => {
     setJobID(p.job_id); client.setQueryData(['tts-preview', p.job_id], p); autoplayJob.current = p.job_id;
@@ -103,12 +105,13 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
     setError(''); void client.invalidateQueries({ queryKey: ['tts-templates'] });
     void client.invalidateQueries({ queryKey: ['tts-preview'] }); void client.invalidateQueries({ queryKey: ['tts-previews'] });
   }, onError: e => setError(errorText(e)) });
-  const edit = (patch: Partial<TtsSettings>) => { setSettings(s => ({ ...s, ...patch })); setDirty(true); setNotice(''); setVoiceConsent(false); };
+  const edit = (patch: Partial<TtsSettings>) => { setSettings(s => ({ ...s, ...patch })); setDirty(true); setNotice(''); setVoiceConsent(false); setSkillConsent(false); };
   const load = (t: TtsTemplate) => {
     audio.current?.pause(); autoplayJob.current = ''; setSettings({ ...t.settings }); setLoaded(t); setName(t.name);
     setText(t.reference_text || SAMPLE_TEXT); setMood(0); setCustom(t.settings.instruction); setHistoryRevision(t.revision);
     setDirty(false); setNotice(`已加载 ${t.name} · v${t.revision}`); setError('');
     setVoiceConsent(false);
+    setSkillConsent(false);
   };
   const loadVoiceTarget = () => {
     const w = script.data, segment = w?.segments[segmentIndex];
@@ -133,12 +136,8 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   useEffect(() => {
     setSkillConsent(false);
     setSkillLoadedVersion(-1);
-  }, [skillRunId, skillWorkspace.epoch]);
-  useEffect(() => {
-    const reset = () => { if (document.visibilityState === 'hidden') setSkillConsent(false); };
-    document.addEventListener('visibilitychange', reset);
-    return () => document.removeEventListener('visibilitychange', reset);
-  }, []);
+    setSkillLoadedKey('');
+  }, [skillVoiceKey, skillWorkspace.epoch]);
   const loadSkillSegment = () => {
     if (!skillRun.data || !skillTarget) return;
     audio.current?.pause();
@@ -149,26 +148,35 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
     setSkillEnabled(skillTarget.tts_enabled);
     setSkillConsent(false);
     setSkillLoadedVersion(skillRun.data.version);
+    setSkillLoadedKey(skillVoiceKey);
     setDirty(false);
     setNotice(`已载入 Skill 运行 v${skillRun.data.version} 第 ${skillSegment + 1} 段。这不会写入旧脚本。`);
     setError('');
   };
   const skillVoiceSave = useMutation({
-    mutationFn: () => skillApi.saveVoice(skillRunId, {
-      expected_version: skillLoadedVersion,
-      segment_index: skillSegment,
-      enabled: skillEnabled,
-      settings: { ...settings },
-      offset_seconds: skillOffset,
-      accept_external: skillConsent
-    }),
-    onSuccess: (updated) => {
-      client.setQueryData(skillQueryKeys.run(skillProjectId, skillRunId), updated);
-      setSkillLoadedVersion(updated.version);
-      setSkillConsent(false);
-      setNotice(`已回写 Skill 运行 v${updated.version}。旧定稿已撤销，请回到编辑页重新人工定稿。`);
-      setError('');
-      void client.invalidateQueries({ queryKey: runDetailKey(skillProjectId, updated.id, 'workbench') });
+    mutationFn: async () => {
+      if (!currentSkillVoice) throw new Error('请先重新载入当前运行的目标段落');
+      const key = skillLoadedKey;
+      const updated = await skillApi.saveVoice(skillRunId, {
+        expected_version: skillLoadedVersion,
+        segment_index: skillSegment,
+        enabled: skillEnabled,
+        settings: { ...settings },
+        offset_seconds: skillOffset,
+        accept_external: skillConsent
+      });
+      return { updated, key };
+    },
+    onSuccess: ({ updated, key }) => {
+      client.setQueryData<typeof updated>(skillQueryKeys.run(updated.project_id, updated.id), (current) =>
+        current && current.version > updated.version ? current : updated);
+      if (key === skillVoiceKey) {
+        setSkillLoadedVersion(updated.version);
+        setSkillConsent(false);
+        setNotice(`已回写 Skill 运行 v${updated.version}。旧定稿已撤销，请回到编辑页重新人工定稿。`);
+        setError('');
+      }
+      void client.invalidateQueries({ queryKey: runDetailKey(updated.project_id, updated.id, 'workbench') });
     },
     onError: (reason) => setError(isVersionConflict(reason) ? versionConflictMessage() : errorText(reason))
   });
@@ -217,11 +225,10 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
             <Checkbox checked={skillEnabled} onChange={(event) => setSkillEnabled(event.target.checked)}>启用本段配音</Checkbox>
             <span>段内偏移（秒）</span>
             <InputNumber aria-label="Skill 段内偏移" min={0} step={0.05} value={skillOffset} onChange={(value) => setSkillOffset(value ?? 0)} />
-            <Checkbox checked={skillConsent} onChange={(event) => setSkillConsent(event.target.checked)}>允许本段声音外发</Checkbox>
           </Space>
           <Space wrap>
             <Button onClick={loadSkillSegment}>载入当前段</Button>
-            <Button type="primary" loading={skillVoiceSave.isPending} disabled={skillLoadedVersion !== skillRun.data?.version || (skillEnabled && Boolean(draftError))} onClick={() => skillVoiceSave.mutate()}>回写到 Skill 运行</Button>
+            <Button type="primary" loading={skillVoiceSave.isPending} disabled={!currentSkillVoice || (skillEnabled && Boolean(draftError))} onClick={() => skillVoiceSave.mutate()}>回写到 Skill 运行</Button>
             <Button onClick={() => navigate?.({ workspace: 'editing', scriptId: '' })}>回到 Skill 运行定稿</Button>
           </Space>
         </>}
@@ -240,9 +247,8 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
             <span>段内配音起点（秒）</span><InputNumber aria-label="段内配音起点" value={voiceOffset} min={0} max={Math.max(0, target.end - target.start)} step={0.05} onChange={v => { setVoiceOffset(v ?? 0); setDirty(true); }} />
             <Typography.Text type="secondary">成片起点 {((scriptTimelineStarts(script.data!)[segmentIndex] ?? 0) + voiceOffset).toFixed(3)} 秒</Typography.Text>
           </Space>
-          {settings.engine === 'stepfun' && <Checkbox checked={voiceConsent} onChange={e => { setVoiceConsent(e.target.checked); setDirty(true); }}>允许将本段旁白发送到当前 TTS 服务；修改文字或声音设置后需重新确认</Checkbox>}
           <Space wrap>
-            <Button type="primary" loading={voiceSave.isPending} disabled={staleVoice || Boolean(saveError) || (voiceEnabled && Boolean(draftError)) || (settings.engine === 'stepfun' && voiceEnabled && !voiceConsent)} onClick={() => voiceSave.mutate({ id: scriptId, key: voiceKey, form: voiceFormKey, body: { expected_version: voiceVersion, visible_set_sha: script.data!.script.visible_set_sha, segment_index: segmentIndex, narration: text, settings: { ...settings }, offset_seconds: voiceOffset, enabled: voiceEnabled, accept_external: voiceConsent } })}>回写到脚本新修订</Button>
+            <Button type="primary" loading={voiceSave.isPending} disabled={staleVoice || Boolean(saveError) || (voiceEnabled && Boolean(draftError))} onClick={() => voiceSave.mutate({ id: scriptId, key: voiceKey, form: voiceFormKey, body: { expected_version: voiceVersion, visible_set_sha: script.data!.script.visible_set_sha, segment_index: segmentIndex, narration: text, settings: { ...settings }, offset_seconds: voiceOffset, enabled: voiceEnabled, accept_external: voiceConsent } })}>回写到脚本新修订</Button>
             <Popconfirm title="载入当前段会替换本页尚未回写的设置，继续？" disabled={!dirty && !voiceDirty} onConfirm={loadVoiceTarget}><Button disabled={voiceSave.isPending} onClick={() => { if (!dirty && !voiceDirty) loadVoiceTarget(); }}>载入当前段</Button></Popconfirm>
             {voiceDirty && <Typography.Text type="warning">有尚未回写的段落配音修改</Typography.Text>}
             <Button disabled={voiceSave.isPending} onClick={() => onReturnToScript?.(script.data!.script.asset_id, scriptId)}>回到脚本定稿</Button>

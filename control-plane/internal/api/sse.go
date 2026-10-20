@@ -14,6 +14,7 @@ import (
 )
 
 var sseEventNames = []string{
+	"workspace.changed", "workspace.saved", "resource.changed",
 	"project.changed", "skill.changed", "skill.run.changed",
 	"asset_created", "asset_updated", "task_created", "task_updated",
 	"workflow.changed", "review.changed", "acceptance.changed", "profile.changed",
@@ -43,6 +44,7 @@ var sseOps = streamOps{
 }
 
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
+	projectSession := s.svc.ProjectSessionID()
 	if r.Method == http.MethodHead {
 		w.Header().Set("Allow", http.MethodGet)
 		writeError(w, http.StatusMethodNotAllowed, codeMethodNotAllowed, "method HEAD is not allowed for /api/events")
@@ -114,6 +116,7 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 			// snapshot; reconnecting EventSource alone does not fetch one.
 			return
 		case ev := <-stream:
+			if s.svc.ProjectSessionID() != projectSession && ev.Name != "workspace.changed" { return }
 			if err := prepareSSEWrite(controller); err != nil {
 				slog.Default().Debug("sse: write deadline failed", "err", err)
 				return

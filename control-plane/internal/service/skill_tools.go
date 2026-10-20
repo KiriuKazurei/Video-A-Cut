@@ -382,7 +382,7 @@ func validateHarnessPlan(p skill.Plan, snap harnessSnapshot) error {
 	for i, seg := range p.Segments {
 		m, ok := media[seg.MediaID]
 		d := seg.End - seg.Start
-		if !ok || !finiteScriptTime(seg.Start) || !finiteScriptTime(seg.End) || seg.Start < m.In || seg.End > m.Out || d < .1 || d > 120 || len(seg.Narration) > 16<<10 {
+		if !ok || m.Kind == "audio" || !finiteScriptTime(seg.Start) || !finiteScriptTime(seg.End) || seg.Start < m.In || seg.End > m.Out || d < .1 || d > 120 || len(seg.Narration) > 16<<10 {
 			return model.ErrArgument
 		}
 		if name := doc.Paragraphs[i].Video; name != "" && name != m.Name {
@@ -587,6 +587,9 @@ func (s *Service) extractSkillFrames(ctx context.Context, r *skill.Run, snap har
 	}
 	sources := []map[string]any{}
 	for _, m := range snap.Media {
+		if m.Kind == "audio" {
+			continue
+		}
 		if req.MediaID != "" && req.MediaID != m.ID {
 			continue
 		}

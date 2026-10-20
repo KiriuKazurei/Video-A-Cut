@@ -172,10 +172,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
   const [brief, setBrief] = useState('');
   const noticeReady = !notice.isError && Boolean(notice.data?.notice_sha256) && notice.data?.profile_id === profile?.profile_id && notice.data?.revision === rev;
   const identity = assetId && profile && noticeReady ? JSON.stringify([assetId, profile.profile_id, rev, notice.data!.notice_sha256]) : null;
-  const [authorization, setAuthorization] = useState({ identity, accepted: false });
-  // 在渲染新说明时就清除旧勾选，避免等待 effect 的窗口，也防止切回旧身份时恢复授权。
-  if (authorization.identity !== identity) setAuthorization({ identity, accepted: false });
-  const authorized = identity !== null && authorization.identity === identity && authorization.accepted;
+  const authorized = identity !== null;
   const [maxRounds, setMaxRounds] = useState(1);
   const [relaxOn, setRelaxOn] = useState(false);
   const [relaxValue, setRelaxValue] = useState<number | undefined>(0.8);
@@ -198,7 +195,7 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
     mutationFn: async (requestedIdentity: string) => {
       try {
         // mutation 可能排队执行；发送前再次核对当前已提交到界面的授权上下文。
-        if (!ok || !currentStart.current.ok || identity !== requestedIdentity || currentStart.current.identity !== requestedIdentity) throw new Error('自动授权已变化，请重新勾选授权。');
+        if (!ok || !currentStart.current.ok || identity !== requestedIdentity || currentStart.current.identity !== requestedIdentity) throw new Error('运行上下文已变化，请重新开始。');
         const base = {
           profileId: profile!.profile_id, revision: rev, expectedAssetVersion: preflight.data!.expected_asset_version!, brief, maxRounds,
           relaxHighScore: relaxOn ? relaxValue : undefined, relaxConfirmed, noticeSha: notice.data!.notice_sha256,
@@ -240,17 +237,17 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
       {usable.length > 1 && (
         <Flex vertical gap={4}>
           <Typography.Text strong>使用预设</Typography.Text>
-          <ValueSelect<string> className="auto-profile-select" aria-label="自动剪辑预设" style={{ maxWidth: 360 }} value={profile?.profile_id} onChange={v => { setPicked(v); setAuthorization({ identity, accepted: false }); }}
+          <ValueSelect<string> className="auto-profile-select" aria-label="自动剪辑预设" style={{ maxWidth: 360 }} value={profile?.profile_id} onChange={v => { setPicked(v); }}
             options={usable.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
         </Flex>
       )}
-      {notice.isError && <Alert type="error" showIcon role="alert" message="读取授权说明失败" description="没有授权说明就不能启动。" action={<Button type="link" size="small" onClick={() => void notice.refetch()}>重试</Button>} />}
+      {notice.isError && <Alert type="error" showIcon role="alert" message="读取运行说明失败" description="请重试后开始。" action={<Button type="link" size="small" onClick={() => void notice.refetch()}>重试</Button>} />}
       {notice.data && (
         <Alert type={notice.data.external ? 'warning' : 'info'} showIcon className="auto-notice" message={notice.data.external ? '数据会发送到外部服务' : '数据只在本机处理'}
           description={<Flex vertical gap={8}>
             <div style={{ whiteSpace: 'pre-wrap' }} data-testid="auto-notice-text">{notice.data.notice}</div>
             <div>
-              <Typography.Text strong>本次授权范围</Typography.Text>
+              <Typography.Text strong>本次运行内容</Typography.Text>
               <ul className="auto-grant-list">
                 {(notice.data.grants ?? []).map((grant) => <li key={grant.code}>{grant.label}</li>)}
                 {(notice.data.visible_assets ?? []).filter((item) => item.agent_visible).map((item) => (
@@ -261,9 +258,6 @@ export function AutoRunStart({ assetId, onStarted, onGoSettings }: {
             </div>
           </Flex>} />
       )}
-      <Checkbox className="auto-authorize" disabled={!identity} checked={authorized} onChange={e => setAuthorization({ identity, accepted: e.target.checked })}>
-        <b>全局授权</b>：同意对上面列出的可见素材和脚本定稿授权，Agent 不再逐步询问，自动完成剪辑、配音、字幕和导出。我可以随时撤销。
-      </Checkbox>
       <Collapse size="small" ghost className="auto-advanced" items={[{
         key: 'adv', label: '高级设置（可选）',
         children: (

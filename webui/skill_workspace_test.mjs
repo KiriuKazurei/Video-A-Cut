@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchAuditLogs, hasHumanAccessToken, setHumanAccessToken } from './src/api.ts';
+import { fetchAuditLogs, setProjectSession } from './src/api.ts';
 import { skillApi } from './src/skillApi.ts';
-import { endHumanSession } from './src/humanSession.ts';
+import { pauseMediaPlayers } from './src/humanSession.ts';
+import { projectApi } from './src/projectApi.ts';
 import { REFRESH_DOMAINS } from './src/queryRefresh.ts';
 import {
   consentAfterVisibility, historyMoves, humanUnlockMessage, isHumanUnlockRequired, projectDraft,
@@ -10,55 +11,41 @@ import {
 } from './src/skillView.ts';
 import { ApiError } from './src/api.ts';
 
-test('403 on the audit probe is not treated as a missing route', async () => {
+test('window requests use project scope without human credentials', async () => {
   const previous = globalThis.fetch;
   const urls = [];
-  const writes = [];
-  const priorStorage = globalThis.localStorage;
-  globalThis.localStorage = { setItem: (key) => writes.push(key), getItem: () => null, removeItem() {}, clear() {}, key: () => null, length: 0 };
   try {
+    setProjectSession('current-session');
     globalThis.fetch = async (url, init = {}) => {
-      urls.push(`${init.method || 'GET'} ${url}`);
-      if (String(url).endsWith('/api/human-session') && init.method === 'POST') {
-        return json({ unlocked: true });
-      }
-      if (String(url).includes('/api/v1/audit/logs')) {
-        const headers = new Headers(init.headers);
-        assert.equal(headers.get('X-VAC-Human-Token'), 'memory-token-not-stored-in-browser');
-        return json({ error: { code: 'forbidden', message: 'human session required' } }, 403);
-      }
-      return json({ error: { code: 'not_found', message: 'missing' } }, 404);
+      urls.push(String(url)); const headers = new Headers(init.headers);
+      assert.equal(headers.get('X-VAC-Human-Token'), null);
+      assert.equal(headers.get('X-VAC-Project-Session'), 'current-session');
+      return json([]);
     };
-    await skillApi.unlockHumanSession('memory-token-not-stored-in-browser');
-    assert.equal(hasHumanAccessToken(), true);
-    await assert.rejects(() => fetchAuditLogs(5), (error) => error instanceof ApiError && error.status === 403 && isHumanUnlockRequired(error));
-    assert.equal(urls.filter((item) => item.includes('audit')).length, 1);
-    assert.equal(writes.length, 0);
-    assert.match(humanUnlockMessage(), /403/);
-  } finally {
-    setHumanAccessToken('');
-    globalThis.fetch = previous;
-    if (priorStorage === undefined) delete globalThis.localStorage;
-    else globalThis.localStorage = priorStorage;
-  }
+    await fetchAuditLogs(5);
+    assert.equal(urls.length, 1);
+    assert.ok(!urls.some(url => url.includes('human-session')));
+  } finally { setProjectSession(''); globalThis.fetch = previous; }
 });
 
-test('locking clears the memory token and protected query caches', async () => {
+test('project file commands retain explicit save and switch decisions', async () => {
   const previous = globalThis.fetch;
-  const removed = [];
   try {
-    globalThis.fetch = async (url, init = {}) => {
-      if (init.method === 'DELETE') return json({ locked: true });
-      return json({ error: { code: 'forbidden', message: 'no' } }, 403);
+    globalThis.fetch = async (url, init) => {
+      assert.match(String(url), /workspace\/open$/);
+      assert.deepEqual(JSON.parse(init.body), {path:'C:/project.avp', decision:'save', stop_tasks:true, expected_session:'old'});
+      return json({id:'new'});
     };
-    setHumanAccessToken('still-in-memory');
-    await endHumanSession({ removeQueries: async ({ queryKey }) => { removed.push(queryKey[0]); } });
-    assert.equal(hasHumanAccessToken(), false);
-    for (const key of ['audit', 'vu-projects', 'vu-run', 'vu-context']) assert.ok(removed.includes(key));
-  } finally {
-    setHumanAccessToken('');
-    globalThis.fetch = previous;
-  }
+    assert.equal((await projectApi.command('open', {path:'C:/project.avp', decision:'save', stop_tasks:true, expected_session:'old'})).id,'new');
+  } finally { globalThis.fetch = previous; }
+});
+
+test('switching stops and detaches media players', () => {
+  const previous = globalThis.document; const mediaClass = globalThis.HTMLMediaElement; const calls = [];
+  class Media { pause(){calls.push('pause')} removeAttribute(key){calls.push(key)} load(){calls.push('load')} }
+  globalThis.HTMLMediaElement = Media; globalThis.document = {querySelectorAll: () => [new Media()]};
+  try { pauseMediaPlayers(); assert.deepEqual(calls,['pause','src','load']); }
+  finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; if (mediaClass === undefined) delete globalThis.HTMLMediaElement; else globalThis.HTMLMediaElement = mediaClass; }
 });
 
 test('project drafts, history, delivery pairing and edit ranges stay on the skill contract', () => {

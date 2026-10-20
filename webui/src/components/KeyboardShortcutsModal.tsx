@@ -14,6 +14,11 @@ interface ShortcutItem {
 }
 
 const SHORTCUTS: ShortcutItem[] = [
+  { key: 'new-project', keys: ['Ctrl', 'N'], action: '新建项目', category: '工程文件' },
+  { key: 'open-project', keys: ['Ctrl', 'O'], action: '打开项目', category: '工程文件' },
+  { key: 'save-project', keys: ['Ctrl', 'S'], action: '保存工程及工作台草稿', category: '工程文件' },
+  { key: 'save-project-as', keys: ['Ctrl', 'Shift', 'S'], action: '另存为独立工程', category: '工程文件' },
+  { key: 'import-resources', keys: ['Ctrl', 'I'], action: '导入资源', category: '工程文件' },
   { key: '1', keys: ['1'], action: '切换到「资源管理」工作区', category: '工作区导航' },
   { key: '2', keys: ['2'], action: '切换到「编辑」工作区', category: '工作区导航' },
   { key: '3', keys: ['3'], action: '切换到「导出」工作区', category: '工作区导航' },

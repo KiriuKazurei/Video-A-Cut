@@ -46,6 +46,7 @@ type Package struct {
 	Upstream    string            `json:"upstream,omitempty"`
 }
 type Media struct {
+	Kind    string  `json:"kind,omitempty"`
 	ID      string  `json:"id"`
 	AssetID string  `json:"asset_id"`
 	Name    string  `json:"name"`
@@ -164,6 +165,7 @@ type Artifact struct {
 	PlanVersion int    `json:"plan_version,omitempty"`
 }
 type RunRequest struct {
+	Flow                string `json:"flow,omitempty"`
 	AgentRole           string `json:"-"`
 	AcceptTranscription bool   `json:"accept_transcription,omitempty"`
 	ProjectID           string `json:"project_id"`

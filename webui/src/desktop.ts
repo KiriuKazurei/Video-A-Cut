@@ -2,6 +2,8 @@ export interface RuntimeStatus {
   revision: number;
   status: 'starting' | 'ready' | 'fault' | 'stopping' | 'stopped';
   api_base_url?: string;
+  /** Direct loopback Streamable HTTP MCP; no separate Agent credential. */
+  mcp_url?: string;
   session_id?: string;
   data_directory: string;
   message: string;
@@ -20,6 +22,10 @@ export function desktopCommand<T>(command: string, args?: Record<string, unknown
 }
 export async function runtimeListener(callback: (value: RuntimeStatus) => void): Promise<() => void> {
   return window.__TAURI__!.event.listen<RuntimeStatus>('runtime-status', event => callback(event.payload));
+}
+
+export async function projectEventListener(name: string, callback: () => void): Promise<() => void> {
+  return window.__TAURI__!.event.listen(name, callback);
 }
 
 export interface UpdateStatus {

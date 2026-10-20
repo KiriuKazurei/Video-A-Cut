@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { endHumanSession } from './humanSession';
 
 interface SkillWorkspaceValue {
   projectId: string;
@@ -15,11 +14,11 @@ interface SkillWorkspaceValue {
 
 const SkillWorkspaceContext = createContext<SkillWorkspaceValue | null>(null);
 
-export function SkillWorkspaceProvider({ children }: { children: ReactNode }) {
+export function SkillWorkspaceProvider({ children, projectId: currentProject = '' }: { children: ReactNode; projectId?: string }) {
   const queryClient = useQueryClient();
-  const [projectId, setProjectIdState] = useState('');
+  const [projectId, setProjectIdState] = useState(currentProject);
   const [runId, setRunIdState] = useState('');
-  const [unlocked, setUnlocked] = useState(false);
+  const [unlocked, setUnlocked] = useState(true);
   const [epoch, setEpoch] = useState(0);
 
   const setProjectId = (id: string) => {
@@ -47,7 +46,7 @@ export function SkillWorkspaceProvider({ children }: { children: ReactNode }) {
   };
 
   const lock = async () => {
-    await endHumanSession(queryClient);
+    document.querySelectorAll<HTMLMediaElement>('video,audio').forEach(node => node.pause());
     setUnlocked(false);
     setProjectIdState('');
     setRunIdState('');

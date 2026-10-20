@@ -532,7 +532,7 @@ func TestServeHTTPServesEveryEndpoint(t *testing.T) {
 		{"task create", "POST", "/api/tasks", `{"task_id":"_smoke","asset_id":"_selfcheck","type":"probe","agent_role":"prober"}`, 201},
 		{"task detail", "GET", "/api/tasks/_smoke", "", 200},
 		{"task detail unknown", "GET", "/api/tasks/does-not-exist", "", 404},
-		{"audit log", "GET", "/api/audit", "", 200},
+		{"audit log window without credentials", "GET", "/api/audit", "", 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var body io.Reader

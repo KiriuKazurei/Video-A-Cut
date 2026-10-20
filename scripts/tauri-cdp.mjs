@@ -21,10 +21,12 @@ export class CDP {
       const p = c.pending.get(m.id);
       if (p) { c.pending.delete(m.id); clearTimeout(p.timer); m.error ? p.reject(Error(m.error.message)) : p.resolve(m.result); }
     };
+    c.ws.onclose = () => { for (const p of c.pending.values()) { clearTimeout(p.timer); p.reject(Error('CDP target closed')); } c.pending.clear(); };
     await c.send('Runtime.enable'); await c.send('Page.enable');
     return c;
   }
   send(method, params = {}) {
+    if (this.ws.readyState !== WebSocket.OPEN) return Promise.reject(Error('CDP target closed'));
     return new Promise((resolve, reject) => {
       const id = ++this.seq;
       const timer = setTimeout(() => { this.pending.delete(id); reject(Error('CDP timeout: ' + method)); }, 60000);

@@ -76,6 +76,12 @@ func (s *Service) visibleSetAt(ctx context.Context, st *store.Store) (VisibleSet
 	if view.Assets == nil {
 		view.Assets = []model.VisibleAsset{}
 	}
+	if s.WorkspaceEnabled() {
+		view.Confirmed = true
+		view.ConfirmedSHA = set.SHA
+		view.ScriptFinalize = true
+		return view, nil
+	}
 	conf, err := st.LatestVisibleConfirmation(ctx)
 	if err != nil {
 		if isNotFound(err) {
@@ -144,6 +150,7 @@ func (s *Service) writeVisibleConfirmation(ctx context.Context, tx *store.Store,
 // the script stage. An in-progress run never calls it: start returns the
 // existing run or a conflict before this check.
 func (s *Service) requireVisibleConfirmation(ctx context.Context, tx *store.Store, assetID string) error {
+	if s.WorkspaceEnabled() { _, err := tx.GetAsset(ctx, assetID); return err }
 	set, err := loadVisibleSet(ctx, tx)
 	if err != nil {
 		return err

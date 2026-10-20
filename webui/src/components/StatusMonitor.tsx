@@ -94,7 +94,7 @@ export function StatusMonitor({ connection, events, controlPlane, audit }: Statu
       </Space> },
     { key: 'ingest', title: '本机导入服务', ...ingestState, description: ingestDescription },
     { key: 'audit', title: '操作记录接口', ...(isHumanUnlockRequired(audit.error) ? { tone: 'warning' as Tone, label: '需要解锁' } : queryState(audit, '可用', '不可用')),
-      description: isHumanUnlockRequired(audit.error) ? '审计已受人工会话保护。403 不会改走其它地址，请在日志页解锁。' : '记录治理与任务操作，用于排查问题。' },
+      description: isHumanUnlockRequired(audit.error) ? '审计请求未完成，请检查当前工程或重试。' : '记录治理与任务操作，用于排查问题。' },
     { key: 'tts', title: '语音试听环境', ...ttsState, description: ttsDescription }
   ];
   return (

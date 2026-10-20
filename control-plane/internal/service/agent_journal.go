@@ -43,7 +43,15 @@ func journalPayload(raw json.RawMessage) any {
 	return clean(value)
 }
 func (s *Service) journalTx(ctx context.Context, tx *store.Store, actor, run, action string, detail any) error {
-	return tx.AppendAgentJournal(ctx, run, map[string]any{"actor": actor, "action": action, "at": s.autoNow(), "detail": detail})
+	body := map[string]any{"actor": actor, "action": action, "at": s.autoNow(), "detail": detail}
+	if s.WorkspaceEnabled() {
+		id, _ := ctx.Value(projectContextKey{}).(string)
+		if id == "" {
+			id = s.CurrentProjectID()
+		}
+		body["project_id"] = id
+	}
+	return tx.AppendAgentJournal(ctx, run, body)
 }
 
 // RecordAgentOperation is a write-only host broker. No transport exposes it to an Agent.
@@ -55,6 +63,43 @@ func (s *Service) RecordAgentOperation(ctx context.Context, actor, run, action s
 func (s *Service) AgentOperations(ctx context.Context, actor, run string, after int64, limit int) ([]store.JournalEntry, error) {
 	if err := requireHumanConfirm(actor, "read Agent operation journal"); err != nil {
 		return nil, err
+	}
+	if s.WorkspaceEnabled() {
+		if run != "" {
+			if _, err := s.GetSkillRun(ctx, actor, run); err != nil {
+				return nil, err
+			}
+		}
+		current := s.CurrentProjectID()
+		out := []store.JournalEntry{}
+		if current == "" {
+			return out, nil
+		}
+		if limit <= 0 || limit > 500 {
+			limit = 100
+		}
+		for len(out) < limit {
+			rows, err := s.st.AgentJournal(ctx, run, after, 500)
+			if err != nil {
+				return nil, err
+			}
+			if len(rows) == 0 {
+				break
+			}
+			for _, row := range rows {
+				after = row.Sequence
+				var body struct {
+					ProjectID string `json:"project_id"`
+				}
+				if json.Unmarshal(row.Body, &body) == nil && body.ProjectID == current {
+					out = append(out, row)
+					if len(out) == limit {
+						return out, nil
+					}
+				}
+			}
+		}
+		return out, nil
 	}
 	return s.st.AgentJournal(ctx, run, after, limit)
 }

@@ -61,11 +61,17 @@ func (s *Service) ConfigureDeliveryRoot(root string) error {
 }
 
 func (s *Service) deliveryPath(rel string, wantDir bool) (string, os.FileInfo, error) {
+	if strings.HasPrefix(filepath.ToSlash(rel), "@resource/") && !wantDir {
+		return s.sourceReference(filepath.ToSlash(rel))
+	}
 	if s.deliveryRoot == "" {
 		return "", nil, fmt.Errorf("delivery root is not configured: %w", model.ErrInvalidState)
 	}
 	if !filepath.IsLocal(rel) {
 		return "", nil, fmt.Errorf("delivery path must be relative to the configured root: %w", model.ErrArgument)
+	}
+	if path, info, ok := s.projectOutputReference(rel, wantDir); ok {
+		return path, info, nil
 	}
 	real, err := filepath.EvalSymlinks(filepath.Join(s.deliveryRoot, rel))
 	if err != nil {

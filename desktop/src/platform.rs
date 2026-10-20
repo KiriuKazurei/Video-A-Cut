@@ -6,8 +6,60 @@ use std::{
 use windows_sys::Win32::{
     Foundation::*,
     System::{Diagnostics::ToolHelp::*, JobObjects::*, Threading::*},
-    UI::WindowsAndMessaging::*,
 };
+
+#[cfg(windows)]
+pub fn clipboard_text() -> Result<String, String> {
+    use windows_sys::Win32::System::{DataExchange::*, Memory::*};
+    unsafe {
+        let mut opened = false;
+        for _ in 0..10 {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                opened = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if !opened {
+            return Err("剪贴板正被其他程序使用，请稍后重试".into());
+        }
+        struct Clipboard;
+        impl Drop for Clipboard {
+            fn drop(&mut self) {
+                unsafe {
+                    CloseClipboard();
+                }
+            }
+        }
+        let _clipboard = Clipboard;
+        const UNICODE_TEXT: u32 = 13;
+        if IsClipboardFormatAvailable(UNICODE_TEXT) == 0 {
+            return Ok(String::new());
+        }
+        let handle = GetClipboardData(UNICODE_TEXT);
+        if handle.is_null() {
+            return Err(io::Error::last_os_error().to_string());
+        }
+        let size = GlobalSize(handle) / 2;
+        if size > 8 * 1024 * 1024 {
+            return Err("剪贴板文本超过可粘贴的大小".into());
+        }
+        let pointer = GlobalLock(handle) as *const u16;
+        if pointer.is_null() {
+            return Err(io::Error::last_os_error().to_string());
+        }
+        let text = std::slice::from_raw_parts(pointer, size);
+        let end = text.iter().position(|&c| c == 0).unwrap_or(text.len());
+        let result = String::from_utf16_lossy(&text[..end]);
+        GlobalUnlock(handle);
+        Ok(result)
+    }
+}
+
+#[cfg(not(windows))]
+pub fn clipboard_text() -> Result<String, String> {
+    Err("当前平台使用浏览器剪贴板接口".into())
+}
 
 #[cfg(windows)]
 pub struct Job(HANDLE);
@@ -111,40 +163,6 @@ unsafe fn resume(pid: u32) -> io::Result<()> {
     }
     CloseHandle(snapshot);
     result
-}
-
-#[cfg(windows)]
-pub struct Instance(HANDLE);
-#[cfg(windows)]
-impl Instance {
-    pub fn acquire() -> io::Result<Option<Self>> {
-        unsafe {
-            let name: Vec<u16> = "Local\\VideoAutoCutDesktop\0".encode_utf16().collect();
-            let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
-            if handle.is_null() {
-                return Err(io::Error::last_os_error());
-            }
-            if GetLastError() == ERROR_ALREADY_EXISTS {
-                CloseHandle(handle);
-                let title: Vec<u16> = "Video Auto Cut\0".encode_utf16().collect();
-                let window = FindWindowW(std::ptr::null(), title.as_ptr());
-                if !window.is_null() {
-                    ShowWindow(window, SW_RESTORE);
-                    SetForegroundWindow(window);
-                }
-                return Ok(None);
-            }
-            Ok(Some(Self(handle)))
-        }
-    }
-}
-#[cfg(windows)]
-impl Drop for Instance {
-    fn drop(&mut self) {
-        unsafe {
-            CloseHandle(self.0);
-        }
-    }
 }
 
 #[cfg(not(windows))]

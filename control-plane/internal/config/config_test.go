@@ -40,6 +40,27 @@ func TestDefaultValues(t *testing.T) {
 	}
 }
 
+func TestLocalMCPConfig(t *testing.T) {
+	for _, tc := range []struct {
+		document string
+		valid    bool
+	}{
+		{`{"http_addr":"127.0.0.1:0","mcp_local_access":true}`, true},
+		{`{"http_addr":"","mcp_local_access":true}`, false},
+		{`{"http_addr":"0.0.0.0:8787","mcp_local_access":true}`, false},
+		{`{"mcp_local_access":"true"}`, false},
+		{`{"mcp_local_access":null}`, false},
+	} {
+		cfg, err := Load(writeConfig(t, t.TempDir(), "control.json", tc.document))
+		if (err == nil) != tc.valid {
+			t.Fatalf("%s: %+v %v", tc.document, cfg, err)
+		}
+		if tc.valid && !cfg.MCPLocalAccess {
+			t.Fatal("local access flag lost")
+		}
+	}
+}
+
 func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.json")
 	cfg, err := Load(path)

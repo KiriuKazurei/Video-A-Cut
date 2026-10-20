@@ -65,7 +65,7 @@ export function SkillDeliveryModule() {
           return <List.Item actions={[source ? <Button key="play" type="link" onClick={() => setPreview({
             kind: 'video', src: source.src, title: item.artifact.name,
             meta: item.historical ? '历史预览' : item.is_current ? '当前成片' : '预览',
-            note: item.historical ? '历史预览，只读，不能据此发起新修改或作为正式交付。' : '短时只读地址，退出人工会话后失效。'
+            note: item.historical ? '历史预览，只读，不能据此发起新修改或作为正式交付。' : '当前工程的只读预览。'
           })}>播放</Button> : <Typography.Text key="missing" type="secondary">不可播</Typography.Text>]}>
             <Space wrap>
               <Typography.Text>{item.artifact.name}</Typography.Text>

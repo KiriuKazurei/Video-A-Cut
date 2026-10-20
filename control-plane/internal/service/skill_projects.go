@@ -36,11 +36,46 @@ func sortedIDs(ids []string) ([]string, error) {
 	return out, nil
 }
 func (s *Service) ListProjects(ctx context.Context) ([]json.RawMessage, error) {
+	if s.WorkspaceEnabled() {
+		id := s.CurrentProjectID()
+		if id == "" {
+			return []json.RawMessage{}, nil
+		}
+		p, err := s.GetProject(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(p)
+		return []json.RawMessage{raw}, err
+	}
 	return s.st.SkillList(ctx, "project")
 }
 func (s *Service) GetProject(ctx context.Context, id string) (skill.Project, error) {
 	var p skill.Project
+	if s.WorkspaceEnabled() && (id == "" || id != s.CurrentProjectID()) {
+		return p, model.ErrNotFound
+	}
 	err := s.st.SkillGet(ctx, "project", id, &p)
+	if err == nil && s.WorkspaceEnabled() {
+		resources, e := s.ProjectResources(id)
+		if e != nil {
+			return p, e
+		}
+		p.Visible = []string{}
+		for _, resource := range resources {
+			if resource.AssetID != "" && !resource.Removed && !resource.Missing {
+				p.Visible = append(p.Visible, resource.AssetID)
+			}
+		}
+		slices.Sort(p.Visible)
+		media, _, e := s.projectMedia(ctx, p)
+		if e != nil {
+			return p, e
+		}
+		p.ConfirmedSHA = projectSHA(p, media)
+		p.ExternalAuthorized = true
+		p.TranscriptionAuthorized = true
+	}
 	return p, err
 }
 
@@ -252,7 +287,7 @@ func (s *Service) projectMedia(ctx context.Context, p skill.Project) ([]skill.Me
 		if err != nil {
 			return nil, nil, err
 		}
-		media = append(media, skill.Media{ID: m.ID, AssetID: m.AssetID, Name: m.Name, In: m.In, Out: m.Out, SHA: hex.EncodeToString(h.Sum(nil))})
+		media = append(media, skill.Media{Kind: m.Kind, ID: m.ID, AssetID: m.AssetID, Name: m.Name, In: m.In, Out: m.Out, SHA: hex.EncodeToString(h.Sum(nil))})
 		paths[m.ID] = m.Source
 	}
 	return media, paths, nil

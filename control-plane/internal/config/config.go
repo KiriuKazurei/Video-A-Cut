@@ -97,6 +97,9 @@ type Config struct {
 	// MCPAgentsFile enables the agent-only MCP endpoint when set. It contains
 	// SHA-256 token hashes, never bearer tokens.
 	MCPAgentsFile string
+	// MCPLocalAccess enables credential-free desktop MCP on direct loopback
+	// connections. It never exposes human HTTP capabilities.
+	MCPLocalAccess bool
 	// MaxAttempts is how many lease recoveries a task survives before the
 	// sweep fails it. Default 3.
 	MaxAttempts int
@@ -201,6 +204,9 @@ func (c Config) Validate() error {
 	}
 	if c.MCPAgentsFile != "" && (!filepath.IsAbs(c.MCPAgentsFile) || c.HttpAddr == "") {
 		return fmt.Errorf("config: mcp_agents_file needs an absolute path and enabled http_addr: %w", ErrInvalid)
+	}
+	if c.MCPLocalAccess && c.HttpAddr == "" {
+		return fmt.Errorf("config: mcp_local_access needs enabled loopback http_addr: %w", ErrInvalid)
 	}
 	if len(c.Roots()) > 0 && c.DeliveryRoot == "" {
 		return fmt.Errorf("config: ingest_roots need delivery_root for owned snapshots: %w", ErrInvalid)
@@ -318,6 +324,13 @@ func apply(cfg *Config, raw map[string]any) error {
 			return fmt.Errorf("mcp_agents_file: expected a path string: %w", ErrInvalid)
 		}
 		cfg.MCPAgentsFile = s
+	}
+	if v, ok := raw["mcp_local_access"]; ok {
+		b, ok := v.(bool)
+		if !ok {
+			return fmt.Errorf("mcp_local_access: expected a boolean: %w", ErrInvalid)
+		}
+		cfg.MCPLocalAccess = b
 	}
 	if v, ok := raw["ingest_roots"]; ok {
 		roots, err := decodeRoots(v)

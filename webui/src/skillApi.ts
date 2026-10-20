@@ -1,4 +1,4 @@
-import { request, setHumanAccessToken } from './api.ts';
+import { request } from './api.ts';
 import { apiURL } from './runtimeUrl.ts';
 import type { VacProject, ProjectSave, SkillPackage, ProjectVisibleSet, SkillRun, SkillRunCreate,
   SkillRunContext, SkillToolRequest, SkillStep, FFmpegCapabilities, SkillVoiceSave,
@@ -7,11 +7,6 @@ const id = encodeURIComponent;
 const json = (value: unknown, method = 'POST'): RequestInit =>
   ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) });
 export const skillApi = {
-  unlockHumanSession: async (token: string) => {
-    const result = await request<{ unlocked: boolean }>('/api/human-session', json({ token }));
-    if (result.unlocked) setHumanAccessToken(token); return result;
-  },
-  lockHumanSession: async () => { const result = await request<{ locked: boolean }>('/api/human-session', { method: 'DELETE' }); setHumanAccessToken(''); return result; },
   workbench: (run: string, signal?: AbortSignal) => request<SkillWorkbench>(`/api/skill-runs/${id(run)}/workbench`, { signal }),
   savePlan: (run: string, expected_version: number, plan: SkillPlan) => request<SkillRun>(`/api/skill-runs/${id(run)}/plan`, json({ expected_version, plan }, 'PUT')),
   requestEdit: (run: string, value: SkillEditRequest) => request<SkillRun>(`/api/skill-runs/${id(run)}/edits`, json(value)),

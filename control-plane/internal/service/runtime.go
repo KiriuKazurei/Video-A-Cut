@@ -1,6 +1,9 @@
 package service
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // RuntimeActivity lets the desktop ask about exit without reading SQLite itself.
 func (s *Service) RuntimeActivity(ctx context.Context) (int, error) {
@@ -13,6 +16,7 @@ func (s *Service) RuntimeActivity(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	count := len(tasks)
+	s.harnessMu.Lock(); for key := range s.harnessCancel { if strings.HasPrefix(key,"native:") || strings.HasPrefix(key,"proxy:") { count++ } }; s.harnessMu.Unlock()
 	for _, preview := range previews {
 		if preview.Status == "queued" || preview.Status == "running" {
 			count++

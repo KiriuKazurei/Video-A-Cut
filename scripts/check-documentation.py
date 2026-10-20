@@ -45,6 +45,9 @@ for root in args.root:
         if hashlib.sha256(raw).hexdigest()!=inv['source_hashes'][source]:errors.append('Stale source hash: '+source)
     endpoints=inv['endpoints'];keys=[(e['method'],e['path']) for e in endpoints]
     if len(keys)!=len(set(keys)):errors.append('Duplicate HTTP inventory entries')
+    expected=set(patterns)-{('POST','/api/providers/{operation}')}
+    expected.update({('POST','/api/providers/models'),('POST','/api/providers/test')})
+    if expected!=set(keys):errors.append('Exact route inventory differs: missing='+str(expected-set(keys))+' stale='+str(set(keys)-expected))
     def matches(pattern,entry):
         return pattern[0]==entry[0] and re.fullmatch(re.sub(r'\\\{[^}]+\\\}',r'[^/]+',re.escape(pattern[1])),entry[1])
     for pattern in patterns:
@@ -56,6 +59,15 @@ for root in args.root:
         if not re.search(r'\b'+re.escape(endpoint['backend_handler'])+r'\(',lines[ref['line']-1]):errors.append('Stale handler location: '+str(key))
     if len(patterns)!=inv['registered_route_count'] or len(keys)!=inv['expanded_endpoint_count']:errors.append('Route counts differ')
     counts['routes']=len(keys)
+    desktop=inv.get('desktop_commands',[])
+    shell=(root/'desktop/src/shell.rs').read_text(encoding='utf-8')
+    handler=re.search(r'invoke_handler\(tauri::generate_handler!\[(.*?)\]\)',shell,re.S)
+    names={name.strip().split('::')[-1] for name in handler[1].split(',') if name.strip()} if handler else set()
+    if names!={entry['command'] for entry in desktop}:errors.append('Desktop IPC inventory differs')
+    for entry in desktop:
+        ref=entry['source'];line=(root/ref['file']).read_text(encoding='utf-8').splitlines()[ref['line']-1]
+        if not re.search(r'\bfn\s+'+re.escape(entry['command'])+r'\(',line):errors.append('Stale desktop command location: '+entry['command'])
+    counts['desktop_commands']=len(desktop)
 result={'counts':counts,'errors':errors,'scope':'Local current links and historical authority links; latest-source HTTP registration, hashes and handler locations. External URLs not fetched.'}
 if os.getenv('VAC_TEST_OUTPUT'):
     output=Path(os.environ['VAC_TEST_OUTPUT'])/'docs-review-20261016'

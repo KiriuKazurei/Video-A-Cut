@@ -63,14 +63,15 @@ func serveJournaledMCP(base http.Handler, svc *service.Service, a Agent, w http.
 	}
 	_ = json.Unmarshal(call.Params.Arguments, &target)
 	actor := "agent:" + a.ID
-	detail, _ := json.Marshal(map[string]any{"tool": call.Params.Name, "arguments": call.Params.Arguments, "request_sha256": hexDigest(raw)})
+	identity := map[string]string{"name": a.Name, "version": a.Version, "source": a.Source, "peer": a.Peer, "identity_kind": a.IdentityKind}
+	detail, _ := json.Marshal(map[string]any{"tool": call.Params.Name, "arguments": call.Params.Arguments, "request_sha256": hexDigest(raw), "agent": identity})
 	if svc.RecordAgentOperation(r.Context(), actor, target.RunID, "mcp.requested", detail) != nil {
 		http.Error(w, "operation journal unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	response := &journalResponse{ResponseWriter: w, digest: sha256.New()}
 	base.ServeHTTP(response, r)
-	result, _ := json.Marshal(map[string]any{"tool": call.Params.Name, "status": response.status, "is_error": bytes.Contains(response.prefix.Bytes(), []byte(`"isError":true`)), "response_sha256": hex.EncodeToString(response.digest.Sum(nil))})
+	result, _ := json.Marshal(map[string]any{"tool": call.Params.Name, "status": response.status, "is_error": bytes.Contains(response.prefix.Bytes(), []byte(`"isError":true`)), "response_sha256": hex.EncodeToString(response.digest.Sum(nil)), "agent": identity})
 	// An incomplete terminal entry leaves a durable requested event. Future tool
 	// requests also fail closed if the journal is unavailable.
 	_ = svc.RecordAgentOperation(r.Context(), actor, target.RunID, "mcp.completed", result)

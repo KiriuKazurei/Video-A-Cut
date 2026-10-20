@@ -119,6 +119,7 @@ func (s *Service) resolveTTSBinding(ctx context.Context, b *tts.Binding) (*tts.B
 }
 
 func (s *Service) StartTTSPreview(ctx context.Context, actor string, req tts.PreviewRequest) (tts.Preview, error) {
+	if s.WorkspaceEnabled() && req.Settings.External() && !s.ProviderPolicy().ExternalTTS { return tts.Preview{}, fmt.Errorf("请在服务商设置中启用云端配音: %w", model.ErrForbidden) }
 	if actor == "" || !tts.ValidText(req.Text, 1000, true) || !tts.ValidText(req.IdempotencyKey, 128, true) {
 		return tts.Preview{}, model.ErrArgument
 	}

@@ -14,14 +14,5 @@ fn main() {
             return;
         }
     };
-    #[cfg(windows)]
-    let _instance = match platform::Instance::acquire() {
-        Ok(Some(instance)) => instance,
-        Ok(None) => return,
-        Err(error) => {
-            eprintln!("单实例检查失败: {error}");
-            return;
-        }
-    };
     shell::run(environment);
 }

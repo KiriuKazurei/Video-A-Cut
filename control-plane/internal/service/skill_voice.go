@@ -18,6 +18,7 @@ type SkillVoiceRequest struct {
 }
 
 func (s *Service) SaveSkillVoice(ctx context.Context, actor, id string, req SkillVoiceRequest) (skill.Run, error) {
+	if s.WorkspaceEnabled() { req.AcceptExternal = s.ProviderPolicy().ExternalTTS }
 	r, err := s.GetSkillRun(ctx, actor, id)
 	if err != nil {
 		return r, err

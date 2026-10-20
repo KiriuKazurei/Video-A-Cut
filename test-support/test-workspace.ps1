@@ -68,6 +68,8 @@ function Invoke-Manager([string]$action,[string]$version,[string[]]$extra=@(),[s
   $parameters=@('-NoProfile','-File',$manager,'-Action',$action,'-Version',$version,'-StorageRoot',$root)+$extra
   $messages=& pwsh @parameters 2>&1
   $code=$LASTEXITCODE
+  $script:lastManagerExitCode=$code
+  $script:lastManagerMessages=$messages
   if($Fail -and $code -eq 0){throw 'Expected refusal, but operation succeeded'}
   if(!$Fail -and $code -ne 0){throw ($messages -join "`n")}
   $script:checks++
@@ -91,6 +93,38 @@ if($baseline.tests.custom.result -ne 'pending'){throw 'Old result was presented 
 Invoke-Manager Run '0.0.2' @('-Suite','custom','-Executable','node','-ArgumentsJson','["-e","process.exit(0)"]')
 $fixed=Get-Content -LiteralPath (Join-Path $root '0.0.2/summary.json') -Raw|ConvertFrom-Json
 if($fixed.tests.custom.fixed_in -notmatch '0.0.2@.*0.0.1 failed→passed'){throw 'Cross-version repair was not recorded'}
+# Sparse logical size crosses the removed cap without allocating a large fixture.
+# The child remains alive beyond the former five-second quota sampling interval.
+$largeFixture=Join-Path $root '0.0.2/artifacts/custom/oversized.bin'
+[IO.File]::WriteAllBytes($largeFixture,[byte[]]@())
+& fsutil sparse setflag $largeFixture | Out-Null
+if($LASTEXITCODE -ne 0){throw 'Unable to mark the owned size-regression fixture sparse'}
+$cacheSentinel=Join-Path $root '0.0.2/cache/retained.txt'
+Set-Content -LiteralPath $cacheSentinel -Value 'retain cache'
+$growthCheck='const fs=require("node:fs"),p=require("node:path"); fs.truncateSync(p.join(process.env.VAC_TEST_ROOT,"oversized.bin"),501*1024*1024); setTimeout(()=>{fs.writeFileSync(p.join(process.env.VAC_TEST_ROOT,"completed.txt"),"completed"); console.log("size regression completed")},6000)'
+$growthArgs=ConvertTo-Json -InputObject @('-e',$growthCheck) -Compress
+Invoke-Manager Run '0.0.2' @('-Suite','custom','-Executable','node','-ArgumentsJson',$growthArgs)
+if((Get-Item -LiteralPath $largeFixture).Length -ne 501MB -or !(Test-Path -LiteralPath (Join-Path $root '0.0.2/artifacts/custom/completed.txt'))){throw 'Size growth interrupted the child or deleted its artifacts'}
+$checks++
+Invoke-Manager Measure '0.0.2'
+$usage=($lastManagerMessages -join "`n") | ConvertFrom-Json
+if($usage.total_bytes -lt 501MB -or $usage.PSObject.Properties.Name -contains 'limit_bytes' -or $usage.PSObject.Properties.Name -contains 'within_limit'){throw 'Measurement still reports a quota or omitted the large fixture'}
+$checks++
+Invoke-Manager Prepare '0.0.2'
+if(!(Test-Path -LiteralPath $largeFixture) -or !(Test-Path -LiteralPath $cacheSentinel)){throw 'Prepare deleted output or cache based on size'}
+$checks++
+$failureCheck='const fs=require("node:fs"),p=require("node:path"); fs.writeFileSync(p.join(process.env.VAC_TEST_ROOT,"failure.txt"),"failure evidence"); console.error("intentional failure evidence"); process.exit(7)'
+$failureArgs=ConvertTo-Json -InputObject @('-e',$failureCheck) -Compress
+Invoke-Manager Run '0.0.2' @('-Suite','custom','-Executable','node','-ArgumentsJson',$failureArgs) -Fail
+$failureSummary=Get-Content -LiteralPath (Join-Path $root '0.0.2/summary.json') -Raw | ConvertFrom-Json
+if($lastManagerExitCode -ne 7 -or $failureSummary.tests.custom.result -ne 'failed' -or
+  !(Test-Path -LiteralPath $largeFixture) -or !(Test-Path -LiteralPath $cacheSentinel) -or
+  (Get-Content -LiteralPath (Join-Path $root '0.0.2/artifacts/custom/failure.txt') -Raw).Trim() -ne 'failure evidence' -or
+  (Get-Content -LiteralPath (Join-Path $root '0.0.2/artifacts/custom/output.log') -Raw) -notmatch 'intentional failure evidence'){
+  throw 'Size changed the failure exit code or removed its summary, cache or evidence'
+}
+$checks++
+Remove-Fixture $largeFixture
 for($number=3;$number -le 5;$number++){Invoke-Manager Prepare "0.0.$number"}
 if(@(Get-ChildItem -LiteralPath (Join-Path $root 'archives') -File -Filter '*.md').Count -ne 3){throw 'Archive version limit not enforced'}
 $unmanaged=Join-Path $root 'unmanaged'
@@ -151,4 +185,4 @@ else:
 & python -B -c $pythonCheck
 if($LASTEXITCODE -ne 0){throw 'Python test path helper failed'}
 $checks+=2
-Write-Output "PASS: $checks lifecycle checks; version rotation, archives, read-only measurement, unknown directory, junction, running process, fail-to-pass history and full Clear."
+Write-Output "PASS: $checks lifecycle checks; version rotation, archives, read-only measurement, unknown directory, junction, running process, fail-to-pass history, uncapped size growth, failure evidence retention and full Clear."

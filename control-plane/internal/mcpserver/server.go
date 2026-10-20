@@ -21,10 +21,19 @@ import (
 )
 
 type Agent struct {
-	ID          string `json:"agent_id"`
-	Role        string `json:"role"`
-	TokenSHA256 string `json:"token_sha256"`
+	ID           string `json:"agent_id"`
+	Role         string `json:"role"`
+	TokenSHA256  string `json:"token_sha256"`
+	Name         string `json:"-"`
+	Version      string `json:"-"`
+	Source       string `json:"-"`
+	Peer         string `json:"-"`
+	IdentityKind string `json:"-"`
 }
+
+// LocalAccess permits desktop MCP clients on the loopback interface, without
+// issuing separate credentials. Worker bearer authentication remains supported.
+type Options struct{ LocalAccess bool }
 
 type credentials struct {
 	Agents []Agent `json:"agents"`
@@ -33,7 +42,10 @@ type identityKey struct{}
 
 // Load rejects ambiguous credentials at startup. The source file is intended
 // for local administration; bearer tokens are never persisted by this server.
-func Load(path string, svc *service.Service, lease time.Duration) (http.Handler, error) {
+func Load(path string, svc *service.Service, lease time.Duration, options ...Options) (http.Handler, error) {
+	if path == "" && len(options) > 0 && options[0].LocalAccess {
+		return New(nil, svc, lease, options...), nil
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -62,7 +74,7 @@ func Load(path string, svc *service.Service, lease time.Duration) (http.Handler,
 		}
 		seenIDs[a.ID], seenHashes[a.TokenSHA256] = true, true
 	}
-	return New(c.Agents, svc, lease), nil
+	return New(c.Agents, svc, lease, options...), nil
 }
 
 // reservedAgentID reports an agent id that would let an MCP worker pass for an
@@ -81,23 +93,30 @@ const maxRequestBytes = 256 << 10
 // DefaultLease is used when the caller passes a non-positive lease window.
 const DefaultLease = 30 * time.Second
 
-// New creates a stateless 2026-07-28 MCP endpoint. Authentication precedes
-// the SDK so unauthenticated callers cannot discover tools or call service.
+// New uses SDK-supported MCP versions. Worker authentication, or the explicitly
+// enabled local connection boundary, precedes SDK discovery and service calls.
 // lease is the window granted by claim_task and renewed by heartbeat; it comes
 // from the control plane configuration, never from the agent.
-func New(agents []Agent, svc *service.Service, lease time.Duration) http.Handler {
+func New(agents []Agent, svc *service.Service, lease time.Duration, options ...Options) http.Handler {
 	if lease <= 0 {
 		lease = DefaultLease
 	}
-	server := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.1.0"}, &mcp.ServerOptions{
-		SupportedProtocolVersions: []string{"2026-07-28"},
-	})
+	server := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.1.1"}, nil)
 	registerTools(server, svc)
 	registerSkillTools(server, svc)
 	registerTaskTools(server, svc, lease)
 	base := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	var local *localConnections
+	var localBase http.Handler
+	if len(options) > 0 && options[0].LocalAccess {
+		local = &localConnections{sessions: map[string]localSession{}}
+		localServer := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.1.1"}, nil)
+		// Desktop clients never inherit the internal pipeline's task queue tools.
+		registerSkillTools(localServer, svc)
+		localBase = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return localServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodPost && !(local != nil && r.Method == http.MethodDelete && r.Header.Get("Authorization") == "") {
 			w.Header().Set("Allow", "POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -109,6 +128,13 @@ func New(agents []Agent, svc *service.Service, lease time.Duration) http.Handler
 		// Tool arguments are small; a large body is either a bug or abuse.
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 		authorization := r.Header.Get("Authorization")
+		if authorization == "" && local != nil {
+			ctx, release, err := svc.BeginProjectRequest(r.Context(), "")
+			if err != nil { http.Error(w,"project is changing; reconnect and read projects.list",http.StatusConflict); return }
+			defer release()
+			local.serve(localBase, svc, w, r.WithContext(ctx))
+			return
+		}
 		if !strings.HasPrefix(authorization, "Bearer ") {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -124,6 +150,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration) http.Handler
 		for _, a := range agents {
 			stored, _ := hex.DecodeString(a.TokenSHA256)
 			if len(stored) == sha256.Size && subtle.ConstantTimeCompare(stored, hash[:]) == 1 {
+				a.Name, a.Source, a.IdentityKind = a.ID, "worker-bearer", "configured_worker"
 				serveJournaledMCP(base, svc, a, w, r.WithContext(context.WithValue(r.Context(), identityKey{}, a)))
 				return
 			}

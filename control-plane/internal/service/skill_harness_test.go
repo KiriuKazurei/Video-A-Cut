@@ -12,7 +12,11 @@ import (
 	"testing"
 )
 
-func TestSkillRealMediaFramesAndDelivery(t *testing.T) {
+func TestSkillRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, false) }
+
+func TestProjectRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, true) }
+
+func runSkillMediaDelivery(t *testing.T, native bool) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
@@ -33,24 +37,78 @@ func TestSkillRealMediaFramesAndDelivery(t *testing.T) {
 	if err = svc.ConfigureSkillHarness(ctx); err != nil {
 		t.Fatal(err)
 	}
-	p, err := svc.SaveProject(ctx, "human:test", "", service.ProjectRequest{Name: "Real", Flow: "visual_heavy", Assets: []string{"clip"}, Visible: []string{"clip"}, AcceptExternal: true})
-	if err != nil {
-		t.Fatal(err)
+	var p skill.Project
+	var v skill.VisibleSet
+	if native {
+		if err = svc.ConfigureProjectWorkspace(ctx); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(svc.CloseProjectWorkspace)
+		view, e := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(t.TempDir(), "real.avp"), Name: "Native media"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		original := filepath.Join(t.TempDir(), "a.mp4")
+		data, e := os.ReadFile(media[0].Path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(original, data, 0600); e != nil {
+			t.Fatal(e)
+		}
+		if _, err = svc.ImportProjectResource(ctx, view.Document.Project.ID, original); err != nil {
+			t.Fatal(err)
+		}
+		p, err = svc.GetProject(ctx, view.Document.Project.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err = svc.ProjectVisibleSet(ctx, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		p, err = svc.SaveProject(ctx, "human:test", "", service.ProjectRequest{Name: "Real", Flow: "visual_heavy", Assets: []string{"clip"}, Visible: []string{"clip"}, AcceptExternal: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err = svc.ProjectVisibleSet(ctx, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = svc.ConfirmProjectVisible(ctx, "human:test", p.ID, v.SHA, p.Version); err != nil {
+			t.Fatal(err)
+		}
 	}
-	v, err := svc.ProjectVisibleSet(ctx, p.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = svc.ConfirmProjectVisible(ctx, "human:test", p.ID, v.SHA, p.Version); err != nil {
-		t.Fatal(err)
-	}
-	r, err := svc.CreateSkillRun(ctx, "agent:test", skill.RunRequest{ProjectID: p.ID, SkillID: "vac-visual-summary", Mode: "external_mcp", AgentRole: "narrator", VisibleSHA: v.SHA, Goal: "Show scene", IdempotencyKey: "real"})
+	r, err := svc.CreateSkillRun(ctx, "agent:test", skill.RunRequest{ProjectID: p.ID, Flow: "visual_heavy", SkillID: "vac-visual-summary", Mode: "external_mcp", AgentRole: "narrator", VisibleSHA: v.SHA, Goal: "Show scene", IdempotencyKey: "real"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "media.get_frames", Arguments: json.RawMessage("{}"), ExpectedVersion: r.Version, IdempotencyKey: "frames"})
 	if err != nil || len(r.Frames) < 2 {
 		t.Fatalf("frames %+v %v", r, err)
+	}
+	if native {
+		secondSource := filepath.Join(t.TempDir(), "b.mp4")
+		bytes, e := os.ReadFile(media[0].Path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(secondSource, bytes, 0600); e != nil {
+			t.Fatal(e)
+		}
+		view, e := svc.ImportProjectResource(ctx, p.ID, secondSource)
+		if e != nil {
+			t.Fatal(e)
+		}
+		note := "备注不会使已有成片任务失效"
+		renamed := "仅更改显示名称"
+		if _, e = svc.UpdateProjectResource(ctx, p.ID, view.Document.Resources[0].ID, service.ResourcePatch{Notes: &note, Name: &renamed}); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = svc.SkillRunContext(ctx, "human:test", r.ID); e != nil {
+			t.Fatal("unrelated import/notes/rename invalidated run", e)
+		}
 	}
 	spent := r.FramesSpent
 	r, err = svc.MoveSkillHistory(ctx, "human:test", r.ID, "undo", r.Version)
@@ -112,6 +170,48 @@ func TestSkillRealMediaFramesAndDelivery(t *testing.T) {
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "renders.inspect", ExpectedVersion: r.Version, IdempotencyKey: "inspect"})
 	if err != nil || r.Inspection == nil || len(r.Inspection.FrameIDs) < 2 {
 		t.Fatalf("render inspection: %+v %v", r.Inspection, err)
+	}
+	if native {
+		review := *r.Inspection
+		review.Verdict = "passed"
+		review.Issues = []string{}
+		reviewJSON, _ := json.Marshal(review)
+		r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "renders.review", Arguments: reviewJSON, ExpectedVersion: r.Version, IdempotencyKey: "review-before-save"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "run.finish", ExpectedVersion: r.Version, IdempotencyKey: "finish-before-save"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		view, e := svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{})
+		if e != nil {
+			t.Fatal(e)
+		}
+		originalProject := view.Path
+		fresh, _ := avpWorkspaceFixture(t)
+		if e = fresh.ConfigureSkillHarness(ctx); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = fresh.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: originalProject}); e != nil {
+			t.Fatal(e)
+		}
+		if _, _, e = fresh.SkillArtifactPath(ctx, "human:test", r.ID, mp4.ID); e != nil {
+			t.Fatal("fresh cache lost completed output reference", e)
+		}
+		clone, e := svc.ProjectFileCommand(ctx, "save-as", service.ProjectCommand{Path: filepath.Join(t.TempDir(), "copy.avp")})
+		if e != nil {
+			t.Fatal(e)
+		}
+		if clone.Document.Project.ID == p.ID {
+			t.Fatal("save-as reused identity")
+		}
+		if _, _, e = svc.SkillArtifactPath(ctx, "human:test", r.ID, mp4.ID); e != nil {
+			t.Fatal("save-as lost completed output", e)
+		}
+		if _, e = svc.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: originalProject}); e != nil {
+			t.Fatal(e)
+		}
 	}
 	index := 0
 	r, err = svc.RequestSkillEdit(ctx, "human:test", r.ID, service.SkillEditRequest{ExpectedVersion: r.Version, PlanVersion: r.Plan.Version, Prompt: "Change only the opening narration", SegmentIndex: &index, ArtifactID: mp4.ID, ArtifactSHA: mp4.SHA, IdempotencyKey: "local-edit"})

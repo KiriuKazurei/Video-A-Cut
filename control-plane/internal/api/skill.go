@@ -9,6 +9,7 @@ import (
 )
 
 func (s *Server) skillRoutes() {
+	s.projectRoutes()
 	s.skillEditRoutes()
 	s.mux.HandleFunc("GET /api/skill-runs/{id}/revisions", s.skillRevisions)
 	s.mux.HandleFunc("PUT /api/skill-runs/{id}/voice", s.skillVoice)

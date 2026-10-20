@@ -340,6 +340,11 @@ def run_loop(client: Client, cfg: Config, log, stop: threading.Event, once: bool
         task = claim["task"]
         log(f"claimed {task['task_id']} ({task['type']}) for {task['asset_id']}")
         result = process_task(client, cfg, task, log)
+        # Idle acknowledges that the stage and its cleanup have exited.
+        try:
+            client.call("heartbeat", heartbeat_args)
+        except (ToolError, TransportError) as err:
+            log(f"idle heartbeat error: {err}")
         log(f"task {task['task_id']}: {result['outcome']}" + (f" - {result.get('reason')}" if result.get("reason") else ""))
         if once:
             return result

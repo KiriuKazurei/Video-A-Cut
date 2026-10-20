@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Checkbox, Flex, Form, Input, InputNumber, List, Radio, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Flex, Form, Input, InputNumber, List, Radio, Space, Tag, Typography } from 'antd';
 import { skillApi } from '../skillApi';
+import { api } from '../api';
 import { createSkillEdit, skillPreviewSource } from '../skillEditing';
 import { skillQueryKeys, type SkillFlow, type SkillExecutionMode, type SkillPlan, type SkillToolName } from '../skillContracts';
 import { useSkillWorkspace } from '../skillWorkspace';
@@ -11,13 +12,14 @@ import { ProtectedError } from './HumanSessionControl';
 import { ValueSelect, errorText } from './ui';
 import {
   FLOW_LABEL, PAUSE_REASON_LABEL, READONLY_TOOL_ACTIONS, RUN_STATE_LABEL,
-  consentAfterVisibility, historyMoves, isHumanUnlockRequired, isVersionConflict, newIdempotencyKey,
-  projectDraft, protectedQueryRetry, rangeFromSegments, revisionLabel, runDetailKey, splitPlanSegment, versionConflictMessage
+  historyMoves, isHumanUnlockRequired, isVersionConflict, newIdempotencyKey,
+  protectedQueryRetry, rangeFromSegments, revisionLabel, runDetailKey, splitPlanSegment, versionConflictMessage
 } from '../skillView';
 
 type EditMode = 'segment' | 'point' | 'range';
+type RunCommand = { project: string; run: string; key: string; controller?: AbortController };
 
-export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteState>) => void }) {
+export function SkillRunModule({ navigate, active = true }: { navigate: (state: Partial<RouteState>) => void; active?: boolean }) {
   const workspace = useSkillWorkspace();
   const client = useQueryClient();
   const projectId = workspace.projectId;
@@ -29,8 +31,9 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
   const [steps, setSteps] = useState<number | null>(null);
   const [seconds, setSeconds] = useState<number | null>(null);
   const [frames, setFrames] = useState<number | null>(null);
-  const [acceptExternal, setAcceptExternal] = useState(false);
-  const [acceptTranscription, setAcceptTranscription] = useState(false);
+  const [profileId, setProfileId] = useState('');
+  const profiles = useQuery({ queryKey: ['processing-profiles'], queryFn: api.listProfiles });
+  const selectedProfile = profiles.data?.find(item => item.profile_id === profileId);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<PreviewSource>(null);
@@ -41,10 +44,14 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
   const [atSeconds, setAtSeconds] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [planDraft, setPlanDraft] = useState<SkillPlan | null>(null);
+  const [planBase, setPlanBase] = useState<{ project: string; run: string; version: number } | null>(null);
   const [toolResult, setToolResult] = useState('');
   const createKey = useRef(newIdempotencyKey('run'));
   const editKey = useRef(newIdempotencyKey('edit'));
   const abortRef = useRef<AbortController | null>(null);
+  const currentRunKey = JSON.stringify([projectId, runId, workspace.epoch]);
+  const activeRunKey = useRef(currentRunKey);
+  activeRunKey.current = currentRunKey;
 
   const project = useQuery({
     queryKey: projectId ? skillQueryKeys.project(projectId) : ['vu-project', 'run-idle'],
@@ -106,21 +113,13 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
   useEffect(() => {
     setPreview(null);
     setHistorical(false);
-    setAcceptExternal(false);
-    setAcceptTranscription(false);
+    setPlanDraft(null);
+    setPlanBase(null);
+    setPrompt('');
+    setToolResult('');
     abortRef.current?.abort();
   }, [workspace.epoch]);
-  useEffect(() => {
-    const reset = () => {
-      if (document.visibilityState !== 'hidden') return;
-      const next = consentAfterVisibility(true, { external: acceptExternal, transcription: acceptTranscription });
-      setAcceptExternal(next.external);
-      setAcceptTranscription(next.transcription);
-    };
-    document.addEventListener('visibilitychange', reset);
-    return () => document.removeEventListener('visibilitychange', reset);
-  }, [acceptExternal, acceptTranscription]);
-
+  useEffect(() => () => abortRef.current?.abort(), []);
   const reloadRun = async () => {
     if (!projectId || !runId) return;
     await client.invalidateQueries({ queryKey: ['vu-run', projectId, runId] });
@@ -136,30 +135,75 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
     onSuccess: async () => { setError(''); workspace.markUnlocked(); await reloadRun(); },
     onError: fail
   });
+  useEffect(() => {
+    if (!active) return;
+    const edit = (event: Event) => {
+      if (!run.data || action.isPending) return;
+      event.preventDefault();
+      const command = (event as CustomEvent<'undo' | 'redo'>).detail;
+      action.mutate(async () => { await skillApi.moveHistory(runId, command, run.data!.version); setHistorical(false); setPreview(null); });
+    };
+    window.addEventListener('vac:edit-command', edit); return () => window.removeEventListener('vac:edit-command', edit);
+  }, [active, run.data, runId, action.isPending]);
+  const refreshCommand = (snapshot: RunCommand) => Promise.all([
+    client.invalidateQueries({ queryKey: skillQueryKeys.run(snapshot.project, snapshot.run) }),
+    client.invalidateQueries({ queryKey: skillQueryKeys.runs(snapshot.project) }),
+    client.invalidateQueries({ queryKey: skillQueryKeys.context(snapshot.project, snapshot.run) })
+  ]);
+  const executeRun = useMutation({
+    mutationFn: (snapshot: RunCommand & { version: number; controller: AbortController }) =>
+      skillApi.execute(snapshot.run, snapshot.version, snapshot.controller.signal),
+    onError: (reason, snapshot) => {
+      if (!snapshot.controller.signal.aborted && activeRunKey.current === snapshot.key) fail(reason);
+    },
+    onSettled: (_data, _error, snapshot) => refreshCommand(snapshot)
+  });
+  const cancelRun = useMutation({
+    mutationFn: async (snapshot: RunCommand) => {
+      // Execute advances the CAS while it runs. Read before cancelling and retry
+      // one conflict; never retry the execute operation itself.
+      for (let attempt = 0; ; attempt++) {
+        const latest = await skillApi.run(snapshot.run);
+        if (latest.state === 'succeeded' || latest.state === 'cancelled') return latest;
+        try { return await skillApi.action(snapshot.run, 'cancel', latest.version); }
+        catch (reason) { if (!isVersionConflict(reason) || attempt >= 1) throw reason; }
+      }
+    },
+    onSuccess: (updated, snapshot) => {
+      snapshot.controller?.abort();
+      if (activeRunKey.current === snapshot.key) {
+        setError('');
+        setNotice(updated.state === 'cancelled' ? '运行已取消，已停止本次执行请求。' : '运行已结束，已重新读取最新状态。');
+      }
+    },
+    onError: (reason, snapshot) => { if (activeRunKey.current === snapshot.key) fail(reason); },
+    onSettled: (_data, _error, snapshot) => refreshCommand(snapshot)
+  });
+  const executing = executeRun.isPending && executeRun.variables?.key === currentRunKey;
+  const cancelling = cancelRun.isPending && cancelRun.variables?.key === currentRunKey;
+  const busy = action.isPending || executing || cancelling;
 
   const selectedSkill = skills.data?.find((item) => item.id === skillId);
   const compatible = (skills.data ?? []).filter((item) => item.compatible_flows.includes(flow) && !(project.data?.disabled_skills ?? []).includes(item.id));
   const moves = historyMoves(history.data);
   const terminal = run.data?.state === 'succeeded' || run.data?.state === 'failed' || run.data?.state === 'cancelled';
   const segments = workbench.data?.segments ?? [];
+  const currentPlanDraft = planBase?.project === projectId && planBase.run === runId && planBase.version === run.data?.version;
 
   const create = () => action.mutate(async () => {
-    if (!project.data || !visible.data?.confirmed) throw new Error('请先确认当前项目可见集');
+    if (!project.data || !visible.data?.confirmed) throw new Error('当前工程素材尚未载入');
     const created = await skillApi.createRun({
       project_id: projectId,
+      flow,
       skill_id: skillId,
       execution_mode: mode,
       visible_set_sha: visible.data.sha256,
       goal: goal.trim(),
       idempotency_key: createKey.current,
-      ...(project.data.profile_id ? { profile_id: project.data.profile_id, profile_revision: project.data.profile_revision } : {}),
-      ...(acceptExternal ? { accept_external: true } : {}),
-      ...(acceptTranscription ? { accept_transcription: true } : {}),
+      ...(selectedProfile ? { profile_id: selectedProfile.profile_id, profile_revision: selectedProfile.revision } : {}),
       ...(steps || seconds || frames ? { budget: { ...(steps ? { max_steps: steps } : {}), ...(seconds ? { max_seconds: seconds } : {}), ...(frames ? { max_frames: frames } : {}) } } : {})
     });
     createKey.current = newIdempotencyKey('run');
-    setAcceptExternal(false);
-    setAcceptTranscription(false);
     workspace.setRunId(created.id);
     setNotice(mode === 'external_mcp' ? '运行已创建。外部 Agent 自行领取，这里不配置它的推理 Key。' : '运行已创建。内置模式使用预设里的解说服务。');
   });
@@ -173,7 +217,7 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
       src: source.src,
       title: item.artifact.name,
       meta: source.historical ? '历史预览' : '当前成片',
-      note: source.historical ? '历史预览只读，不能直接授权新修改。' : '短时只读地址，退出会话后失效，不会交给 Agent。'
+      note: source.historical ? '历史预览只读，不能直接授权新修改。' : '当前工程的成片预览。'
     });
   };
 
@@ -188,14 +232,6 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
     editKey.current = newIdempotencyKey('edit');
     setPrompt('');
     setNotice('修改已提交。新计划需要人工确认后才会继续出片。');
-  });
-
-  const saveFlow = () => action.mutate(async () => {
-    if (!project.data) return;
-    const saved = await skillApi.saveProject(projectId, { ...projectDraft(project.data), flow, expected_version: project.data.version });
-    setNotice('项目流程已更新。旧的可见集确认和运行上下文已清除，请回到资源页重新确认。');
-    await client.invalidateQueries({ queryKey: skillQueryKeys.project(saved.id) });
-    await client.invalidateQueries({ queryKey: skillQueryKeys.visible(saved.id) });
   });
 
   const authError = project.error || runs.error || run.error || workbench.error;
@@ -213,8 +249,6 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
           <Form.Item label="素材流程" layout="vertical" style={{ marginBottom: 0, minWidth: 220 }}>
             <ValueSelect<SkillFlow> aria-label="素材流程" value={flow} onChange={setFlow} options={(['lightweight', 'visual_heavy'] as const).map((item) => ({ value: item, label: FLOW_LABEL[item] }))} />
           </Form.Item>
-          <Button disabled={flow === project.data.flow} loading={action.isPending} onClick={saveFlow}>保存项目流程</Button>
-          {flow !== project.data.flow && <Typography.Text type="warning">保存流程会清除旧确认，之后需要重新确认可见集。</Typography.Text>}
         </Flex>
         <Flex gap={8} wrap align="flex-end">
           <Form.Item label="Skill" layout="vertical" style={{ marginBottom: 0, minWidth: 240, flex: 1 }}>
@@ -232,13 +266,9 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
           <span>秒数上限</span><InputNumber aria-label="秒数上限" min={1} max={3600} value={seconds ?? undefined} onChange={(value) => setSeconds(value)} placeholder="900" />
           <span>抽帧上限</span><InputNumber aria-label="抽帧上限" min={1} max={48} value={frames ?? undefined} onChange={(value) => setFrames(value)} placeholder="24" />
         </Space>
-        <Typography.Text type="secondary">{project.data.profile_id ? `使用项目固定预设 ${project.data.profile_id} / v${project.data.profile_revision ?? 0}，运行时不能改投其它预设。` : '项目没有固定预设。内置模式需要已配置的解说服务。'}</Typography.Text>
-        <Space wrap>
-          <Checkbox checked={acceptExternal} onChange={(event) => setAcceptExternal(event.target.checked)}>本次运行允许外发</Checkbox>
-          <Checkbox checked={acceptTranscription} onChange={(event) => setAcceptTranscription(event.target.checked)}>本次运行允许转录</Checkbox>
-        </Space>
-        {!visible.data?.confirmed && <Alert type="warning" showIcon message="项目可见集还没有确认" action={<Button size="small" onClick={() => navigate({ workspace: 'resources' })}>去资源页确认</Button>} />}
-        <Button type="primary" disabled={!skillId || !goal.trim() || !visible.data?.confirmed || flow !== project.data.flow} loading={action.isPending} onClick={create}>创建运行</Button>
+        <Form.Item label="处理预设" style={{ marginBottom: 0 }}><ValueSelect<string> aria-label="运行处理预设" value={profileId} onChange={setProfileId} options={[{ value: '', label: '未指定' }, ...(profiles.data ?? []).map(item => ({ value: item.profile_id, label: `${item.name} · v${item.revision}` }))]} /></Form.Item>
+        <Typography.Text type="secondary">资源来自当前工程，服务商调用使用设置中的统一配置。</Typography.Text>
+        <Button type="primary" disabled={!skillId || !goal.trim() || !visible.data?.confirmed} loading={action.isPending} onClick={create}>创建运行</Button>
       </Flex>
     </Card>}
     <Card size="small" title="运行列表">
@@ -260,11 +290,14 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
         </Space>
         {context.data && <Typography.Text type="secondary">冻结 Skill {context.data.skill.name} · 媒体 {context.data.media.length} · 工具 {context.data.tools.join('、')}</Typography.Text>}
         <Space wrap>
-          <Button disabled={!run.data.plan || action.isPending} onClick={() => action.mutate(() => skillApi.action(runId, 'finalize', run.data!.version))}>人工定稿</Button>
-          <Button disabled={run.data.state !== 'waiting_human' || run.data.reason === 'plan_confirmation' || action.isPending} onClick={() => action.mutate(() => skillApi.action(runId, 'resume', run.data!.version))}>恢复执行</Button>
-          <Button danger disabled={terminal || action.isPending} onClick={() => action.mutate(() => skillApi.action(runId, 'cancel', run.data!.version))}>取消运行</Button>
+          <Button disabled={!run.data.plan || busy} onClick={() => action.mutate(() => skillApi.action(runId, 'finalize', run.data!.version))}>人工定稿</Button>
+          <Button disabled={run.data.state !== 'waiting_human' || run.data.reason === 'plan_confirmation' || busy} onClick={() => action.mutate(() => skillApi.action(runId, 'resume', run.data!.version))}>恢复执行</Button>
+          <Button danger loading={cancelling} disabled={terminal || action.isPending || cancelling} onClick={() => cancelRun.mutate({ project: projectId, run: runId, key: currentRunKey, controller: abortRef.current ?? undefined })}>取消运行</Button>
           {run.data.execution_mode === 'builtin_api'
-            ? <Button type="primary" disabled={terminal || action.isPending} onClick={() => action.mutate(async () => { abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller; await skillApi.execute(runId, run.data!.version, controller.signal); })}>执行内置 Agent</Button>
+            ? <Button type="primary" loading={executing} disabled={terminal || busy} onClick={() => {
+              abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller;
+              executeRun.mutate({ project: projectId, run: runId, key: currentRunKey, version: run.data!.version, controller });
+            }}>执行内置 Agent</Button>
             : <Typography.Text type="secondary">外部 Agent 自行领取并调用工具，不需要在这里填写 VAC 推理 Key。</Typography.Text>}
           <Button onClick={() => navigate({ workspace: 'tts', scriptId: '' })}>到 TTS 回写声音</Button>
         </Space>
@@ -275,7 +308,7 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
         </List.Item>} />
         <Typography.Text type="secondary">修订 {revisions.data?.length ?? 0} 条：{(revisions.data ?? []).slice(0, 8).map(revisionLabel).join('、') || '—'}</Typography.Text>
         <Space wrap>
-          {READONLY_TOOL_ACTIONS.map((tool) => <Button key={tool.name} disabled={action.isPending} onClick={() => action.mutate(async () => {
+          {READONLY_TOOL_ACTIONS.map((tool) => <Button key={tool.name} disabled={busy} onClick={() => action.mutate(async () => {
             const result = await skillApi.tool(runId, { name: tool.name as SkillToolName, arguments: {}, expected_version: run.data!.version, idempotency_key: newIdempotencyKey(tool.name) });
             setToolResult(JSON.stringify(result.result ?? result.run, null, 2));
           })}>{tool.label}</Button>)}
@@ -312,13 +345,13 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
           {editMode === 'point' && <InputNumber aria-label="成片时间点" min={0} step={0.1} value={atSeconds} onChange={(value) => setAtSeconds(value ?? 0)} addonAfter="秒" />}
         </Space>
         <Input.TextArea aria-label="修改提示词" rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="说明要改的内容。成片时间不会被当成源素材时间。" />
-        <Button type="primary" disabled={historical || !prompt.trim() || !workbench.data.run.plan} loading={action.isPending} onClick={submitEdit}>提交定向修改</Button>
+        <Button type="primary" disabled={busy || historical || !prompt.trim() || !workbench.data.run.plan} loading={action.isPending} onClick={submitEdit}>提交定向修改</Button>
         {historical && <Typography.Text type="warning">正在查看历史预览，不能直接授权新修改。</Typography.Text>}
       </Flex>
     </Card>}
     {run.data?.plan && <Card size="small" title="人工计划">
       <Flex vertical gap={8}>
-        <Button onClick={() => setPlanDraft(structuredClone(run.data!.plan!))}>载入当前计划</Button>
+        <Button onClick={() => { setPlanDraft(structuredClone(run.data!.plan!)); setPlanBase({ project: projectId, run: runId, version: run.data!.version }); }}>载入当前计划</Button>
         {planDraft && <>
           <Input.TextArea aria-label="计划正文" rows={6} value={planDraft.body} onChange={(event) => setPlanDraft({ ...planDraft, body: event.target.value })} />
           {planDraft.segments.map((segment, index) => <Space key={index} wrap>
@@ -328,8 +361,10 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
             <InputNumber aria-label={`片段${index + 1}终点`} value={segment.end} onChange={(value) => setPlanDraft({ ...planDraft, segments: planDraft.segments.map((item, itemIndex) => itemIndex === index ? { ...item, end: value ?? item.end } : item) })} />
             <Button onClick={() => { try { setPlanDraft(splitPlanSegment(planDraft, index)); } catch (reason) { setError(errorText(reason)); } }}>拆开此段</Button>
           </Space>)}
-          <Button type="primary" loading={action.isPending} onClick={() => action.mutate(async () => {
-            await skillApi.savePlan(runId, run.data!.version, planDraft);
+          {!currentPlanDraft && <Alert type="warning" showIcon message="计划版本或所属运行已变化，请重新载入当前计划后再保存。" />}
+          <Button type="primary" disabled={busy || !currentPlanDraft} loading={action.isPending} onClick={() => action.mutate(async () => {
+            if (!currentPlanDraft || !planBase) throw new Error(versionConflictMessage());
+            await skillApi.savePlan(planBase.run, planBase.version, structuredClone(planDraft));
             setNotice('计划已保存为新修订，需要重新人工定稿。');
           })}>保存计划草案</Button>
         </>}
@@ -338,8 +373,8 @@ export function SkillRunModule({ navigate }: { navigate: (state: Partial<RouteSt
     {run.data && <Card size="small" title="备份与撤销">
       <Flex vertical gap={8}>
         <Space wrap>
-          <Button disabled={!moves.undo || action.isPending} onClick={() => action.mutate(async () => { await skillApi.moveHistory(runId, 'undo', run.data!.version); setHistorical(false); setPreview(null); setNotice('已撤销到上一节点。定稿和声音外发许可已清除，预算不退还，需要重新定稿。'); })}>撤销</Button>
-          <Button disabled={!moves.redo || action.isPending} onClick={() => action.mutate(async () => { await skillApi.moveHistory(runId, 'redo', run.data!.version); setHistorical(false); setPreview(null); setNotice('已重做。恢复后的版本需要重新定稿，不能复活已撤销的外发授权。'); })}>重做</Button>
+          <Button disabled={!moves.undo || busy} onClick={() => action.mutate(async () => { await skillApi.moveHistory(runId, 'undo', run.data!.version); setHistorical(false); setPreview(null); setNotice('已撤销到上一节点。定稿已清除，预算不退还，需要重新定稿。'); })}>撤销</Button>
+          <Button disabled={!moves.redo || busy} onClick={() => action.mutate(async () => { await skillApi.moveHistory(runId, 'redo', run.data!.version); setHistorical(false); setPreview(null); setNotice('已重做。恢复后的版本需要重新定稿。'); })}>重做</Button>
         </Space>
         <List size="small" dataSource={history.data?.checkpoints ?? []} locale={{ emptyText: '还没有备份节点' }} renderItem={(item) => {
           const film = item.snapshot.artifacts?.find((artifact) => artifact.kind === 'mp4');

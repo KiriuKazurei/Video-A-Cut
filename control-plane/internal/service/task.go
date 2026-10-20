@@ -149,6 +149,14 @@ func (s *Service) ClaimTask(ctx context.Context, agentID, role string, lease tim
 // ClaimForExecution claims a task and, for ingest/preview work, allocates an execution
 // scope. Replaying request_id returns the original scope or obsolete.
 func (s *Service) ClaimForExecution(ctx context.Context, agentID, role string, lease time.Time, opt ClaimOptions) (ClaimOutcome, error) {
+	if w := s.workspace; w != nil {
+		w.mu.Lock()
+		paused := w.document == nil || w.closing
+		w.mu.Unlock()
+		if paused {
+			return ClaimOutcome{}, nil
+		}
+	}
 	if agentID == "" {
 		return ClaimOutcome{}, fmt.Errorf("service: claim task: agent_id is required: %w", model.ErrArgument)
 	}

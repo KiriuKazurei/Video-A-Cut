@@ -26,3 +26,5 @@ finalizes, renders.create produces the MP4 and Premiere package from that exact
 plan. Inspect cut boundaries via media.get_frames or artifact evidence, then call
 run.finish only when deliverables exist. No success claim from an unrendered plan.
 Use at most the run budget. Do not fabricate visual evidence or human acceptance.
+
+Read vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the mandatory renders.inspect -> artifacts.get images -> renders.review -> run.finish sequence.

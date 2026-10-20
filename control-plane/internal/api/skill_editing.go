@@ -10,8 +10,6 @@ import (
 )
 
 func (s *Server) skillEditRoutes() {
-	s.mux.HandleFunc("POST /api/human-session", s.humanSkillSession)
-	s.mux.HandleFunc("DELETE /api/human-session", s.humanSkillLogout)
 	s.mux.HandleFunc("GET /api/agent-operations", s.agentOperations)
 	s.mux.HandleFunc("GET /api/agent-operations/verify", s.verifyAgentOperations)
 	s.mux.HandleFunc("POST /api/agent-operations/notes", s.agentOperationNote)

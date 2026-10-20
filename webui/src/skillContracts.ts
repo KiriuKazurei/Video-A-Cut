@@ -26,6 +26,7 @@ export interface SkillPackage {
   content_sha256: string; upstream?: string;
 }
 export interface ProjectMedia {
+  kind?: 'video' | 'audio';
   id: string; asset_id: string; name: string; in: number; out: number; sha256: string;
 }
 export interface ProjectVisibleSet {
@@ -90,6 +91,7 @@ export interface SkillWorkbench {
   previews: { artifact: SkillArtifact; available: boolean; is_current: boolean; historical: boolean; checkpoint_id: string; exportable: boolean; preview_url?: string }[];
 }
 export interface SkillRunCreate {
+  flow?: SkillFlow;
   accept_transcription?: boolean;
   project_id: string; skill_id: string; execution_mode: SkillExecutionMode; visible_set_sha: string;
   goal: string; profile_id?: string; profile_revision?: number; accept_external?: boolean;

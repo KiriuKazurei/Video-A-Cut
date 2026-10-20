@@ -168,6 +168,7 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 		_ = st.Close()
 		return nil, fmt.Errorf("control plane: Skill Harness: %w", err)
 	}
+	if err := svc.ConfigureProjectWorkspace(context.Background()); err != nil { svc.CloseTTS(); _ = st.Close(); return nil, fmt.Errorf("control plane: project workspace: %w", err) }
 	a := &app{
 		st:   st,
 		svc:  svc,
@@ -229,8 +230,8 @@ func (a *app) listenHTTP() error {
 			return fmt.Errorf("web root: %w", err)
 		}
 	}
-	if a.cfg.MCPAgentsFile != "" {
-		mcpHandler, err := mcpserver.Load(a.cfg.MCPAgentsFile, a.svc, leaseInterval(a.cfg))
+	if a.cfg.MCPAgentsFile != "" || a.cfg.MCPLocalAccess {
+		mcpHandler, err := mcpserver.Load(a.cfg.MCPAgentsFile, a.svc, leaseInterval(a.cfg), mcpserver.Options{LocalAccess: a.cfg.MCPLocalAccess})
 		if err != nil {
 			return fmt.Errorf("mcp agents: %w", err)
 		}
@@ -270,6 +271,7 @@ func startup(configPath, dbPath string) (*app, error) {
 // call on a partially assembled app (nil fields are skipped), so a failed
 // startup can still shut down cleanly.
 func (a *app) Close() error {
+	if a.svc != nil { a.svc.CloseProjectWorkspace() }
 	if a.svc != nil {
 		a.svc.CloseTTS()
 	}

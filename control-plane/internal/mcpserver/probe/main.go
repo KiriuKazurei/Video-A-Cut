@@ -14,34 +14,45 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type bearer struct {
-	token string
-	base  http.RoundTripper
+	token  string
+	base   http.RoundTripper
+	source string
 }
 
 func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
-	r.Header.Set("Authorization", "Bearer "+b.token)
+	if b.token != "" {
+		r.Header.Set("Authorization", "Bearer "+b.token)
+	}
+	if b.source != "" {
+		r.Header.Set("X-VAC-Agent-Source", b.source)
+	}
 	return b.base.RoundTrip(r)
 }
 
 func main() {
 	url := flag.String("url", "", "MCP endpoint")
-	tokenEnv := flag.String("token-env", "VAC_MCP_TOKEN", "env var holding the bearer token")
+	tokenEnv := flag.String("token-env", "", "optional internal worker token env; desktop MCP needs none")
+	protocol := flag.String("protocol", "", "MCP protocol version; default SDK negotiation")
+	clientName := flag.String("client-name", "vac-probe", "reported MCP client name")
+	source := flag.String("source", "vac-probe", "reported Agent source recorded in human-only logs")
 	script := flag.String("calls", "", "semicolon-separated tool:jsonargs list")
 	flag.Parse()
 	token := os.Getenv(*tokenEnv)
-	ctx := context.Background()
-	client := mcp.NewClient(&mcp.Implementation{Name: "vac-probe", Version: "0.1.0"}, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	client := mcp.NewClient(&mcp.Implementation{Name: *clientName, Version: "0.1.1"}, nil)
 	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint:             *url,
-		HTTPClient:           &http.Client{Transport: bearer{token: token, base: http.DefaultTransport}},
+		HTTPClient:           &http.Client{Transport: bearer{token: token, base: http.DefaultTransport, source: *source}},
 		DisableStandaloneSSE: true,
-	}, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	}, &mcp.ClientSessionOptions{ProtocolVersion: *protocol})
 	if err != nil {
 		fmt.Println("CONNECT_ERROR:", err)
 		os.Exit(2)

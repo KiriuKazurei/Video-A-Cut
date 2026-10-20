@@ -56,6 +56,8 @@ func (s *Service) scriptRoot() (string, string, error) {
 }
 
 func (s *Service) scriptProcess(ctx context.Context, node bool, operation string, payload any) ([]byte, error) {
+	ctx, releaseProjectExecution := s.trackProjectExecution(ctx)
+	defer releaseProjectExecution()
 	root, python, err := s.scriptRoot()
 	if err != nil {
 		return nil, err
@@ -127,15 +129,18 @@ func (s *Service) checkScriptContext(ctx context.Context, id string, version int
 		if err != nil {
 			return err
 		}
-		if w.Version != version || w.Script.VisibleSetSHA != sha || w.Script.Status == model.ScriptExpired {
+		if w.Version != version || (!s.WorkspaceEnabled() && w.Script.VisibleSetSHA != sha) || w.Script.Status == model.ScriptExpired {
 			return model.ErrConflict
 		}
 		view, err := s.visibleSetAt(ctx, tx)
 		if err != nil {
 			return err
 		}
-		if !view.Confirmed || view.SHA256 != sha {
+		if !view.Confirmed || (!s.WorkspaceEnabled() && view.SHA256 != sha) {
 			return model.ErrConflict
+		}
+		if err := s.checkScriptSources(ctx, w); err != nil {
+			return err
 		}
 		for _, m := range media {
 			a, err := tx.GetAsset(ctx, m.AssetID)
@@ -154,6 +159,9 @@ func (s *Service) checkScriptContext(ctx context.Context, id string, version int
 }
 
 func (s *Service) GenerateScriptWorkbench(ctx context.Context, actor, id string, req GenerateScriptRequest) (ScriptWorkbench, error) {
+	if err := s.projectScriptBindingsReady(ctx, id); err != nil {
+		return ScriptWorkbench{}, err
+	}
 	if err := requireHumanConfirm(actor, "generate script"); err != nil {
 		return ScriptWorkbench{}, err
 	}
@@ -166,7 +174,7 @@ func (s *Service) GenerateScriptWorkbench(ctx context.Context, actor, id string,
 	if err != nil {
 		return w, err
 	}
-	if w.Version != req.ExpectedVersion || w.Script.VisibleSetSHA != req.VisibleSetSHA {
+	if w.Version != req.ExpectedVersion || (!s.WorkspaceEnabled() && w.Script.VisibleSetSHA != req.VisibleSetSHA) {
 		return w, model.ErrConflict
 	}
 	if err = s.requireVisibleConfirmation(ctx, s.st, w.Script.AssetID); err != nil {
@@ -271,6 +279,9 @@ func (s *Service) GenerateScriptWorkbench(ctx context.Context, actor, id string,
 }
 
 func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, version int, sha string) (store.ScriptDelivery, error) {
+	if err := s.projectScriptBindingsReady(ctx, id); err != nil {
+		return store.ScriptDelivery{}, err
+	}
 	if err := requireHumanConfirm(actor, "export script"); err != nil {
 		return store.ScriptDelivery{}, err
 	}
@@ -285,8 +296,11 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 	if err != nil {
 		return store.ScriptDelivery{}, err
 	}
-	if w.Version != version || w.Script.Status != model.ScriptFinalized || w.Script.VisibleSetSHA != sha {
+	if w.Version != version || w.Script.Status != model.ScriptFinalized || (!s.WorkspaceEnabled() && w.Script.VisibleSetSHA != sha) {
 		return store.ScriptDelivery{}, model.ErrConflict
+	}
+	if s.WorkspaceEnabled() {
+		sha = w.Script.VisibleSetSHA
 	}
 	if err = s.requireVisibleConfirmation(ctx, s.st, w.Script.AssetID); err != nil {
 		return store.ScriptDelivery{}, err
@@ -344,7 +358,7 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 		if e != nil {
 			return e
 		}
-		if cur.Version != version || cur.Script.Status != model.ScriptFinalized || cur.Script.VisibleSetSHA != sha {
+		if cur.Version != version || cur.Script.Status != model.ScriptFinalized || (!s.WorkspaceEnabled() && cur.Script.VisibleSetSHA != sha) {
 			return model.ErrConflict
 		}
 		if e = s.requireVisibleConfirmation(ctx, tx, cur.Script.AssetID); e != nil {
@@ -388,7 +402,7 @@ func (s *Service) ScriptDeliveryPath(ctx context.Context, id, name string, expec
 	if err != nil {
 		return "", err
 	}
-	if view.SHA256 != w.Script.VisibleSetSHA {
+	if !s.WorkspaceEnabled() && view.SHA256 != w.Script.VisibleSetSHA {
 		return "", model.ErrConflict
 	}
 	media, err := s.ScriptMediaCatalogue(ctx)
@@ -405,7 +419,7 @@ func (s *Service) ScriptDeliveryPath(ctx context.Context, id, name string, expec
 	if err != nil {
 		return "", err
 	}
-	if d.VisibleSetSHA != view.SHA256 {
+	if (!s.WorkspaceEnabled() && d.VisibleSetSHA != view.SHA256) || (s.WorkspaceEnabled() && d.VisibleSetSHA != w.Script.VisibleSetSHA) {
 		return "", model.ErrConflict
 	}
 	if name != "" && name != "final.mp4" {

@@ -18,7 +18,44 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestSDKProtocolNegotiationAndCalls(t *testing.T) {
+	f := newLoopFixtureOptions(t, time.Minute, Options{LocalAccess: true}, Agent{ID: "sdk", Role: "narrator"})
+	if err := f.svc.ConfigureSkillHarness(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"worker", "desktop"} {
+		t.Run(mode, func(t *testing.T) {
+			token := f.tokens["sdk"]
+			if mode == "desktop" {
+				token = ""
+			}
+			for _, version := range []string{"2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"} {
+				t.Run(version, func(t *testing.T) {
+					client := mcp.NewClient(&mcp.Implementation{Name: "protocol-check", Version: "1"}, nil)
+					session, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: f.server.URL,
+						HTTPClient: &http.Client{Transport: bearerTransport{token, f.server.Client().Transport}}}, &mcp.ClientSessionOptions{ProtocolVersion: version})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer session.Close()
+					if session.InitializeResult().ProtocolVersion != version {
+						t.Fatalf("negotiated %+v", session.InitializeResult())
+					}
+					if _, err = session.ListTools(t.Context(), nil); err != nil {
+						t.Fatal(err)
+					}
+					result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "skills.get", Arguments: map[string]any{"id": "video-use"}})
+					if err != nil || result.IsError {
+						t.Fatalf("tools/call: %+v %v", result, err)
+					}
+				})
+			}
+		})
+	}
+}
 
 func TestLoadRejectsInvalidCredentialFiles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agents.json")

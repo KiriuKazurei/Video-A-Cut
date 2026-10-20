@@ -200,7 +200,7 @@ export function PreparationPanel({
           {!report.data.can_start&&(
             <Space wrap size={[8,8]}>
               {hasGovBlock&&<Button onClick={()=>onNavigate?.({workspace:'resources'})}>去资源管理调整可见性/角色</Button>}
-              {hasConsentBlock&&canConsent&&<Button onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,true))}>授权此版本向外部服务发送取样</Button>}
+              {hasConsentBlock&&<Button onClick={()=>onNavigate?.({workspace:'settings',settingsCategory:'providers'})}>去服务商设置启用调用</Button>}
               {hasWorkerBlock&&<Button onClick={()=>onNavigate?.({workspace:'settings',settingsCategory:'providers'})}>查看服务商接入</Button>}
               {hasIngestBlock&&<Button onClick={()=>onNavigate?.({workspace:'editing',editingSection:'import'})}>去导入与粗剪</Button>}
             </Space>
@@ -212,12 +212,12 @@ export function PreparationPanel({
             </span>
           </Tooltip>
         </>}
-        <Space wrap>
+        {!quick&&<Space wrap>
           <Button disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,true))}>授权此版本向外部服务发送取样</Button>
           <Button danger disabled={busy||!canConsent} onClick={()=>action.mutate(()=>api.profileConsent(draft.profile_id,draft.revision,false))}>撤销此版本外发许可</Button>
-        </Space>
-        <Typography.Text type="secondary" style={{fontSize:12}}>外发授权为可选项：仅当预设指向外部端点时需要；不阻塞 builtin 工程回归。</Typography.Text>
-        <Typography.Text type="secondary" style={{fontSize:12}}>「外发授权」＝ 同意把取样画面/文字发给你配置的外部模型服务；不授权就不会外发。</Typography.Text>
+        </Space>}
+        {!quick&&<Typography.Text type="secondary" style={{fontSize:12}}>外发授权为可选项：仅当预设指向外部端点时需要；不阻塞 builtin 工程回归。</Typography.Text>}
+        {!quick&&<Typography.Text type="secondary" style={{fontSize:12}}>「外发授权」＝ 同意把取样画面/文字发给你配置的外部模型服务；不授权就不会外发。</Typography.Text>}
       </Flex>
     </Card>
   );

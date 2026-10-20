@@ -177,6 +177,15 @@ func (s *Service) HeartbeatScoped(ctx context.Context, agentID, role, taskID str
 	if err != nil {
 		return err
 	}
+	if taskID == "" && s.workspace != nil {
+		s.workspace.mu.Lock()
+		for task, owner := range s.workspace.draining {
+			if owner == agentID {
+				delete(s.workspace.draining, task)
+			}
+		}
+		s.workspace.mu.Unlock()
+	}
 	if changed {
 		s.publish("task_updated", cloneTask(saved))
 	}

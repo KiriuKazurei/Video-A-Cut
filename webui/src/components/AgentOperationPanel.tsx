@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Flex, Form, Input, List, Space, Tag, Typography } from 'antd';
 import { skillApi } from '../skillApi';
 import { useSkillWorkspace } from '../skillWorkspace';
@@ -14,12 +14,16 @@ export function AgentOperationPanel() {
   const [note, setNote] = useState('');
   const [notice, setNotice] = useState('');
   const runId = workspace.runId;
-  const operations = useQuery({
-    queryKey: runId && workspace.projectId ? runDetailKey(workspace.projectId, runId, 'operations') : ['vu-run', 'operations-idle'],
-    queryFn: () => skillApi.agentOperations(runId, 0, 100),
-    enabled: Boolean(runId),
+  const operations = useInfiniteQuery({
+    queryKey: runId && workspace.projectId ? [...runDetailKey(workspace.projectId, runId, 'operations'), workspace.epoch] : ['vu-run', 'operations-idle'],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => skillApi.agentOperations(runId, pageParam, 100),
+    getNextPageParam: (last) => last.length === 100 ? last.at(-1)?.sequence : undefined,
+    enabled: Boolean(runId && workspace.projectId),
     retry: protectedQueryRetry
   });
+  useEffect(() => { setNote(''); setNotice(''); }, [runId, workspace.projectId, workspace.epoch]);
+  const rows = [...new Map((operations.data?.pages.flat() ?? []).map((row) => [row.sequence, row])).values()];
   const verify = useQuery({
     queryKey: ['audit', 'agent-verify'],
     queryFn: () => skillApi.verifyAgentOperations(),
@@ -50,7 +54,8 @@ export function AgentOperationPanel() {
       <Button onClick={() => void verify.refetch()} loading={verify.isFetching}>重新核验摘要链</Button>
       <Button onClick={() => void operations.refetch()} disabled={!runId} loading={operations.isFetching}>重新读取日志</Button>
     </Space>
-    <List size="small" loading={operations.isFetching} dataSource={operations.data ?? []} locale={{ emptyText: runId ? '这个运行还没有操作记录' : '未选择运行' }}
+    <Typography.Text type="secondary">已加载 {rows.length} 条{operations.hasNextPage ? '，还有更多记录' : ''}</Typography.Text>
+    <List size="small" loading={operations.isFetching && !operations.isFetchingNextPage} dataSource={rows} locale={{ emptyText: runId ? '这个运行还没有操作记录' : '未选择运行' }}
       renderItem={(item) => <List.Item>
         <Flex vertical gap={4} style={{ width: '100%' }}>
           <Space wrap>
@@ -59,8 +64,10 @@ export function AgentOperationPanel() {
             <Typography.Text type="secondary">{item.body.actor} · {item.body.at}</Typography.Text>
           </Space>
           <Typography.Text type="secondary">前项 {item.previous_sha256 || '（链首）'} · 本项 {item.sha256}</Typography.Text>
+          <details><summary>查看操作详情</summary><pre className="code-block">{typeof item.body.detail === 'string' ? item.body.detail : JSON.stringify(item.body.detail, null, 2)}</pre></details>
         </Flex>
       </List.Item>} />
+    {operations.hasNextPage && <Button onClick={() => void operations.fetchNextPage()} loading={operations.isFetchingNextPage}>加载更多记录</Button>}
     <Form layout="vertical" onFinish={() => { if (runId && note.trim()) append.mutate(); }}>
       <Form.Item label="追加注释" extra="只新增一条人工注释，不改已有记录。">
         <Input.TextArea aria-label="人工操作注释" rows={3} value={note} onChange={(event) => setNote(event.target.value)} />

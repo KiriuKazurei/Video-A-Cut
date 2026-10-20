@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,94 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
+
+func TestSecurityDesktopMCPConnectionBoundary(t *testing.T) {
+	f := newLoopFixture(t, time.Minute)
+	handler := New(nil, f.svc, time.Minute, Options{LocalAccess: true})
+	initialize := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"human:reported-only","version":"1"}}}`
+	post := func(body, session string, mutate func(*http.Request)) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("POST", "http://127.0.0.1:8787/mcp", strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:45678"
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		if session != "" {
+			req.Header.Set("Mcp-Session-Id", session)
+		}
+		if mutate != nil {
+			mutate(req)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*http.Request)
+		status int
+	}{
+		{"nonlocal peer", func(r *http.Request) { r.RemoteAddr = "192.0.2.4:8765" }, 403},
+		{"rebinding host", func(r *http.Request) { r.Host = "evil.example:8787" }, 403},
+		{"browser", func(r *http.Request) { r.Header.Set("Origin", "http://localhost:8787") }, 403},
+		{"forwarded", func(r *http.Request) { r.Header.Set("X-Forwarded-For", "192.0.2.4") }, 403},
+		{"bad worker token", func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+strings.Repeat("x", 40)) }, 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := post(initialize, "", tc.mutate); got.Code != tc.status {
+				t.Fatalf("%d: %s", got.Code, got.Body.String())
+			}
+		})
+	}
+	connected := post(initialize, "", nil)
+	id := connected.Header().Get("Mcp-Session-Id")
+	if connected.Code != 200 || len(id) < 32 {
+		t.Fatalf("connect %d %s", connected.Code, connected.Body.String())
+	}
+	call := `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`
+	if got := post(call, "", nil); got.Code != 400 {
+		t.Fatal("local tools bypassed connection initialization")
+	}
+	if got := post(call, "unknown-session", nil); got.Code != 404 {
+		t.Fatal("unknown session accepted")
+	}
+	listed := post(call, id, nil)
+	if listed.Code != 200 {
+		t.Fatalf("tools: %s", listed.Body.String())
+	}
+	var envelope struct {
+		Result struct {
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Result.Tools) != 12 {
+		t.Fatalf("unexpected desktop tool projection: %s", listed.Body.String())
+	}
+	for _, tool := range envelope.Result.Tools {
+		if tool.Name == "claim_task" || tool.Name == "list_assets" || tool.Name == "skill_runs.finalize" {
+			t.Fatalf("privileged worker/human tool exposed: %s", tool.Name)
+		}
+	}
+	changed := strings.Replace(initialize, `human:reported-only`, `another-agent`, 1)
+	if got := post(changed, id, nil); got.Code != 400 {
+		t.Fatal("changed declared identity accepted in same session")
+	}
+	req := httptest.NewRequest("DELETE", "http://127.0.0.1:8787/mcp", nil)
+	req.RemoteAddr = "127.0.0.1:45678"
+	req.Header.Set("Mcp-Session-Id", id)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != 204 {
+		t.Fatalf("disconnect: %d %s", w.Code, w.Body.String())
+	}
+	if got := post(call, id, nil); got.Code != 404 {
+		t.Fatal("closed session reused")
+	}
+}
 
 // Phase 3 task 4: the security regression matrix for the agent surface.
 

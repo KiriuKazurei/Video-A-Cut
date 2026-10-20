@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
+import { Alert, Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
   CompassOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api, ingestApi } from './api';
-import type { Asset, CreateTask, GovernancePatch, WorkflowRun } from './types';
+import type { CreateTask, WorkflowRun } from './types';
 import { useEvents } from './useEvents';
 import { refreshSnapshot } from './queryRefresh';
-import { MediaBin } from './components/MediaBin';
-import { Inspector } from './components/Inspector';
+import { ResourceBin } from './components/ResourceBin';
+import { ResourceInspector } from './components/ResourceInspector';
+import { ProjectMenuBar } from './components/ProjectMenuBar';
+import { ProjectHome } from './components/ProjectHome';
+import { useProjectWorkspace } from './projectWorkspace';
 import { WorkspacePage } from './components/WorkspacePage';
 import { useWorkflowData, type RunSelection } from './components/WorkflowPanel';
 import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
@@ -23,13 +26,13 @@ import { PipelineContext } from './components/PipelineContext';
 import { derivePipeline, type StageTarget } from './pipeline';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { AppTour } from './components/AppTour';
-import { markTourSeen, shouldAutoShowTour } from './tour';
+import { markTourSeen } from './tour';
 import { ResourcesWorkspace } from './workspaces/ResourcesWorkspace';
 import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
 import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 import { TtsWorkspace } from './workspaces/TtsWorkspace';
-import { SkillWorkspaceProvider, useSkillWorkspace } from './skillWorkspace';
+import { SkillWorkspaceProvider } from './skillWorkspace';
 import { protectedQueryRetry } from './skillView';
 
 const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
@@ -44,14 +47,8 @@ const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
  * 四工作区外壳：顶部导航切换主工作区，左右侧栏响应式折叠。
  * 资源管理、编辑、导出为主流程；设置页独立，从右上角齿轮进入。
  */
-function SessionEntry({ onOpen }: { onOpen: () => void }) {
-  const workspace = useSkillWorkspace();
-  return workspace.unlocked
-    ? <Button size="small" onClick={() => void workspace.lock()}>退出人工会话</Button>
-    : <Button size="small" onClick={onOpen}>人工会话</Button>;
-}
-
 export default function App() {
+  const projectWorkspace = useProjectWorkspace();
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
@@ -61,6 +58,7 @@ export default function App() {
     size: leftSiderWidth,
     isDragging: isLeftDragging,
     startDrag: startLeftDrag,
+    setSize: setLeftWidth,
     resetToDefault: resetLeftWidth
   } = useResizable({
     initial: screens.xxl ? 280 : 250,
@@ -75,6 +73,7 @@ export default function App() {
     size: rightSiderWidth,
     isDragging: isRightDragging,
     startDrag: startRightDrag,
+    setSize: setRightWidth,
     resetToDefault: resetRightWidth
   } = useResizable({
     initial: screens.xxl ? 320 : 280,
@@ -94,6 +93,22 @@ export default function App() {
   const siderBorder = `1px solid ${token.colorBorderSecondary}`;
   const { route, navigate } = useWorkspaceRoute();
   const { workspace } = route;
+  const workspaceState = projectWorkspace.session?.document?.workspace;
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return; restored.current = true;
+    const next = workspaceState?.workspace;
+    navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
+    if (typeof workspaceState?.left_width === 'number') setLeftWidth(Math.min(420, Math.max(200, workspaceState.left_width)));
+    if (typeof workspaceState?.right_width === 'number') setRightWidth(Math.min(450, Math.max(220, workspaceState.right_width)));
+    setLeftCollapsed(workspaceState?.left_collapsed === true); setRightCollapsed(workspaceState?.right_collapsed === true);
+  }, []);
+  useEffect(() => projectWorkspace.registerEditor('workspace-state', { dirty: false, flush: async () => {} }), []);
+  useEffect(() => {
+    if (!projectWorkspace.session?.document || !restored.current) return;
+    return projectWorkspace.registerEditor('workspace-state', { dirty: JSON.stringify([workspaceState?.workspace, workspaceState?.selected_resource ?? '', workspaceState?.left_width, workspaceState?.right_width, workspaceState?.left_collapsed ?? false, workspaceState?.right_collapsed ?? false]) !== JSON.stringify([workspace, projectWorkspace.selectedId, leftSiderWidth, rightSiderWidth, leftCollapsed, rightCollapsed]), flush: async () => { await projectWorkspace.setWorkspaceState({ workspace, selected_resource: projectWorkspace.selectedId, left_width: leftSiderWidth, right_width: rightSiderWidth, left_collapsed: leftCollapsed, right_collapsed: rightCollapsed }); } });
+  }, [workspace, projectWorkspace.selectedId, leftSiderWidth, rightSiderWidth, leftCollapsed, rightCollapsed, workspaceState]);
+
 
   // 顶栏分段滑块：量出选中项（或选中的「…」）相对页签组的 left/width，写成 CSS 变量。
   // 滑块是 .app-nav.seg-nav::before。首次定位不动画，之后才打开位移动效。
@@ -136,11 +151,6 @@ export default function App() {
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
   // 新手引导：首次启动自动弹出一次（自动化浏览器/?tour=0 不弹），页头「新手引导」可随时重开
   const [tourOpen, setTourOpen] = useState(false);
-  useEffect(() => {
-    if (!shouldAutoShowTour({ storage: window.localStorage, search: window.location.search, hash: window.location.hash, automated: navigator.webdriver })) return;
-    const timer = window.setTimeout(() => setTourOpen(true), 800);
-    return () => window.clearTimeout(timer);
-  }, []);
   const closeTour = () => { markTourSeen(window.localStorage); setTourOpen(false); };
   useKeyboardShortcuts({
     route,
@@ -163,15 +173,6 @@ export default function App() {
     refetchInterval: 15_000
   });
   
-  const patch = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: GovernancePatch }) => api.patchAsset(id, values),
-    onSuccess(updated) {
-      queryClient.setQueryData<Asset[]>(['assets'], (previous) =>
-        previous?.map((item) => item.asset_id === updated.asset_id ? updated : item));
-      void queryClient.invalidateQueries({ queryKey: ['audit'] });
-    }
-  });
-  
   const createTask = useMutation({
     mutationFn: (input: CreateTask) => api.createTask(input),
     onSuccess(created) {
@@ -181,7 +182,7 @@ export default function App() {
     }
   });
 
-  const selected = assets.data?.find((item) => item.asset_id === selectedId) ?? assets.data?.[0];
+  const selected = assets.data?.find((item) => item.asset_id === (projectWorkspace.resource?.asset_id ?? selectedId));
   const assetId = selected?.asset_id ?? '';
 
   // G4：切换资产时清空观察任务，避免串看上一资产的 task SSE/详情
@@ -268,21 +269,24 @@ export default function App() {
   // 侧栏内容
   const leftSiderContent = (
     <ConfigProvider theme={siderTheme}>
-      <MediaBin assets={assets} selectedId={selected?.asset_id} onSelect={setSelectedId} />
+      <ResourceBin onOpenScript={(asset, script) => { setSelectedId(asset); navigate({ workspace: 'editing', editingSection: 'content', scriptId: script }); }} />
     </ConfigProvider>
   );
   
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
-      <Inspector asset={selected} patch={patch} />
+      <ResourceInspector />
     </ConfigProvider>
   );
 
   return (
-    <SkillWorkspaceProvider>
+    <SkillWorkspaceProvider key={projectWorkspace.session?.id} projectId={projectWorkspace.session?.document?.project.id}>
     <PipelineContext.Provider value={{ stages: pipeline.stages, goTo }}>
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
+      <ProjectMenuBar navigate={value => navigate({ workspace: value })} toggleLeft={() => setLeftCollapsed(v => !v)} toggleRight={() => setRightCollapsed(v => !v)} resetLayout={() => { resetLeftWidth(); resetRightWidth(); setLeftCollapsed(false); setRightCollapsed(false); }} refresh={() => { void projectWorkspace.refresh(); void refreshSnapshot(queryClient, watchedTaskId); }} shortcuts={() => setIsShortcutsHelpOpen(true)} tour={() => { navigate({ workspace: 'resources' }); setTourOpen(true); }} />
+      {projectWorkspace.error && projectWorkspace.session?.document && <Alert type="error" showIcon message={projectWorkspace.error} />}
+      {!projectWorkspace.session?.document && workspace !== 'settings' ? <ProjectHome /> : <>
       
       <Layout.Header className="app-header">
         <div className="app-brand">
@@ -306,49 +310,16 @@ export default function App() {
               key: item.id, 
               icon: WORKSPACE_ICONS[item.id], 
               title: item.description,
+              disabled: !projectWorkspace.session?.document,
               label: <span data-workspace={item.id} aria-current={workspace === item.id ? 'page' : undefined}>{item.label}</span>
             }))} 
           />
         </div>
 
         {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
-        {/* ≥1600 在页头放完整阶段条；更窄时改放位置条里的紧凑阶段条（见 ContextBar），避免挤掉「设置」 */}{screens.xxl && workspace !== 'tts' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
+        {/* ≥1600 在页头放完整阶段条；更窄时改放位置条里的紧凑阶段条（见 ContextBar），避免挤掉「设置」 */}{screens.xxl && workspace !== 'tts' && workspace !== 'resources' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
         
         <div className="app-header-right">
-          {/* Phase 3: 全局快捷操作栏（>=960px 显示下拉，>=1280px 显示额外直达按钮） */}
-          {screens.md && workspace !== 'tts' && (
-            <div className="app-quick-actions">
-              {/* 资产只有一个选择入口：侧栏可见时用项目面板，侧栏不可见（窄屏/设置页）时才在页头提供下拉。 */}
-              {!showLeftSider && <Select
-                size="small"
-                placeholder="选择资产"
-                value={assetId || undefined}
-                onChange={(val) => setSelectedId(val)}
-                options={assets.data?.map((a) => ({
-                  value: a.asset_id,
-                  label: `${a.asset_id} (${a.input_kind === 'raw_recording' ? '录像' : '素材'})`
-                }))}
-                style={{ width: screens.xl ? 120 : 96 }}
-                aria-label="快速切换资产"
-                popupMatchSelectWidth={false}
-              />}
-
-              {screens.xl && (
-                  <Tooltip title="查看运行日志（设置 › 日志与诊断）">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<FileSearchOutlined />}
-                      onClick={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })}
-                      aria-label="查看运行日志"
-                    >
-                      {screens.xxl ? '查看日志' : null}
-                    </Button>
-                  </Tooltip>
-              )}
-            </div>
-          )}
-
           {!useSidebar && !independentWorkspace && (
             <>
               <Button 
@@ -356,7 +327,7 @@ export default function App() {
                 icon={<MenuUnfoldOutlined />} 
                 onClick={() => setLeftDrawerOpen(true)}
               >
-                项目
+                资源
               </Button>
               <Button 
                 size="small"
@@ -369,51 +340,7 @@ export default function App() {
           )}
           
           
-          <SessionEntry onOpen={() => navigate({ workspace: 'settings', settingsCategory: 'logs' })} />
 
-          <Button 
-            size="small"
-            icon={<ReloadOutlined />} 
-            onClick={() => void refreshSnapshot(queryClient, watchedTaskId)}
-          >
-            刷新
-          </Button>
-          
-          <Tooltip title="键盘快捷键速查 (?)">
-            <Button
-              size="small"
-              className="app-help-btn"
-              icon={<QuestionCircleOutlined />}
-              onClick={() => setIsShortcutsHelpOpen(true)}
-              aria-label="键盘快捷键速查"
-            />
-          </Tooltip>
-
-          <Tooltip title="重新查看新手引导：流程与各区域的用法">
-            <Button
-              size="small"
-              className="app-tour-btn"
-              icon={<CompassOutlined />}
-              onClick={() => {
-                // 设置/TTS 页没有侧栏与阶段条，先回到资源管理再开始，引导才讲得清
-                if (workspace === 'settings' || workspace === 'tts') navigate({ workspace: 'resources' });
-                setTourOpen(true);
-              }}
-              aria-label="新手引导"
-            >
-              {screens.xxl ? '新手引导' : null}
-            </Button>
-          </Tooltip>
-
-          <Button
-            size="small"
-            className="app-settings-btn"
-            type={workspace === 'settings' ? 'primary' : 'default'}
-            icon={<SettingOutlined />}
-            onClick={() => navigate({ workspace: 'settings' })}
-          >
-            设置
-          </Button>
         </div>
       </Layout.Header>
 
@@ -444,7 +371,7 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          <ContextBar
+          {workspace !== 'resources' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}
@@ -460,13 +387,13 @@ export default function App() {
                   onClick={() => setRightCollapsed(!rightCollapsed)} title={rightCollapsed ? '展开属性面板' : '收起属性面板'} aria-label={rightCollapsed ? '展开属性面板' : '收起属性面板'} />
               </div>
             ) : undefined}
-          />
+          />}
 
           <WorkspacePage pageId="tts" active={workspace === 'tts'}>
             <TtsWorkspace active={workspace === 'tts'} route={route} navigate={navigate} onReturnToScript={(assetId, scriptId) => { setSelectedId(assetId); navigate({ workspace: 'editing', editingSection: 'content', scriptId }); }} />
           </WorkspacePage>
           <WorkspacePage pageId="resources" active={workspace === 'resources'}>
-            <ResourcesWorkspace asset={selected} onSelect={setSelectedId} />
+            <ResourcesWorkspace onOpenScript={(asset, script) => { setSelectedId(asset); navigate({ workspace: 'editing', editingSection: 'content', scriptId: script }); }} />
           </WorkspacePage>
           
           <WorkspacePage pageId="editing" active={workspace === 'editing'}>
@@ -560,6 +487,7 @@ export default function App() {
           {workspace === 'tts' ? '独立文本试听 · TTS' : `${selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · ${current.label}`}
         </Typography.Text>
       </Layout.Footer>
+      </>}
 
       <AppTour open={tourOpen} onClose={closeTour} />
 

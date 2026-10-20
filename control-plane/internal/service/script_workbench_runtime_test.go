@@ -19,7 +19,13 @@ import (
 
 // Real Go -> Python/FFmpeg -> local HTTP model -> Go -> Node/FFmpeg delivery.
 // The provider is a loopback stub: this proves the bridge, not model quality.
-func TestScriptWorkbenchRealWorkerRoundTrip(t *testing.T) {
+func TestScriptWorkbenchRealWorkerRoundTrip(t *testing.T) { testScriptWorkbenchRoundTrip(t, false) }
+
+func TestProjectScriptWorkbenchRealWorkerRoundTrip(t *testing.T) {
+	testScriptWorkbenchRoundTrip(t, true)
+}
+
+func testScriptWorkbenchRoundTrip(t *testing.T, native bool) {
 	if testing.Short() {
 		t.Skip("real Python/Node/FFmpeg round trip")
 	}
@@ -28,6 +34,28 @@ func TestScriptWorkbenchRealWorkerRoundTrip(t *testing.T) {
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=30:d=1", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p", media[0].Path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fixture video: %s %v", out, err)
+	}
+	if native {
+		if err := svc.ConfigureProjectWorkspace(ctx); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(svc.CloseProjectWorkspace)
+		view, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(t.TempDir(), "script.avp"), Name: "Script"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		view, err = svc.ImportProjectResource(ctx, view.Document.Project.ID, media[0].Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc, err = svc.EnterScript(ctx, "human:window", view.Document.Resources[0].AssetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		media, err = svc.ScriptMediaCatalogue(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	var requests atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +141,34 @@ func TestScriptWorkbenchRealWorkerRoundTrip(t *testing.T) {
 	if err != nil || reload.Delivery == nil || reload.Delivery.Version != w.Version {
 		t.Fatalf("delivery missing after reload: %+v %v", reload.Delivery, err)
 	}
+	if native {
+		copy := filepath.Join(t.TempDir(), "unrelated.mp4")
+		raw, e := os.ReadFile(media[0].Path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(copy, raw, 0600); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = svc.ImportProjectResource(ctx, svc.CurrentProjectID(), copy); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = svc.ScriptDeliveryPath(ctx, sc.ScriptID, "final.mp4"); e != nil {
+			t.Fatal("unrelated import invalidated delivery", e)
+		}
+		renamed := req
+		renamed.ExpectedVersion = w.Version
+		renamed.Title = "Only display title"
+		renamed.Segments = w.Segments
+		metadata, e := svc.SaveScriptWorkbench(ctx, "human:test", sc.ScriptID, renamed)
+		if e != nil || metadata.Version != w.Version {
+			t.Fatal("rename created a content revision", e)
+		}
+		if _, e = svc.ScriptDeliveryPath(ctx, sc.ScriptID, "final.mp4"); e != nil {
+			t.Fatal("rename invalidated delivery", e)
+		}
+	}
+	req.Body += "，补充新的说明"
 	req.ExpectedVersion = w.Version
 	req.Segments = w.Segments
 	if _, err = svc.SaveScriptWorkbench(ctx, "human:test", sc.ScriptID, req); err != nil {

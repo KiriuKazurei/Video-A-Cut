@@ -16,6 +16,19 @@ public static class DesktopWindowProbe {
     EnumChildWindows(parent,(h,p)=>{var name=new System.Text.StringBuilder(256);GetClassName(h,name,256);if(GetDlgCtrlID(h)==id&&name.ToString()==cls){found=h;return false;}return true;},IntPtr.Zero);
     return found;
   }
+  public static string Controls(IntPtr parent) {
+    var result=new System.Collections.Generic.List<string>();
+    EnumChildWindows(parent,(h,p)=>{var cls=new System.Text.StringBuilder(256);var title=new System.Text.StringBuilder(256);GetClassName(h,cls,256);GetWindowText(h,title,256);result.Add(h.ToInt64()+":"+GetDlgCtrlID(h)+":"+cls+":"+title);return true;},IntPtr.Zero);
+    return string.Join(", ",result);
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
+  public static IntPtr FilenameEdit(IntPtr parent) {
+    // Filename is the bottom visible Edit; address/search edits are above it.
+    IntPtr found=IntPtr.Zero;int bottom=int.MinValue;
+    EnumChildWindows(parent,(h,p)=>{var cls=new System.Text.StringBuilder(256);GetClassName(h,cls,256);Rect r;if(cls.ToString()=="Edit"&&IsWindowVisible(h)&&GetWindowRect(h,out r)&&r.Bottom>bottom){found=h;bottom=r.Bottom;}return true;},IntPtr.Zero);
+    return found;
+  }
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h,System.Text.StringBuilder s,int n);
   public static IntPtr Main(uint pid) {
     IntPtr found=IntPtr.Zero;
@@ -54,8 +67,13 @@ $condition=New-Object System.Windows.Automation.AndCondition @(
   (New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::NameProperty,$DialogTitle))
 )
 $dialog=$null
+function Find-OwnedDialog {
+  foreach($candidate in $root.FindAll([System.Windows.Automation.TreeScope]::Children,$condition)) {
+    if([DesktopWindowProbe]::IsWindowVisible([IntPtr]$candidate.Current.NativeWindowHandle)){return $candidate}
+  }
+}
 for($attempt=0;$attempt -lt 80 -and !$dialog;$attempt++){
-  $dialog=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$condition)
+  $dialog=Find-OwnedDialog
   if(!$dialog){Start-Sleep -Milliseconds 100}
 }
 if(!$dialog){throw "Owned dialog not found: $DialogTitle"}
@@ -64,12 +82,27 @@ if($Action -eq 'choose') {
   if(![IO.Path]::IsPathFullyQualified($FilePath)){throw 'Absolute file path required'}
   $FilePath=[IO.Path]::GetFullPath($FilePath)
   $filename=[IntPtr]::Zero
-  for($attempt=0;$attempt -lt 80 -and $filename -eq [IntPtr]::Zero;$attempt++) {
-    $filename=[DesktopWindowProbe]::Control([IntPtr]$dialog.Current.NativeWindowHandle,1148,'Edit')
-    if($filename -eq [IntPtr]::Zero){Start-Sleep -Milliseconds 100}
+  $valuePattern=$null
+  for($attempt=0;$attempt -lt 80 -and $filename -eq [IntPtr]::Zero -and !$valuePattern;$attempt++) {
+    $hostControl=$dialog.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::AutomationIdProperty,'FileNameControlHost')))
+    if($hostControl) {
+      foreach($candidate in $hostControl.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)) {
+        $pattern=$null
+        if($candidate.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern) -and !$pattern.Current.IsReadOnly){$valuePattern=$pattern;break}
+        if($candidate.Current.ClassName -eq 'Edit' -and $candidate.Current.NativeWindowHandle -ne 0){$filename=[IntPtr]$candidate.Current.NativeWindowHandle;break}
+      }
+    }
+    if($filename -eq [IntPtr]::Zero -and !$valuePattern){$filename=[DesktopWindowProbe]::FilenameEdit([IntPtr]$dialog.Current.NativeWindowHandle)}
+    if($filename -eq [IntPtr]::Zero -and !$valuePattern){Start-Sleep -Milliseconds 100}
   }
-  if($filename -eq [IntPtr]::Zero){throw 'Filename edit not found'}
-  [DesktopWindowProbe]::SendMessage($filename,0x000C,[IntPtr]::Zero,$FilePath)|Out-Null
+  if($valuePattern){$valuePattern.SetValue($FilePath)}
+  elseif($filename -ne [IntPtr]::Zero){
+    try{[System.Windows.Automation.AutomationElement]::FromHandle($filename).SetFocus()}catch{}
+    [DesktopWindowProbe]::SendMessage($filename,0x000C,[IntPtr]::Zero,$FilePath)|Out-Null
+  } else {
+    throw ('Filename value control not found; owned Win32 controls: '+[DesktopWindowProbe]::Controls([IntPtr]$dialog.Current.NativeWindowHandle))
+  }
+  Start-Sleep -Milliseconds 250
 }
 $buttonId=$(if($Action -eq 'cancel'){'2'}else{'1'})
 $buttonHandle=[DesktopWindowProbe]::Control([IntPtr]$dialog.Current.NativeWindowHandle,[int]$buttonId,'Button')
@@ -90,8 +123,9 @@ if($Action -eq 'choose') {
   # Only retry inside this same owned dialog, never use global keyboard input.
   for($attempt=0;$attempt -lt 3;$attempt++) {
     Start-Sleep -Milliseconds 400
-    $same=$root.FindFirst([System.Windows.Automation.TreeScope]::Children,$condition)
+    $same=Find-OwnedDialog
     if(!$same){break}
+    if($valuePattern){$valuePattern.SetValue($FilePath)}elseif($filename -ne [IntPtr]::Zero){[DesktopWindowProbe]::SendMessage($filename,0x000C,[IntPtr]::Zero,$FilePath)|Out-Null}
     $accept=[DesktopWindowProbe]::Control([IntPtr]$same.Current.NativeWindowHandle,1,'Button')
     if($accept -ne [IntPtr]::Zero){[DesktopWindowProbe]::PostMessage($accept,0x00F5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null}
   }

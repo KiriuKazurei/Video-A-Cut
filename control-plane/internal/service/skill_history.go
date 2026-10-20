@@ -43,7 +43,7 @@ func (s *Service) MoveSkillHistory(ctx context.Context, actor, id, action string
 			return model.ErrConflict
 		}
 		// Context is checked on the same transaction through a service view.
-		view := &Service{st: tx, deliveryRoot: s.deliveryRoot, clock: s.autoNow}
+		view := &Service{st: tx, deliveryRoot: s.deliveryRoot, clock: s.autoNow, workspace: s.workspace}
 		check := r
 		check.LeaseUntil = nil
 		snap, e := view.checkSkillRun(ctx, check)

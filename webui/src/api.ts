@@ -60,15 +60,14 @@ export class ApiError extends Error {
   }
 }
 
-let humanAccessToken = '';
-/** Memory only; never store this in project data, localStorage or Agent config. */
-export function setHumanAccessToken(token: string): void { humanAccessToken = token; }
-export function hasHumanAccessToken(): boolean { return humanAccessToken.length > 0; }
+let projectSession = '';
+export function setProjectSession(session: string): void { projectSession = session; }
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(apiURL(path), {
     ...init,
     credentials: 'include',
-    headers: { Accept: 'application/json', ...(humanAccessToken ? { 'X-VAC-Human-Token': humanAccessToken } : {}), ...init.headers }
+    headers: { Accept: 'application/json', ...(projectSession ? { 'X-VAC-Project-Session': projectSession } : {}), ...init.headers }
   });
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {

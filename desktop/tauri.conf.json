@@ -25,6 +25,9 @@
   },
   "bundle": {
     "active": false,
+    "fileAssociations": [
+      { "ext": ["avp"], "name": "AI Video Project", "description": "Video Auto Cut 工程" }
+    ],
     "externalBin": [
       "binaries/control-plane"
     ],

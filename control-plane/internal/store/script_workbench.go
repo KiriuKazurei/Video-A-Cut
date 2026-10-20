@@ -32,6 +32,19 @@ ON CONFLICT(script_id) DO UPDATE SET version=excluded.version,document_json=excl
 	return err
 }
 
+// Metadata does not create a new content revision or invalidate a running job.
+func (s *Store) PutScriptWorkbenchMetadata(ctx context.Context, id string, version int, body string) error {
+	result, err := s.q.ExecContext(ctx, `UPDATE script_workbenches SET document_json=? WHERE script_id=? AND version=?`, body, id, version)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n != 1 {
+		return model.ErrConflict
+	}
+	return err
+}
+
 type ScriptRevision struct {
 	Version   int       `json:"version"`
 	Action    string    `json:"action"`

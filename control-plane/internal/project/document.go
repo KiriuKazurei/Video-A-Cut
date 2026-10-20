@@ -1,0 +1,234 @@
+// Package project defines the portable VAC document formats. It does not open
+// databases, start jobs, or call providers while reading a document.
+package project
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
+const SchemaVersion = 1
+
+type Source struct {
+	RelativePath string `json:"relative_path,omitempty"`
+	OriginalPath string `json:"original_path,omitempty"`
+	SHA256       string `json:"sha256,omitempty"`
+	Size         int64  `json:"size_bytes"`
+	ModifiedNS   int64  `json:"modified_ns,omitempty"`
+}
+
+type Resource struct {
+	ID         string         `json:"id"`
+	Kind       string         `json:"kind"`
+	Name       string         `json:"name"`
+	Source     Source         `json:"source"`
+	Metadata   map[string]any `json:"metadata"`
+	Notes      string         `json:"notes"`
+	In         float64        `json:"in"`
+	Out        float64        `json:"out"`
+	Missing    bool           `json:"missing"`
+	Removed    bool           `json:"removed,omitempty"`
+	Changed    bool           `json:"changed,omitempty"`
+	Referenced bool           `json:"referenced,omitempty"`
+	AssetID    string         `json:"asset_id,omitempty"`
+	ScriptID   string         `json:"script_id,omitempty"`
+}
+
+type Binding struct {
+	SegmentIndexes []int  `json:"segment_indexes,omitempty"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	ResourceID     string `json:"resource_id,omitempty"`
+	Unresolved     bool   `json:"unresolved"`
+}
+
+type AvsDocument struct {
+	Format           string          `json:"format"`
+	SchemaVersion    int             `json:"schema_version"`
+	ID               string          `json:"id"`
+	Title            string          `json:"title"`
+	Body             string          `json:"body"`
+	Segments         json.RawMessage `json:"segments"`
+	Bindings         []Binding       `json:"bindings"`
+	TTSEnabled       bool            `json:"tts_enabled"`
+	SubtitlesEnabled bool            `json:"subtitles_enabled"`
+	AllowWebResearch bool            `json:"allow_web_research"`
+	Sources          json.RawMessage `json:"sources,omitempty"`
+	Revisions        json.RawMessage `json:"revisions,omitempty"`
+}
+
+type Identity struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AvpDocument struct {
+	FileReferences map[string]string `json:"file_references,omitempty"`
+	Format         string            `json:"format"`
+	SchemaVersion  int               `json:"schema_version"`
+	Project        Identity          `json:"project"`
+	Resources      []Resource        `json:"resources"`
+	Scripts        []AvsDocument     `json:"scripts"`
+	Sequences      []json.RawMessage `json:"sequences"`
+	Settings       map[string]any    `json:"settings"`
+	Workspace      map[string]any    `json:"workspace"`
+	// Runtime is a versioned, allowlisted projection of this project's editable
+	// database records. Global configuration and credentials are never included.
+	Runtime json.RawMessage `json:"runtime,omitempty"`
+}
+
+type Recent struct {
+	Path     string    `json:"path"`
+	Name     string    `json:"name"`
+	OpenedAt time.Time `json:"opened_at"`
+}
+
+type Recovery struct {
+	Path         string    `json:"path"`
+	Name         string    `json:"name"`
+	RecoveryPath string    `json:"recovery_path"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type Session struct {
+	ID          string       `json:"id"`
+	Path        string       `json:"path"`
+	Dirty       bool         `json:"dirty"`
+	Revision    uint64       `json:"revision"`
+	ActiveTasks int          `json:"active_tasks"`
+	Document    *AvpDocument `json:"document"`
+	Recent      []Recent     `json:"recent"`
+	Recoveries  []Recovery   `json:"recoveries"`
+}
+
+func validID(id string) bool {
+	return id != "" && id != "." && id != ".." && !strings.ContainsAny(id, "/\\\x00")
+}
+
+func (d AvpDocument) Validate() error {
+	if d.Format != "avp" || d.SchemaVersion != SchemaVersion || !validID(d.Project.ID) || strings.TrimSpace(d.Project.Name) == "" {
+		return fmt.Errorf("不支持的 AVP 工程或格式版本")
+	}
+	seen := map[string]bool{}
+	for _, r := range d.Resources {
+		if !validID(r.ID) || seen[r.ID] || !validKind(r.Kind) || math.IsNaN(r.In) || math.IsNaN(r.Out) || math.IsInf(r.In, 0) || math.IsInf(r.Out, 0) || r.In < 0 || r.Out < r.In {
+			return fmt.Errorf("无效或重复的工程资源 %q", r.ID)
+		}
+		seen[r.ID] = true
+	}
+	for _, sc := range d.Scripts {
+		if seen["script:"+sc.ID] {
+			return fmt.Errorf("重复的脚本 ID")
+		}
+		seen["script:"+sc.ID] = true
+		if err := sc.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validKind(k string) bool {
+	switch k {
+	case "video", "audio", "image", "subtitle", "document", "script":
+		return true
+	}
+	return false
+}
+
+func (d AvsDocument) Validate() error {
+	if d.Format != "avs" || d.SchemaVersion != SchemaVersion || !validID(d.ID) || !json.Valid(d.Segments) {
+		return fmt.Errorf("不支持的 AVS 脚本或格式版本")
+	}
+	seen := map[string]bool{}
+	for _, b := range d.Bindings {
+		if !validID(b.ID) || seen[b.ID] || (b.Kind != "video" && b.Kind != "audio") {
+			return fmt.Errorf("重复或无效的脚本绑定")
+		}
+		seen[b.ID] = true
+	}
+	return nil
+}
+
+func Read(path, format string, out any) error {
+	if !strings.EqualFold(filepath.Ext(path), "."+format) {
+		return fmt.Errorf("请选择 .%s 文件", format)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 128<<20 {
+		return fmt.Errorf("请选择不超过 128 MiB 的文档文件")
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, (128<<20)+1))
+	if err != nil {
+		return err
+	}
+	if len(raw) > 128<<20 || !utf8.Valid(raw) {
+		return fmt.Errorf("文档必须是 UTF-8 JSON")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err = decoder.Decode(out); err != nil {
+		return fmt.Errorf("读取工程文档: %w", err)
+	}
+	var extra any
+	if err = decoder.Decode(&extra); err != io.EOF {
+		return fmt.Errorf("文档含多余或无效内容")
+	}
+	return nil
+}
+
+// WriteAtomic leaves the previous document intact until the complete new file
+// is flushed and closed, then uses the platform atomic replacement primitive.
+func WriteAtomic(path string, value any) error {
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	raw = append(raw, '\n')
+	f, err := os.CreateTemp(filepath.Dir(path), ".vac-save-*.tmp")
+	if err != nil {
+		return err
+	}
+	temp := f.Name()
+	defer os.Remove(temp)
+	if _, err = io.Copy(f, bytes.NewReader(raw)); err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return replaceDocumentFile(temp, path)
+}
+
+func ResolveSource(documentPath string, source Source) string {
+	if source.RelativePath != "" {
+		path := filepath.Clean(filepath.Join(filepath.Dir(documentPath), filepath.FromSlash(source.RelativePath)))
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path
+		}
+	}
+	return filepath.Clean(source.OriginalPath)
+}

@@ -12,15 +12,18 @@ var upstream embed.FS
 //go:embed builtin/vac-script-syntax.md
 var syntaxContent string
 
+//go:embed builtin/vac-tool-contracts.md
+var ToolContracts string
+
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
 	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish"}
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
-		{ID: "video-use", Name: "Video Use", Version: "0.1.0-vac.2", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
-		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.1.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
-		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "1.0.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
+		{ID: "video-use", Name: "Video Use", Version: "0.1.0-vac.3", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
+		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.1.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
+		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "1.0.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
 	}
 	_ = fs.WalkDir(upstream, "builtin/video-use", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -38,6 +41,10 @@ func Builtins() []Package {
 	})
 	packages[0].Upstream = "https://github.com/browser-use/video-use/tree/43cfc566833548093455c9d4a46bd69913b7e552"
 	packages[2].Content = syntaxContent + "\n" + SyntaxAdapter
+	for i := range packages {
+		packages[i].Resources["vac/tool-contracts.md"] = ToolContracts
+		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the mandatory renders.inspect -> artifacts.get images -> renders.review -> run.finish sequence.\n"
+	}
 	return packages
 }
 

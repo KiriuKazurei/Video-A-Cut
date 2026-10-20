@@ -20,6 +20,7 @@ import (
 // handlers own their protocols. A Service is safe for concurrent use as long
 // as its collaborators are, which store.Store and events.Bus both are.
 type Service struct {
+	workspace *projectWorkspace
 	harnessMu     sync.Mutex
 	harnessCancel map[string]context.CancelFunc
 	// st is the persistence layer. It never sees a business rule.
@@ -128,6 +129,7 @@ func (s *Service) Bus() *events.Bus {
 // rather than a panic: the write path must succeed whether or not anybody is
 // listening for it.
 func (s *Service) publish(name string, payload any) {
+	s.markProjectDirty(name)
 	b := s.Bus()
 	if b == nil {
 		return

@@ -40,19 +40,19 @@ export function AppTour({ open, onClose }: { open: boolean; onClose: () => void 
       autoToggle
         ? {
             title: '一句话自动模式',
-            description: '不想一步步确认？在这里把「分步生成」切到「自动模式」，写一句要求并勾选授权，Agent 会自己完成剪辑、解说、配音和导出，不满意时才会来问你。授权只对当前预设版本有效，随时可以撤销。',
+            description: '不想一步步确认？在这里把「分步生成」切到「自动模式」，写一句要求并选择预设与预算，Agent 会自己完成剪辑、解说、配音和导出，不满意时才会来问你。服务商调用统一在设置中管理。',
             target: find('.start-mode')
           }
         : undefined,
       {
         title: '左右两侧：选素材、看详情',
-        description: '左边是项目面板，在这里选择要处理的素材；右边是属性面板，可以设置这个素材能否被 Agent 使用。窄屏时它们收进页头的「项目」「详情」按钮里。',
+        description: '左边是当前工程导入的资源；中间提供预览、播放操作与备注；右边查看元信息。导入的资源直接供 Agent 使用。',
         target: side ? find(side) : null
       },
       {
         title: '随时查阅：快捷键与新手引导',
-        description: '按 ? 键或点这里查看全部键盘快捷键；想再看一遍这个引导，点旁边的「新手引导」按钮即可。系统连接、日志等技术状态都收在「设置 › 状态监控」，平时不用关心。',
-        target: find('.app-help-btn')
+        description: '按 ? 键或从“关于”菜单查看快捷键与新手引导。系统连接、日志等技术状态都收在「设置 › 状态监控」，平时不用关心。',
+        target: find('.project-menu-bar')
       }
     ].filter((step): step is NonNullable<typeof step> => Boolean(step));
   }, [open]);

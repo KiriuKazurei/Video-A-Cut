@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Checkbox, Collapse, Flex, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Tag, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { api } from '../api';
+import { useProjectWorkspace } from '../projectWorkspace';
 import { errorText } from './ui';
 import { initialScriptSegment, reconcileScriptSegments, scriptTokens, type ScriptDocument, type ScriptRevision, type ScriptSegment, type ScriptWorkbenchView } from '../scriptWorkbench';
 import type { RouteState } from '../navigation';
@@ -10,6 +11,7 @@ import { ScriptDeliveryPanel } from './ScriptDeliveryPanel';
 
 export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean }) {
   const client = useQueryClient();
+  const projectWorkspace = useProjectWorkspace();
   const list = useQuery({ queryKey: ['scripts', assetId], queryFn: () => api.listScripts(assetId), retry: false });
   const visible = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet, retry: false });
   const media = useQuery({ queryKey: ['script-media', visible.data?.sha256], queryFn: api.scriptMedia, enabled: Boolean(visible.data?.confirmed), retry: false });
@@ -97,12 +99,21 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
       el?.focus(); el?.setSelectionRange(start + text.length, start + text.length);
     });
   };
+  useEffect(() => {
+    if (!scriptId || !record.data) return;
+    return projectWorkspace.registerEditor(`script:${scriptId}`, { dirty, flush: async () => {
+      if (!dirty) return;
+      const saved = await api.saveScript(scriptId, { expected_version: loadedVersion, visible_set_sha: visible.data?.sha256 ?? '', title, body, segments: drafts, tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research });
+      await accept(saved);
+    } });
+  }, [scriptId, dirty, loadedVersion, title, body, segments, tts, subtitles, research, visible.data?.sha256, projectWorkspace.registerEditor]);
   const latest = record.data;
 
   return <Card size="small" title="脚本工作台" className="script-workbench" data-testid="script-workbench"
     extra={<Tag>{latest?.script.status === 'finalized' ? '已定稿' : latest?.script.status === 'needs_refinalize' ? '待重新定稿' : '草稿'}</Tag>}>
     <Flex vertical gap={12}>
       <Typography.Text type="secondary">空行分段。普通文字是生成要求；花括号指定视频、字幕或画面效果。生成文稿后可逐段修改并人工定稿。</Typography.Text>
+      {scriptId && projectWorkspace.session?.document?.scripts.some(script => script.id === scriptId && script.bindings.some(binding => binding.unresolved)) && <Alert type="warning" message="脚本有待关联素材，可继续编辑。使用相关素材生成或渲染前请完成关联。" action={<Button onClick={() => void projectWorkspace.rebindScript(scriptId).catch(reason => setFailure(errorText(reason)))}>关联素材</Button>} />}
       {list.isError && <Alert type="error" message={errorText(list.error)} />}
       {!list.isPending && !list.data?.length && <Button type="primary" loading={busy} onClick={() => invoke(async () => {
         const sc = await api.enterScript(assetId); setPicked(sc.script_id); await client.invalidateQueries({ queryKey: ['scripts', assetId] });
@@ -142,30 +153,25 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             <Checkbox checked={subtitles} disabled={!canEdit} onChange={e => { setSubtitles(e.target.checked); changed(); }}>自动字幕</Checkbox>
             <Checkbox checked={research} disabled={!canEdit} onChange={e => { setResearch(e.target.checked); changed(); }}>允许联网查证文字知识</Checkbox>
           </Space>
-          <Typography.Text type="secondary">每段可覆盖配音和字幕开关；声音细调在 TTS 专页保存回当前脚本修订。显式字幕始终生效，画面只使用已确认可见素材。</Typography.Text>
+          <Typography.Text type="secondary">每段可覆盖配音和字幕开关；声音细调在 TTS 专页保存回当前脚本修订。显式字幕始终生效，画面使用当前工程素材。</Typography.Text>
           <Space wrap>
             <Button type="primary" disabled={!canEdit || !canParse} onClick={() => invoke(async () => {
               await accept(await api.saveScript(scriptId!, { ...versionBody(), title, body, segments: drafts,
                 tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research }));
             })}>保存草稿</Button>
+            <Button onClick={() => void projectWorkspace.exportScript(scriptId).catch(e => setFailure(errorText(e)))}>导出 .avs</Button>
             <Tag>{dirty ? '尚未保存' : `已保存 · 修订 ${latest?.version ?? 0}`}</Tag>
           </Space>
           <Card size="small" title="让 Agent 理解脚本并出稿">
             <Flex vertical gap={8}>
               <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={v => { setProfileId(v); setConsent(''); }}
                 options={usableProfiles.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
-              <Typography.Text type="secondary">将向所选预设发送已确认素材的抽帧和脚本要求。允许查证时会查询文字资料并保留实际来源；游戏或规则不明确时会先提出问题。</Typography.Text>
-              <Checkbox className="script-model-consent" checked={consent === consentIdentity} disabled={busy || !profile || dirty} onChange={e => setConsent(e.target.checked ? consentIdentity : '')}>
-                我同意本次使用所选预设和当前可见素材生成草稿
-              </Checkbox>
+              <Typography.Text type="secondary">将向所选预设发送当前工程素材的抽帧和脚本要求。允许查证时会查询文字资料并保留实际来源；游戏或规则不明确时会先提出问题。</Typography.Text>
               <Space>
-                <Button disabled={!canEdit || dirty || !canParse || !profile || consent !== consentIdentity} onClick={() => invoke(async () => {
-                  if (consent !== consentIdentity || previousIdentity.current !== consentIdentity) throw new Error('授权上下文已变化，请重新确认');
+                <Button disabled={!canEdit || dirty || !canParse || !profile} onClick={() => invoke(async () => {
                   stop.current = new AbortController();
                   setGenerating(true);
-                  await api.profileConsent(profile!.profile_id, profile!.revision, true);
                   stop.current.signal.throwIfAborted();
-                  if (previousIdentity.current !== consentIdentity) throw new Error('授权上下文已变化，请重新确认');
                   await accept(await api.generateScript(scriptId!, { ...versionBody(), profile_id: profile!.profile_id, profile_revision: profile!.revision, allow_web_research: research }, stop.current.signal));
                 })}>理解脚本并生成文稿</Button>
                 {busy && generating && <Button onClick={() => stop.current?.abort()}>停止生成</Button>}

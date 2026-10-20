@@ -1,7 +1,7 @@
 export interface ScriptSubtitle { text: string; size_px?: number; font?: string }
 export interface ScriptParagraph { index: number; source: string; instruction: string; video?: string; subtitle?: ScriptSubtitle; effect?: string }
 export interface ScriptDocument { version: number; paragraphs: ScriptParagraph[]; diagnostics: { paragraph: number; column: number; message: string }[] }
-export interface ScriptMedia { id: string; asset_id: string; name: string; in: number; out: number }
+export interface ScriptMedia { kind?: 'video' | 'audio'; id: string; asset_id: string; name: string; in: number; out: number }
 import type { TtsSettings } from './ttsContracts';
 
 export interface ScriptVoice { settings: TtsSettings; offset_seconds: number; accept_external: boolean }

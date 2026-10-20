@@ -27,16 +27,20 @@ export function DesktopUpdates({ onMaintenance }: { onMaintenance: (busy: boolea
   }, []);
   const command = (name: string) => {
     setError('');
-    void desktopCommand(name).catch(e => setError(String(e)));
+    const perform = () => { void desktopCommand(name).catch(e => setError(String(e))); };
+    if (name === 'install_update') { const event = new CustomEvent('vac:before-install', { cancelable: true, detail: { complete: (ok: boolean) => { if (ok) perform(); } } }); if (window.dispatchEvent(event)) perform(); } else perform();
   };
   const show = () => {
     setOpen(true);
     if (status && !status.available_version && !busy) command('check_update');
   };
+  useEffect(() => {
+    window.addEventListener('vac:check-updates', show);
+    return () => window.removeEventListener('vac:check-updates', show);
+  }, [status, busy]);
   const percent = status?.ready_to_install ? 100 : status?.total_bytes
     ? Math.min(99, Math.floor(status.downloaded_bytes / status.total_bytes * 100)) : 0;
   return <>
-    <Button size="small" onClick={show} loading={status?.phase === 'checking'}>检查更新</Button>
     <Modal title="软件更新" open={open} onCancel={() => { if (!maintenance) setOpen(false); }}
       closable={!maintenance} maskClosable={!maintenance}
       footer={<Space wrap>

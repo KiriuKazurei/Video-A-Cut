@@ -23,6 +23,7 @@ pub struct Status {
     pub revision: u64,
     pub status: String,
     pub api_base_url: Option<String>,
+    pub mcp_url: Option<String>,
     pub session_id: Option<String>,
     pub data_directory: String,
     pub message: String,
@@ -52,6 +53,7 @@ impl Runtime {
             revision: 0,
             status: "starting".into(),
             api_base_url: None,
+            mcp_url: None,
             session_id: None,
             data_directory: config.data_directory.display().to_string(),
             message: "正在检查本地运行环境…".into(),
@@ -102,6 +104,7 @@ fn publish(
     value.status = status.into();
     value.message = message.into();
     value.api_base_url = pipeline.map(|p| p.base.clone());
+    value.mcp_url = pipeline.map(|p| format!("{}/mcp", p.base));
     value.session_id = pipeline.map(|p| p.session.clone());
     value.workers = pipeline
         .map(|p| {
@@ -375,7 +378,7 @@ impl Pipeline {
         let agents: Vec<_> = tokens.iter().map(|(role, _, token)| json!({"agent_id":role,"role":role,"token_sha256":format!("{:x}",Sha256::digest(token.as_bytes()))})).collect();
         write_json(&p.directory.join("agents.json"), &json!({"agents":agents}))?;
         let control_config = json!({"http_addr":"127.0.0.1:0", "desktop_origin":config.desktop_origin,
-            "delivery_root":p.data.join("delivery"), "mcp_agents_file":p.directory.join("agents.json"),
+            "delivery_root":p.data.join("delivery"), "mcp_agents_file":p.directory.join("agents.json"), "mcp_local_access":true,
             "web_root":config.web_root.as_ref().map(|p|p.display().to_string()).unwrap_or_default(),
             "lease_seconds":60, "tts_python":config.python, "tts_worker_dir":config.resource_root.join("workers/python"), "ingest_roots":config.ingest_roots});
         write_json(&p.directory.join("control.json"), &control_config)?;
@@ -624,7 +627,7 @@ impl Pipeline {
     fn journal(&self, status: &str) -> Result<(), String> {
         write_json(
             &self.data.join("desktop-session.json"),
-            &json!({"schema_version":1,"session_id":self.session,"status":status,"supervisor_pid":std::process::id(),"api_base_url":self.base,
+            &json!({"schema_version":1,"session_id":self.session,"status":status,"supervisor_pid":std::process::id(),"api_base_url":self.base,"mcp_url":format!("{}/mcp",self.base),
             "control_pid":self.control.as_ref().map(Child::id),"workers":self.workers.iter().map(|w|json!({"role":w.role,"pid":w.child.id()})).collect::<Vec<_>>() }),
         )
     }

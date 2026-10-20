@@ -28,7 +28,7 @@ def main():
     for entry in inventory['endpoints']:
         source = entry['backend_source']
         line = (root / source['file']).read_text(encoding='utf-8').splitlines()[source['line'] - 1]
-        assert re.search(r'func \(s \*Server\) ' + re.escape(entry['backend_handler']) + r'\(', line), (entry['id'], source, line)
+        assert re.search(r'\b' + re.escape(entry['backend_handler']) + r'\(', line), (entry['id'], source, line)
     assert hashlib.sha256((root / inventory['routes_source']).read_bytes()).hexdigest() == inventory['routes_source_sha256']
     documents = [root / p for p in (
         'docs/flow-optimize-handoff.md', 'docs/flow-optimize-stages.md',

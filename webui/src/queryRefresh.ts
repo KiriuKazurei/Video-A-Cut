@@ -6,6 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
  * prepared、workflows、workflow、review、acceptance、ingest。
  */
 export const REFRESH_DOMAINS = [
+ 'project-workspace', 'resource-text',
  'vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context',
   'assets',
   'deliveryFiles',
@@ -119,6 +120,7 @@ function extractFromObject(obj: Record<string, unknown>): EventPayloadMeta {
 
 /** 支持的所有 SSE 事件名单 */
 export const SUPPORTED_SSE_EVENTS = [
+ 'workspace.changed','workspace.saved','resource.changed',
  'project.changed','skill.changed','skill.run.changed',
   'asset_created',
   'asset_updated',
@@ -155,13 +157,16 @@ export function handleSSEEvent(
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
   const promises: Promise<void>[] = [];
+  if (['workspace.changed','workspace.saved','resource.changed'].includes(eventName)) {
+    return Promise.all(['project-workspace','assets','visible-set','vu-project','vu-visible','resource-text'].map(key => queryClient.invalidateQueries({queryKey:[key]})));
+  }
   if (['project.changed','skill.changed','skill.run.changed'].includes(eventName)) {
     return Promise.all(['vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context','audit']
       .map(key => queryClient.invalidateQueries({ queryKey: [key] })));
   }
   if (['script.changed', 'script.rendered', 'asset_created', 'asset_updated'].includes(eventName)) {
     promises.push(...['scripts', 'script-workbench', 'script-media', 'script-revisions', 'script-delivery', 'visible-set', 'auto'].map(k => queryClient.invalidateQueries({ queryKey: [k] })));
-    if (eventName === 'script.changed' || eventName === 'script.rendered') { promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] })); return Promise.all(promises); }
+    if (eventName === 'script.changed' || eventName === 'script.rendered') { promises.push(queryClient.invalidateQueries({ queryKey: ['audit'] }), queryClient.invalidateQueries({ queryKey: ['resource-text'] })); return Promise.all(promises); }
   }
   // 自动模式：只让 auto 视图与对应流程失效，事件负载不当作权威状态。
   if (eventName === 'auto.changed' || eventName === 'auto.reviewed') {

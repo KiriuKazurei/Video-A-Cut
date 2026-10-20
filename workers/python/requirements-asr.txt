@@ -1,0 +1,3 @@
+# Optional local transcription runtime. Install explicitly into the worker venv;
+# VAC never installs packages or downloads models while processing media.
+faster-whisper==1.2.1

@@ -27,6 +27,12 @@ pub fn environment() -> Result<tauri::Env, String> {
                 );
                 continue;
             }
+            _ if Path::new(option)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("avp")) =>
+            {
+                continue
+            }
             _ => return Err(format!("未知参数：{}", option.to_string_lossy())),
         };
         let value = args.next().ok_or("启动路径参数缺失")?;

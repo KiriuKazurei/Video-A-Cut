@@ -10,8 +10,8 @@ import { PreparationPanel } from '../components/PreparationPanel';
 import AuditLogViewer from '../components/AuditLogViewer';
 import { StatusMonitor } from '../components/StatusMonitor';
 import { SkillManagerModule } from '../components/SkillManagerModule';
-import { HumanSessionControl } from '../components/HumanSessionControl';
 import { AgentOperationPanel } from '../components/AgentOperationPanel';
+import { ProjectProviderPolicy } from '../components/ProjectProviderPolicy';
 
 interface SettingsWorkspaceProps {
   route: RouteState;
@@ -46,6 +46,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
 
   return (
     <div className="page-body settings-workspace">
+      {isProfileCategory && <ProjectProviderPolicy />}
       {/* 移动端/窄屏下的顶部分类切换 */}
       {isMobile && (
         <Segmented
@@ -102,7 +103,6 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
               title="日志与诊断" 
               bordered={false}
             >
-              <HumanSessionControl />
               <AuditLogViewer />
               <AgentOperationPanel />
             </Card>

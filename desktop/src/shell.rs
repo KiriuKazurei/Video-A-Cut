@@ -11,10 +11,115 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+
+struct ProjectOpenRequest(std::sync::Mutex<Option<String>>);
+
+fn project_argument(args: &[String], cwd: &str) -> Option<String> {
+    args.iter()
+        .skip(1)
+        .find(|arg| !arg.starts_with('-') && arg.to_lowercase().ends_with(".avp"))
+        .map(|arg| {
+            let path = std::path::PathBuf::from(arg);
+            if path.is_absolute() {
+                path
+            } else {
+                std::path::Path::new(cwd).join(path)
+            }
+            .display()
+            .to_string()
+        })
+}
+
+#[tauri::command]
+fn project_open_request(pending: tauri::State<'_, ProjectOpenRequest>) -> Option<String> {
+    pending.0.lock().ok()?.take()
+}
+
+#[tauri::command]
+fn clipboard_read_text() -> Result<String, String> {
+    crate::platform::clipboard_text()
+}
+
+#[tauri::command]
+fn confirm_project_exit(runtime: tauri::State<'_, Runtime>) -> Result<(), String> {
+    if runtime.maintenance.load(Ordering::SeqCst) {
+        return Err("正在安装更新".into());
+    }
+    runtime
+        .sender
+        .send(Request::Exit)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn project_dialog(
+    app: tauri::AppHandle,
+    mode: String,
+    default_path: Option<String>,
+) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app.dialog().file();
+        let save = matches!(
+            mode.as_str(),
+            "new-project" | "save-project" | "save-script"
+        );
+        dialog = match mode.as_str() {
+            "new-project" | "save-project" => dialog
+                .set_title("保存 VAC 工程")
+                .add_filter("VAC 工程", &["avp"]),
+            "open-project" => dialog
+                .set_title("打开 VAC 工程")
+                .add_filter("VAC 工程", &["avp"]),
+            "save-script" => dialog
+                .set_title("导出脚本")
+                .add_filter("VAC 脚本", &["avs"]),
+            "import-resources" | "relink-resource" => dialog.set_title("选择工程资源").add_filter(
+                "所有支持的资源",
+                &[
+                    "mp4", "mkv", "mov", "avi", "webm", "m4v", "mpeg", "mpg", "ts", "wav", "mp3",
+                    "m4a", "aac", "flac", "ogg", "opus", "wma", "png", "jpg", "jpeg", "webp",
+                    "gif", "bmp", "tif", "tiff", "srt", "ass", "vtt", "txt", "md", "markdown",
+                    "avs",
+                ],
+            ),
+            _ => return Err("未知文件操作".into()),
+        };
+        if let Some(path) = default_path {
+            let path = std::path::PathBuf::from(path);
+            if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
+                dialog = dialog.set_directory(parent);
+            }
+            if let Some(name) = path.file_name() {
+                dialog = dialog.set_file_name(name.to_string_lossy());
+            }
+        }
+        let files = if save {
+            dialog.blocking_save_file().map(|file| vec![file])
+        } else if mode == "import-resources" {
+            dialog.blocking_pick_files()
+        } else {
+            dialog.blocking_pick_file().map(|file| vec![file])
+        };
+        files
+            .unwrap_or_default()
+            .into_iter()
+            .map(|file| {
+                let mut path = file.into_path().map_err(|error| error.to_string())?;
+                if save && path.extension().is_none() {
+                    path.set_extension(if mode == "save-script" { "avs" } else { "avp" });
+                }
+                let path = std::path::absolute(path).map_err(|error| error.to_string())?;
+                Ok(path.display().to_string())
+            })
+            .collect()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
 
 #[tauri::command]
 fn runtime_status(runtime: tauri::State<'_, Runtime>) -> Status {
@@ -56,49 +161,12 @@ fn exit_prompt(app: tauri::AppHandle) {
     if runtime.maintenance.load(Ordering::SeqCst) {
         return;
     }
-    if runtime.exit_pending.swap(true, Ordering::SeqCst) {
-        return;
+    if runtime.snapshot().status != "ready" {
+        let _ = runtime.sender.send(Request::Exit);
+    } else {
+        let _ = app.emit("project-close-requested", ());
+        show_window(&app);
     }
-    let snapshot = runtime.snapshot();
-    let sender = runtime.sender.clone();
-    let app_clone = app.clone();
-    std::thread::spawn(move || {
-        let active = snapshot
-            .api_base_url
-            .as_ref()
-            .and_then(|base| {
-                client()
-                    .ok()?
-                    .get(format!("{base}/api/runtime/activity"))
-                    .send()
-                    .ok()?
-                    .json::<serde_json::Value>()
-                    .ok()
-            })
-            .and_then(|v| v["active_tasks"].as_u64());
-        if active != Some(0) && snapshot.status != "stopped" {
-            app_clone
-                .dialog()
-                .message("退出将停止后台任务；已经完成的结果会保留。是否退出？")
-                .title("退出 Video Auto Cut")
-                .buttons(MessageDialogButtons::OkCancelCustom(
-                    "退出并停止".into(),
-                    "继续运行".into(),
-                ))
-                .show(move |yes| {
-                    if yes {
-                        let _ = sender.send(Request::Exit);
-                    } else {
-                        app_clone
-                            .state::<Runtime>()
-                            .exit_pending
-                            .store(false, Ordering::SeqCst);
-                    }
-                });
-        } else {
-            let _ = sender.send(Request::Exit);
-        }
-    });
 }
 
 #[tauri::command]
@@ -204,8 +272,27 @@ async fn download_file(app: tauri::AppHandle, url: String) -> Result<(), String>
 }
 
 pub fn run(environment: tauri::Env) {
+    let args: Vec<String> = std::env::args().collect();
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .display()
+        .to_string();
     tauri::Builder::default()
         .manage(environment)
+        .manage(ProjectOpenRequest(std::sync::Mutex::new(project_argument(
+            &args, &cwd,
+        ))))
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            if let Some(path) = project_argument(&args, &cwd) {
+                if let Some(pending) = app.try_state::<ProjectOpenRequest>() {
+                    if let Ok(mut value) = pending.0.lock() {
+                        *value = Some(path);
+                    }
+                }
+                let _ = app.emit("project-open-requested", ());
+            }
+            show_window(app);
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -223,6 +310,10 @@ pub fn run(environment: tauri::Env) {
             restart_runtime,
             stop_runtime,
             request_exit,
+            confirm_project_exit,
+            project_dialog,
+            project_open_request,
+            clipboard_read_text,
             open_data_directory,
             select_recording,
             download_file,
@@ -248,7 +339,7 @@ pub fn run(environment: tauri::Env) {
             let menu = Menu::with_items(app, &[&show, &quit])?;
             let mut builder = TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
-                .tooltip("Video Auto Cut · 关闭窗口后任务继续运行")
+                .tooltip("Video Auto Cut · 工程工作区")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
                     "quit" => exit_prompt(app.clone()),
@@ -274,7 +365,7 @@ pub fn run(environment: tauri::Env) {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                exit_prompt(window.app_handle().clone());
             }
         })
         .run(tauri::generate_context!())

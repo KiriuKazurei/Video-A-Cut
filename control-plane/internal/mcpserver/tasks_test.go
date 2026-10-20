@@ -28,6 +28,10 @@ type loopFixture struct {
 }
 
 func newLoopFixture(t *testing.T, lease time.Duration, agents ...Agent) *loopFixture {
+	return newLoopFixtureOptions(t, lease, Options{}, agents...)
+}
+
+func newLoopFixtureOptions(t *testing.T, lease time.Duration, options Options, agents ...Agent) *loopFixture {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "loop.db"))
 	if err != nil {
@@ -42,7 +46,7 @@ func newLoopFixture(t *testing.T, lease time.Duration, agents ...Agent) *loopFix
 		agents[i].TokenSHA256 = hex.EncodeToString(h[:])
 		f.tokens[agents[i].ID] = token
 	}
-	f.server = httptest.NewServer(New(agents, svc, lease))
+	f.server = httptest.NewServer(New(agents, svc, lease, options))
 	t.Cleanup(f.server.Close)
 	return f
 }
@@ -227,7 +231,7 @@ func TestTaskLoopIsolation(t *testing.T) {
 		names = append(names, tl.Name)
 	}
 	want := "ack_execution_stopped,begin_execution,claim_task,fail_task,get_asset,get_asset_edl,get_execution_control,get_execution_result_status,get_task_input,get_task_status,heartbeat,list_assets,list_recovery_candidates,reconcile_execution_drain,report_progress,save_ingest_checkpoint,submit_delivery,submit_delivery_variant,submit_ingest_result,submit_preview,submit_result"
-	expected := append(strings.Split(want, ","), []string{"projects.list", "projects.visible_set.get", "skill_runs.cancel", "skill_runs.claim", "skill_runs.create", "skill_runs.get", "skill_runs.tool", "skills.get", "skills.list", "skills.read_resource"}...)
+	expected := append(strings.Split(want, ","), []string{"resources.list", "resources.read", "projects.list", "projects.visible_set.get", "skill_runs.cancel", "skill_runs.claim", "skill_runs.create", "skill_runs.get", "skill_runs.tool", "skills.get", "skills.list", "skills.read_resource"}...)
 	sortStrings(expected)
 	want = strings.Join(expected, ",")
 	sortStrings(names)

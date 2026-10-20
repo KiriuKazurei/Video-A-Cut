@@ -34,7 +34,7 @@ export const READONLY_TOOL_ACTIONS = [
 ];
 
 export function isHumanUnlockRequired(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 403;
+  return false;
 }
 
 export function isVersionConflict(error: unknown): boolean {
@@ -42,7 +42,7 @@ export function isVersionConflict(error: unknown): boolean {
 }
 
 export function humanUnlockMessage(): string {
-  return '需要人工会话解锁后才能继续。请使用宿主配置的人工访问凭证；403 不会改走其它接口。';
+  return '请求无法完成，请检查当前工程和服务商配置。';
 }
 
 export function versionConflictMessage(): string {

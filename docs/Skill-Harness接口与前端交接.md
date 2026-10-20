@@ -1,5 +1,7 @@
 # Skill Harness 接口与前端交接
 
+> 2026-10-20：工程文件、窗口免凭证、资源工作区与最新接口以 [AVP 工程实现契约](AVP工程文件与资源工作区.md) 为准。本文原阶段的人工会话/可见集授权、项目库和数量结论保留原时间与范围。
+
 > 后续更新：原成果已本地提交为 `dc20174`；本轮增加应用工具隔离、人工专属追加日志、成片局部修改与撤销/重做，见[最新交接与验证](可控编辑与操作历史-2026-10-19.md)。旧阶段的数量、提交及未验说明仅代表当时范围。
 
 更新：2026-10-19。对应分支 `agent/vu-skill`，工作区 `.run-data/worktrees/codex-skill-harness`。本文描述已写入代码的接口；测试、真实质量及剩余验收见[实施记录](Skill架构实施与验证-2026-10-19.md)。本轮提供调用和状态契约，页面布局由后续前端工作负责。
@@ -12,6 +14,8 @@
 - 全部 HTTP 索引：[frontend-api-inventory.json](frontend-api-inventory.json)。基础 28 项加本轮 12 项，当前合计 143 个注册模式、144 个展开接口；11 个桌面 IPC 不变。
 
 ## 前端实现状态（2026-10-19）
+
+独立复核与修复更新：初验 5 项接口上的 6 个交互缺陷已修复；前端 92 项、最终类型/构建、Go API 及扩展浏览器 21/21 回归通过，初验失败仍保留历史。真实质量与人工验收未运行，详见[独立校验](前端与接口独立校验-2026-10-19.md)。
 
 以下 HTTP 表逐项标明接入状态；全量 144 项以[前端接口清单与实现状态](前端接口清单与重构交接.md)为准。必做的新接口已接到现有五大工作区，没有新增顶栏：人工会话在设置 → 日志；项目与 scope v2 在资源页；Skill 管理在设置 → Skill；双流程和 SkillRun 工作台在编辑页内模块切换；声音回写在 TTS 专页；同版交付在导出页。`GET /api/skills/{id}/content` 仍无独立封装，页面读取 `skillApi.skill`。
 
@@ -71,14 +75,40 @@ budget 默认 max_steps=24、max_seconds=900、max_frames=24；硬顶为 64 步�
 
 ## MCP 与工具
 
-MCP 沿用已配置 Agent token 和真实身份，不接受 actor 参数代替鉴权。可发现工具：
+### MCP Agent 接入校验（2026-10-19）
+
+修复后结论：**四项代码缺陷已处理；桌面通过本机 MCP 直接接入，不需要外部独立凭证。** 官方 SDK 的四版本协议、原生图片、完整契约分发、两次真实剪辑交付，以及新二进制免凭证连接/名称来源日志已验证通过。真实外部模型自主判断、桌面发行包及人工画面验收仍待验证。测试职责、命令和边界统一见 [scripts/TESTING.md](../scripts/TESTING.md)。
+
+| 编号 | 初验问题（保留失败事实） | 当前修复与证据 |
+|---|---|---|
+| MCP-A | 三个旧版本 initialize 200 后 tools/list 400 | 使用 SDK 原生版本协商；2026-07-28、2025-11-25、2025-06-18、2025-03-26 × 内部 Worker/免凭证桌面共 8 组官方 SDK 握手、发现和实际调用通过；真实二进制三个旧版本各自协商正确且 tools/list 200 |
+| MCP-B | 仅 JSON base64、0 个原生图片块 | MCP 帧 artifacts.get 返回原生 ImageContent + 结构化 {artifact,mime_type}，移除模型文本里的图像 base64；官方 SDK 收到 1 个 image/jpeg 块、12940 字节与登记大小一致。HTTP 和内置 Agent 原结果保留 |
+| MCP-C | 内层参数/检查顺序未完整交给 Agent | 全部内置 Skill 提供 [vac/tool-contracts.md](../control-plane/internal/skill/builtin/vac-tool-contracts.md)，adapter 和目录包同步读取指引；含 12 个工具参数/结果、检查门、局部编辑及恢复。SDK 按包 SHA 获取资源后完成媒体闭环。包升级为 video-use 0.1.0-vac.3、visual 1.1.1、syntax 1.0.1 |
+| MCP-D | 桌面只有内部 Worker 凭证，缺少外部接入途径 | 按用户修正采用免独立凭证本机 MCP；桌面自动启用 mcp_local_access，runtime_status/desktop-session.json 返回 mcp_url。自动 MCP 会话隔离 owner，日志记录名称/版本/来源/peer/身份性质。不同同名连接不能读同一 run；外部仅 10 个 Skill 工具，内部 Worker 鉴权保留 |
+
+已实际通过：SDK 自动发现与鉴权、skills.get/read_resource 哈希绑定、授权媒体读取/抽帧/摘要、scripts.propose、人工定稿、真实 MP4/Premiere 包、renders.inspect/review/finish；人工指定首段后 MCP 获取提示词及时间窗，成片从 1.000 秒改为 0.800 秒，第二段保留，重新人工定稿后交付。人工日志链校验通过，Agent token 访问日志 HTTP 403，MCP 不暴露定稿/撤销/日志工具。service 的隔离、撤权、幂等、预算与历史回归另行保留。此处人工动作为测试代码模拟人工身份调用服务，未代表真实用户点击或画面质量验收。
+
+桌面接入方式与控制边界：
+
+1. 桌面自动启用本机 `mcp_local_access:true`。读取 `runtime_status.mcp_url`，或数据目录 `desktop-session.json` 的同名字段，作为 Agent 的 Streamable HTTP URL，例如 `http://127.0.0.1:<实际端口>/mcp`。无需独立 token、注册账户或 VAC 模型 Key；重启后的动态端口可能变化，需要读取新地址。当前前端 TS 已声明 mcp_url，尚无专门复制 MCP 配置的页面按钮，布局交由前端负责。
+2. MCP 客户端按协议提供 clientInfo.name/version；可选 `X-VAC-Agent-Source` 请求头或 `_meta["vac/agentSource"]` 补充来源，默认取 User-Agent/streamable-http。自动 `Mcp-Session-Id` 是连接上下文，由客户端 SDK 管理，不是用户申请的独立凭证。会话闲置 30 分钟失效，最多 256 个；断开/失效后重新连接并在旧租约允许时领取 run。来源/名称是客户端上报信息（identity_kind=client_reported），日志另记实际 peer；不把上报名称当成认证身份。无 stdio 启动入口；浏览器 Origin、非回环、代理转发和变更连接身份的请求被拒绝。
+3. 人工先允许项目外部访问、配置资产 AgentVisible/AllowedAgents、确认 visible-set；Agent 取得 project_id/确认 SHA 后创建 external_mcp run，或获得人工创建的 run_id 后 claim。外部 Agent 自带模型，不需要 VAC 推理 Key；若选择 VAC 内置转录工具，仍需独立转录配置及授权。
+4. Agent 获取 VAC adapter 与包内资源，通过 skill_runs.tool 执行；waiting_human 时停止，用户在 VAC 定稿后继续。使用最新 expected_version、稳定幂等键；不能通过 MCP 自行确认可见集、定稿、恢复、撤销/重做或访问操作日志。
+
+独立运行 Go 控制面时，显式启用 `http_addr` 和 `mcp_local_access:true` 即可使用同一免凭证入口；两项 MCP 配置均未启用时 `/mcp` 不挂载。内部 Worker 仍可使用原 `mcp_agents_file` 的 SHA256/Bearer 鉴权，不把 Worker 凭证交给外部 Agent。免凭证连接固定 narrator 角色，资产角色白名单仍由人工设置，不从客户端输入授予权限。
+
+`mcp.requested/completed` 日志的 `body.detail.agent` 含 `name/version/source/peer/identity_kind`；日志仍只能由人工读取、验证链或追加注释。该对象是新增的日志详情字段，HTTP 路径和 144 项接口计数不变。`runtime_status` 新增可选 `mcp_url`（string/null），仍为原 11 个桌面 IPC，无新增 IPC；前端声明位于 desktop.ts。
+
+以下为当前 MCP 调用契约；Agent 应先读取包内 vac/tool-contracts.md，而非依赖本交接文档或上游 shell 示例。
+
+MCP 内部 Worker 沿用 Bearer 身份；桌面外部 Agent 使用自动连接会话。两者都不接受 actor 参数授予人工权限。外部可发现工具：
 
 | MCP 名称 | 用途 |
 |---|---|
 | skills.list / skills.get | 读取包、版本、正文、资源索引 |
 | skills.read_resource | 按 id、content_sha256、resource 读取包内文本 |
 | projects.list / projects.visible_set.get | 读取人工授权外部访问的项目与可见集 |
-| skill_runs.create / claim | 创建或领取外部模式 run，绑定已认证 Agent 与角色 |
+| skill_runs.create / claim | 创建或领取外部模式 run，绑定连接 owner 与服务端角色 |
 | skill_runs.get / cancel | 读取本人 run 的当前上下文或取消；步骤日志只向人工开放 |
 | skill_runs.tool | 调用下面的受控工具；参数是 run_id + request |
 
@@ -106,7 +136,7 @@ MCP 沿用已配置 Agent token 和真实身份，不接受 actor 参数代替�
 | renders.create | {}；仅精确定稿计划，复用 Node/FFmpeg；MP4 + Premiere ZIP |
 | renders.inspect | {}；成片切点、首尾取帧与媒体参数检查；返回 inspection.frame_ids |
 | renders.review | plan_version、frame_ids、verdict(passed/needs_changes)、issues；绑定当前检查集合 |
-| artifacts.list / get | get 接受 id，返回受控小帧/转录的 base64；大成片通过 HTTP 文件 URL |
+| artifacts.list / get | get 接受 id；MCP 帧为原生图片 + {artifact,mime_type}，转录为 {artifact,base64}；HTTP/内置工具保留原结果，大成片由人工经 HTTP 文件 URL 浏览/下载 |
 | run.finish | {}；同版正式成片 + 机器检查通过才完成，人工质量仍待验 |
 
 Provider 的新增可选字段：

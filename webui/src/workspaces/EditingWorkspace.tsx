@@ -48,7 +48,7 @@ function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
       {ended && !showForm && <Button type="link" className="auto-restart" style={{ paddingInline: 0, marginTop: 8 }} onClick={() => setShowForm(true)}>重新生成…</Button>}
       {!live && (!ended || showForm) && !visibleSet.isSuccess && (
         <Alert type={visibleSet.isError ? 'error' : 'info'} showIcon style={{ marginTop: 12 }}
-          message={visibleSet.isError ? '暂时读不到可见素材的确认状态' : '正在读取可见素材的确认状态'}
+          message={visibleSet.isError ? '暂时读不到工程素材' : '正在读取工程素材'}
           action={visibleSet.isError ? <Button size="small" onClick={() => void visibleSet.refetch()}>重试</Button> : undefined} />
       )}
       {!live && (!ended || showForm) && visibleSet.isSuccess && !canGenerate && (
@@ -137,7 +137,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
     <div className="page-body">
       <Segmented className="skill-lane" aria-label="编辑模块" value={lane} onChange={(value) => setLane(value as 'legacy' | 'skill')}
         options={[{ value: 'legacy', label: '现有剪辑' }, { value: 'skill', label: 'Skill 运行' }]} style={{ marginBottom: 16 }} />
-      {lane === 'skill' && <SkillRunModule navigate={navigate} />}
+      {lane === 'skill' && <SkillRunModule navigate={navigate} active={route.workspace === 'editing'} />}
       {lane === 'legacy' && <Tabs
         activeKey={editingSection}
         onChange={(key) => navigate({ editingSection: key as typeof editingSection })}
@@ -160,8 +160,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
                   {asset && <Alert type="info" showIcon className="start-banner" message="素材导入好了？"
                     description="在页面最下方的「开始生成」里检查条件并一键开始；也可以先在上方选好段落再开始。"
                     action={<Button type="primary" className="vac-cta" onClick={goStart}>去开始生成</Button>} />}
-                  <IngestRegister onSelect={onSelect} />
-                  <DeliveryImport onImported={onSelect} />
+                  <Alert type="info" message="通过“文件 → 导入”管理当前工程素材。" />
                   <IngestPanel asset={asset} />
                   {asset && <StartCard asset={asset} run={workflowData.current} selection={selection} navigate={navigate} onPreparedStarted={onPreparedStarted} />}
                 </PreviewScope>
@@ -169,7 +168,7 @@ export function EditingWorkspace({ route, navigate, asset, selection, onSelect, 
               
               {section.id === 'content' && asset && !scriptOpen && (
                 <Alert type="warning" showIcon message="还不能进入脚本"
-                  description={visibleSet.isPending ? '正在读取可见素材的确认状态。' : '请先在资源页确认当前 Agent 可见素材。已在进行的流程不受这次确认影响。'}
+                  description={visibleSet.isPending ? '正在读取工程素材。' : '请先在资源页确认当前 Agent 可见素材。已在进行的流程不受这次确认影响。'}
                   action={<Button type="primary" onClick={() => navigate({ workspace: 'resources' })}>去资源页确认</Button>} />
               )}
               {section.id === 'content' && asset && scriptOpen && (

@@ -314,6 +314,8 @@ export async function runLoop({
     }
     log(`claimed ${claim.task.task_id} (${claim.task.type}) for ${claim.task.asset_id}`);
     const result = await processTask({ client, cfg, task: claim.task, executionScope: claim.scope, log, signal, runCliImpl, renderPreviewImpl, previewCapability: previewCap, buildVariantImpl, deliveryVariantCapability: variantCap });
+    // Acknowledge idle after child processes and package cleanup exit.
+    try { await client.call('heartbeat', {}); } catch (err) { log(`idle heartbeat error: ${err.message}`); }
     log(`task ${claim.task.task_id}: ${result.outcome}${result.reason ? ` - ${result.reason}` : ''}`);
     if (once) return result;
     if (result.outcome === 'registration_pending') {
