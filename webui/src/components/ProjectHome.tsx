@@ -4,7 +4,7 @@ import { useProjectWorkspace } from '../projectWorkspace';
 
 export function ProjectHome() {
   const project = useProjectWorkspace();
-  return <main id="main" className="project-home">
+  return <main id="main" className="project-home" aria-busy={!project.session || project.busy}>
     <div className="project-home-heading"><Typography.Title level={2}>Video Auto Cut</Typography.Title><Typography.Paragraph type="secondary">打开一个工程，开始创作。</Typography.Paragraph></div>
     {project.error && <Alert type="error" showIcon message={project.error} />}
     <Flex gap={12} wrap className="project-home-actions"><Button type="primary" size="large" icon={<FileAddOutlined />} disabled={project.busy} onClick={() => void project.create().catch(() => {})}>新建项目</Button><Button size="large" icon={<FolderOpenOutlined />} disabled={project.busy} onClick={() => void project.open().catch(() => {})}>打开项目</Button></Flex>

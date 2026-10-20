@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { CDP, sleep } from './tauri-cdp.mjs';
 import { testStorageRoot } from './test-paths.mjs';
 const [portArg, pidArg, directoryArg] = process.argv.slice(2);
-let pid = Number(pidArg), c, launched;
+let pid = Number(pidArg), c, launched, originalClipboard;
 const out = path.resolve(directoryArg), port = Number(portArg);
 assert(out.startsWith(testStorageRoot + path.sep), 'Versioned output required');
 await fs.mkdir(out, {recursive:true});
@@ -17,7 +17,7 @@ const run = (exe,args) => new Promise((resolve,reject) => { const child=spawn(ex
 const probe = (action,extra=[]) => run('C:/Program Files/PowerShell/7/pwsh.exe',['-File','scripts/Tauri-WindowProbe.ps1','-DesktopPid',String(pid),'-Action',action,...extra]);
 const until = async (read,match,timeout=30000) => { const deadline=Date.now()+timeout;let last;while(Date.now()<deadline){last=await read();if(match(last))return last;await sleep(150)}const state=last?.document?{id:last.id,project:last.document.project.name,dirty:last.dirty,active_tasks:last.active_tasks,scripts:last.document.scripts.map(s=>({id:s.id,title:s.title})),resources:last.document.resources.map(r=>({id:r.id,name:r.name,notes:r.notes,removed:r.removed}))}:last;throw Error('State timeout '+JSON.stringify(state)); };
 const click = async (text, selector='button') => { await c.wait(`[...document.querySelectorAll(${JSON.stringify(selector)})].some(n=>n.offsetParent!==null&&!n.disabled&&n.textContent.trim()===${JSON.stringify(text)})`); await c.ev(`[...document.querySelectorAll(${JSON.stringify(selector)})].find(n=>n.offsetParent!==null&&!n.disabled&&n.textContent.trim()===${JSON.stringify(text)}).click()`); };
-const pointerClick = async selector => { await sleep(400);const point=await c.ev(`(()=>{const n=document.querySelector(${JSON.stringify(selector)});n.scrollIntoView({block:'nearest'});const r=n.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);await c.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});await c.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});await c.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point}); };
+const pointerClick = async selector => { await c.wait(`(()=>{const n=document.querySelector(${JSON.stringify(selector)});return n&&n.offsetParent!==null})()`);await sleep(400);const point=await c.ev(`(()=>{const n=document.querySelector(${JSON.stringify(selector)});n.scrollIntoView({block:'nearest'});const r=n.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);await c.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});await c.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});await c.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point}); };
 const shortcut = async (key,shift=false) => { await c.wait(`document.querySelector('.project-menu-bar')?.getAttribute('aria-busy')!=='true'`);await sleep(150); const code=key.toUpperCase().charCodeAt(0);await c.send('Input.dispatchKeyEvent',{type:'keyDown',key,code:'Key'+key.toUpperCase(),windowsVirtualKeyCode:code,modifiers:2|(shift?8:0)});await c.send('Input.dispatchKeyEvent',{type:'keyUp',key,code:'Key'+key.toUpperCase(),windowsVirtualKeyCode:code,modifiers:0}); };
 const input = async (selector,value) => { await c.wait(`(()=>{const n=document.querySelector(${JSON.stringify(selector)});return n&&n.offsetParent!==null&&!n.disabled&&!n.readOnly})()`);await c.ev(`(()=>{const n=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(n instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(n,${JSON.stringify(value)});n.dispatchEvent(new Event('input',{bubbles:true}));n.dispatchEvent(new Event('change',{bubbles:true}));})()`); };
 const menu = async (top,item) => {
@@ -38,6 +38,29 @@ const workspace = () => api('/api/workspace');
 const choose = (title,file) => probe('choose',['-DialogTitle',title,'-FilePath',file]);
 const importFile = async file => { const count=(await workspace()).document.resources.length;await shortcut('i');await choose('选择工程资源',file);await until(workspace,v=>v.document.resources.length===count+1); };
 const select = async id => {await c.wait(`document.querySelector('[data-resource-id="${id}"]')`);await c.ev(`document.querySelector('[data-resource-id="${id}"]').click()`);await c.wait(`document.querySelector('[data-resource-id="${id}"]').getAttribute('aria-pressed')==='true'`);};
+const verifyMcp = async runtime => {
+  await c.ev(`location.hash='/settings/skills'`);
+  await c.wait(`document.querySelector('input[aria-label="MCP 地址"]')?.value===${JSON.stringify(runtime.mcp_url)}`);
+  await click('复制地址');await until(async()=>await c.invoke('clipboard_read_text')===runtime.mcp_url,Boolean);
+  await click('复制连接配置');await until(async()=>(await c.invoke('clipboard_read_text')).includes('[mcp_servers.vac]'),Boolean);const toml=await c.invoke('clipboard_read_text');
+  assert(toml.includes('[mcp_servers.vac]')&&toml.includes(JSON.stringify(runtime.mcp_url)));assert(!/token|Authorization/i.test(toml));
+  await pointerClick('[aria-label="连接配置格式"]');await click('mcpServers JSON','.ant-select-item-option-content');
+  await c.wait(`document.querySelector('textarea[aria-label="MCP 连接配置"]')?.value.startsWith('{')`);
+  await click('复制连接配置');await until(async()=>(await c.invoke('clipboard_read_text')).startsWith('{'),Boolean);const config=JSON.parse(await c.invoke('clipboard_read_text'));assert.equal(config.mcpServers.vac.url,runtime.mcp_url);
+  await c.screenshot(path.join(out,checks.length?'mcp-current.png':'mcp.png'));
+};
+const attachDesktop = async () => {
+  const deadline=Date.now()+120000;let error;
+  while(Date.now()<deadline){
+    if(launched?.exitCode!==null&&launched?.exitCode!==undefined)throw Error('Desktop exited before bridge readiness: '+launched.exitCode);
+    let candidate;
+    try{
+      candidate=await CDP.connect(port);await candidate.wait('window.__TAURI__?.core',10000);
+      assert.equal(await candidate.ev('location.origin'),'http://tauri.localhost');return candidate;
+    }catch(reason){error=String(reason);candidate?.close();report.startup_retries=(report.startup_retries??0)+1;await sleep(250);}
+  }
+  throw Error('Desktop bridge did not become ready: '+error);
+};
 try {
   if (pidArg === 'launch') {
     const executable=process.env.VAC_DESKTOP_EXECUTABLE;assert(executable,'VAC_DESKTOP_EXECUTABLE required');
@@ -45,10 +68,44 @@ try {
     const stdout=await fs.open(path.join(root,'desktop.out.log'),'w'),stderr=await fs.open(path.join(root,'desktop.err.log'),'w');
     launched=spawn(executable,['--desktop-config',config,'--webview-data',path.join(root,'webview'),'--webview-debug-port',String(port)],{windowsHide:true,stdio:['ignore',stdout.fd,stderr.fd]});pid=launched.pid;await fs.writeFile(path.join(out,'desktop-process.json'),JSON.stringify({pid,config,executable}));await stdout.close();await stderr.close();
   }
-  c=await CDP.connect(port);await c.wait('window.__TAURI__?.core',120000);
+  c=await attachDesktop();
   await c.ev(`(()=>{window.__VAC_TEST_MESSAGES=[];new MutationObserver(()=>{for(const n of document.querySelectorAll('.ant-message-notice-content')){const text=n.textContent;if(!window.__VAC_TEST_MESSAGES.includes(text))window.__VAC_TEST_MESSAGES.push(text)}}).observe(document.body,{subtree:true,childList:true})})()`);
   const status=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(status.status,'ready',status.message);base=status.api_base_url;report.runtime=status;
+  originalClipboard=await c.invoke('clipboard_read_text');
   await c.wait(`document.querySelector('.project-home')`);const window=JSON.parse(await probe('inspect'));assert(window.visible&&window.handle);await record('visible home and real desktop bridge',window);await c.screenshot(path.join(out,'home.png'));if(await c.ev(`document.body.innerText.includes('跳过引导')`))await click('跳过引导');
+  const appVersion=JSON.parse(await fs.readFile(path.resolve('desktop/tauri.conf.json'))).version;
+  assert.equal((await c.invoke('update_status')).current_version,appVersion);await menu('关于','版本信息');
+  await c.wait(`document.querySelector('.ant-modal-content')?.innerText.includes(${JSON.stringify('Video Auto Cut '+appVersion)})`);
+  await pointerClick('.ant-modal .ant-btn-primary');await record('About menu and native runtime report the current application version',{version:appVersion});
+  await verifyMcp(status);await record('live MCP address, Codex TOML and JSON copy through native clipboard before opening a project');
+  if(process.env.VAC_ASR_TEST_MODEL&&process.env.VAC_ASR_TEST_PYTHON){
+    await c.ev(`location.hash='/settings/profiles'`);await click('新建预设');
+    await c.wait(`document.querySelector('input[pattern]')?.value.startsWith('profile_')`);
+    const profileID=await c.ev(`document.querySelector('input[pattern]').value`);
+    const baselineProfile=JSON.parse(await fs.readFile(path.resolve('configs/phase6/profile.builtin.example.json')));
+    await input('.prep-main input[maxlength="100"]','本地 ASR '+pid);
+    await input('.prep-main input[placeholder="本机声音名称，或在上方绑定 TTS 模板"]',baselineProfile.tts_voice);
+    await c.ev(`location.hash='/settings/providers'`);await c.wait(`document.querySelector('.transcription-settings')`);
+    await c.ev(`(()=>{const n=document.querySelector('.transcription-settings input[type=checkbox]');if(!n.checked)n.click()})()`);
+    await click('选择模型目录');await choose('选择本地转录模型目录',process.env.VAC_ASR_TEST_MODEL);
+    await c.wait(`document.querySelector('[aria-label="本地模型目录"]')?.value===${JSON.stringify(process.env.VAC_ASR_TEST_MODEL.replaceAll('/','\\'))}||document.querySelector('[aria-label="本地模型目录"]')?.value===${JSON.stringify(process.env.VAC_ASR_TEST_MODEL)}`);
+    await click('选择 Python');await choose('选择本地转录 Python',process.env.VAC_ASR_TEST_PYTHON);
+    await click('检查本地转录环境');await c.wait(`document.querySelector('.transcription-settings .ant-alert-success')?.innerText.includes('faster-whisper')`,60000);
+    await c.ev(`document.querySelector('.transcription-settings').scrollIntoView({block:'center'})`);await sleep(250);
+    await c.screenshot(path.join(out,'local-asr-settings.png'));await click('保存新版本');
+    await c.wait(`document.body.innerText.includes('已保存 v1')`);
+    const savedProfile=await api('/api/processing-profiles/'+profileID+'/revisions/0');assert.equal(savedProfile.profile.revision,1);
+    assert.equal(savedProfile.profile.transcription.api_format,'faster_whisper');
+    assert.equal(path.resolve(savedProfile.profile.transcription.model_path),path.resolve(process.env.VAC_ASR_TEST_MODEL));
+    assert.equal(path.resolve(savedProfile.profile.transcription.python_executable),path.resolve(process.env.VAC_ASR_TEST_PYTHON));
+    assert(!savedProfile.profile.transcription.endpoint&&!savedProfile.profile.transcription.token_env);
+    await c.ev(`location.reload()`);await c.wait(`document.querySelector('.project-home[aria-busy="false"]')`,60000);
+    await c.ev(`location.hash='/settings/profiles'`);await pointerClick('.select-saved-profile .ant-select-selector');
+    await click(savedProfile.profile.name+' · v'+savedProfile.profile.revision,'.ant-select-item-option-content');await click('加载版本');
+    await c.ev(`location.hash='/settings/providers'`);await c.wait(`document.querySelector('.transcription-settings input[aria-label="本地模型目录"]')?.value===${JSON.stringify(savedProfile.profile.transcription.model_path)}`);
+    await record('local ASR native model/Python pickers, real dependency check and immutable profile persistence without an open project',{profile_id:profileID});
+  }
+  await c.ev(`location.hash='/resources'`);await c.wait(`document.querySelector('.project-home')`);
   const nameA='工程 A '+pid,nameB='工程 B '+pid;const projectA=path.join(out,nameA+'.avp'), projectB=path.join(out,nameB+'.avp');
   await shortcut('n');await choose('保存 VAC 工程',projectA);const first=await until(workspace,v=>v.document?.project.name===nameA);await c.wait(`document.querySelector('.resource-bin')`);await record('Ctrl+N native save dialog creates independent AVP',{id:first.document.project.id,path:projectA});
   const fixture=path.resolve('workers/node/timeline-cli/fixtures/media/clip_01.mp4');
@@ -96,13 +153,15 @@ try {
     await shortcut('s');await until(workspace,v=>!v.dirty);await probe('close');await until(async()=>launched.exitCode,v=>v!==null,45000);c.close();
     const config=path.resolve(process.argv[5]),root=path.dirname(config);const stdout=await fs.open(path.join(root,'desktop.out.log'),'a'),stderr=await fs.open(path.join(root,'desktop.err.log'),'a');
     launched=spawn(executable,[projectA,'--desktop-config',config,'--webview-data',path.join(root,'webview'),'--webview-debug-port',String(port)],{windowsHide:true,stdio:['ignore',stdout.fd,stderr.fd]});pid=launched.pid;await stdout.close();await stderr.close();
-    c=await CDP.connect(port);await c.wait('window.__TAURI__?.core',120000);const restarted=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(restarted.status,'ready',restarted.message);base=restarted.api_base_url;
+    c=await attachDesktop();const restarted=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(restarted.status,'ready',restarted.message);base=restarted.api_base_url;
     const reopened=await until(workspace,v=>v.document?.project.id===first.document.project.id);assert.equal(reopened.document.resources.find(r=>r.id===video.id).notes,'窗口关闭也可取消');await c.wait(`document.querySelector('.resource-bin')`);assert(JSON.parse(await probe('inspect')).visible);await record('native close and fresh executable startup reopen the saved AVP argument');
+    assert.notEqual(restarted.session_id,status.session_id);await verifyMcp(restarted);await record('fresh runtime session supplies the current MCP address and native copied configurations after restart');
   }
   report.result='passed';
 } catch(error){report.result='failed';report.error=String(error.stack||error);report.messages=await c?.ev('window.__VAC_TEST_MESSAGES').catch(()=>[]);await c?.screenshot(path.join(out,'failure.png')).catch(()=>{});await fs.writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));if(process.env.VAC_DESKTOP_KEEP_FAILURE==='1'){console.log('Diagnostic hold: '+report.error);await until(async()=>{try{await fs.access(path.join(out,'resume-validation'));return true}catch{return false}},Boolean,180000).catch(()=>{});}throw error;}
 finally{
   await fs.writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));
+  if(originalClipboard!==undefined)await c?.invoke('clipboard_write_text',{text:originalClipboard}).catch(()=>{});
   if(launched){
     if(base)await api('/api/workspace/close','POST',{decision:'discard',stop_tasks:true}).catch(()=>{});
     await c?.invoke('confirm_project_exit').catch(()=>{});

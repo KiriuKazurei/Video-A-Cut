@@ -207,6 +207,9 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
   const onShortcut = (action: ReviewShortcutAction) => {
     if (!current || !review.data || busy) return;
     if (action === 'next') { jumpNext(); return; }
+    // 审批必须对应此面板当前的实际 DOM 焦点；旧选择/尚未提交的焦点更新不能审批其他项。
+    const element = document.activeElement?.closest<HTMLElement>('[data-focus-key]');
+    if (!element || !rootRef.current?.contains(element) || element.dataset.focusKey !== focus) return;
     if (action === 'confirm' && isReview && sceneGate) {
       const sc = pendingScenes.find(x => focus === `scene:${x.scene_id}`);
       if (sc?.scene_id) invoke(() => api.confirmScene(current.run_id, { ...context(), scene_id: sc.scene_id!, decision: 'confirmed', note }));
@@ -237,12 +240,12 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
       const own = timed.filter(l => l.source_scene_id === scene.scene_id);
       if (!own.length) return [];
       return [{ id: scene.scene_id ?? String(scene.label), start: Math.min(...own.map(l => l.start!)), end: Math.max(...own.map(l => l.end!)), label: scene.label || scene.scene_id || '场景',
-        tone: sceneTone(scene), active: focus === `scene:${scene.scene_id}`, onSelect: () => showScene(scene), title: `${scene.label} · ${scene.decision || '待确认'}（时间窗由所属解说推得）` }];
+        tone: sceneTone(scene), focusKey: `scene:${scene.scene_id}`, active: focus === `scene:${scene.scene_id}`, onSelect: () => showScene(scene), title: `${scene.label} · ${scene.decision || '待确认'}（时间窗由所属解说推得）` }];
     })
     : ordered.map(({ scene }, i) => ({ id: scene.scene_id ?? String(i), start: i, end: i + 1, label: `${i + 1}. ${scene.label || scene.scene_id}`, tone: sceneTone(scene),
-      active: focus === `scene:${scene.scene_id}`, onSelect: () => showScene(scene), title: `${scene.label} · ${scene.decision || '待确认'}` }));
+      focusKey: `scene:${scene.scene_id}`, active: focus === `scene:${scene.scene_id}`, onSelect: () => showScene(scene), title: `${scene.label} · ${scene.decision || '待确认'}` }));
   const lineClips: TimelineClip[] = timed.map(line => ({ id: line.id ?? `${line.start}`, start: line.start!, end: line.end!, label: line.text || line.id || '解说',
-    tone: line.approved_hash ? 'ok' : 'audio', active: focus === `line:${line.id}`, onSelect: () => showLine(line), title: `${line.start}s – ${line.end}s · ${line.approved_hash ? '已批准' : '未批准'} · ${line.text}` }));
+    tone: line.approved_hash ? 'ok' : 'audio', focusKey: `line:${line.id}`, active: focus === `line:${line.id}`, onSelect: () => showLine(line), title: `${line.start}s – ${line.end}s · ${line.approved_hash ? '已批准' : '未批准'} · ${line.text}` }));
 
   const revisionId = current?.current_revision_id ?? '';
   const doCopy = () => { void copyText(revisionId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };

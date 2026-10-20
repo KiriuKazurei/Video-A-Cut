@@ -30,7 +30,9 @@ def main():
         source = entry['backend_source']
         line = (root / source['file']).read_text(encoding='utf-8').splitlines()[source['line'] - 1]
         assert re.search(r'\b' + re.escape(entry['backend_handler']) + r'\(', line), (entry['id'], source, line)
-    assert hashlib.sha256((root / inventory['routes_source']).read_bytes()).hexdigest() == inventory['routes_source_sha256']
+    source_bytes=(root / inventory['routes_source']).read_bytes()
+    if inventory.get('source_hash_normalization')=='lf': source_bytes=source_bytes.replace(b'\r\n',b'\n')
+    assert hashlib.sha256(source_bytes).hexdigest() == inventory['routes_source_sha256']
     documents = [root / p for p in (
         'docs/项目文档.md', 'docs/计划文档.md',
         'docs/接口文档.md', 'docs/架构与功能详解.md',

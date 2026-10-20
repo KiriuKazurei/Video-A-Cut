@@ -62,6 +62,68 @@ pub fn clipboard_text() -> Result<String, String> {
 }
 
 #[cfg(windows)]
+pub fn write_clipboard_text(owner: isize, text: &str) -> Result<(), String> {
+    use windows_sys::Win32::System::{DataExchange::*, Memory::*};
+    let encoded: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    if text.contains('\0') || encoded.len() > 8 * 1024 * 1024 {
+        return Err("剪贴板文本无效或超过可复制的大小".into());
+    }
+    unsafe {
+        struct Memory(HGLOBAL);
+        impl Drop for Memory {
+            fn drop(&mut self) {
+                if !self.0.is_null() {
+                    unsafe {
+                        GlobalFree(self.0);
+                    }
+                }
+            }
+        }
+        let mut memory = Memory(GlobalAlloc(GMEM_MOVEABLE, encoded.len() * 2));
+        if memory.0.is_null() {
+            return Err(io::Error::last_os_error().to_string());
+        }
+        let pointer = GlobalLock(memory.0) as *mut u16;
+        if pointer.is_null() {
+            return Err(io::Error::last_os_error().to_string());
+        }
+        std::ptr::copy_nonoverlapping(encoded.as_ptr(), pointer, encoded.len());
+        GlobalUnlock(memory.0);
+        let mut opened = false;
+        for _ in 0..10 {
+            if OpenClipboard(owner as HWND) != 0 {
+                opened = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if !opened {
+            return Err("剪贴板正被其他程序使用，请稍后重试".into());
+        }
+        struct Clipboard;
+        impl Drop for Clipboard {
+            fn drop(&mut self) {
+                unsafe {
+                    CloseClipboard();
+                }
+            }
+        }
+        let _clipboard = Clipboard;
+        if EmptyClipboard() == 0 || SetClipboardData(13, memory.0).is_null() {
+            return Err(io::Error::last_os_error().to_string());
+        }
+        // Windows owns the movable allocation after SetClipboardData succeeds.
+        memory.0 = std::ptr::null_mut();
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+pub fn write_clipboard_text(_owner: isize, _text: &str) -> Result<(), String> {
+    Err("当前平台使用浏览器剪贴板接口".into())
+}
+
+#[cfg(windows)]
 pub struct Job(HANDLE);
 #[cfg(windows)]
 unsafe impl Send for Job {}

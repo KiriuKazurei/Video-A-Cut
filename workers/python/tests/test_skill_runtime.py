@@ -5,8 +5,75 @@ from unittest import mock
 import http.server
 import shutil
 import threading
+import json
+import types
+import sys
+from decimal import Decimal
 from vac_worker.stages import StageContext, Tools, narrate, tts, subtitle
-from vac_worker.skill_runtime import select_frames, extract, ToolFailure, run
+from vac_worker.skill_runtime import select_frames, extract, ToolFailure, run, transcribe, probe_transcription
+
+
+class LocalTranscriptionTests(unittest.TestCase):
+    def execute(self, *, missing=None, words=None, model_error=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model = root/'model'; model.mkdir()
+            for name in ('config.json', 'model.bin', 'tokenizer.json'):
+                if name != missing:
+                    (model/name).write_bytes(b'fixture')
+            source = root/'source.mp4'; source.write_bytes(b'media')
+            output = root/'transcript.json'
+            word = types.SimpleNamespace(word=' hello', start=Decimal('.25'), end=Decimal('.8'), probability=Decimal('.9'))
+            engine = mock.Mock()
+            engine.transcribe.return_value = (iter([types.SimpleNamespace(text=' hello', words=[word] if words is None else words)]), types.SimpleNamespace(language='en', language_probability=.98))
+            constructor = mock.Mock(return_value=engine)
+            if model_error:
+                constructor.side_effect = RuntimeError('local failure')
+            module = types.SimpleNamespace(WhisperModel=constructor, __version__='fixture')
+            request = {'provider': {'api_format': 'faster_whisper', 'model_path': str(model), 'device': 'cpu', 'compute_type': 'int8'},
+                       'path': str(source), 'start': 5., 'end': 7., 'output': str(output), 'model_fingerprint': 'frozen-model'}
+            def extract_audio(args, *_):
+                Path(args[-1]).write_bytes(b'audio')
+                return b''
+            with mock.patch.dict(sys.modules, {'faster_whisper': module}), mock.patch('vac_worker.skill_runtime.run', side_effect=extract_audio), mock.patch('vac_worker.skill_runtime.local_pcm_samples', return_value=object()), mock.patch('urllib.request.build_opener', side_effect=AssertionError('local ASR attempted HTTP')):
+                if missing or model_error or words == []:
+                    with self.assertRaises(ToolFailure) as caught:
+                        transcribe(request)
+                    self.assertEqual(caught.exception.code, 'local_asr_model_missing' if missing else 'local_asr_runtime_failed' if model_error else 'no_speech_detected')
+                    self.assertFalse(output.exists())
+                else:
+                    result = transcribe(request)
+                    self.assertEqual(result['words'][0]['start'], 5.25)
+                    self.assertEqual(result['words'][0]['end'], 5.8)
+                    self.assertEqual(result['provider'], 'faster-whisper')
+                    self.assertEqual(result, json.loads(output.read_text(encoding='utf-8')))
+                    self.assertTrue(constructor.call_args.kwargs['local_files_only'])
+                    self.assertTrue(engine.transcribe.call_args.kwargs['word_timestamps'])
+                    self.assertEqual(probe_transcription(request)['dependency_version'], 'fixture')
+                self.assertFalse(output.with_suffix('.wav').exists())
+                self.assertEqual(list(root.glob('*.tmp-*')), [])
+
+    def test_local_word_times_are_offset_and_never_uploaded(self):
+        self.execute()
+
+    def test_missing_tokenizer_never_loads_or_downloads(self):
+        self.execute(missing='tokenizer.json')
+
+    def test_model_failure_does_not_fallback_or_publish(self):
+        self.execute(model_error=True)
+
+    def test_silence_does_not_fabricate_words(self):
+        self.execute(words=[])
+
+    def test_missing_dependency_is_actionable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('config.json', 'model.bin', 'tokenizer.json'):
+                (root/name).write_bytes(b'model')
+            with mock.patch.dict(sys.modules, {'faster_whisper': None}):
+                with self.assertRaises(ToolFailure) as caught:
+                    probe_transcription({'provider': {'api_format': 'faster_whisper', 'model_path': str(root)}})
+            self.assertEqual(caught.exception.code, 'local_asr_dependency_missing')
 
 
 class SkillSamplingTests(unittest.TestCase):

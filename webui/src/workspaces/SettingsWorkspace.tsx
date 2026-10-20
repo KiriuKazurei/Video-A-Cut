@@ -12,6 +12,7 @@ import { StatusMonitor } from '../components/StatusMonitor';
 import { SkillManagerModule } from '../components/SkillManagerModule';
 import { AgentOperationPanel } from '../components/AgentOperationPanel';
 import { ProjectProviderPolicy } from '../components/ProjectProviderPolicy';
+import { McpConnectionPanel } from '../components/McpConnectionPanel';
 
 interface SettingsWorkspaceProps {
   route: RouteState;
@@ -96,7 +97,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
             />
           </div>
 
-          {settingsCategory === 'skills' && <SkillManagerModule />}
+          {settingsCategory === 'skills' && <div style={{ display: 'grid', gap: 16 }}><McpConnectionPanel /><SkillManagerModule /></div>}
 
           {settingsCategory === 'logs' && (
             <Card 

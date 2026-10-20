@@ -15,7 +15,7 @@ import type {
   WorkflowSnapshot
 } from './types';
 import type { AutoNotice, AutoView, AutoReviewInfo } from './autoRun';
-import type { ProcessingProfile, ProcessingProvider, ProviderDiagnostic, PreparationReport } from './preparation';
+import type { ProcessingProfile, ProcessingProvider, ProviderDiagnostic, PreparationReport, TranscriptionProvider, TranscriptionDiagnostic } from './preparation';
 import type { TtsCapabilities, TtsTemplate, TtsSettings, TtsPreview } from './ttsContracts';
 import type { IngestRoots, IngestRun, IngestRunView, RecordingSource, SegmentPage, Segmentation, SelectedSegment } from './ingest';
 import type { PreviewClient, PreviewStartRequest, PreviewView, PreviewList } from './previewContracts.ts';
@@ -97,6 +97,7 @@ export const api = {
   diagnoseProvider: (provider: ProcessingProvider, operation: 'test' | 'models', apiKey: string, signal?: AbortSignal) =>
     request<ProviderDiagnostic>(`/api/providers/${operation}`, { ...json('POST', { provider, ...(apiKey ? { api_key: apiKey } : {}) }), signal }),
   listProfiles: () => request<ProcessingProfile[]>('/api/processing-profiles?limit=50'),
+  checkLocalTranscription: (provider: TranscriptionProvider, signal?: AbortSignal) => request<TranscriptionDiagnostic>('/api/processing-profiles/transcription/check', { ...json('POST', provider), signal }),
   getProfile: (id:string, revision:number) => request<{profile:ProcessingProfile;profile_sha256:string}>(`/api/processing-profiles/${encodeURIComponent(id)}/revisions/${revision}`),
   saveProfile: (profile:ProcessingProfile, expected:number) => request<ProcessingProfile>('/api/processing-profiles',json('POST',{profile,expected_revision:expected,idempotency_key:crypto.randomUUID()})),
   profileConsent: (id:string,revision:number,granted:boolean) => request<{granted:boolean}>(`/api/processing-profiles/${encodeURIComponent(id)}/revisions/${revision}/external-consent`,{method:granted?'POST':'DELETE'}),

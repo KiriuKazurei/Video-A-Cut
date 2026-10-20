@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(root, 'webui/package.json'));
@@ -18,12 +19,13 @@ const modelFiles = [
   'webui/src/ttsContracts.ts', 'webui/src/ingest.ts', 'webui/src/autoRun.ts',
   'webui/src/previewContracts.ts', 'webui/src/deliveryVariantContracts.ts',
   'webui/src/desktop.ts', 'webui/src/api.ts',
+  'webui/src/mcpConnection.ts',
 ];
 const sdkFiles = ['webui/src/api.ts', 'webui/src/skillApi.ts', 'webui/src/projectApi.ts'];
 const parsed = new Map();
 function source(file) {
   if (!parsed.has(file)) parsed.set(file, ts.createSourceFile(file,
-    fs.readFileSync(path.join(root, file), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
+    fs.readFileSync(path.join(root, file), 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS));
   return parsed.get(file);
 }
 const compact = value => value.replace(/\s+/g, ' ').trim();
@@ -51,6 +53,57 @@ for (const file of sdkFiles) {
     ts.forEachChild(node, visit);
   }
   visit(unit);
+}
+
+if (process.argv.includes('--refresh-inventory')) {
+  const sha = file => createHash('sha256').update(fs.readFileSync(path.join(root, file), 'utf8').replaceAll('\r\n', '\n')).digest('hex');
+  inventory.source_hash_normalization = 'lf';
+  const patterns = new Set();
+  for (const file of inventory.routes_sources) {
+    inventory.source_hashes[file] = sha(file);
+    for (const match of fs.readFileSync(path.join(root, file), 'utf8').matchAll(/\.Handle(?:Func)?\("([A-Z]+) ([^"]+)"/g)) patterns.add(match[1] + ' ' + match[2]);
+  }
+  inventory.routes_source_sha256 = sha(inventory.routes_source);
+  inventory.registered_route_count = patterns.size;
+  inventory.expanded_endpoint_count = inventory.endpoints.length;
+  inventory.frontend_status_summary.counts = inventory.endpoints.reduce((counts, entry) => {
+    counts[entry.frontend_status] = (counts[entry.frontend_status] || 0) + 1;
+    return counts;
+  }, {});
+  const position = (file, expression) => {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    const at = text.search(expression);
+    if (at < 0) throw new Error('Cannot locate current interface in ' + file + ': ' + expression);
+    return text.slice(0, at).split('\n').length;
+  };
+  for (const entry of inventory.endpoints) {
+    const handler = entry.backend_handler === 'HandleFunc'
+      ? '.HandleFunc("' + entry.method + ' ' + entry.path + '"'
+      : undefined;
+    entry.backend_source.line = handler
+      ? position(entry.backend_source.file, new RegExp(handler.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      : position(entry.backend_source.file, new RegExp('^func\\s+(?:\\([^\\n]+\\)\\s+)?' + entry.backend_handler + '\\s*\\(', 'm'));
+    const definitions = [...new Set(String(entry.frontend_function || '').match(/\b[A-Za-z_]\w*\.[A-Za-z_]\w*/g) || [])].map(name => sdk.get(name)).filter(Boolean);
+    for (const reference of entry.frontend_wrapper || []) {
+      const definition = definitions.find(value => value.file === reference.file);
+      if (definition) reference.line = source(definition.file).getLineAndCharacterOfPosition(definition.node.getStart()).line + 1;
+    }
+    const names = new Set(definitions.map(value => value.signature.split('(')[0]));
+    const used = new Set();
+    for (const reference of entry.frontend_calls || []) {
+      if (!/\.[cm]?[jt]sx?$/.test(reference.file) || !names.size) continue;
+      const unit = source(reference.file), calls = [];
+      const visit = node => {
+        if (ts.isCallExpression(node) && names.has(node.expression.getText(unit))) calls.push(unit.getLineAndCharacterOfPosition(node.getStart()).line + 1);
+        ts.forEachChild(node, visit);
+      };
+      visit(unit);
+      const next = calls.filter(line => !used.has(reference.file + ':' + line)).sort((a, b) => Math.abs(a - reference.line) - Math.abs(b - reference.line))[0];
+      if (next) { reference.line = next; used.add(reference.file + ':' + next); }
+    }
+  }
+  for (const command of inventory.desktop_commands) command.source.line = position(command.source.file, new RegExp('\\bfn\\s+' + command.command + '\\s*\\('));
+  fs.writeFileSync(path.join(root, 'docs/frontend-api-inventory.json'), JSON.stringify(inventory, null, 2) + '\n', 'utf8');
 }
 
 const output = [begin, '', '<a id="http"></a>', '## 8. HTTP 完整索引', '',

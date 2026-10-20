@@ -31,12 +31,7 @@ func textOK(value string, max int) bool {
 // Validate returns field names, never echoes a potentially secret input value.
 func (p Profile) Validate() error {
 	if p.Transcription != nil {
-		v := p.Transcription
-		if v.APIFormat != "elevenlabs" || v.Model != "scribe_v1" {
-			return fmt.Errorf("unsupported transcription provider")
-		}
-		proxy := Provider{Adapter: "narration", APIFormat: "openai", Endpoint: v.Endpoint, Model: v.Model, TokenEnv: v.TokenEnv}
-		if err := proxy.Validate(true); err != nil {
+		if err := p.Transcription.Validate(); err != nil {
 			return err
 		}
 	}
@@ -118,7 +113,7 @@ func (p Provider) External() bool {
 }
 
 func (p Profile) External() bool {
-	return p.Vision.External() || p.Narration.External() || (p.Transcription != nil && Provider{Endpoint: p.Transcription.Endpoint}.External()) || (p.TTSTemplate != nil && p.TTSTemplate.Settings != nil && p.TTSTemplate.Settings.External())
+	return p.Vision.External() || p.Narration.External() || (p.Transcription != nil && !p.Transcription.Local() && Provider{Endpoint: p.Transcription.Endpoint}.External()) || (p.TTSTemplate != nil && p.TTSTemplate.Settings != nil && p.TTSTemplate.Settings.External())
 }
 
 func (p Profile) Fingerprint() (string, error) {

@@ -151,7 +151,9 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // P2-06: 帮助弹窗或覆盖层打开时，完全屏蔽背景工作区切换与媒体控制快捷键
-      if (isHelpOpen || document.querySelector('.ant-modal-root, .ant-drawer-open, .ant-tour')) {
+      const overlayVisible = Array.from(document.querySelectorAll<HTMLElement>('.ant-modal-wrap, .ant-drawer-open, .ant-tour'))
+        .some(element => Array.from(element.getClientRects()).some(rect => rect.width > 0 && rect.height > 0));
+      if (isHelpOpen || overlayVisible) {
         return;
       }
 

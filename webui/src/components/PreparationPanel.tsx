@@ -238,7 +238,7 @@ export function PreparationPanel({
     <Flex vertical gap={12}>
       <Typography.Text type="secondary">
         {activeSection === 'profiles' && '配置预设基础参数、取样与声音，保存为不可变版本。'}
-        {activeSection === 'providers' && '为当前预设配置画面识别与中文解说模型服务商。'}
+        {activeSection === 'providers' && '为当前预设配置画面识别、解说和本地或云转录。'}
         {activeSection === 'preparation' && (assetId ? '确认条件后即可开始生成。' : '请先在左侧选择要处理的素材。')}
         {activeSection === 'all' && '保存预设后会自动检查能否运行；开始生成后请在编辑页确认内容。'}
       </Typography.Text>
@@ -284,7 +284,8 @@ export function PreparationPanel({
             )}
           </div>
           {draft.content_mode==='configured'?<Flex vertical gap={12} style={{marginBottom:16}}>{(['vision','narration'] as const).map(key=><ProviderEditor key={key} role={key} provider={draft[key]} disabled={busy} onChange={provider=>edit({...draft,[key]:provider})}/>)}</Flex>
-            :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用任何服务商；点击上方按钮切换为“已配置模型”后可配置画面识别与中文解说服务。"/>}
+            :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用画面和解说模型；转录按下方配置独立执行。切换为“已配置模型”后可配置画面识别与中文解说服务。"/>}
+          <TranscriptionFields draft={draft} disabled={busy} onChange={edit}/>
           <Space wrap><Button type="primary" className="vac-cta" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button><Typography.Text type="secondary">服务商修改从属于当前预设，保存生成 v{draft.revision+1}。</Typography.Text></Space>
         </Form>
       )}
@@ -314,7 +315,7 @@ export function PreparationPanel({
                   options={[{value:'builtin',label:'builtin 工程回归'},{value:'configured',label:'已配置模型'}]}/></Form.Item></Col>
               </Row>
               {draft.content_mode==='configured'?<Flex vertical gap={12} style={{marginBottom:16}}>{(['vision','narration'] as const).map(key=><ProviderEditor key={key} role={key} provider={draft[key]} disabled={busy} onChange={provider=>edit({...draft,[key]:provider})}/>)}</Flex>
-                :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用任何服务商；切换为“已配置模型”后可设置画面识别与中文解说服务。"/>}
+                :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用画面和解说模型；转录按配置独立执行。切换为“已配置模型”后可设置画面识别与中文解说服务。"/>}
               <Typography.Title level={5}>取样与语音</Typography.Title>
               <Row gutter={12}>
                 <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>

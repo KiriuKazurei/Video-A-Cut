@@ -72,7 +72,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategoryDef[] = [
   { id: 'profiles', label: '处理预设', description: '预设版本、模型配置、历史版本加载' },
   { id: 'providers', label: '服务商接入', description: '识别/解说服务、模型发现、连接测试' },
   { id: 'preparation', label: '运行准备', description: '资产/预设选择、条件预检、外发授权、启动流程' },
-  { id: 'skills', label: 'Skill', description: '本地包导入、启停、校验与 FFmpeg 能力' },
+  { id: 'skills', label: 'Agent 与 Skill', description: 'MCP 连接配置、Skill 包管理与运行能力' },
   { id: 'logs', label: '日志与诊断', description: '审计记录、人工操作日志、刷新快照' },
   { id: 'status', label: '状态监控', description: '系统连接与本机服务状态（技术人员）' }
 ];

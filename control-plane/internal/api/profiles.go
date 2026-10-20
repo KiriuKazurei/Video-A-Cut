@@ -20,6 +20,20 @@ type profileRef struct {
 	IdempotencyKey       string `json:"idempotency_key,omitempty"`
 }
 
+func (s *Server) checkLocalTranscription(w http.ResponseWriter, r *http.Request) {
+	var provider preparation.TranscriptionProvider
+	if err := decodeJSON(w, r, &provider); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	result, err := s.svc.CheckLocalTranscription(r.Context(), provider)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, 200, result)
+}
+
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	limit, offset := 20, 0
 	var e error

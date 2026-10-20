@@ -12,6 +12,10 @@ const dist = path.resolve(process.env.VAC_DIST);
 const output = path.join(process.env.VAC_TEST_OUTPUT, 'review-smokes');
 fs.mkdirSync(output, { recursive: true });
 const asset = { asset_id: '_selfcheck', status: 'ingested', agent_visible: true, human_approved: true, locked: false, allowed_agents: [], artifacts: {} };
+const workspace = { id: 'review-session', path: 'review.avp', dirty: false, revision: 1, active_tasks: 0, recent: [], recoveries: [],
+  document: { format: 'avp', schema_version: 1, project: { id: 'review-project', name: '审查回归' },
+    resources: [{ id: 'review-resource', asset_id: '_selfcheck', kind: 'video', name: '审查素材', notes: '', in: 0, out: 6, missing: false, source: { size_bytes: 0 }, metadata: {} }],
+    scripts: [], settings: {}, workspace: {} } };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const json = value => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
@@ -19,6 +23,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write(': local fixture\n\n'); return;
   }
   if (url.pathname === '/api/assets') return json([asset]);
+  if (url.pathname === '/api/workspace') return json(workspace);
+  if (url.pathname === '/api/workspace/state') return json(workspace);
+  if (url.pathname === '/api/visible-set') return json({ confirmed: true, sha256: 'review-visible', assets: [asset] });
   if (url.pathname === '/api/assets/_selfcheck') return json(asset);
   if (url.pathname === '/api/ingest-roots') return json({ configured: false, roots: [], policy: {}, ingesters: [] });
   if (/^\/api\/workflows\/[^/]+\/previews$/.test(url.pathname)) return json({ previews: [], presets: [], workers: [] });

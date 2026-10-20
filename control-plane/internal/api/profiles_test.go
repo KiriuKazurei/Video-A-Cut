@@ -5,8 +5,33 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preparation"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 )
+
+func TestLocalTranscriptionDiagnosticDoesNotNeedAnOpenProjectOrCloudKey(t *testing.T) {
+	srv := newServer(t)
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.ConfigureTTS("python", filepath.Join(root, "workers", "python")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.svc.CloseTTS)
+	provider := preparation.TranscriptionProvider{APIFormat: "faster_whisper", ModelPath: filepath.Join(t.TempDir(), "missing"), Device: "cpu", ComputeType: "int8"}
+	body, _ := json.Marshal(provider)
+	reply := postJSON(t, srv, "/api/processing-profiles/transcription/check", string(body))
+	var result preparation.TranscriptionDiagnostic
+	if err := json.Unmarshal(reply.Body.Bytes(), &result); err != nil || reply.Code != 200 || result.OK || result.Code != "local_asr_model_missing" {
+		t.Fatalf("diagnostic: %d %s %v", reply.Code, reply.Body.String(), err)
+	}
+	provider.Endpoint = "https://cloud.invalid"
+	body, _ = json.Marshal(provider)
+	if result := postJSON(t, srv, "/api/processing-profiles/transcription/check", string(body)); result.Code != 400 {
+		t.Fatalf("mixed local/cloud config accepted: %s", result.Body.String())
+	}
+}
 
 func TestSavedProfileRESTVersionsAndConflict(t *testing.T) {
 	srv := newServer(t)

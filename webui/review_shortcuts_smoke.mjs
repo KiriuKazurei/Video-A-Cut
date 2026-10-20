@@ -4,17 +4,18 @@
 import assert from 'node:assert/strict';
 const base = process.argv[2] ?? 'http://127.0.0.1:8816';
 const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
-const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME, channel: process.env.CHROME ? undefined : 'msedge', args: ['--no-sandbox'] });
+try {
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); } catch { /* ignore */ } });
 const page = await context.newPage();
 page.on('pageerror', error => console.error('PAGEERROR', error));
 const posts = [];
-const run = (stage) => ({ run_id: 'run_kb', asset_id: '_selfcheck', base_revision_id: 'b', current_revision_id: 'rev1', status: 'awaiting_review', stage, version: 3, content_mode: 'builtin' });
-const state = { stage: 'scene_review' };
-const review = () => ({ run: run(state.stage), revision: { revision_id: 'rev1', package_ref: 'p', edl_sha256: 's' },
+const run = (stage) => ({ run_id: 'run_kb', asset_id: '_selfcheck', base_revision_id: 'b', current_revision_id: state.revision, status: 'awaiting_review', stage, version: 3, content_mode: 'builtin' });
+const state = { stage: 'scene_review', revision: 'rev1' };
+const review = () => ({ run: { ...run(state.stage), current_revision_id: state.revision }, revision: { revision_id: state.revision, package_ref: 'p', edl_sha256: 's' },
   scenes: [{ scene_id: 's1', label: '场景一', decision: 'confirmed', sequence_rank: 0 }, { scene_id: 's2', label: '场景二', sequence_rank: 1 }, { scene_id: 's3', label: '场景三', sequence_rank: 2 }],
-  narration: [{ id: 'n1', text: '第一句', start: 0, end: 2, source_scene_id: 's1', approved_hash: 'h' }, { id: 'n2', text: '第二句', start: 2, end: 4, source_scene_id: 's2' }], evidence_files: [] });
+  narration: [{ id: 'n1', text: '第一句', start: 0, end: 2, source_scene_id: 's1', approved_hash: 'h' }, { id: 'n2', text: '第二句', start: 2, end: 4, source_scene_id: 's2' }, { id: 'n3', text: '第三句', start: 4, end: 6, source_scene_id: 's3' }], evidence_files: [] });
 await page.route(/\/api\/assets(\?.*)?$/, async (route) => { const r = await route.fetch(); const l = await r.json(); await route.fulfill({ response: r, json: l.map((a) => a.asset_id === '_selfcheck' ? { ...a, agent_visible: true } : a) }); });
 await page.route('**/api/assets/_selfcheck/workflows**', (route) => route.fulfill({ json: [run(state.stage)] }));
 await page.route('**/api/workflows/run_kb', (route) => route.fulfill({ json: { run: run(state.stage), stages: [], tasks: [] } }));
@@ -24,7 +25,12 @@ await page.route(/\/api\/workflows\/run_kb\/(scene|narration)-reviews$/, (route)
 
 const visible = (sel) => page.locator(`.page:not([hidden]) ${sel}:visible`);
 let n = 0; const ok = (m) => console.log(`ok ${++n} ${m}`);
-async function load(h) { await page.goto('about:blank'); await page.goto(`${base}/${h}`, { waitUntil: 'domcontentloaded' }); await page.waitForSelector('.context-bar'); await page.waitForTimeout(1200); }
+async function load(h) {
+  await page.goto('about:blank'); await page.goto(`${base}/${h}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-resource-id="review-resource"]').first().click();
+  await page.evaluate(hash => { location.hash = hash; }, h);
+  await page.waitForSelector('.context-bar'); await visible('.workflow-panel').waitFor();
+}
 
 // 1) 内容编辑：没有确认/批准按钮，但有改稿表单；审查：有按钮、有待处理提示
 await load('#/editing/content');
@@ -101,6 +107,18 @@ const afterClip = posts.find((p) => /scene-reviews/.test(p.url));
 assert.ok(afterClip, 'C works while a timeline segment button has focus'); assert.equal(afterClip.body.decision, 'confirmed');
 ok('C/N still work after clicking a timeline segment button');
 
+// CR03: 纯键盘焦点必须与请求目标一致，不能继续批准此前卡片。
+posts.length = 0;
+await visible('.scene-card[data-focus-key="scene:s3"]').focus();
+await visible('.timeline-clip[data-focus-key="scene:s2"]').focus();
+await page.keyboard.press('c'); await page.waitForTimeout(350);
+assert.equal(posts.find(p => /scene-reviews/.test(p.url))?.body.scene_id, 's2');
+posts.length = 0;
+await visible('.timeline-clip[data-focus-key="scene:s1"]').focus();
+await page.keyboard.press('c'); await page.waitForTimeout(250);
+assert.equal(posts.length, 0, 'confirmed timeline scene cannot approve an old pending selection');
+ok('keyboard timeline focus confirms exactly s2; completed clips do not approve another scene');
+
 // 4) 解说阶段：A 批准当前聚焦（或第一条待批准）解说；非闸口阶段 C 不动作
 state.stage = 'draft_review'; await load('#/editing/review');
 await page.locator('body').click({ position: { x: 5, y: 400 } });
@@ -113,6 +131,30 @@ const approve = posts.find((p) => /narration-reviews/.test(p.url));
 assert.ok(approve); assert.equal(approve.body.narration_id, 'n2');
 ok('A approves the first unapproved line; C is ignored outside the scene gate');
 
+posts.length = 0;
+await visible('.narration-card[data-focus-key="line:n3"]').focus();
+await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
+await page.keyboard.press('a'); await page.waitForTimeout(350);
+assert.equal(posts.find(p => /narration-reviews/.test(p.url))?.body.narration_id, 'n2');
+posts.length = 0;
+await visible('.timeline-clip[data-focus-key="line:n1"]').focus();
+await page.keyboard.press('a'); await page.waitForTimeout(250);
+assert.equal(posts.length, 0, 'approved narration timeline cannot approve another line');
+ok('keyboard narration timeline focus approves exactly n2 and ignores approved n1');
+
+// 修订更换后，旧焦点不能沿用；调用现有刷新菜单，不把 DOM 焦点移出时间线。
+await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
+state.revision = 'rev2';
+const revised = page.waitForResponse(response => response.url().endsWith('/api/workflows/run_kb/review'));
+await page.getByRole('menuitem', { name: '视图', exact: true }).hover();
+await page.getByRole('menuitem', { name: '刷新', exact: true }).evaluate(element => element.click());
+await revised;
+await page.waitForFunction(() => !document.querySelector('.page:not([hidden]) .workflow-card.is-focused'));
+posts.length = 0;
+await page.keyboard.press('a'); await page.waitForTimeout(250);
+assert.equal(posts.length, 0, 'revision switch invalidates old focus');
+ok('revision refresh never approves using stale focus');
+
 // 5) 内容编辑页按 C/A 不会确认
 posts.length = 0; await load('#/editing/content');
 await page.locator('body').click({ position: { x: 5, y: 400 } });
@@ -121,9 +163,36 @@ assert.equal(posts.length, 0);
 ok('content-edit page ignores C/A');
 
 // 6) 快捷键帮助里列出新快捷键
+await load('#/editing/review');
+await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
 await page.keyboard.press('?'); await page.waitForSelector('.ant-modal');
 const text = await page.locator('.ant-modal').innerText();
 assert.match(text, /确认当前场景/); assert.match(text, /批准当前解说/); assert.match(text, /下一个待处理/);
+posts.length = 0; await page.keyboard.press('c'); await page.keyboard.press('a');
+assert.equal(posts.length, 0, 'help modal suppresses background approval');
 ok('shortcut help lists C / A / N');
-await browser.close();
+await page.locator('.ant-modal:visible .ant-modal-close').click();
+await page.locator('.ant-modal:visible').waitFor({ state: 'hidden' });
+await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
+posts.length = 0;
+await page.keyboard.press('a'); await page.waitForTimeout(300);
+assert.equal(posts.find(p => /narration-reviews/.test(p.url))?.body.narration_id, 'n2', 'approval resumes after closing help');
+await page.evaluate(() => { location.hash = '/resources'; });
+posts.length = 0;
+await page.keyboard.press('a'); await page.keyboard.press('c'); await page.waitForTimeout(250);
+assert.equal(posts.length, 0, 'hidden review page ignores approval');
+ok('closing help restores focused approval; hidden workspaces cannot approve');
+
+await load('#/editing/review');
+await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
+await page.route('**/api/workspace', async route => {
+  const response = await route.fetch(); const value = await response.json();
+  await route.fulfill({ json: { ...value, id: 'review-session-two', document: { ...value.document, project: { id: 'project-two', name: '另一工程' }, resources: [] } } });
+});
+await visible('.workflow-panel').waitFor({ state: 'hidden' });
+posts.length = 0;
+await page.keyboard.press('a'); await page.keyboard.press('c'); await page.waitForTimeout(250);
+assert.equal(posts.length, 0, 'project switch discards old approval context');
+ok('project switch cannot approve the previous project');
 console.log(`review shortcuts smoke passed (${n} groups)`);
+} finally { await browser.close(); }

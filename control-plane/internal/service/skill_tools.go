@@ -433,9 +433,15 @@ func validateContentSummary(raw json.RawMessage, r *skill.Run, snap harnessSnaps
 	return nil
 }
 func (s *Service) skillProcess(ctx context.Context, operation string, payload any) (json.RawMessage, error) {
+	return s.skillProcessWithPython(ctx, operation, payload, "")
+}
+func (s *Service) skillProcessWithPython(ctx context.Context, operation string, payload any, pythonOverride string) (json.RawMessage, error) {
 	root, python, err := s.scriptRoot()
 	if err != nil {
 		return nil, err
+	}
+	if pythonOverride != "" {
+		python = pythonOverride
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -451,6 +457,9 @@ func (s *Service) skillProcess(ctx context.Context, operation string, payload an
 	cmd.Stdout = &out
 	cmd.Stderr = io.Discard
 	runErr := cmd.Run()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	var status struct {
 		OK   bool            `json:"ok"`
 		Code string          `json:"code"`
@@ -468,7 +477,7 @@ func (s *Service) skillProcess(ctx context.Context, operation string, payload an
 		}
 		_ = json.Unmarshal(status.Data, &diagnostic)
 		switch diagnostic.ErrorType {
-		case "TypeError", "KeyError", "ValueError", "ContentError":
+		case "TypeError", "KeyError", "ValueError", "ContentError", "RuntimeError", "FileNotFoundError", "OSError", "ImportError":
 			return nil, fmt.Errorf("media worker failed (%s/%s): %w", status.Code, diagnostic.ErrorType, model.ErrInvalidState)
 		}
 		return nil, fmt.Errorf("media worker failed (%s): %w", status.Code, model.ErrInvalidState)
@@ -645,8 +654,15 @@ func (s *Service) transcribeSkillMedia(ctx context.Context, r *skill.Run, snap h
 	if profile.Transcription == nil {
 		return nil, fmt.Errorf("configure a transcription provider in the bound profile: %w", model.ErrInvalidState)
 	}
-	if os.Getenv(profile.Transcription.TokenEnv) == "" {
+	if !profile.Transcription.Local() && os.Getenv(profile.Transcription.TokenEnv) == "" {
 		return nil, fmt.Errorf("missing transcription API key environment variable: %w", model.ErrInvalidState)
+	}
+	modelFingerprint, err := profile.Transcription.ModelFingerprint(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("%s: %w", err, model.ErrInvalidState)
 	}
 	var req struct {
 		MediaID string `json:"media_id"`
@@ -663,16 +679,27 @@ func (s *Service) transcribeSkillMedia(ctx context.Context, r *skill.Run, snap h
 			return nil, err
 		}
 		// Immutable per-content cache. No repeat API call for the same source bytes.
-		cache := filepath.Join(dir, "transcript-"+skillHash([]string{m.ID, m.SHA, r.ProfileSHA})+".json")
+		identity := []string{m.ID, m.SHA, r.ProfileSHA}
+		if modelFingerprint != "" {
+			identity = append(identity, modelFingerprint)
+		}
+		cache := filepath.Join(dir, "transcript-"+skillHash(identity)+".json")
 		raw, err := os.ReadFile(cache)
 		if os.IsNotExist(err) {
 			path, _, e := s.deliveryPath(filepath.FromSlash(snap.Paths[m.ID]), false)
 			if e != nil {
 				return nil, e
 			}
-			raw, e = s.skillProcess(ctx, "transcribe", map[string]any{"path": path, "start": m.In, "end": m.Out, "output": cache, "provider": profile.Transcription})
+			raw, e = s.skillProcessWithPython(ctx, "transcribe", map[string]any{"path": path, "start": m.In, "end": m.Out, "output": cache, "provider": profile.Transcription, "model_fingerprint": modelFingerprint}, profile.Transcription.PythonExecutable)
 			if e != nil {
 				return nil, e
+			}
+			if modelFingerprint != "" {
+				after, e := profile.Transcription.ModelFingerprint(ctx)
+				if e != nil || after != modelFingerprint {
+					_ = os.Remove(cache)
+					return nil, fmt.Errorf("local ASR model changed during transcription: %w", model.ErrConflict)
+				}
 			}
 		} else if err != nil {
 			return nil, err

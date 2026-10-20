@@ -1,9 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Alert, App, Button, Card, Space, Spin, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { desktopCommand, isDesktop, runtimeListener, type RuntimeStatus } from '../desktop';
 import { setApiBase } from '../runtimeUrl.ts';
 import { DesktopUpdates } from './DesktopUpdates';
+
+const RuntimeContext = createContext<RuntimeStatus | undefined>(undefined);
+export const useDesktopRuntimeStatus = () => useContext(RuntimeContext);
 
 export function DesktopRuntime({ children }: { children: ReactNode }) {
   const [runtime, setRuntime] = useState<RuntimeStatus>();
@@ -52,7 +55,7 @@ export function DesktopRuntime({ children }: { children: ReactNode }) {
 
   if (!isDesktop()) return children;
   const command = (name: string) => { setError(''); void desktopCommand(name).catch(e => setError(String(e))); };
-  return <div className="desktop-runtime-shell">
+  return <RuntimeContext.Provider value={runtime}><div className="desktop-runtime-shell">
     <div className="desktop-runtime-bar" role="status" style={{ padding: '6px 16px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
       <Typography.Text>{runtime?.status === 'ready' ? '后台服务已就绪' : runtime?.message ?? '正在连接桌面服务…'}</Typography.Text>
       <DesktopUpdates onMaintenance={setMaintenance} />
@@ -70,5 +73,5 @@ export function DesktopRuntime({ children }: { children: ReactNode }) {
           {(runtime?.status === 'fault' || runtime?.status === 'stopped') && <Button type="primary" disabled={maintenance} onClick={() => command('restart_runtime')}>重新启动</Button>}
         </Space>
       </Card>}
-  </div>;
+  </div></RuntimeContext.Provider>;
 }

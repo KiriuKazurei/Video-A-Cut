@@ -45,6 +45,18 @@ fn clipboard_read_text() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn clipboard_write_text(window: tauri::WebviewWindow, text: String) -> Result<(), String> {
+    #[cfg(windows)]
+    let owner = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    #[cfg(not(windows))]
+    let owner = {
+        let _ = window;
+        0
+    };
+    crate::platform::write_clipboard_text(owner, &text)
+}
+
+#[tauri::command]
 fn confirm_project_exit(runtime: tauri::State<'_, Runtime>) -> Result<(), String> {
     if runtime.maintenance.load(Ordering::SeqCst) {
         return Err("正在安装更新".into());
@@ -77,6 +89,10 @@ async fn project_dialog(
             "save-script" => dialog
                 .set_title("导出脚本")
                 .add_filter("VAC 脚本", &["avs"]),
+            "transcription-model" => dialog.set_title("选择本地转录模型目录"),
+            "transcription-python" => dialog
+                .set_title("选择本地转录 Python")
+                .add_filter("Python", &["exe"]),
             "import-resources" | "relink-resource" => dialog.set_title("选择工程资源").add_filter(
                 "所有支持的资源",
                 &[
@@ -90,7 +106,9 @@ async fn project_dialog(
         };
         if let Some(path) = default_path {
             let path = std::path::PathBuf::from(path);
-            if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
+            if mode == "transcription-model" && path.is_dir() {
+                dialog = dialog.set_directory(&path);
+            } else if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
                 dialog = dialog.set_directory(parent);
             }
             if let Some(name) = path.file_name() {
@@ -99,6 +117,8 @@ async fn project_dialog(
         }
         let files = if save {
             dialog.blocking_save_file().map(|file| vec![file])
+        } else if mode == "transcription-model" {
+            dialog.blocking_pick_folder().map(|file| vec![file])
         } else if mode == "import-resources" {
             dialog.blocking_pick_files()
         } else {
@@ -314,6 +334,7 @@ pub fn run(environment: tauri::Env) {
             project_dialog,
             project_open_request,
             clipboard_read_text,
+            clipboard_write_text,
             open_data_directory,
             select_recording,
             download_file,

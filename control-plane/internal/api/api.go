@@ -92,6 +92,7 @@ func (s *Server) routes() {
 	s.ttsRoutes()
 	s.scriptWorkbenchRoutes()
 	s.mux.HandleFunc("POST /api/providers/{operation}", s.diagnoseProvider)
+	s.mux.HandleFunc("POST /api/processing-profiles/transcription/check", s.checkLocalTranscription)
 	s.mux.HandleFunc("GET /api/processing-profiles", s.listProfiles)
 	s.mux.HandleFunc("POST /api/processing-profiles", s.saveProfile)
 	s.mux.HandleFunc("GET /api/processing-profiles/{id}/revisions/{revision}", s.getProfile)

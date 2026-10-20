@@ -16,7 +16,7 @@ export interface ProviderDiagnostic {
   truncated?: boolean;
 }
 export interface ProcessingProfile {
-  transcription?: { api_format: 'elevenlabs'; endpoint: string; model: string; token_env: string };
+  transcription?: TranscriptionProvider;
   schema_version: 1;
   profile_id: string;
   revision: number;
@@ -28,6 +28,17 @@ export interface ProcessingProfile {
   tts_voice: string;
   tts_template?: TtsBinding;
   export_target: 'premiere';
+}
+export interface TranscriptionProvider {
+  api_format: 'elevenlabs' | 'faster_whisper';
+  endpoint?: string; model?: string; token_env?: string;
+  model_path?: string; python_executable?: string;
+  device?: 'cpu' | 'cuda'; compute_type?: 'int8' | 'float32' | 'float16' | 'int8_float16';
+  language?: string; cpu_threads?: number;
+}
+export interface TranscriptionDiagnostic {
+  ok: boolean; code: string; message: string;
+  python_executable?: string; model_fingerprint?: string; dependency_version?: string;
 }
 export interface PreparationReport {
   expected_asset_version?: string;

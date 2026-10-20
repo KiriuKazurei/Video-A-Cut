@@ -64,7 +64,8 @@ for root in args.root:
     for source in inv['routes_sources']:
         raw=(root/source).read_bytes();text=raw.decode('utf-8-sig')
         patterns += re.findall(r'HandleFunc\("([A-Z]+) ([^"]+)"',text)
-        if hashlib.sha256(raw).hexdigest()!=inv['source_hashes'][source]:errors.append('Stale source hash: '+source)
+        hash_input=raw.replace(b'\r\n',b'\n') if inv.get('source_hash_normalization')=='lf' else raw
+        if hashlib.sha256(hash_input).hexdigest()!=inv['source_hashes'][source]:errors.append('Stale source hash: '+source)
     endpoints=inv['endpoints'];keys=[(e['method'],e['path']) for e in endpoints]
     if len(keys)!=len(set(keys)):errors.append('Duplicate HTTP inventory entries')
     expected=set(patterns)-{('POST','/api/providers/{operation}')}

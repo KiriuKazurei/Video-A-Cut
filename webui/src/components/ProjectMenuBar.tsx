@@ -3,6 +3,7 @@ import { App, Menu, Typography, type MenuProps } from 'antd';
 import { desktopCommand, isDesktop } from '../desktop';
 import { useProjectWorkspace } from '../projectWorkspace';
 import type { WorkspaceId } from '../navigation';
+import appPackage from '../../package.json';
 
 interface Props { navigate: (workspace: WorkspaceId) => void; toggleLeft: () => void; toggleRight: () => void; resetLayout: () => void; refresh: () => void; shortcuts: () => void; tour: () => void }
 export function ProjectMenuBar(props: Props) {
@@ -35,7 +36,7 @@ export function ProjectMenuBar(props: Props) {
     data: () => execute(() => desktopCommand('open_data_directory')),
     updates: () => window.dispatchEvent(new Event('vac:check-updates')),
     shortcuts: props.shortcuts, tour: props.tour,
-    about: () => modal.info({ title: '关于 Video Auto Cut', content: <Typography.Paragraph>Video Auto Cut 0.1.1<br />AI（Agent）Video Project · AVP 工程工作区</Typography.Paragraph> })
+    about: () => modal.info({ title: '关于 Video Auto Cut', content: <Typography.Paragraph>Video Auto Cut {appPackage.version}<br />AI（Agent）Video Project · AVP 工程工作区</Typography.Paragraph> })
   };
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {

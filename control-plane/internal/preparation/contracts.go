@@ -39,10 +39,25 @@ type Profile struct {
 	TTSTemplate   *tts.Binding           `json:"tts_template,omitempty"`
 }
 type TranscriptionProvider struct {
-	APIFormat string `json:"api_format"`
-	Endpoint  string `json:"endpoint"`
-	Model     string `json:"model"`
-	TokenEnv  string `json:"token_env"`
+	APIFormat        string `json:"api_format"`
+	Endpoint         string `json:"endpoint"`
+	Model            string `json:"model"`
+	TokenEnv         string `json:"token_env"`
+	ModelPath        string `json:"model_path,omitempty"`
+	PythonExecutable string `json:"python_executable,omitempty"`
+	Device           string `json:"device,omitempty"`
+	ComputeType      string `json:"compute_type,omitempty"`
+	Language         string `json:"language,omitempty"`
+	CPUThreads       int    `json:"cpu_threads,omitempty"`
+}
+
+type TranscriptionDiagnostic struct {
+	OK                bool   `json:"ok"`
+	Code              string `json:"code"`
+	Message           string `json:"message"`
+	PythonExecutable  string `json:"python_executable,omitempty"`
+	ModelFingerprint  string `json:"model_fingerprint,omitempty"`
+	DependencyVersion string `json:"dependency_version,omitempty"`
 }
 
 type Check struct {

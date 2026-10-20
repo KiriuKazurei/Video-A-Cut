@@ -17,7 +17,7 @@
     "internal_workers": "existing_bearer_authentication_preserved",
     "desktop_ipc_field": "runtime_status.mcp_url",
     "desktop_state_field": "desktop-session.json.mcp_url",
-    "frontend_status": "TypeScript field declared; dedicated MCP configuration display/copy UI not implemented",
+    "frontend_status": "page_integrated: 设置→Agent 与 Skill，实时 runtime context，复制地址/mcpServers JSON/Codex TOML；无 Agent 凭证",
     "human_operation_detail_field": "body.detail.agent: name,version,source,peer,identity_kind",
     "frame_result": "native MCP ImageContent plus structured artifact/mime_type; no image base64 in text",
     "tool_contract_resource": "vac/tool-contracts.md via skills.read_resource with content_sha256",
@@ -29,8 +29,8 @@
     ],
     "tool_count": 12
   },
-  "registered_route_count": 156,
-  "expanded_endpoint_count": 157,
+  "registered_route_count": 157,
+  "expanded_endpoint_count": 158,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -74,7 +74,9 @@
     "webui/src/skillView.ts",
     "webui/src/humanSession.ts",
     "webui/src/projectApi.ts",
-    "webui/src/projectWorkspace.tsx"
+    "webui/src/projectWorkspace.tsx",
+    "webui/src/components/McpConnectionPanel.tsx",
+    "webui/src/mcpConnection.ts"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -92,7 +94,7 @@
       "backend_handler": "listAssets",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 519
+        "line": 520
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -130,7 +132,7 @@
       "backend_handler": "getAsset",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 540
+        "line": 541
       },
       "frontend_status": "sdk_only",
       "frontend_status_label": "仅 SDK，页面未接入",
@@ -366,7 +368,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 218
+          "line": 219
         },
         {
           "file": "webui/src/components/IngestPanel.tsx",
@@ -682,7 +684,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 98
+          "line": 97
         }
       ],
       "frontend_calls": [
@@ -716,7 +718,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 98
+          "line": 97
         }
       ],
       "frontend_calls": [
@@ -741,7 +743,7 @@
       "backend_handler": "listProfiles",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 23
+        "line": 37
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -750,7 +752,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 100
+          "line": 99
         }
       ],
       "frontend_calls": [
@@ -791,7 +793,7 @@
       "backend_handler": "saveProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 47
+        "line": 61
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -825,7 +827,7 @@
       "backend_handler": "getProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 64
+        "line": 78
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -863,7 +865,7 @@
       "backend_handler": "saveProfile",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 47
+        "line": 61
       },
       "frontend_status": "not_wrapped",
       "frontend_status_label": "未封装/未接入",
@@ -887,7 +889,7 @@
       "backend_handler": "profileConsent",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 77
+        "line": 91
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -902,11 +904,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/PreparationPanel.tsx",
-          "line": 203
+          "line": 216
         },
         {
           "file": "webui/src/components/PreparationPanel.tsx",
-          "line": 216
+          "line": 217
         },
         {
           "file": "webui/src/components/PreparationPanel.tsx",
@@ -933,7 +935,7 @@
       "backend_handler": "profileConsent",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 77
+        "line": 91
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -948,11 +950,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/PreparationPanel.tsx",
-          "line": 203
+          "line": 216
         },
         {
           "file": "webui/src/components/PreparationPanel.tsx",
-          "line": 216
+          "line": 217
         },
         {
           "file": "webui/src/components/PreparationPanel.tsx",
@@ -979,7 +981,7 @@
       "backend_handler": "preparedPreflight",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 90
+        "line": 104
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -1017,7 +1019,7 @@
       "backend_handler": "startPrepared",
       "backend_source": {
         "file": "control-plane/internal/api/profiles.go",
-        "line": 107
+        "line": 121
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -1129,7 +1131,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 259
+          "line": 262
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1235,15 +1237,15 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 212
+          "line": 215
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 323
+          "line": 326
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 324
+          "line": 327
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1277,11 +1279,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 216
+          "line": 219
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 342
+          "line": 345
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1315,7 +1317,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 343
+          "line": 346
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1349,11 +1351,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 320
+          "line": 323
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 335
+          "line": 338
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1387,7 +1389,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 376
+          "line": 379
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1421,7 +1423,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 377
+          "line": 380
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1518,11 +1520,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 477
+          "line": 480
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 485
+          "line": 488
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1662,7 +1664,7 @@
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 422
+          "line": 425
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1768,7 +1770,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 176
+          "line": 177
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1800,13 +1802,13 @@
         },
         {
           "file": "webui/src/api.ts",
-          "line": 306
+          "line": 140
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 161
+          "line": 171
         },
         {
           "file": "webui/src/components/TaskOrchestrator.tsx",
@@ -1854,13 +1856,13 @@
         },
         {
           "file": "webui/src/api.ts",
-          "line": 267
+          "line": 141
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 158
+          "line": 168
         },
         {
           "file": "webui/src/components/AssetManager.tsx",
@@ -2042,7 +2044,7 @@
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 417
+          "line": 420
         },
         {
           "file": "webui/src/workspaces/ExportWorkspace.tsx",
@@ -2610,7 +2612,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/AutoRunPanel.tsx",
-          "line": 210
+          "line": 207
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -2769,7 +2771,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 87
+          "line": 86
         }
       ],
       "frontend_calls": [
@@ -2811,7 +2813,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 88
+          "line": 87
         }
       ],
       "frontend_calls": [
@@ -2849,7 +2851,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 90
+          "line": 89
         }
       ],
       "frontend_calls": [
@@ -2883,17 +2885,17 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 89
+          "line": 88
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 283
+          "line": 276
         },
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 284
+          "line": 275
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -2945,13 +2947,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 92
+          "line": 91
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 286
+          "line": 278
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -2979,7 +2981,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 93
+          "line": 92
         }
       ],
       "frontend_calls": [
@@ -3013,13 +3015,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 95
+          "line": 94
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 99
+          "line": 98
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3047,7 +3049,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 94
+          "line": 93
         }
       ],
       "frontend_calls": [
@@ -3081,13 +3083,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 96
+          "line": 95
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 305
+          "line": 297
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3115,7 +3117,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/api.ts",
-          "line": 97
+          "line": 96
         }
       ],
       "frontend_calls": [
@@ -3125,7 +3127,7 @@
         },
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 319
+          "line": 311
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3307,7 +3309,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 108
+          "line": 119
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3349,7 +3351,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 13
+          "line": 15
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3407,7 +3409,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 56
+          "line": 58
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3517,7 +3519,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 21
+          "line": 23
         },
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
@@ -3555,7 +3557,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 148
+          "line": 159
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3589,7 +3591,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 22
+          "line": 24
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3623,7 +3625,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 169
+          "line": 175
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3657,7 +3659,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 206
+          "line": 212
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3691,7 +3693,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 205
+          "line": 211
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3817,7 +3819,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 190
+          "line": 184
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3879,13 +3881,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 46
+          "line": 41
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 105
+          "line": 107
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3913,13 +3915,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 47
+          "line": 42
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
-          "line": 166
+          "line": 160
         }
       ],
       "resolved_verification_findings": [
@@ -3950,7 +3952,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 30
+          "line": 25
         }
       ],
       "frontend_calls": [
@@ -3985,7 +3987,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 24
+          "line": 19
         }
       ],
       "frontend_calls": [
@@ -4019,7 +4021,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 26
+          "line": 21
         }
       ],
       "frontend_calls": [
@@ -4054,7 +4056,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 25
+          "line": 20
         }
       ],
       "frontend_calls": [
@@ -4068,7 +4070,7 @@
         },
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 56
+          "line": 58
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4096,7 +4098,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 27
+          "line": 22
         }
       ],
       "frontend_calls": [
@@ -4135,7 +4137,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 32
+          "line": 27
         }
       ],
       "frontend_calls": [
@@ -4145,7 +4147,7 @@
         },
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 62
+          "line": 64
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4173,7 +4175,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 33
+          "line": 28
         }
       ],
       "frontend_calls": [
@@ -4208,7 +4210,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 28
+          "line": 23
         }
       ],
       "frontend_calls": [
@@ -4242,7 +4244,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 35
+          "line": 30
         }
       ],
       "frontend_calls": [
@@ -4256,7 +4258,7 @@
         },
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 66
+          "line": 68
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4284,7 +4286,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 37
+          "line": 32
         }
       ],
       "frontend_calls": [
@@ -4318,7 +4320,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 36
+          "line": 31
         }
       ],
       "frontend_calls": [
@@ -4352,7 +4354,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 38
+          "line": 33
         }
       ],
       "frontend_calls": [
@@ -4410,7 +4412,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 39
+          "line": 34
         }
       ],
       "frontend_calls": [
@@ -4444,7 +4446,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 40
+          "line": 35
         }
       ],
       "frontend_calls": [
@@ -4478,13 +4480,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 42
+          "line": 37
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 69
+          "line": 71
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4512,13 +4514,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 41
+          "line": 36
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 196
+          "line": 195
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4546,7 +4548,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 43
+          "line": 38
         }
       ],
       "frontend_calls": [
@@ -4556,11 +4558,11 @@
         },
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 75
+          "line": 77
         },
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 167
+          "line": 166
         },
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
@@ -4592,13 +4594,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 44
+          "line": 39
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 81
+          "line": 83
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4626,13 +4628,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 45
+          "line": 40
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 99
+          "line": 101
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4660,7 +4662,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 54
+          "line": 49
         }
       ],
       "frontend_calls": [
@@ -4698,13 +4700,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 48
+          "line": 43
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 330
+          "line": 312
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4732,13 +4734,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 50
+          "line": 45
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 311
+          "line": 294
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4766,13 +4768,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 50
+          "line": 45
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 312
+          "line": 294
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4800,13 +4802,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 50
+          "line": 45
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 169
+          "line": 168
         }
       ],
       "resolved_verification_findings": [
@@ -4837,13 +4839,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 52
+          "line": 47
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 156
+          "line": 155
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4871,7 +4873,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 21
+          "line": 16
         }
       ],
       "frontend_calls": [
@@ -4909,7 +4911,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 22
+          "line": 17
         }
       ],
       "frontend_calls": [
@@ -4943,7 +4945,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 23
+          "line": 18
         }
       ],
       "frontend_calls": [
@@ -4977,7 +4979,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 15
+          "line": 10
         }
       ],
       "frontend_calls": [
@@ -4987,7 +4989,7 @@
         },
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 87
+          "line": 89
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5015,13 +5017,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 16
+          "line": 11
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 385
+          "line": 367
         }
       ],
       "resolved_verification_findings": [
@@ -5052,13 +5054,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 17
+          "line": 12
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 235
+          "line": 231
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5086,13 +5088,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 18
+          "line": 13
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 93
+          "line": 95
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5120,13 +5122,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 19
+          "line": 14
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 394
+          "line": 377
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5154,13 +5156,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 19
+          "line": 14
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 395
+          "line": 377
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5188,13 +5190,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/skillApi.ts",
-          "line": 20
+          "line": 15
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 400
+          "line": 382
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5222,7 +5224,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 13
         }
       ],
       "frontend_calls": [],
@@ -5251,7 +5253,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 16
         }
       ],
       "frontend_calls": [],
@@ -5280,7 +5282,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 10
         }
       ],
       "frontend_calls": [],
@@ -5309,7 +5311,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 8
         }
       ],
       "frontend_calls": [],
@@ -5338,7 +5340,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 20
         }
       ],
       "frontend_calls": [],
@@ -5367,7 +5369,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 21
         }
       ],
       "frontend_calls": [],
@@ -5420,7 +5422,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 11
         }
       ],
       "frontend_calls": [],
@@ -5449,7 +5451,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 12
         }
       ],
       "frontend_calls": [],
@@ -5478,7 +5480,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 18
         }
       ],
       "frontend_calls": [],
@@ -5507,7 +5509,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 19
         }
       ],
       "frontend_calls": [],
@@ -5536,7 +5538,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 14
         }
       ],
       "frontend_calls": [],
@@ -5565,7 +5567,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 15
         }
       ],
       "frontend_calls": [],
@@ -5594,7 +5596,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 1
+          "line": 17
         }
       ],
       "frontend_calls": [],
@@ -5605,7 +5607,7 @@
       "id": "AVP-157",
       "frontend_calls": [
         {
-          "line": 107,
+          "line": 111,
           "file": "webui/src/projectWorkspace.tsx"
         }
       ],
@@ -5633,9 +5635,43 @@
       "frontend_function": "projectApi.command",
       "backend_handler": "HandleFunc",
       "lifecycle": "current_workspace"
+    },
+    {
+      "id": "API-ASR-01",
+      "group": "处理预设与转录环境",
+      "method": "POST",
+      "path": "/api/processing-profiles/transcription/check",
+      "frontend_function": "api.checkLocalTranscription",
+      "frontend_ui": "设置→处理预设/服务商接入：检查本地转录环境",
+      "request": "TranscriptionProvider：api_format=faster_whisper，绝对 model_path；可选绝对 python_executable、device(cpu|cuda)、compute_type、language、cpu_threads(1-16)。本地配置拒绝 endpoint/model/token_env。",
+      "success_response": "200 TranscriptionDiagnostic {ok,code,message,python_executable?,model_fingerprint?,dependency_version?}；环境缺失为 ok=false，配置不合法为 400",
+      "behavior": "窗口人工身份；无需打开工程或云 Key。30 秒内仅检查指定本地模型文件/指纹并导入依赖，不加载模型、不识别、不下载、不外发。请求可取消；检查通过不代替实际识别验收。",
+      "usage": "页面已接入（工程和真实桌面证据分别记录）",
+      "backend_handler": "checkLocalTranscription",
+      "backend_source": {
+        "file": "control-plane/internal/api/profiles.go",
+        "line": 23
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/api.ts",
+          "line": 100
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/TranscriptionFields.tsx",
+          "line": 41
+        }
+      ],
+      "lifecycle": "current_or_compatible"
     }
   ],
-  "routes_source_sha256": "5ce1499a02d063687fcd58fe03fab5becac093d76f669138102609d241c7a84d",
+  "routes_source_sha256": "75bef844e68b7c1c72bf384e2fd0dad39693ec9d9d625dddf710568fd9f10892",
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/script_workbench.go",
@@ -5647,9 +5683,9 @@
   "sse_new_events_note": "workspace.changed / workspace.saved / resource.changed invalidate current-project queries; streams close when project session changes.",
   "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
   "source_hashes": {
-    "control-plane/internal/api/api.go": "5ce1499a02d063687fcd58fe03fab5becac093d76f669138102609d241c7a84d",
+    "control-plane/internal/api/api.go": "75bef844e68b7c1c72bf384e2fd0dad39693ec9d9d625dddf710568fd9f10892",
     "control-plane/internal/api/script_workbench.go": "1b3168344b29f05a38f482256041ce8fcf6eb745be3d9fa45ac94f70b3327178",
-    "control-plane/internal/api/tts.go": "a1c1f9d44151101e32c196c1e4d7d59951d1fe6b4fcb4d0114dc3d57115edddb",
+    "control-plane/internal/api/tts.go": "a0ffaec8ee432656be67a7d60c3d9ff7ffcc8283a17ed6969227d804542e2cb8",
     "control-plane/internal/api/skill.go": "e2fd009e663ac389dc5bacccd41aff82b8c17730bed3181f703228518a50bce4",
     "control-plane/internal/api/skill_editing.go": "d1a3945a023c2e21611232b119c2f8f49c59d96a54f2c1608ae3dee18c0d8e31",
     "control-plane/internal/api/project.go": "b738bca0183cecefed93b738ea793da20029d42a2080328166c5ff5e755000a6"
@@ -5682,45 +5718,53 @@
     "verified_date": "2026-10-20",
     "method": "本轮变更的源码接线及工程/桌面证据分别记载；旧接口仍供兼容模式使用，工程模式的退休流程返回410。",
     "counts": {
-      "page_integrated": 137,
-      "retired_in_workspace": 9,
+      "page_integrated": 138,
       "sdk_only": 3,
+      "retired_in_workspace": 9,
       "not_wrapped": 8
     },
     "required_pending_count": 0
   },
   "frontend_verification_summary": {
-    "date": "2026-10-19",
-    "source_commit": "ef0880ba61ff126884e62df294dbedf6d4c0228e",
-    "report": "docs/接口文档.md",
+    "date": "2026-10-20",
+    "source_commit": "2550065 + 0.2.1 task working tree",
+    "report": "scripts/TESTING.md",
     "engineering": {
-      "frontend_unit_and_style": "92 tests and style lint passed",
+      "frontend_unit_and_style": "93 passed with style lint",
       "typescript": "passed",
-      "vite": "passed, 3153 modules, 11.77 seconds",
-      "go_api": "passed, 19.970 seconds"
+      "vite": "passed",
+      "go_api": "passed 23.230s; full Go and vet passed",
+      "python": "164 passed",
+      "rust": "5 passed, build/fmt passed"
     },
     "browser": {
-      "total": 21,
-      "passed": 21,
-      "failed": 0,
-      "fixture_boundary": "Real production React with local Go HTTP for sessions/projects/skills; intercepted deterministic run/media/journal fixtures for component transitions."
-    },
-    "model_calls": 0,
-    "human_acceptance": "not_run",
-    "product_fixes": "FEV01-06 fixed and target browser regression passed",
-    "source_working_tree_note": "ef0880b + local uncommitted FEV01-06 fixes",
-    "baseline_browser": {
       "total": 14,
-      "passed": 8,
-      "failed": 6
-    }
+      "passed": 14,
+      "failed": 0,
+      "fixture_boundary": "Production React with deterministic AVP/review HTTP fixtures; exact scene/narration target and invalidation cases."
+    },
+    "visible_windows_desktop": {
+      "total": 26,
+      "passed": 26,
+      "failed": 0,
+      "boundary": "Real Tauri/Go, native file/folder selection and clipboard, profile persistence/reload, session endpoint refresh, existing AVP regression."
+    },
+    "local_asr": {
+      "sample": "locally synthesized English speech",
+      "runtime": "preinstalled faster-whisper 1.2.1 base, CPU/int8",
+      "words": 22,
+      "downloads": 0,
+      "cloud_calls": 0,
+      "quality_acceptance": "Chinese/long-source quality pending"
+    },
+    "human_acceptance": "pending"
   },
   "avp_verification": {
-    "source": "agent/vu-skill@ef0880b plus preserved local modifications",
+    "source": "agent/vu-skill based on 2550065 + 0.2.1 task changes",
     "human_acceptance": "pending",
-    "visible_desktop_main_flow": "22/22 passed; visible Tauri/real Go/native dialogs, queued task cancellation, keyboard menus, clipboard, close and fresh AVP startup",
+    "visible_desktop_main_flow": "26/26 passed; current Windows/Go/native dialogs and clipboard; ASR settings persistence and MCP endpoint refresh plus AVP regression",
     "evidence": "scripts/TESTING.md",
-    "engineering": "Go all packages and vet passed; frontend 92 tests/style, TypeScript/Vite and Rust build/fmt passed; HTTP/IPC/document checks passed",
+    "engineering": "Go all packages/vet, frontend 93/style, Python 164, Timeline 54, Exporter 53, Rust 5/build/fmt, TypeScript/Vite and HTTP/IPC/doc checks passed",
     "date": "2026-10-20"
   },
   "desktop_commands": [
@@ -5729,7 +5773,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 125
+        "line": 145
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "RuntimeStatus",
@@ -5740,7 +5784,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 130
+        "line": 150
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5751,7 +5795,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 144
+        "line": 164
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5762,7 +5806,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 155
+        "line": 175
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5773,7 +5817,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 48
+        "line": 60
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5781,10 +5825,10 @@
     },
     {
       "authorization": "visible_window_human_no_token",
-      "arguments": "{mode,defaultPath?}",
+      "arguments": "{mode:new-project|open-project|save-project|save-script|import-resources|relink-resource|transcription-model|transcription-python, defaultPath?:string|null}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 59
+        "line": 71
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "string[]",
@@ -5814,10 +5858,21 @@
     },
     {
       "authorization": "visible_window_human_no_token",
+      "arguments": "{text:string}；UTF-16 文本，不含 NUL，含终止符至多 8 Mi 个代码单元；由当前 WebView 提供 HWND",
+      "source": {
+        "file": "desktop/src/shell.rs",
+        "line": 48
+      },
+      "frontend": "webui/src/components/McpConnectionPanel.tsx via desktopCommand",
+      "result": "null；失败为 Promise rejection，页面显示复制失败",
+      "command": "clipboard_write_text"
+    },
+    {
+      "authorization": "visible_window_human_no_token",
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 173
+        "line": 193
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5828,7 +5883,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 187
+        "line": 207
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "{root_id,relative_path}|null; legacy picker",
@@ -5839,7 +5894,7 @@
       "arguments": "{url}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 206
+        "line": 226
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5895,5 +5950,6 @@
     "architecture_document": "docs/架构与功能详解.md",
     "generator": "scripts/update-interface-documentation.mjs",
     "scope": "HTTP + SDK parameters and public models + custom desktop IPC + SSE; runtime checks and human acceptance stay separate"
-  }
+  },
+  "source_hash_normalization": "lf"
 }

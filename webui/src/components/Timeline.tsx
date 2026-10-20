@@ -26,7 +26,9 @@ export interface TimelineClip {
   tone: ClipTone;
   title?: string;
   active?: boolean;
-  /** 单击 / Enter：聚焦并送到监视器 */
+  /** 当前业务上下文的焦点身份，用于审查快捷键核对实际 DOM 目标。 */
+  focusKey?: string;
+  /** 获得焦点 / 单击 / Enter：聚焦并送到监视器 */
   onSelect?: () => void;
   /** 双击 / Ctrl·⌘+单击：加入或移出选择版本（仍走现有 pick API） */
   onToggle?: () => void;
@@ -229,6 +231,8 @@ export function Timeline({ label, duration, tracks, formatTick, caption, emptyTe
                     aria-pressed={Boolean(clip.active)}
                     aria-label={`${clip.label}${clip.picked ? '（已选）' : ''}${clip.active ? '，当前焦点' : ''}`}
                     data-clip-id={clip.id}
+                    data-focus-key={clip.focusKey}
+                    onFocus={() => clip.onSelect?.()}
                     onClick={(event) => {
                       if ((event.metaKey || event.ctrlKey) && clip.onToggle) {
                         event.preventDefault();
