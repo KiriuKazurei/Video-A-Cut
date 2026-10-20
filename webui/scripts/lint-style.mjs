@@ -1,5 +1,5 @@
 /**
- * 硬性样式检查。规则见 docs/ui-style-spec.md。
+ * 硬性样式检查。规则见 docs/架构与功能详解.md#style。
  * 扫描 webui/src：渐变、背景模糊、发光阴影、色板以外的颜色、过大圆角。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';

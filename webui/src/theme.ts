@@ -1,7 +1,7 @@
 import { theme, type ThemeConfig } from 'antd';
 
 /**
- * 硬性色板。数值与 docs/ui-style-spec.md、styles.css 的 --vac-* 保持一致。
+ * 硬性色板。数值与 docs/架构与功能详解.md#style、styles.css 的 --vac-* 保持一致。
  * 窗口 #1E1E1E，面板 #252525，控件 #2F2F2F，边框 #3A3A3A，
  * 主文字 #E6E6E6，次文字 #9A9A9A，强调色只有 #4C8DFF。
  * 无渐变、无发光、无阴影。控件仍走 Ant Design 5，圆角 2–4px。

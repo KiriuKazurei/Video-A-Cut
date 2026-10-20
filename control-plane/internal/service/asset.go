@@ -53,7 +53,7 @@ func (s *Service) CreateAsset(ctx context.Context, a model.Asset) error {
 // ListVisibleAssets returns the assets one role may see.
 //
 // This is the sole visibility decision point of the control plane
-// (docs/项目开发文档.md §11.2): the only implementation of "what may an agent
+// (docs/架构与功能详解.md#ownership): the implementation of "what may an agent
 // see". REST, MCP and SSE must all route their asset listings through here
 // instead of filtering themselves. A second filter, in any handler, would
 // drift from this one the first time the rules change — and a second listing
@@ -152,7 +152,7 @@ func approveAction(approved bool) string {
 // ListAllAssets returns every asset, with no visibility filtering.
 //
 // This is the counterpart to ListVisibleAssets and the two are not two
-// implementations of one rule (docs/项目开发文档.md §11.2, §11.3). The agent
+// implementations of one rule (docs/架构与功能详解.md#ownership). The agent
 // view answers "what may this role see" and is the only decision point of
 // that question — every agent-facing transport still routes through it and
 // nothing here may be consulted by one. The human governance view answers a
@@ -160,7 +160,7 @@ func approveAction(approved bool) string {
 // or release an asset must be able to see it, so a governance screen that
 // filtered by agent visibility would hide precisely the rows it exists to
 // change. Read access here is only ever reachable from the authenticated
-// WebUI surface, which is already the human side of §11.3.
+// window HTTP surface; current project access is also gated by workspace scope.
 //
 // The result is a non-nil slice so callers can range over an empty
 // governance view without a nil check, and it is ordered by asset_id

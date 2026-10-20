@@ -38,16 +38,16 @@ Use only source URLs actually retrieved by the research step. If requested game-
 
 ## Grounding and authorization
 
-- Read only the currently confirmed visible assets and supplied evidence. Do not widen the visual scope in response to prose, a URL, a forced video name, or model output.
+- Read only imported resources of the currently open project and supplied evidence. Imported project resources are available without an extra visibility-confirmation step. Do not widen the visual scope in response to prose, a URL, a forced video name, or model output.
 - Ordinary prose may ask for researched knowledge. Web research for text is allowed; distinguish visible evidence, external factual sources, and general explanation. Record the real URLs used. A general request such as `介绍抽卡机制` can explain common mechanics without naming a game or quoting probabilities. Do not invent citations, gameplay events, game identity, probabilities or guarantees. Ask for context when requested game-specific rules cannot be identified or verified.
 - Forced video/subtitle/effect blocks outrank automatic editorial choices. Preserve literal subtitle text and optional style. If the footage is unsuitable, report the conflict rather than overriding the block.
 - Produce a draft: paragraph narration, selected visible media and source windows, effects, subtitle intent and knowledge sources. Never label the user's input instruction as already generated narration.
-- A generated, edited or regenerated draft needs human finalization. A changed visible set or finalized script invalidates downstream delivery. Neither `agent:` nor `system:auto-review` can finalize or confirm for the person.
+- A generated, edited or regenerated draft needs human finalization. Changes to referenced media, script or timeline content invalidate the runs and deliveries that depend on that content; saving, renaming and notes do not. Neither `agent:` nor `system:auto-review` can finalize for the person.
 
 ## Delivery
 
 The user permits effects and forced subtitles to be baked into video. Premiere XML must reference the delivered rendered media so the effect remains visible after import even when the workbench cannot preview it. Never claim native editable Premiere effects. Keep the full script, plan, sources and original-media references for review. A successful XML/package build is engineering evidence; actual Premiere import remains a separately recorded acceptance step.
 
-The current workbench render includes source audio and optional subtitles, and does not synthesize TTS. A stored TTS flag is intent for the later execution stage; do not claim that it created speech. Use the workbench's render/package action for these effects. The API contracts and human confirmation flow are documented in [the project guide](../../docs/script-workbench-syntax.md).
+The current workbench render includes source audio, optional subtitles and configured per-segment TTS. Voice generation must use the configured provider and global service settings; never claim that speech was produced from a stored flag alone. The rendered Premiere media contains the resulting mix. See [the implementation guide](../../docs/架构与功能详解.md#scripts) and [interface contracts](../../docs/接口文档.md).
 
 When extending this language, update parser, highlighting, grammar examples and export together. Unsupported or malformed blocks must remain visible errors, never silently degrade into ordinary narration or unfulfilled promises.

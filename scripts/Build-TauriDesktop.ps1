@@ -74,8 +74,11 @@ try {
   New-Item -ItemType Directory -Force (Join-Path $runtime 'scripts')|Out-Null
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'runtime_state.py') -Destination (Join-Path $runtime 'scripts/runtime_state.py') -Force
   Copy-Item -LiteralPath (Join-Path $desktopRepo 'configs/phase6/profile.builtin.example.json') -Destination (Join-Path $runtime 'default-profile.json') -Force
-  foreach($document in @('README.md','ACCEPTANCE.md','UPDATER.md','desktop.example.json')) {
-    Copy-Item -LiteralPath (Join-Path $desktopRoot $document) -Destination (Join-Path $output $document) -Force
+  Copy-Item -LiteralPath (Join-Path $desktopRoot 'desktop.example.json') -Destination (Join-Path $output 'desktop.example.json') -Force
+  foreach($document in @('README.md','docs/项目文档.md','docs/计划文档.md','docs/接口文档.md','docs/架构与功能详解.md')) {
+    $documentOutput=Join-Path $output $document
+    New-Item -ItemType Directory -Force (Split-Path -Parent $documentOutput)|Out-Null
+    Copy-Item -LiteralPath (Join-Path $desktopRepo $document) -Destination $documentOutput -Force
   }
   Write-Host "Desktop executable: $(Join-Path $output 'video-auto-cut-desktop.exe')"
   # robocopy uses 1..7 for successful copies; callers expect a normal success code.

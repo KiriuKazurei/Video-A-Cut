@@ -21,7 +21,7 @@
     "human_operation_detail_field": "body.detail.agent: name,version,source,peer,identity_kind",
     "frame_result": "native MCP ImageContent plus structured artifact/mime_type; no image base64 in text",
     "tool_contract_resource": "vac/tool-contracts.md via skills.read_resource with content_sha256",
-    "handoff_document": "docs/AVP工程文件与资源工作区.md",
+    "handoff_document": "docs/接口文档.md#mcp",
     "project_discovery": "current_open_avp_only",
     "resource_tools": [
       "resources.list",
@@ -113,7 +113,8 @@
           "file": "webui/src/components/AssetManager.tsx",
           "line": 99
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-02",
@@ -141,7 +142,8 @@
           "line": 136
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-03",
@@ -183,7 +185,8 @@
           "line": 138
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "API-04",
@@ -228,7 +231,8 @@
           "file": "webui/src/components/StatusMonitor.tsx",
           "line": 50
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-05",
@@ -262,7 +266,8 @@
           "line": 65
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "API-06",
@@ -295,7 +300,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 123
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-07",
@@ -328,7 +334,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 167
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-08",
@@ -365,7 +372,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 124
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-09",
@@ -398,7 +406,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 187
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-10",
@@ -431,7 +440,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 311
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-11",
@@ -464,7 +474,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 273
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-12",
@@ -497,7 +508,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 468
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-13",
@@ -530,7 +542,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 484
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-14",
@@ -563,7 +576,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 224
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-15",
@@ -596,7 +610,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 226
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-16",
@@ -641,7 +656,8 @@
           "file": "webui/src/components/IngestPanel.tsx",
           "line": 506
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-17",
@@ -674,7 +690,8 @@
           "file": "webui/src/components/ProviderEditor.tsx",
           "line": 42
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-18",
@@ -707,7 +724,8 @@
           "file": "webui/src/components/ProviderEditor.tsx",
           "line": 42
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-19",
@@ -756,7 +774,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 17
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-20",
@@ -789,7 +808,8 @@
           "file": "webui/src/components/PreparationPanel.tsx",
           "line": 104
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-21",
@@ -826,7 +846,8 @@
           "file": "webui/src/components/PreparationPanel.tsx",
           "line": 161
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-22",
@@ -849,7 +870,8 @@
       "frontend_requirement": "optional_equivalent",
       "frontend_gap": "独立路由未封装；页面使用 POST /api/processing-profiles 保存版本。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-23",
@@ -894,7 +916,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 166
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-24",
@@ -939,7 +962,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 166
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-25",
@@ -976,7 +1000,8 @@
           "file": "webui/src/components/PreparationPanel.tsx",
           "line": 49
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-26",
@@ -1009,7 +1034,8 @@
           "file": "webui/src/components/PreparationPanel.tsx",
           "line": 112
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-27",
@@ -1037,7 +1063,8 @@
           "line": 114
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-28",
@@ -1070,7 +1097,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 40
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-29",
@@ -1103,7 +1131,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 259
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-30",
@@ -1140,7 +1169,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 42
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-31",
@@ -1173,7 +1203,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 43
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-32",
@@ -1214,7 +1245,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 324
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-33",
@@ -1251,7 +1283,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 342
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-34",
@@ -1284,7 +1317,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 343
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-35",
@@ -1321,7 +1355,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 335
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-36",
@@ -1354,7 +1389,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 376
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-37",
@@ -1387,7 +1423,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 377
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-38",
@@ -1415,7 +1452,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 36
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-39",
@@ -1448,7 +1486,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 44
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-40",
@@ -1485,7 +1524,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 485
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-41",
@@ -1517,7 +1557,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 503
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-42",
@@ -1551,7 +1592,8 @@
           "line": 38
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "API-43",
@@ -1584,7 +1626,8 @@
           "file": "webui/src/components/DeliveryPanel.tsx",
           "line": 75
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-44",
@@ -1621,7 +1664,8 @@
           "file": "webui/src/components/WorkflowPanel.tsx",
           "line": 422
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-45",
@@ -1658,7 +1702,8 @@
           "file": "webui/src/components/DeliveryPanel.tsx",
           "line": 118
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-46",
@@ -1691,7 +1736,8 @@
           "file": "webui/src/components/DeliveryPanel.tsx",
           "line": 103
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-47",
@@ -1724,7 +1770,8 @@
           "file": "webui/src/App.tsx",
           "line": 176
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-48",
@@ -1777,7 +1824,8 @@
           "file": "webui/src/workspaces/ExportWorkspace.tsx",
           "line": 124
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-49",
@@ -1785,7 +1833,7 @@
       "method": "GET",
       "path": "/api/audit",
       "frontend_function": "api.listAudit / fetchAuditLogs",
-      "frontend_ui": "AuditLogViewer：审计列表；403 提示解锁，不回退其它地址",
+      "frontend_ui": "AuditLogViewer：窗口人工身份直接读取审计列表，无解锁或人工凭证步骤",
       "request": "query limit 默认200，正整数，上限1000；过大截为1000",
       "success_response": "200 AuditLog[]",
       "behavior": "最新在前；无 offset、时间/类型/actor 服务端过滤。筛选仅作用于已加载记录",
@@ -1822,7 +1870,8 @@
           "file": "webui/src/components/AuditLogViewer.tsx",
           "line": 57
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-50",
@@ -1855,7 +1904,8 @@
           "file": "webui/src/App.tsx",
           "line": 155
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-51",
@@ -1878,7 +1928,8 @@
       "frontend_requirement": "compatibility",
       "frontend_gap": "旧资产级批准兼容入口；页面使用 workflow 级批准，无需重复。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-52",
@@ -1901,7 +1952,8 @@
       "frontend_requirement": "compatibility",
       "frontend_gap": "旧资产级撤销兼容入口；页面使用 workflow 级撤销，无需重复。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-53",
@@ -1942,7 +1994,8 @@
           "file": "webui/src/components/PreviewPanel.tsx",
           "line": 82
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-54",
@@ -1995,7 +2048,8 @@
           "file": "webui/src/workspaces/ExportWorkspace.tsx",
           "line": 76
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-55",
@@ -2032,7 +2086,8 @@
           "file": "webui/src/components/AssStyleEditor.tsx",
           "line": 247
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-56",
@@ -2073,7 +2128,8 @@
           "file": "webui/src/components/PreviewPanel.tsx",
           "line": 95
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-57",
@@ -2134,7 +2190,8 @@
           "file": "webui/src/workspaces/ExportWorkspace.tsx",
           "line": 79
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-58",
@@ -2171,7 +2228,8 @@
           "file": "webui/src/components/DeliveryVariantPanel.tsx",
           "line": 32
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-59",
@@ -2212,7 +2270,8 @@
           "file": "webui/src/components/DeliveryVariantPanel.tsx",
           "line": 26
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-60",
@@ -2245,7 +2304,8 @@
           "file": "webui/src/components/AssStyleEditor.tsx",
           "line": 244
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-61",
@@ -2282,7 +2342,8 @@
           "file": "webui/src/components/DeliveryVariantPanel.tsx",
           "line": 43
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-62",
@@ -2331,7 +2392,8 @@
           "file": "webui/src/components/DeliveryVariantPanel.tsx",
           "line": 94
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-63",
@@ -2372,7 +2434,8 @@
           "file": "webui/src/components/DeliveryVariantPanel.tsx",
           "line": 94
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-64",
@@ -2409,7 +2472,8 @@
           "file": "webui/src/components/DeliveryVariantPanel.tsx",
           "line": 53
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-65",
@@ -2446,7 +2510,8 @@
           "file": "webui/src/components/AssStyleEditor.tsx",
           "line": 270
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-66",
@@ -2479,7 +2544,8 @@
           "file": "webui/src/components/AssStyleEditor.tsx",
           "line": 78
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-67",
@@ -2512,7 +2578,8 @@
           "file": "webui/src/components/AutoRunPanel.tsx",
           "line": 170
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-68",
@@ -2545,7 +2612,8 @@
           "file": "webui/src/components/AutoRunPanel.tsx",
           "line": 210
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-69",
@@ -2578,7 +2646,8 @@
           "file": "webui/src/components/AutoRunPanel.tsx",
           "line": 27
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-70",
@@ -2606,7 +2675,8 @@
           "line": 109
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-71",
@@ -2617,7 +2687,7 @@
       "frontend_ui": "AutoRunProgress",
       "request": "decision(export|revise|discard|confirm_visible_set|confirm_script), expected_auto_version, idempotency_key, feedback?；confirm_script 的 feedback 是 script_id/script_version JSON",
       "success_response": "200 {auto, run}",
-      "behavior": "CAS 与幂等；可见集变化仅人工 confirm_visible_set 恢复；脚本变化仅人工确认精确定稿修订后恢复；export/revise 受当前门、交付与预算限制；discard 停止并保留已有文件",
+      "behavior": "兼容 Workflow 的 CAS 与幂等决策；confirm_visible_set/confirm_script 确认旧运行输入或精确脚本修订；不是 AVP 导入资源的授权步骤。export/revise 仍受当前门、交付与预算限制；discard 停止并保留已有文件",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "decideAuto",
       "backend_source": {
@@ -2639,7 +2709,8 @@
           "file": "webui/src/components/AutoRunPanel.tsx",
           "line": 76
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-72",
@@ -2672,7 +2743,8 @@
           "file": "webui/src/components/AutoRunPanel.tsx",
           "line": 79
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-01",
@@ -2681,7 +2753,7 @@
       "path": "/api/tts/capabilities",
       "frontend_function": "api.ttsCapabilities",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2713,7 +2785,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 79
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-02",
@@ -2722,7 +2795,7 @@
       "path": "/api/tts/templates",
       "frontend_function": "api.ttsTemplates",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2750,7 +2823,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 76
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-03",
@@ -2759,7 +2833,7 @@
       "path": "/api/tts/templates",
       "frontend_function": "api.saveTtsTemplate",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "201 TtsTemplate",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2783,7 +2857,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 88
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-04",
@@ -2792,7 +2867,7 @@
       "path": "/api/tts/templates/{id}/revisions/{revision}",
       "frontend_function": "api.ttsTemplate",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2820,7 +2895,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 284
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-05",
@@ -2829,7 +2905,7 @@
       "path": "/api/tts/templates/{id}/revisions",
       "frontend_function": "无独立封装（页面使用 POST /api/tts/templates）",
       "frontend_ui": "无独立调用；api.saveTtsTemplate 使用 POST /api/tts/templates 保存新版本，无需重复入口。",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "201 TtsTemplate",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "未封装/未接入；无独立调用；api.saveTtsTemplate 使用 POST /api/tts/templates 保存新版本，无需重复入口。",
@@ -2843,7 +2919,8 @@
       "frontend_requirement": "optional_equivalent",
       "frontend_gap": "无独立调用；api.saveTtsTemplate 使用 POST /api/tts/templates 保存新版本，无需重复入口。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-06",
@@ -2852,7 +2929,7 @@
       "path": "/api/tts/templates/{id}/archive",
       "frontend_function": "api.archiveTtsTemplate",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2876,7 +2953,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 286
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-07",
@@ -2885,7 +2963,7 @@
       "path": "/api/tts/preview-jobs",
       "frontend_function": "api.ttsPreviews",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2909,7 +2987,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 80
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-08",
@@ -2918,7 +2997,7 @@
       "path": "/api/tts/preview-jobs",
       "frontend_function": "api.startTtsPreview",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "202 TtsPreview",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2942,7 +3021,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 99
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-09",
@@ -2951,7 +3031,7 @@
       "path": "/api/tts/preview-jobs/{id}",
       "frontend_function": "api.ttsPreview",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -2975,7 +3055,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 81
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-10",
@@ -2984,7 +3065,7 @@
       "path": "/api/tts/preview-jobs/{id}/cancel",
       "frontend_function": "api.cancelTtsPreview",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 JSON",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -3008,7 +3089,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 305
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-TTS-11",
@@ -3017,7 +3099,7 @@
       "path": "/api/tts/preview-jobs/{id}/audio",
       "frontend_function": "api.ttsAudioURL",
       "frontend_ui": "TtsWorkspace / TtsTemplateBindingEditor",
-      "request": "见 docs/TTS调控台.md；凭证仅引用环境变量名称",
+      "request": "见 docs/接口文档.md；凭证仅引用环境变量名称",
       "success_response": "200 audio/wav",
       "behavior": "独立试听与不可变模板版本；正式配音绑定固定配置摘要",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -3045,7 +3127,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 319
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-01",
@@ -3068,7 +3151,8 @@
       "frontend_requirement": "operations_optional",
       "frontend_gap": "WebUI 未封装；桌面状态使用 runtime_status IPC。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-02",
@@ -3121,7 +3205,8 @@
           "file": "webui/src/workspaces/EditingWorkspace.tsx",
           "line": 129
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-03",
@@ -3155,7 +3240,8 @@
           "line": 240
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "API-FLOW-04",
@@ -3189,7 +3275,8 @@
           "line": 236
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "API-FLOW-05",
@@ -3222,7 +3309,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 108
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-06",
@@ -3263,7 +3351,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 13
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-07",
@@ -3286,7 +3375,8 @@
       "frontend_requirement": "compatibility",
       "frontend_gap": "旧 F1 兼容入口；页面使用 /workbench/finalize，无需重复。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-08",
@@ -3295,9 +3385,9 @@
       "path": "/api/script-workbench/parse",
       "frontend_function": "api.parseScript",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "parseScript",
       "backend_source": {
@@ -3319,7 +3409,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 56
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-09",
@@ -3328,9 +3419,9 @@
       "path": "/api/script-workbench/media",
       "frontend_function": "api.scriptMedia",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptMedia",
       "backend_source": {
@@ -3352,7 +3443,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 15
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-10",
@@ -3361,9 +3453,9 @@
       "path": "/api/script-workbench/fonts",
       "frontend_function": "api.scriptFonts",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptFonts",
       "backend_source": {
@@ -3385,7 +3477,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 16
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-11",
@@ -3394,9 +3487,9 @@
       "path": "/api/scripts/{id}/workbench",
       "frontend_function": "api.scriptWorkbench",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptWorkbench",
       "backend_source": {
@@ -3430,7 +3523,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 55
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-12",
@@ -3439,9 +3533,9 @@
       "path": "/api/scripts/{id}/workbench",
       "frontend_function": "api.saveScript",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "saveScriptWorkbench",
       "backend_source": {
@@ -3463,7 +3557,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 148
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-13",
@@ -3472,9 +3567,9 @@
       "path": "/api/scripts/{id}/revisions",
       "frontend_function": "api.scriptRevisions",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptRevisions",
       "backend_source": {
@@ -3496,7 +3591,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 22
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-14",
@@ -3505,9 +3601,9 @@
       "path": "/api/scripts/{id}/generate",
       "frontend_function": "api.generateScript",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "generateScript",
       "backend_source": {
@@ -3529,7 +3625,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 169
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-15",
@@ -3538,9 +3635,9 @@
       "path": "/api/scripts/{id}/reject",
       "frontend_function": "api.rejectScript",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "rejectScript",
       "backend_source": {
@@ -3562,7 +3659,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 206
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-16",
@@ -3571,9 +3669,9 @@
       "path": "/api/scripts/{id}/workbench/finalize",
       "frontend_function": "api.finalizeScriptWorkbench",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "finalizeScriptWorkbench",
       "backend_source": {
@@ -3595,7 +3693,8 @@
           "file": "webui/src/components/ScriptWorkbench.tsx",
           "line": 205
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-17",
@@ -3604,9 +3703,9 @@
       "path": "/api/scripts/{id}/export",
       "frontend_function": "api.exportScript",
       "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
-      "request": "见 docs/script-workbench-syntax.md；写稿动作使用 expected_version 与 visible_set_sha",
+      "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
-      "behavior": "Go 权威校验；写操作固定 human:webui；乐观锁冲突 409；来源/可见集变化使交付失效",
+      "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "exportScript",
       "backend_source": {
@@ -3628,7 +3727,8 @@
           "file": "webui/src/components/ScriptDeliveryPanel.tsx",
           "line": 19
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-18",
@@ -3656,7 +3756,8 @@
           "file": "webui/src/components/ScriptDeliveryPanel.tsx",
           "line": 24
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-19",
@@ -3684,7 +3785,8 @@
           "file": "webui/src/components/ScriptDeliveryPanel.tsx",
           "line": 41
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-20",
@@ -3717,7 +3819,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 190
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "API-FLOW-21",
@@ -3750,7 +3853,8 @@
           "file": "webui/src/components/ScriptDeliveryPanel.tsx",
           "line": 17
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-01",
@@ -3759,7 +3863,7 @@
       "path": "/api/skill-runs/{id}/revisions",
       "frontend_function": "skillApi.revisions",
       "frontend_ui": "编辑页：运行修订列表",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -3783,7 +3887,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 105
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-02",
@@ -3792,7 +3897,7 @@
       "path": "/api/skill-runs/{id}/voice",
       "frontend_function": "skillApi.saveVoice",
       "frontend_ui": "TTS 专页：Skill 运行段落声音回写",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入；FEV01～06 修复的浏览器回归通过（真实 HTTP/运行夹具边界见校验报告）",
@@ -3819,7 +3924,8 @@
       ],
       "resolved_verification_findings": [
         "FEV02"
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-03",
@@ -3828,7 +3934,7 @@
       "path": "/api/projects/{id}/media",
       "frontend_function": "skillApi.importMedia",
       "frontend_ui": "资源页：导入项目素材",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "旧兼容模式保留；桌面工程模式返回410，请使用工程文件和项目资源接口",
@@ -3853,7 +3959,8 @@
           "line": 113
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "VU-04",
@@ -3862,7 +3969,7 @@
       "path": "/api/projects",
       "frontend_function": "skillApi.projects",
       "frontend_ui": "资源页：项目列表",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -3886,7 +3993,8 @@
           "file": "webui/src/components/ProjectModule.tsx",
           "line": 27
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-05",
@@ -3895,7 +4003,7 @@
       "path": "/api/projects",
       "frontend_function": "skillApi.createProject",
       "frontend_ui": "资源页：创建项目",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "旧兼容模式保留；桌面工程模式返回410，请使用工程文件和项目资源接口",
@@ -3920,7 +4028,8 @@
           "line": 85
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "VU-06",
@@ -3929,7 +4038,7 @@
       "path": "/api/projects/{id}",
       "frontend_function": "skillApi.project",
       "frontend_ui": "资源页与编辑页：项目详情",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -3961,7 +4070,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 56
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-07",
@@ -3970,7 +4080,7 @@
       "path": "/api/projects/{id}",
       "frontend_function": "skillApi.saveProject",
       "frontend_ui": "资源页项目配置；编辑页保存流程",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "旧兼容模式保留；桌面工程模式返回410，请使用工程文件和项目资源接口",
@@ -3999,7 +4109,8 @@
           "line": 243
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "VU-08",
@@ -4008,7 +4119,7 @@
       "path": "/api/projects/{id}/visible-set",
       "frontend_function": "skillApi.visibleSet",
       "frontend_ui": "资源页与编辑页：项目可见集",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4036,7 +4147,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 62
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-09",
@@ -4045,7 +4157,7 @@
       "path": "/api/projects/{id}/visible-set/confirm",
       "frontend_function": "skillApi.confirmVisible",
       "frontend_ui": "资源页：确认项目可见集",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "旧兼容模式保留；桌面工程模式返回410，请使用工程文件和项目资源接口",
@@ -4070,7 +4182,8 @@
           "line": 103
         }
       ],
-      "native_workspace_status": "retired_410"
+      "native_workspace_status": "retired_410",
+      "lifecycle": "retired_in_workspace"
     },
     {
       "id": "VU-10",
@@ -4079,7 +4192,7 @@
       "path": "/api/projects/{id}/exports/ffmpeg",
       "frontend_function": "skillApi.exportProject",
       "frontend_ui": "导出页：导出当前定稿",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4103,7 +4216,8 @@
           "file": "webui/src/components/SkillDeliveryModule.tsx",
           "line": 35
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-11",
@@ -4112,7 +4226,7 @@
       "path": "/api/skills",
       "frontend_function": "skillApi.skills",
       "frontend_ui": "设置 → Skill：列表",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4144,7 +4258,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 66
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-12",
@@ -4153,7 +4268,7 @@
       "path": "/api/skills",
       "frontend_function": "skillApi.importSkill",
       "frontend_ui": "设置 → Skill：导入",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4177,7 +4292,8 @@
           "file": "webui/src/components/SkillManagerModule.tsx",
           "line": 49
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-13",
@@ -4186,7 +4302,7 @@
       "path": "/api/skills/{id}",
       "frontend_function": "skillApi.skill",
       "frontend_ui": "设置 → Skill：正文与资源",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4210,7 +4326,8 @@
           "file": "webui/src/components/SkillManagerModule.tsx",
           "line": 20
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-14",
@@ -4219,7 +4336,7 @@
       "path": "/api/skills/{id}",
       "frontend_function": "skillApi.enableSkill",
       "frontend_ui": "设置 → Skill：启停",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4243,7 +4360,8 @@
           "file": "webui/src/components/SkillManagerModule.tsx",
           "line": 57
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-15",
@@ -4252,7 +4370,7 @@
       "path": "/api/skills/{id}/content",
       "frontend_function": "无独立封装（详情别名）",
       "frontend_ui": "别名无独立封装；详情 GET /api/skills/{id} 已返回同一正文/资源，无需重复入口。",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "与 GET /api/skills/{id} 同一处理器；skillApi.skill 调用详情，不调用 /content 别名",
       "usage": "未封装/未接入；别名无独立封装；详情 GET /api/skills/{id} 已返回同一正文/资源，无需重复入口。",
@@ -4266,7 +4384,8 @@
       "frontend_requirement": "optional_equivalent",
       "frontend_gap": "别名无独立封装；详情 GET /api/skills/{id} 已返回同一正文/资源，无需重复入口。",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-16",
@@ -4275,7 +4394,7 @@
       "path": "/api/skills/{id}/validate",
       "frontend_function": "skillApi.validateSkill",
       "frontend_ui": "设置 → Skill：校验",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4299,7 +4418,8 @@
           "file": "webui/src/components/SkillManagerModule.tsx",
           "line": 36
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-17",
@@ -4308,7 +4428,7 @@
       "path": "/api/system/ffmpeg",
       "frontend_function": "skillApi.ffmpeg",
       "frontend_ui": "设置 → Skill：FFmpeg 能力",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4332,7 +4452,8 @@
           "file": "webui/src/components/SkillManagerModule.tsx",
           "line": 26
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-18",
@@ -4341,7 +4462,7 @@
       "path": "/api/skill-runs",
       "frontend_function": "skillApi.runs",
       "frontend_ui": "编辑页：运行列表",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4365,7 +4486,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 69
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-19",
@@ -4374,7 +4496,7 @@
       "path": "/api/skill-runs",
       "frontend_function": "skillApi.createRun",
       "frontend_ui": "编辑页：创建运行",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4398,7 +4520,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 196
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-20",
@@ -4407,7 +4530,7 @@
       "path": "/api/skill-runs/{id}",
       "frontend_function": "skillApi.run",
       "frontend_ui": "编辑页与 TTS：运行状态",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4443,7 +4566,8 @@
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
           "line": 49
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-21",
@@ -4452,7 +4576,7 @@
       "path": "/api/skill-runs/{id}/context",
       "frontend_function": "skillApi.context",
       "frontend_ui": "编辑页：冻结上下文",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4476,7 +4600,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 81
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-22",
@@ -4485,7 +4610,7 @@
       "path": "/api/skill-runs/{id}/steps",
       "frontend_function": "skillApi.steps",
       "frontend_ui": "编辑页：人工步骤",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4509,7 +4634,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 99
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-23",
@@ -4518,7 +4644,7 @@
       "path": "/api/skill-runs/{id}/artifacts/{key}",
       "frontend_function": "skillApi.artifactURL",
       "frontend_ui": "导出页：当前成片下载",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4546,7 +4672,8 @@
           "file": "webui/src/components/SkillDeliveryModule.tsx",
           "line": 84
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-24",
@@ -4555,7 +4682,7 @@
       "path": "/api/skill-runs/{id}/tools",
       "frontend_function": "skillApi.tool",
       "frontend_ui": "编辑页：三项只读受控工具",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4579,7 +4706,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 330
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-25",
@@ -4588,7 +4716,7 @@
       "path": "/api/skill-runs/{id}/finalize",
       "frontend_function": "skillApi.action",
       "frontend_ui": "编辑页：人工定稿",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4612,7 +4740,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 311
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-26",
@@ -4621,7 +4750,7 @@
       "path": "/api/skill-runs/{id}/resume",
       "frontend_function": "skillApi.action",
       "frontend_ui": "编辑页：恢复执行",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4645,7 +4774,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 312
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-27",
@@ -4654,7 +4784,7 @@
       "path": "/api/skill-runs/{id}/cancel",
       "frontend_function": "skillApi.action",
       "frontend_ui": "编辑页：取消运行",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入；FEV01～06 修复的浏览器回归通过（真实 HTTP/运行夹具边界见校验报告）",
@@ -4681,7 +4811,8 @@
       ],
       "resolved_verification_findings": [
         "FEV03"
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "VU-28",
@@ -4690,7 +4821,7 @@
       "path": "/api/skill-runs/{id}/execute",
       "frontend_function": "skillApi.execute",
       "frontend_ui": "编辑页：执行内置 Agent",
-      "request": "见 docs/Skill-Harness接口与前端交接.md 及 Go/TS 类型",
+      "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
       "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4714,7 +4845,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 156
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-03",
@@ -4751,7 +4883,8 @@
       "resolved_verification_findings": [
         "FEV05",
         "FEV06"
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-04",
@@ -4760,7 +4893,7 @@
       "path": "/api/agent-operations/verify",
       "frontend_function": "skillApi.verifyAgentOperations",
       "frontend_ui": "设置 → 日志：核验摘要链",
-      "request": "无请求体；人工会话",
+      "request": "无请求体；窗口人工身份，无 Token/Cookie",
       "success_response": "200 {verified_through:number}",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4784,7 +4917,8 @@
           "file": "webui/src/components/AgentOperationPanel.tsx",
           "line": 29
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-05",
@@ -4817,7 +4951,8 @@
           "file": "webui/src/components/AgentOperationPanel.tsx",
           "line": 33
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-06",
@@ -4826,7 +4961,7 @@
       "path": "/api/skill-runs/{id}/workbench",
       "frontend_function": "skillApi.workbench",
       "frontend_ui": "编辑页 Skill 运行与导出页交付：工作台",
-      "request": "路径 id=run_id；人工会话",
+      "request": "路径 id=run_id；窗口人工身份，无 Token/Cookie",
       "success_response": "200 SkillWorkbench：run、双时间轴 segments、history 游标、previews 含 preview_url",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4854,7 +4989,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 87
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-07",
@@ -4890,7 +5026,8 @@
       ],
       "resolved_verification_findings": [
         "FEV01"
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-08",
@@ -4923,7 +5060,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 235
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-09",
@@ -4932,7 +5070,7 @@
       "path": "/api/skill-runs/{id}/checkpoints",
       "frontend_function": "skillApi.history",
       "frontend_ui": "编辑页：备份节点",
-      "request": "路径 id=run_id；人工会话",
+      "request": "路径 id=run_id；窗口人工身份，无 Token/Cookie",
       "success_response": "200 SkillHistory：cursor + checkpoints",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4956,7 +5094,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 93
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-10",
@@ -4965,7 +5104,7 @@
       "path": "/api/skill-runs/{id}/undo",
       "frontend_function": "skillApi.moveHistory",
       "frontend_ui": "编辑页：撤销",
-      "request": "JSON {expected_version}；人工会话",
+      "request": "JSON {expected_version}；窗口人工身份，无 Token/Cookie",
       "success_response": "200 SkillRun；版本递增并清除旧确认",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -4989,7 +5128,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 394
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-11",
@@ -4998,7 +5138,7 @@
       "path": "/api/skill-runs/{id}/redo",
       "frontend_function": "skillApi.moveHistory",
       "frontend_ui": "编辑页：重做",
-      "request": "JSON {expected_version}；人工会话",
+      "request": "JSON {expected_version}；窗口人工身份，无 Token/Cookie",
       "success_response": "200 SkillRun；版本递增并清除旧确认",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -5022,7 +5162,8 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 395
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "SAFE-12",
@@ -5031,7 +5172,7 @@
       "path": "/api/skill-runs/{id}/checkpoints/{checkpoint}/artifacts/{key}",
       "frontend_function": "skillApi.checkpointPreviewURL",
       "frontend_ui": "编辑页：历史节点预览",
-      "request": "run/checkpoint/artifact；人工会话或工作台签发的精确路径票据",
+      "request": "run/checkpoint/artifact；窗口人工身份直接读取当前工程路径，无票据",
       "success_response": "200/206 video/mp4；Range/HEAD，摘要与权限复核",
       "behavior": "Go 受控执行；日志与检查点仅人工可读；旧文件不覆盖",
       "usage": "页面已接入（静态接线，不代表人工验收）",
@@ -5055,18 +5196,19 @@
           "file": "webui/src/components/SkillRunModule.tsx",
           "line": 400
         }
-      ]
+      ],
+      "lifecycle": "current_or_compatible"
     },
     {
       "id": "AVP-142",
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/workspace/inspect-project",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.inspectProject",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "{path:string}",
+      "success_response": "200 Identity {id,name,created_at,updated_at}",
+      "behavior": "只验证格式/快照，不切换当前工程",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5083,18 +5225,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-143",
       "group": "工程文件与资源",
       "method": "PATCH",
       "path": "/api/projects/{id}/scripts/{script}/bindings",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.bindScript",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "ScriptFileImport {path,script_only,bindings,files}",
+      "success_response": "200 ProjectSession",
+      "behavior": "当前工程待关联脚本重绑定",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5111,18 +5254,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-144",
       "group": "工程文件与资源",
       "method": "PATCH",
       "path": "/api/workspace/state",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.state",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "{session:string,state:Record<string,unknown>}",
+      "success_response": "200 ProjectSession",
+      "behavior": "工作副本布局状态；过期会话冲突",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5139,18 +5283,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-145",
       "group": "工程文件与资源",
       "method": "GET",
       "path": "/api/workspace",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.workspace",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "无",
+      "success_response": "200 ProjectSession",
+      "behavior": "当前工程、dirty、活动任务、最近和恢复入口",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5167,18 +5312,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-147",
       "group": "工程文件与资源",
       "method": "GET",
       "path": "/api/workspace/providers",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.providerPolicy",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "无",
+      "success_response": "200 {external_tts:boolean}",
+      "behavior": "全局服务配置，不写入 AVP",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5195,18 +5341,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-148",
       "group": "工程文件与资源",
       "method": "PUT",
       "path": "/api/workspace/providers",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.saveProviderPolicy",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "{external_tts:boolean}",
+      "success_response": "200 {external_tts:boolean}",
+      "behavior": "全局云配音调用配置；模型/转录预设沿原接口",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5223,7 +5370,8 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-149",
@@ -5232,9 +5380,9 @@
       "path": "/api/projects/{id}/resources",
       "frontend_function": "",
       "frontend_ui": "资源栏使用 GET /api/workspace 的 document.resources",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "Path id=当前 project ID",
+      "success_response": "200 ProjectResource[]",
+      "behavior": "页面等价读取 workspace.document.resources",
       "usage": "等价入口，无需重复查询",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5246,18 +5394,19 @@
       "frontend_requirement": "equivalent_workspace_snapshot",
       "frontend_gap": "列表接口保留给外部调用；页面读取同一工作副本快照",
       "frontend_wrapper": [],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-150",
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/projects/{id}/resources",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.importResource",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "Path id；JSON {path:string}",
+      "success_response": "200 ProjectSession",
+      "behavior": "本地资源导入为当前工程引用",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5274,18 +5423,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-151",
       "group": "工程文件与资源",
       "method": "PATCH",
       "path": "/api/projects/{id}/resources/{resource}",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.patchResource",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "ResourcePatch {name?,notes?,in?,out?,path?,removed?}",
+      "success_response": "200 ProjectSession",
+      "behavior": "修改引用/备注/标记/重新定位，不删原件",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5302,18 +5452,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-152",
       "group": "工程文件与资源",
       "method": "GET",
       "path": "/api/projects/{id}/resources/{resource}/content",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.contentURL",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "Path id/resource；Query proxy=1 可选",
+      "success_response": "200/206 媒体字节或 UTF-8 文本",
+      "behavior": "只读取当前资源，支持适用的 Range；脚本返回正文",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5330,18 +5481,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-153",
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/projects/{id}/resources/{resource}/preview",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.createPreview",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "Path id/resource；JSON {}",
+      "success_response": "200 {ready:boolean}",
+      "behavior": "本地 FFmpeg 预览代理",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5358,18 +5510,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-154",
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/workspace/inspect-script",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.inspectScript",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "{path:string}",
+      "success_response": "200 AvsDocument",
+      "behavior": "只读取 AVS 及绑定需求，不导入",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5386,18 +5539,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-155",
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/projects/{id}/scripts/import-file",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.importScript",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "ScriptFileImport {path,script_only,bindings,files}",
+      "success_response": "200 ProjectSession",
+      "behavior": "导入副本；可仅脚本或替换关联",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5414,18 +5568,19 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "id": "AVP-156",
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/projects/{id}/scripts/{script}/export-file",
-      "frontend_function": "projectApi",
+      "frontend_function": "projectApi.exportScript",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "见 projectContracts.ts / projectApi.ts",
-      "success_response": "见 ProjectSession / ProjectResource / AvsDocument 契约",
-      "behavior": "仅当前工程；全局服务商设置位于 workspace/providers",
+      "request": "Path id/script；JSON {path:string}",
+      "success_response": "200 {saved:boolean}",
+      "behavior": "显式导出完整 AVS，不随保存工程覆盖原文件",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -5442,7 +5597,8 @@
           "line": 1
         }
       ],
-      "frontend_calls": []
+      "frontend_calls": [],
+      "lifecycle": "current_workspace"
     },
     {
       "group": "工程文件与资源",
@@ -5459,10 +5615,10 @@
       },
       "path": "/api/workspace/{action}",
       "frontend_ui": "ProjectWorkspaceProvider",
-      "request": "action=new/open/recover/save/save-as/close/undo/redo; ProjectCommand",
+      "request": "ProjectCommand {path,name?,decision?,stop_tasks,expected_session?,recovery_path?}",
       "method": "POST",
       "frontend_status_label": "页面已接入",
-      "behavior": "当前工程文件操作；expected_session 拒绝过期界面；切换等待任务退出",
+      "behavior": "new/open/recover/save/save-as/close/undo/redo；切换失败保留当前工程",
       "usage": "文件菜单、恢复与资源历史",
       "frontend_wrapper": [
         {
@@ -5473,12 +5629,13 @@
       "frontend_gap": "",
       "frontend_requirement": "required",
       "frontend_status": "page_integrated",
-      "success_response": "ProjectSession",
+      "success_response": "200 ProjectSession",
       "frontend_function": "projectApi.command",
-      "backend_handler": "HandleFunc"
+      "backend_handler": "HandleFunc",
+      "lifecycle": "current_workspace"
     }
   ],
-  "routes_source_sha256": "6726d338d1c84173101bdd7ed9a8fa95b0760638879c223f6371139b4c50b7e0",
+  "routes_source_sha256": "5ce1499a02d063687fcd58fe03fab5becac093d76f669138102609d241c7a84d",
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/script_workbench.go",
@@ -5490,7 +5647,7 @@
   "sse_new_events_note": "workspace.changed / workspace.saved / resource.changed invalidate current-project queries; streams close when project session changes.",
   "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
   "source_hashes": {
-    "control-plane/internal/api/api.go": "6726d338d1c84173101bdd7ed9a8fa95b0760638879c223f6371139b4c50b7e0",
+    "control-plane/internal/api/api.go": "5ce1499a02d063687fcd58fe03fab5becac093d76f669138102609d241c7a84d",
     "control-plane/internal/api/script_workbench.go": "1b3168344b29f05a38f482256041ce8fcf6eb745be3d9fa45ac94f70b3327178",
     "control-plane/internal/api/tts.go": "a1c1f9d44151101e32c196c1e4d7d59951d1fe6b4fcb4d0114dc3d57115edddb",
     "control-plane/internal/api/skill.go": "e2fd009e663ac389dc5bacccd41aff82b8c17730bed3181f703228518a50bce4",
@@ -5498,7 +5655,7 @@
     "control-plane/internal/api/project.go": "b738bca0183cecefed93b738ea793da20029d42a2080328166c5ff5e755000a6"
   },
   "verified_checkout": "agent/vu-skill",
-  "verification_note": "2026-10-20 AVP refactor: source registration and interface locations refreshed; runtime and visible window results separately recorded in docs/当前工作与待办.md and scripts/TESTING.md.",
+  "verification_note": "2026-10-20 AVP refactor: source registration and interface locations refreshed; runtime and visible window results separately recorded in docs/接口文档.md and scripts/TESTING.md.",
   "frontend_status_legend": {
     "page_integrated": {
       "label": "页面已接入",
@@ -5535,7 +5692,7 @@
   "frontend_verification_summary": {
     "date": "2026-10-19",
     "source_commit": "ef0880ba61ff126884e62df294dbedf6d4c0228e",
-    "report": "docs/前端与接口独立校验-2026-10-19.md",
+    "report": "docs/接口文档.md",
     "engineering": {
       "frontend_unit_and_style": "92 tests and style lint passed",
       "typescript": "passed",
@@ -5732,5 +5889,11 @@
       "result": "boolean",
       "command": "install_update"
     }
-  ]
+  ],
+  "documentation": {
+    "human_document": "docs/接口文档.md",
+    "architecture_document": "docs/架构与功能详解.md",
+    "generator": "scripts/update-interface-documentation.mjs",
+    "scope": "HTTP + SDK parameters and public models + custom desktop IPC + SSE; runtime checks and human acceptance stay separate"
+  }
 }

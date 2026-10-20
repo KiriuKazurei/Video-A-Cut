@@ -4,7 +4,7 @@
 // Every rule — visibility, state machines, ownership, audit — lives in
 // internal/service, and this package calls it and reports the outcome. A
 // handler that decides a rule would create a second copy of it, which is the
-// failure mode docs/项目开发文档.md §11.2 warns about: two filters drift apart
+// failure mode docs/架构与功能详解.md#ownership describes: two filters drift apart
 // the first time the rules change.
 //
 // Only the standard library net/http and encoding/json are used. There is no
@@ -73,7 +73,7 @@ const (
 	codeUnsupportedMediaType = "unsupported_media_type"
 )
 
-// routes registers every documented URL (docs/项目开发文档.md §9.1).
+// routes registers every documented URL (docs/接口文档.md#http).
 //
 // The whole surface hangs off /api/ so a static frontend can be served from
 // the same origin with a single prefix carve-out rather than per-route CORS

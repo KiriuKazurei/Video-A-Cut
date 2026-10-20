@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+from urllib.parse import unquote
 
 
 def main():
@@ -31,23 +32,26 @@ def main():
         assert re.search(r'\b' + re.escape(entry['backend_handler']) + r'\(', line), (entry['id'], source, line)
     assert hashlib.sha256((root / inventory['routes_source']).read_bytes()).hexdigest() == inventory['routes_source_sha256']
     documents = [root / p for p in (
-        'docs/flow-optimize-handoff.md', 'docs/flow-optimize-stages.md',
-        'docs/flow-optimize-progress.md', 'docs/script-workbench-syntax.md',
-        'docs/前端接口清单与重构交接.md', 'webui/README.md',
+        'docs/项目文档.md', 'docs/计划文档.md',
+        'docs/接口文档.md', 'docs/架构与功能详解.md',
+        'scripts/TESTING.md',
         'skills/vac-script-syntax/SKILL.md',
     )]
-    if options.local_docs:
-        documents += [options.local_docs / p for p in ('README.md', '当前项目状态.md', '当前工作与待办.md')]
+    if options.local_docs and options.local_docs.resolve() != (root / 'docs').resolve():
+        documents += [options.local_docs / p for p in ('项目文档.md', '计划文档.md', '接口文档.md', '架构与功能详解.md')]
     links = 0
     for document in documents:
-        text = document.read_text(encoding='utf-8-sig')
+        text = re.sub(r'```.*?```', '', document.read_text(encoding='utf-8-sig'), flags=re.S)
         for target in re.findall(r'\[[^\]]+\]\(([^)]+)\)', text):
             target = target.strip().strip('<>')
             if re.match(r'^(https?://|app://|#)', target):
                 continue
-            target = target.split('#', 1)[0]
+            target = unquote(target.split('#', 1)[0])
             if not target:
                 continue
+            location = re.fullmatch(r'(.*):([1-9][0-9]*)', target)
+            if location:
+                target = location[1]
             file = Path(target)
             if not file.is_absolute():
                 file = document.parent / file
@@ -57,7 +61,7 @@ def main():
     assert destination, 'Run through scripts/TestWorkspace.ps1'
     report = {'status': 'passed', 'registered_routes': len(registered), 'documented_endpoints': len(documented),
               'documents': len(documents), 'local_links': links, 'handler_locations': len(documented)}
-    output = Path(destination) / 'script-workbench-20261018' / 'doc-check.json'
+    output = Path(destination) / 'script-workbench' / 'doc-check.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))

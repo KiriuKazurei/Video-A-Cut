@@ -25,7 +25,7 @@ const (
 	InputKindRawRecording = "raw_recording"
 )
 
-// Asset status values from docs/项目开发文档.md §7.1.
+// Compatibility asset status values: docs/接口文档.md#models.
 const (
 	AssetStatusIngested   = "ingested"
 	AssetStatusRecognized = "recognized"

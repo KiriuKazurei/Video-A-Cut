@@ -42,37 +42,21 @@ Thumbs.db
 # Hermes local scratch
 .hermes/
 
-# Development documents stay local, except the frontend API handoff,
-# the flow-optimize stage plan, progress, handoff, and the hard UI style spec.
+# Four primary project documents and machine interface inventory.
 /desktop/desktop.local.json
 /docs/*
-!/docs/前端接口清单与重构交接.md
+!/docs/项目文档.md
+!/docs/计划文档.md
+!/docs/接口文档.md
+!/docs/架构与功能详解.md
 !/docs/frontend-api-inventory.json
-!/docs/flow-optimize-stages.md
-!/docs/flow-optimize-progress.md
-!/docs/flow-optimize-handoff.md
-!/docs/ui-style-spec.md
-!/docs/script-workbench-syntax.md
+!/docs/后续模块交接/
+/docs/后续模块交接/*
+!/docs/后续模块交接/v1/
+/docs/后续模块交接/v1/*
+!/docs/后续模块交接/v1/acceptance-run.template.json
+!/docs/后续模块交接/v1/delivery-variant.request.template.json
+!/docs/后续模块交接/v1/preview-quality-cases.json
+!/docs/后续模块交接/v1/runtime-capabilities.template.json
 /IDEA.md
 /视频剪辑流程方案.txt
-
-# Skill architecture and implementation contracts
-!/docs/Skill双流程架构设计.md
-!/docs/Skill管理与双流程改造方案-2026-10-19.md
-!/docs/Skill-Harness接口与前端交接.md
-!/docs/Skill架构实施与验证-2026-10-19.md
-!/docs/当前工作与待办.md
-!/docs/当前项目状态.md
-!/docs/当前架构与接口.md
-!/docs/README.md
-!/docs/可控编辑与操作历史-2026-10-19.md
-!/docs/前端与接口独立校验-2026-10-19.md
-!/docs/AVP工程文件与资源工作区.md
-!/docs/agent分支整合-2026-10-20.md
-!/docs/当前运行与测试.md
-!/docs/历史文档索引.md
-!/docs/开发分支合并-2026-10-18.md
-!/docs/自动模式说明.md
-!/docs/F2-F4续作清单-2026-10-18.md
-!/docs/文档维护清单.md
-!/docs/代码审查-2026-10-16.md

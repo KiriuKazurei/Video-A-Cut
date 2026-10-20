@@ -135,7 +135,7 @@ export function durationText(seconds: number | null | undefined): string {
 }
 
 /* ------------------------------------------------------------------ *
- * 资产状态（docs/项目开发文档.md §7.1）
+ * 兼容资产状态（docs/接口文档.md#models）
  * ------------------------------------------------------------------ */
 
 export const ASSET_STATUS_LABELS: Record<string, string> = {
