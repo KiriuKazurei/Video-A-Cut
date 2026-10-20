@@ -5727,7 +5727,7 @@
   },
   "frontend_verification_summary": {
     "date": "2026-10-20",
-    "source_commit": "2550065 + 0.2.1 task working tree",
+    "source_commit": "cadd51a61eaf785bb9e05f8de520cf3b921ab355",
     "report": "scripts/TESTING.md",
     "engineering": {
       "frontend_unit_and_style": "93 passed with style lint",
@@ -5760,7 +5760,7 @@
     "human_acceptance": "pending"
   },
   "avp_verification": {
-    "source": "agent/vu-skill based on 2550065 + 0.2.1 task changes",
+    "source": "agent/vu-skill@cadd51a61eaf785bb9e05f8de520cf3b921ab355",
     "human_acceptance": "pending",
     "visible_desktop_main_flow": "26/26 passed; current Windows/Go/native dialogs and clipboard; ASR settings persistence and MCP endpoint refresh plus AVP regression",
     "evidence": "scripts/TESTING.md",
