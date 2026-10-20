@@ -2,6 +2,12 @@
 
 更新：2026-10-20。本文为测试维护入口。实际开发源码在 `agent/vu-skill` 的 `.run-data/worktrees/codex-skill-harness`；原根目录仍是旧工作区。多工作区约束见 [当前运行与测试](../docs/当前运行与测试.md)；执行清单见 [当前工作与待办](../docs/当前工作与待办.md)。
 
+## agent 分支整合回归（2026-10-20）
+
+确定源码提交 `7dda64d`，后续只更新整合状态文档；没有新增测试套件或放宽断言。Go 全部 16 个有测试的包通过（另 2 包无测试文件）：root 13.849 秒、API 21.956 秒、MCP 36.430 秒、service 448.146 秒、store 5.884 秒。使用下文原根短版本化输出命令及当前源码 WorkingDirectory，不以旧根 runner 的 HEAD 冒充验证版本。前端完整 92 项/样式、Python 159 项、Timeline 54 项、Exporter 53 项、Go vet、TypeScript、Rust fmt 和文档/HTTP/IPC/脚本契约检查均通过。Python/Node 沿用 `-Suite python/timeline/exporter`，前端和静态检查沿用下文 custom 入口。
+
+证据：当前工作树 `custom/branch-consolidation-verification.json`、branch-*.log；Go 全包为原根对应版本 `artifacts/custom/output.log`。[分支整合记录](../docs/agent分支整合-2026-10-20.md)列出历史包含、未提交内容核对和推送整理事实。测试只验证本地工程与确定性链路；下文 AVP 可见桌面 22/22 属此前相同功能源码的验证，本次没有重新进行人工观感、真实外部模型或发行安装验收。
+
 ## AVP 工程重构（当前验证）
 
 基线 `agent/vu-skill@ef0880b` 加保留的未提交改动。实现契约见 [AVP 工程与资源工作区](../docs/AVP工程文件与资源工作区.md)。沿用 Go/package、前端原单元/样式与 `verify-tauri-desktop.mjs`，没有建立按任务复制的独立套件；媒体复用 `workers/node/timeline-cli/fixtures/media/clip_01.mp4`，小型编码/音频夹具只在版本化输出生成。
