@@ -9,6 +9,13 @@ interface Props { navigate: (workspace: WorkspaceId) => void; toggleLeft: () => 
 export function ProjectMenuBar(props: Props) {
   const project = useProjectWorkspace();
   const { modal, message } = App.useApp();
+  const title = project.session?.document
+    ? `Video Auto Cut — ${project.session.document.project.name}${project.session.dirty || project.localDirty ? ' *' : ''}`
+    : 'Video Auto Cut';
+  useEffect(() => {
+    document.title = title;
+    if (isDesktop()) void desktopCommand('set_window_title', { title }).catch(error => message.error(String(error)));
+  }, [title, message]);
   const focus = useRef<HTMLElement | null>(null);
   useEffect(() => { const capture = (event: FocusEvent) => { const target = event.target; if (target instanceof HTMLElement && !target.closest('.project-menu-bar, [role=menu], [role=menuitem]')) focus.current = target; }; document.addEventListener('focusin', capture); return () => document.removeEventListener('focusin', capture); }, []);
   const editCommand = async (command: 'undo' | 'redo' | 'cut' | 'copy' | 'paste') => {
@@ -69,5 +76,5 @@ export function ProjectMenuBar(props: Props) {
     ] },
     { key: 'about-menu', label: '关于', children: [{ key: 'about', label: '版本信息' }, { key: 'updates', label: '检查更新', disabled: !isDesktop() }, { key: 'shortcuts', label: '快捷键说明' }, { key: 'tour', label: '新手引导', disabled: !active }] }
   ];
-  return <div className="project-menu-bar" aria-busy={project.busy}><Menu mode="horizontal" aria-label="应用菜单" selectable={false} disabled={project.busy} items={items} onClick={({ key }) => edit(key)} /><Typography.Text ellipsis className="project-title" title={project.session?.path}>{project.session?.document ? `${project.session.document.project.name}${project.session.dirty || project.localDirty ? ' *' : ''}` : 'Video Auto Cut'}</Typography.Text></div>;
+  return <div className="project-menu-bar" aria-busy={project.busy}><Menu mode="horizontal" aria-label="应用菜单" selectable={false} disabled={project.busy} items={items} onClick={({ key }) => edit(key)} /></div>;
 }

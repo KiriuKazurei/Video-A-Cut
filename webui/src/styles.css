@@ -7,9 +7,9 @@
  */
 
 .desktop-runtime-shell { height: 100vh; display: flex; flex-direction: column; }
-.desktop-runtime-bar { flex: none; }
 .desktop-runtime-content { flex: 1; min-height: 0; }
 .desktop-runtime-content .app-shell { height: 100%; min-height: 0; }
+.desktop-runtime-footer { flex: none; padding: 8px 16px; }
 
 :root {
   --vac-bg: #1E1E1E;
@@ -75,8 +75,10 @@ body { background: var(--vac-bg); }
 .app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
 @media (max-width: 1279px) {
 }
-.app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--vac-hairline); }
+.app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; flex-shrink: 0; border-top: 1px solid var(--vac-hairline); }
 .app-footer-meta { font-size: 12px; }
+.desktop-service-status { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; font-size: var(--vac-font-sm); }
+.desktop-service-message { min-width: 0; }
 
 /* ---------- 工作区：左右侧栏为 antd Layout.Sider（纯色底），中间无分界 ---------- */
 .workspace { flex: 1; min-height: 0; }

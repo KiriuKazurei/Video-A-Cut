@@ -52,7 +52,7 @@ node scripts/update-interface-documentation.mjs --refresh-inventory --write
 & $runner -Action Run -Suite custom -Executable python -WorkingDirectory $sourceRoot -Arguments @('-B','scripts/verify-script-workbench-docs.py')
 ```
 
-源 SHA 按 LF 规范化计算，兼容 Git autocrlf 而仍检测实际内容变动。刷新只定位真实路由、处理器、SDK 和页面调用，不自动推断参数语义。检查精确路由集合、源 SHA、处理器位置、16 项桌面 IPC、HTTP 请求/响应索引、类型/SDK 自动区域及本地链接。文档迁移更新原检查对象，不退役 Go/前端/Worker 覆盖。运行时 Skill 文档若变更，同步嵌入/目录副本和版本，并执行相应 MCP/服务契约回归。
+源 SHA 按 LF 规范化计算，兼容 Git autocrlf 而仍检测实际内容变动。刷新只定位真实路由、处理器、SDK 和页面调用，不自动推断参数语义。检查精确路由集合、源 SHA、处理器位置、17 项桌面 IPC、HTTP 请求/响应索引、类型/SDK 自动区域及本地链接。文档迁移更新原检查对象，不退役 Go/前端/Worker 覆盖。运行时 Skill 文档若变更，同步嵌入/目录副本和版本，并执行相应 MCP/服务契约回归。
 
 ## 4. 媒体、MCP、浏览器及可见桌面入口
 
@@ -83,10 +83,14 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 ## 5. 最近适用结果
 
-当前产品源码对应已推送的 `cadd51a61eaf785bb9e05f8de520cf3b921ab355`（0.2.1）；此前执行时为该提交的工作副本。后续交付回执只改文档/机器清单，不冒充新一轮产品测试。
+本轮用户协同测试的指定区间剪辑已验收（2026-10-21）：0.2.1 可见窗口与保留的开发数据库，真实官方 MCP SDK 常驻会话（Codex-cooperative-test，协议 2026-07-28）。12 项工具发现、工程/资源/可见集查询、video-use 包和契约读取成功。用户已导入指定 87.144 秒录像，当前工程 prj_5001495a34fa0b05 仅有资源 res_0ff95a97d525a902；可见设置页本地预设环境检查/保存和 MCP 创建/认领/实际转录已成功（96 个源时标词项，CPU int8）；低置信度与不通顺文本的模型质量未验收。12 张源帧已经原生 MCP 图像逐张读取。用户改为按实际唱出的语言删除英文演唱；当前整段 ASR 漏识歌词且没有分段语言标签，MCP 又未提供范围/音轨控制，不能以画面英文或转录空白代替英文演唱起止证据。自动识别英文唱段的质量测试尚未通过；用户已明确仅删除源时间 41–61 秒，保留其余 67.144 秒；MCP 两段草案已由用户在窗口定稿，运行 v39 / 计划 v1 的 human:webui 定稿及 0–41、61–87.144 秒区间经 MCP 核对一致，MCP 渲染、检查、4 张原生检查帧读取、review 和 finish 已成功，运行 v55 / succeeded；实测 67.133333 秒、1280×720 H.264、同计划 MP4/Premiere ZIP，画面检查通过；可见 WebView 播放从 39.5 秒跨接点到 41.862 秒，音视频均解码，82 帧/0 丢帧、无媒体错误，已暂停在 39.5 秒供用户试听。窗口布局发现 PREV01：视频高 584.625px、容器高 298.792px 并隐藏溢出，画面及控件被裁切；当前 DOM 临时指定 Grid 轨道后两者高度一致，完整画面和控件恢复，源码未修复，不记原始布局通过（exact-cut-preview-layout.json / exact-cut-player-visible.png / exact-cut-player-expanded.png）。2026-10-21 用户明确确认“这次剪辑符合预期”，本次人工指定区间的剪辑与拼接效果验收通过，范围不含自动听辨及未经修复的原始播放器布局（exact-cut-status.json / exact-cut-inspection.json / inspection-images-index.json / exact-cut-finished.json / exact-cut-player.json / exact-cut-player-expanded.png）；人工标记后的成片结果与自动听辨能力分别记录，具体候选与缺口见 english-vocal-observation.json。可见「导入与粗剪」错误提示该视频为 EDL 包，保留为观察项，未记通过。证据在当前版本 custom/cooperative/session.json、projects-current.json、resources-current.json、visible-current.json、video-use-current.json、video-use-contracts.json；启动器通过现有 TestWorkspace custom 执行，常驻期间管理器结果待结束，不记为完整测试通过。工程/业务数据使用原根 .run-data/development/live-dev/data，原录像只读，连接客户端是本轮临时工具，不新增独立测试套件。
+
+已推送产品基线为 `cadd51a61eaf785bb9e05f8de520cf3b921ab355`（0.2.1），后续交付回执只改文档/机器清单。2026-10-21 CHROME01 为本次提交的标题栏与底栏修改；以下结果来自提交前的对应工作副本，不将基线测试冒充为新代码通过。
 
 | 范围/候选 | 真实结果 | 证据与限制 |
 |---|---|---|
+| 0.2.1 CHROME01 工作副本（2026-10-21） | 前端 93 项、样式/类型/生产构建、Rust 格式/5 项测试/桌面构建、文档契约及真实 Windows 桌面 31/31 通过；人工观感待验 | custom/window-chrome/*.log、window-chrome-native/ui/results.json 与 native-title-{home,project-dirty}.png；实际屏幕像素确认标题栏 #1E1E1E，覆盖清洁/未保存/关闭后的标题和底栏就绪/停止/重启。独立测试数据，未开启可选 ASR 推理；不重报 Go/Worker 全套或声音/模型质量 |
+| CHROME01 用户窗口恢复 | 当前原「新项目」已恢复，资源 1 项、dirty=false、工程文件 SHA256 未变；原生标题为 Video Auto Cut — 新项目，底栏就绪 | custom/window-chrome/user-workspace-restored.json / user-window-native.png；沿用原开发业务目录。保留窗口供用户查看，常驻启动器尚未结束，不将该会话写成已结束的管理器测试通过 |
 | 0.2.1 cadd51a 完整 Go | 16 个有测试包通过，2 包无测试；显式启用已预装本地 ASR 实测 | root 14.824s、API 23.230s、MCP 37.350s、service 456.160s、store 7.103s；原根 0.2.1 custom/go-full.log，明确以当前工作树 control-plane 为源码 |
 | 0.2.1 cadd51a 前端/Worker/契约 | 前端 93、Python 164、Timeline 54、Exporter 53、TS/构建/样式与接口检查全部通过 | 当前 0.2.1 custom/*-unit.log、typescript.log、documentation.log、script-docs.log 及 python/timeline/exporter/output.log；158 HTTP、122 类型、16 IPC、25 SSE。真实桌面另记 |
 | 0.2.1 本地 ASR | Go→本机 faster-whisper 1.2.1 base CPU/int8 →22 个源词时标；诊断/取消/幂等重放/跨工程拒绝通过 | 真实测试已显式启用，非跳过；现有本地模型指纹参与缓存，未下载、修改模型或外发；Python 单元另覆盖 5 秒偏移、依赖/模型缺失、静音和失败不发布 |
@@ -105,6 +109,7 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 | 历史问题 | 处理事实 | 当前含义 |
 |---|---|---|
+| CHROME01 首轮测试配置和探针 | 先因测试 overlay 仍需不存在的旁载 Go 失败，改为开发显式路径且不打包复制；再将测试数据从资源根内移到原根独立版本目录。DWM 颜色属性无法经 Get 回读，改用原生截图真实屏幕取色并修正 DPI；新工程先保存初始化布局再核对清洁标题 | rust-first-failure.log、native-first-failure.json、native-color-readback-failure.json、native-title-fixture-failure.json 保留；不降低原生颜色/标题要求，最终既有套件 31/31 通过 |
 | 0.2.1 本地 ASR 初次真实识别 | 既有 PyAV 不接受 faster-whisper 的 metadata_errors 参数，改从已有 FFmpeg PCM 直接生成 NumPy；词时间与概率显式转普通 float | 真实 Go/模型 22 词及全包回归通过；不通过更换/下载模型、云回退或伪造文本规避 |
 | 0.2.1 MCP 原生复制缺口 | 首轮窗口发现 clipboard_write_text 未注册，补 HWND 所属的 Win32 Unicode 写入及错误反馈，探针等待异步写入后核对 | native 26/26 覆盖地址/TOML/JSON 和重启；原剪贴板内容不写测试结果。源码/单元通过没有被当成复制已验收 |
 | 0.2.1 桌面探针启动/预设/重载夹具 | 启动 CDP 断连增加有界附加；新预设补既有必填声音并使用 revisions 接口；等待 Home aria-busy=false 和可见控件，避免会话返回重建后的旧节点 | 应用退出、运行故障与之后断连仍失败；未放宽产品校验，26/26 通过后保留最小首轮定位记录 |

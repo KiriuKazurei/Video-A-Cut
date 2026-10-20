@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][int]$DesktopPid,[ValidateSet('inspect','close','resize','choose','cancel','confirm')][string]$Action='inspect',[string]$DialogTitle,[string]$FilePath,[int]$Width=1900,[int]$Height=1200)
+param([Parameter(Mandatory)][int]$DesktopPid,[ValidateSet('inspect','capture','close','resize','choose','cancel','confirm')][string]$Action='inspect',[string]$DialogTitle,[string]$FilePath,[int]$Width=1900,[int]$Height=1200)
 $ErrorActionPreference='Stop'
 $owned=Get-Process -Id $DesktopPid -ErrorAction Stop
 if($owned.ProcessName -ne 'video-auto-cut-desktop'){throw 'Probe requires the owned desktop process'}
@@ -30,9 +30,10 @@ public static class DesktopWindowProbe {
     return found;
   }
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h,System.Text.StringBuilder s,int n);
+  public static string Title(IntPtr h) { var title=new System.Text.StringBuilder(2048);GetWindowText(h,title,title.Capacity);return title.ToString(); }
   public static IntPtr Main(uint pid) {
     IntPtr found=IntPtr.Zero;
-    EnumWindows((h,p)=>{uint owner;GetWindowThreadProcessId(h,out owner);if(owner==pid){var title=new System.Text.StringBuilder(256);GetWindowText(h,title,256);if(title.ToString()=="Video Auto Cut"){found=h;return false;}}return true;},IntPtr.Zero);
+    EnumWindows((h,p)=>{uint owner;GetWindowThreadProcessId(h,out owner);if(owner==pid){var title=Title(h);if(title=="Video Auto Cut"||title.StartsWith("Video Auto Cut — ",StringComparison.Ordinal)){found=h;return false;}}return true;},IntPtr.Zero);
     return found;
   }
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
@@ -40,11 +41,12 @@ public static class DesktopWindowProbe {
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,string l);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string title);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
 }
 '@
-if($Action -in @('inspect','close','resize')) {
+if($Action -in @('inspect','capture','close','resize')) {
   $handle=[DesktopWindowProbe]::Main([uint32]$DesktopPid)
   [uint32]$windowOwner=0
   [DesktopWindowProbe]::GetWindowThreadProcessId($handle,[ref]$windowOwner)|Out-Null
@@ -57,7 +59,33 @@ if($Action -in @('inspect','close','resize')) {
     if($Width -lt 1400 -or $Height -lt 950){throw 'Test size is below desktop minimum'}
     if(![DesktopWindowProbe]::SetWindowPos($handle,[IntPtr]::Zero,0,0,$Width,$Height,6)){throw 'Owned window resize failed'}
   }
-  @{pid=$DesktopPid;handle=$handle.ToInt64();visible=($handle -ne 0 -and [DesktopWindowProbe]::IsWindowVisible($handle))}|ConvertTo-Json -Compress
+  $captionColor=$null
+  if($Action -eq 'capture') {
+    if(![IO.Path]::IsPathFullyQualified($FilePath)){throw 'Absolute screenshot path required'}
+    if(![DesktopWindowProbe]::IsWindowVisible($handle)){throw 'Owned window is not visible'}
+    $previousDpi=[DesktopWindowProbe]::SetThreadDpiAwarenessContext([IntPtr](-4))
+    Add-Type -AssemblyName System.Drawing,System.Windows.Forms
+    [DesktopWindowProbe]::SetForegroundWindow($handle)|Out-Null
+    Start-Sleep -Milliseconds 200
+    $bounds=[DesktopWindowProbe+Rect]::new()
+    if(![DesktopWindowProbe]::GetWindowRect($handle,[ref]$bounds)){throw 'Window bounds unavailable'}
+    $rectangle=[Drawing.Rectangle]::FromLTRB($bounds.Left,$bounds.Top,$bounds.Right,$bounds.Bottom)
+    $rectangle.Intersect([Windows.Forms.SystemInformation]::VirtualScreen)
+    $bitmap=[Drawing.Bitmap]::new($rectangle.Width,$rectangle.Height)
+    $graphics=[Drawing.Graphics]::FromImage($bitmap)
+    try{
+      $graphics.CopyFromScreen($rectangle.Location,[Drawing.Point]::Empty,$rectangle.Size)
+      # Caption colors are set-only DWM attributes. Read the rendered title bar,
+      # away from its text and system buttons, rather than querying them back.
+      $pixel=$bitmap.GetPixel([int]($rectangle.Width/2),15)
+      $captionColor='#{0:X2}{1:X2}{2:X2}' -f $pixel.R,$pixel.G,$pixel.B
+      $bitmap.Save($FilePath,[Drawing.Imaging.ImageFormat]::Png)
+    }finally{
+      $graphics.Dispose();$bitmap.Dispose()
+      if($previousDpi -ne [IntPtr]::Zero){[DesktopWindowProbe]::SetThreadDpiAwarenessContext($previousDpi)|Out-Null}
+    }
+  }
+  @{pid=$DesktopPid;handle=$handle.ToInt64();visible=($handle -ne 0 -and [DesktopWindowProbe]::IsWindowVisible($handle));title=[DesktopWindowProbe]::Title($handle);caption_color=$captionColor;caption_color_source=$(if($captionColor){'screen_pixel'}else{$null})}|ConvertTo-Json -Compress
   exit
 }
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes

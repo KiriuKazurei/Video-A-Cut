@@ -57,6 +57,11 @@ fn clipboard_write_text(window: tauri::WebviewWindow, text: String) -> Result<()
 }
 
 #[tauri::command]
+fn set_window_title(window: tauri::WebviewWindow, title: String) -> Result<(), String> {
+    window.set_title(&title).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn confirm_project_exit(runtime: tauri::State<'_, Runtime>) -> Result<(), String> {
     if runtime.maintenance.load(Ordering::SeqCst) {
         return Err("正在安装更新".into());
@@ -335,6 +340,7 @@ pub fn run(environment: tauri::Env) {
             project_open_request,
             clipboard_read_text,
             clipboard_write_text,
+            set_window_title,
             open_data_directory,
             select_recording,
             download_file,
@@ -344,6 +350,14 @@ pub fn run(environment: tauri::Env) {
             crate::updater::install_update
         ])
         .setup(|app| {
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                let owner = window.hwnd()?.0 as isize;
+                if let Err(error) = crate::platform::set_caption_colors(owner) {
+                    // Older Windows versions retain the native dark title bar.
+                    eprintln!("{error}");
+                }
+            }
             app.manage(crate::updater::Updates::new(
                 app.package_info().version.to_string(),
             ));

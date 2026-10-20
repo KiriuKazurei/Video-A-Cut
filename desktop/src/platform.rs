@@ -9,6 +9,34 @@ use windows_sys::Win32::{
 };
 
 #[cfg(windows)]
+pub fn set_caption_colors(owner: isize) -> io::Result<()> {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR,
+    };
+    // Match the fixed window/background and text colors in webui/src/theme.ts.
+    for (attribute, color) in [
+        (DWMWA_CAPTION_COLOR, 0x001e1e1eu32),
+        (DWMWA_TEXT_COLOR, 0x00e6e6e6u32),
+    ] {
+        let result = unsafe {
+            DwmSetWindowAttribute(
+                owner as HWND,
+                attribute as u32,
+                &color as *const _ as _,
+                std::mem::size_of_val(&color) as u32,
+            )
+        };
+        if result < 0 {
+            return Err(io::Error::other(format!(
+                "无法设置标题栏颜色：0x{:08X}",
+                result as u32
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 pub fn clipboard_text() -> Result<String, String> {
     use windows_sys::Win32::System::{DataExchange::*, Memory::*};
     unsafe {

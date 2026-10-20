@@ -12,6 +12,7 @@ import { refreshSnapshot } from './queryRefresh';
 import { ResourceBin } from './components/ResourceBin';
 import { ResourceInspector } from './components/ResourceInspector';
 import { ProjectMenuBar } from './components/ProjectMenuBar';
+import { DesktopServiceStatus } from './components/DesktopRuntime';
 import { ProjectHome } from './components/ProjectHome';
 import { useProjectWorkspace } from './projectWorkspace';
 import { WorkspacePage } from './components/WorkspacePage';
@@ -482,12 +483,14 @@ export default function App() {
         {rightSiderContent}
       </Drawer>
 
+      </>}
+
       <Layout.Footer className="app-footer">
         <Typography.Text type="secondary" className="app-footer-meta">
-          {workspace === 'tts' ? '独立文本试听 · TTS' : `${selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · ${current.label}`}
+          {!projectWorkspace.session?.document ? '未打开工程' : workspace === 'tts' ? '独立文本试听 · TTS' : `${selected ? `当前资产 ${selected.asset_id}` : '未选择资产'} · ${current.label}`}
         </Typography.Text>
+        <DesktopServiceStatus />
       </Layout.Footer>
-      </>}
 
       <AppTour open={tourOpen} onClose={closeTour} />
 

@@ -368,7 +368,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 219
+          "line": 220
         },
         {
           "file": "webui/src/components/IngestPanel.tsx",
@@ -1770,7 +1770,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 177
+          "line": 178
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1808,7 +1808,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 171
+          "line": 172
         },
         {
           "file": "webui/src/components/TaskOrchestrator.tsx",
@@ -1862,7 +1862,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 168
+          "line": 169
         },
         {
           "file": "webui/src/components/AssetManager.tsx",
@@ -5773,7 +5773,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 145
+        "line": 150
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "RuntimeStatus",
@@ -5784,7 +5784,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 150
+        "line": 155
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5795,7 +5795,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 164
+        "line": 169
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5806,7 +5806,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 175
+        "line": 180
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5817,7 +5817,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 60
+        "line": 65
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5828,7 +5828,7 @@
       "arguments": "{mode:new-project|open-project|save-project|save-script|import-resources|relink-resource|transcription-model|transcription-python, defaultPath?:string|null}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 71
+        "line": 76
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "string[]",
@@ -5872,7 +5872,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 193
+        "line": 198
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5883,7 +5883,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 207
+        "line": 212
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "{root_id,relative_path}|null; legacy picker",
@@ -5894,7 +5894,7 @@
       "arguments": "{url}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 226
+        "line": 231
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -5943,6 +5943,17 @@
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "boolean",
       "command": "install_update"
+    },
+    {
+      "authorization": "visible_window_human_no_token",
+      "arguments": "{title:string}；程序名及当前工程名/未保存标记",
+      "source": {
+        "line": 60,
+        "file": "desktop/src/shell.rs"
+      },
+      "frontend": "webui/src/components/ProjectMenuBar.tsx via desktopCommand；浏览器同步 document.title",
+      "result": "null；失败为 Promise rejection",
+      "command": "set_window_title"
     }
   ],
   "documentation": {

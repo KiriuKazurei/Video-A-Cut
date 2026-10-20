@@ -36,6 +36,15 @@ let base;
 const api = async (endpoint, method='GET', body, headers={}) => { const r=await fetch(base+endpoint,{method,headers:{'Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body)});const text=await r.text();if(!r.ok)throw Error(r.status+' '+text);return JSON.parse(text); };
 const workspace = () => api('/api/workspace');
 const choose = (title,file) => probe('choose',['-DialogTitle',title,'-FilePath',file]);
+const verifyWindowChrome = async title => {
+  await until(async()=>JSON.parse(await probe('inspect')),value=>value.title===title);
+  const native=JSON.parse(await probe('capture',['-FilePath',path.join(out,'native-current.png')]));
+  assert.equal(native.caption_color_source,'screen_pixel');assert.equal(native.caption_color,'#1E1E1E');
+  await c.wait(`document.title===${JSON.stringify(title)}`);
+  const layout=await c.ev(`(()=>{const status=document.querySelector('.app-footer [aria-label="后台服务状态"]');const footer=status?.closest('.app-footer');return {topBar:!!document.querySelector('.desktop-runtime-bar'),menuTitle:!!document.querySelector('.project-menu-bar .project-title'),status:status?.textContent,bottom:footer?.getBoundingClientRect().bottom,height:innerHeight,background:getComputedStyle(document.body).backgroundColor}})()`);
+  assert(!layout.topBar&&!layout.menuTitle);assert(layout.status.includes('后台服务已就绪'));assert(Math.abs(layout.bottom-layout.height)<2);assert.equal(layout.background,'rgb(30, 30, 30)');
+  return {native,layout};
+};
 const importFile = async file => { const count=(await workspace()).document.resources.length;await shortcut('i');await choose('选择工程资源',file);await until(workspace,v=>v.document.resources.length===count+1); };
 const select = async id => {await c.wait(`document.querySelector('[data-resource-id="${id}"]')`);await c.ev(`document.querySelector('[data-resource-id="${id}"]').click()`);await c.wait(`document.querySelector('[data-resource-id="${id}"]').getAttribute('aria-pressed')==='true'`);};
 const verifyMcp = async runtime => {
@@ -73,6 +82,8 @@ try {
   const status=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(status.status,'ready',status.message);base=status.api_base_url;report.runtime=status;
   originalClipboard=await c.invoke('clipboard_read_text');
   await c.wait(`document.querySelector('.project-home')`);const window=JSON.parse(await probe('inspect'));assert(window.visible&&window.handle);await record('visible home and real desktop bridge',window);await c.screenshot(path.join(out,'home.png'));if(await c.ev(`document.body.innerText.includes('跳过引导')`))await click('跳过引导');
+  await record('native title bar matches the window background; ready status is at the bottom on the home page',await verifyWindowChrome('Video Auto Cut'));
+  await probe('capture',['-FilePath',path.join(out,'native-title-home.png')]);
   const appVersion=JSON.parse(await fs.readFile(path.resolve('desktop/tauri.conf.json'))).version;
   assert.equal((await c.invoke('update_status')).current_version,appVersion);await menu('关于','版本信息');
   await c.wait(`document.querySelector('.ant-modal-content')?.innerText.includes(${JSON.stringify('Video Auto Cut '+appVersion)})`);
@@ -108,6 +119,9 @@ try {
   await c.ev(`location.hash='/resources'`);await c.wait(`document.querySelector('.project-home')`);
   const nameA='工程 A '+pid,nameB='工程 B '+pid;const projectA=path.join(out,nameA+'.avp'), projectB=path.join(out,nameB+'.avp');
   await shortcut('n');await choose('保存 VAC 工程',projectA);const first=await until(workspace,v=>v.document?.project.name===nameA);await c.wait(`document.querySelector('.resource-bin')`);await record('Ctrl+N native save dialog creates independent AVP',{id:first.document.project.id,path:projectA});
+  // Initial workspace state is a real project edit; save it before checking
+  // the clean caption rather than assuming opening the resource page is clean.
+  await shortcut('s');await until(workspace,v=>!v.dirty);await verifyWindowChrome('Video Auto Cut — '+nameA);
   const fixture=path.resolve('workers/node/timeline-cli/fixtures/media/clip_01.mp4');
   const audio=path.join(out,'声音.wav'),image=path.join(out,'图片.tif'),subtitle=path.join(out,'字幕.srt'),document=path.join(out,'文稿.md'),script=path.join(out,'脚本.avs');
   await run('ffmpeg',['-v','error','-nostdin','-y','-f','lavfi','-i','sine=frequency=440:duration=1','-c:a','pcm_s16le',audio]);
@@ -116,6 +130,8 @@ try {
   const avs={format:'avs',schema_version:1,id:'source-script',title:'脚本副本',body:'脚本预览正文',segments:[],bindings:[],tts_enabled:false,subtitles_enabled:false,allow_web_research:false};await fs.writeFile(script,JSON.stringify(avs));const avsOriginal=await fs.readFile(script);
   for(const file of [fixture,audio,image,subtitle,document,script]) await importFile(file);
   let view=await workspace();assert.equal(new Set(view.document.resources.map(r=>r.kind)).size,6);await record('native imports cover six resource types without visibility approval',view.document.resources.map(r=>({kind:r.kind,name:r.name})));
+  await record('native title shows the active project and unsaved marker',await verifyWindowChrome('Video Auto Cut — '+nameA+' *'));
+  await probe('capture',['-FilePath',path.join(out,'native-title-project-dirty.png')]);
   const resources=view.document.resources;
   for(const resource of resources){await select(resource.id);if(resource.kind==='video'||resource.kind==='audio')await c.wait(`(()=>{const n=document.querySelector('.resource-workspace ${resource.kind}');return n?.readyState>=1&&n.duration>0})()`);if(resource.kind==='image')await c.wait(`document.querySelector('.resource-workspace img')?.naturalWidth>0`);if(['document','subtitle','script'].includes(resource.kind))await c.wait(`document.querySelector('.resource-text-preview')?.textContent.length>0`);}
   await record('six kinds preview in the visible window');
@@ -123,6 +139,7 @@ try {
   await c.ev(`document.querySelector('.resource-workspace video').currentTime=.7`);await sleep(200);await click('设置出点 O');await until(workspace,v=>Math.abs(v.document.resources.find(r=>r.id===video.id).out-.7)<.03);
   await c.ev(`document.querySelector('[aria-label="前进一帧"]').click()`);await c.wait(`document.querySelector('.resource-workspace video').currentTime>.7`);
   await input('textarea[aria-label="资源备注"]','工程备注持久化');await shortcut('s');await until(workspace,v=>!v.dirty&&v.document.resources.find(r=>r.id===video.id).notes==='工程备注持久化');let saved=JSON.parse(await fs.readFile(projectA));assert.equal(saved.resources.find(r=>r.id===video.id).notes,'工程备注持久化');assert(!saved.resources.find(r=>r.id===video.id).source.original_path.startsWith(out));await record('transport marks frame step notes and Ctrl+S persist in AVP');await c.screenshot(path.join(out,'resource-preview.png'));
+  await record('saving clears the native title dirty marker and retains the bottom service status',await verifyWindowChrome('Video Auto Cut — '+nameA));
   await c.ev(`(()=>{const n=document.querySelector('textarea[aria-label="资源备注"]');n.focus();n.select()})()`);await menu('编辑','剪切');await c.wait(`document.querySelector('textarea[aria-label="资源备注"]').value===''`);assert((await c.invoke('clipboard_read_text'))==='工程备注持久化','Cut did not copy the focused selection');await menu('编辑','粘贴');await c.wait(`document.querySelector('textarea[aria-label="资源备注"]').value==='工程备注持久化'`);await shortcut('s');await until(workspace,v=>!v.dirty);await record('keyboard edit menu cut and paste dispatch to the focused notes field');
   // An imported script is editable inside AVP; saving must leave its AVS intact.
   const importedScript=resources.find(r=>r.kind==='script');await select(importedScript.id);await c.ev(`document.querySelector('[data-resource-id="${importedScript.id}"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`);await c.wait(`document.querySelector('[data-testid="script-workbench"] #script-title')?.value===${JSON.stringify(avs.title)}`);await input('#script-title','工程内独立脚本');await shortcut('s');await until(workspace,v=>!v.dirty&&v.document.scripts.some(s=>s.title==='工程内独立脚本'));assert.deepEqual(await fs.readFile(script),avsOriginal);await record('script double-click opens workbench; project save preserves source AVS');
@@ -154,9 +171,12 @@ try {
     const config=path.resolve(process.argv[5]),root=path.dirname(config);const stdout=await fs.open(path.join(root,'desktop.out.log'),'a'),stderr=await fs.open(path.join(root,'desktop.err.log'),'a');
     launched=spawn(executable,[projectA,'--desktop-config',config,'--webview-data',path.join(root,'webview'),'--webview-debug-port',String(port)],{windowsHide:true,stdio:['ignore',stdout.fd,stderr.fd]});pid=launched.pid;await stdout.close();await stderr.close();
     c=await attachDesktop();const restarted=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(restarted.status,'ready',restarted.message);base=restarted.api_base_url;
-    const reopened=await until(workspace,v=>v.document?.project.id===first.document.project.id);assert.equal(reopened.document.resources.find(r=>r.id===video.id).notes,'窗口关闭也可取消');await c.wait(`document.querySelector('.resource-bin')`);assert(JSON.parse(await probe('inspect')).visible);await record('native close and fresh executable startup reopen the saved AVP argument');
+    const reopened=await until(workspace,v=>v.document?.project.id===first.document.project.id);assert.equal(reopened.document.resources.find(r=>r.id===video.id).notes,'窗口关闭也可取消');await c.wait(`document.querySelector('.resource-bin')`);await shortcut('s');await until(workspace,v=>!v.dirty);await verifyWindowChrome('Video Auto Cut — '+nameA);await record('native close and fresh executable startup reopen the saved AVP argument with its native title');
     assert.notEqual(restarted.session_id,status.session_id);await verifyMcp(restarted);await record('fresh runtime session supplies the current MCP address and native copied configurations after restart');
   }
+  await shortcut('s');await until(workspace,v=>!v.dirty);await menu('文件','关闭项目');await until(workspace,v=>!v.document);await record('project close resets the native title and keeps service status in the home footer',await verifyWindowChrome('Video Auto Cut'));
+  await c.invoke('stop_runtime');const stopped=await until(()=>c.invoke('runtime_status'),v=>v.status==='stopped');await c.wait(`document.querySelector('.desktop-runtime-footer [aria-label="后台服务状态"]')?.textContent.includes(${JSON.stringify(stopped.message)})`);const stoppedLayout=await c.ev(`(()=>{const footer=document.querySelector('.desktop-runtime-footer');return {bottom:footer?.getBoundingClientRect().bottom,height:innerHeight,topBar:!!document.querySelector('.desktop-runtime-bar')}})()`);assert(!stoppedLayout.topBar&&Math.abs(stoppedLayout.bottom-stoppedLayout.height)<2);await record('stopped service retains its status in the bottom footer',stoppedLayout);
+  await click('重新启动');const resumed=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(resumed.status,'ready',resumed.message);base=resumed.api_base_url;await until(workspace,v=>!v.document);await record('runtime restart restores the home footer without a top status row',await verifyWindowChrome('Video Auto Cut'));
   report.result='passed';
 } catch(error){report.result='failed';report.error=String(error.stack||error);report.messages=await c?.ev('window.__VAC_TEST_MESSAGES').catch(()=>[]);await c?.screenshot(path.join(out,'failure.png')).catch(()=>{});await fs.writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));if(process.env.VAC_DESKTOP_KEEP_FAILURE==='1'){console.log('Diagnostic hold: '+report.error);await until(async()=>{try{await fs.access(path.join(out,'resume-validation'));return true}catch{return false}},Boolean,180000).catch(()=>{});}throw error;}
 finally{
