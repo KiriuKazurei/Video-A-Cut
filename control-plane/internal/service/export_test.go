@@ -53,3 +53,8 @@ func (s *Service) SetBeforeReconcileTx(f func()) { s.beforeReconcileTx = f }
 func (s *Service) ReconcileHumanFinished(ctx context.Context, snapshot model.WorkflowAuto) (bool, error) {
 	return s.reconcileHumanFinished(ctx, snapshot)
 }
+
+// LoudnessCacheFile exposes the on-disk loudness cache path for tests.
+func (s *Service) LoudnessCacheFile(sha string, stream int) string {
+	return loudnessCachePath(s.workspace.root, sha, stream)
+}

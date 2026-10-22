@@ -52,7 +52,7 @@ func TestResourceLoudnessRealWorkerCacheAndAPI(t *testing.T) {
 	}
 	peak, _ := base64.StdEncoding.DecodeString(env.Peak)
 	rms, _ := base64.StdEncoding.DecodeString(env.RMS)
-	if env.Version != 1 || env.StreamIndex != 1 || env.Encoding != "u8-dbfs" || env.Buckets < 10 || len(peak) != env.Buckets || len(rms) != env.Buckets || env.BucketSeconds <= 0 {
+	if env.Version != 2 || env.StreamIndex != 1 || env.Encoding != "u8-dbfs" || env.Buckets < 10 || len(peak) != env.Buckets || len(rms) != env.Buckets || env.BucketSeconds <= 0 {
 		t.Fatalf("envelope %+v", env)
 	}
 	start := time.Now()

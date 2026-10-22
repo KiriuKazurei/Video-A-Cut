@@ -1,15 +1,17 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
+import { runTool } from './media.mjs';
 
 // Loudness envelope for timeline display. PCM is streamed from FFmpeg and
 // folded into fixed buckets as it arrives, so an hour-long recording never
 // sits in memory; only the encoded buckets (a few hundred KB) are returned.
-export const LOUDNESS_VERSION = 1;
+export const LOUDNESS_VERSION = 2;
 export const SAMPLE_RATE = 8000;
 export const FLOOR_DB = -60;
 export const MAX_BUCKETS = 200_000;
 export const MIN_BUCKET_SECONDS = 0.02;
 export const CLIP_DB = -0.1;
+export const MAX_CHANNELS = 8;
 
 export function bucketPlan(duration) {
   if (!(duration > 0) || duration > 24 * 3600) throw Error('响度源无效');
@@ -27,14 +29,21 @@ export function encodeLevel(linear) {
 export const decodeLevelDb = byte => byte <= 0 ? -Infinity : FLOOR_DB + byte / 255 * -FLOOR_DB;
 
 export class LoudnessAccumulator {
-  constructor(samplesPerBucket) { this.n = samplesPerBucket; this.peak = []; this.rms = []; this.clipped = 0; this.count = 0; this.max = 0; this.sum = 0; }
+  /** samplesPerBucket counts frames; channels are interleaved. Peak is the
+   *  max over all channels (so one full-scale channel still flags clipping),
+   *  RMS is the power mean over channels. */
+  constructor(samplesPerBucket, channels = 1) { this.n = samplesPerBucket; this.ch = Math.max(1, channels | 0); this.peak = []; this.rms = []; this.clipped = 0; this.count = 0; this.max = 0; this.sum = 0; this.partial = []; }
   push(samples) {
-    for (let i = 0; i < samples.length; i++) {
-      const v = Math.abs(samples[i]);
-      if (v > this.max) this.max = v;
-      this.sum += v * v;
+    const ch = this.ch;
+    if (this.partial.length) { const merged = new Float32Array(this.partial.length + samples.length); merged.set(this.partial); merged.set(samples, this.partial.length); samples = merged; this.partial = []; }
+    const frames = Math.floor(samples.length / ch);
+    for (let f = 0; f < frames; f++) {
+      let power = 0;
+      for (let c = 0; c < ch; c++) { const v = Math.abs(samples[f * ch + c]); if (v > this.max) this.max = v; power += v * v; }
+      this.sum += power / ch;
       if (++this.count === this.n) this.flush();
     }
+    if (frames * ch < samples.length) this.partial = Array.from(samples.subarray(frames * ch));
   }
   flush() {
     if (!this.count) return;
@@ -45,8 +54,21 @@ export class LoudnessAccumulator {
   finish() { this.flush(); return { peak: Buffer.from(Uint8Array.from(this.peak)).toString('base64'), rms: Buffer.from(Uint8Array.from(this.rms)).toString('base64'), buckets: this.peak.length, clipped_buckets: this.clipped }; }
 }
 
-function decodePCM(path, stream, onSamples, { timeoutMs = 5 * 60_000, command = 'ffmpeg' } = {}) {
-  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe', '-i', path, '-map', `0:${stream}`, '-vn', '-sn', '-dn', '-ac', '1', '-ar', String(SAMPLE_RATE), '-f', 'f32le', '-'];
+export async function probeChannels(path, stream, { run = runTool } = {}) {
+  const out = await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=index,channels', '-of', 'json', path], { timeoutMs: 30_000 });
+  const found = JSON.parse(out).streams?.find(s => s.index === stream);
+  const channels = Number(found?.channels);
+  return Number.isInteger(channels) && channels > 0 ? Math.min(channels, MAX_CHANNELS) : 1;
+}
+
+// No -ac downmix: averaging L/R hides a full-scale single channel (about -6 dB
+// after downmix). Sources with more than MAX_CHANNELS are reduced to that many.
+export function decodeArgs(path, stream, channels) {
+  return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe', '-i', path, '-map', `0:${stream}`, '-vn', '-sn', '-dn', ...(channels === 1 ? ['-ac', '1'] : ['-ac', String(channels)]), '-ar', String(SAMPLE_RATE), '-f', 'f32le', '-'];
+}
+
+function decodePCM(path, stream, onSamples, { timeoutMs = 5 * 60_000, command = 'ffmpeg', channels = 1 } = {}) {
+  const args = decodeArgs(path, stream, channels);
   return new Promise((done, fail) => {
     const child = spawn(command, args, { windowsHide: true });
     let rest = Buffer.alloc(0), stderr = '', failure;
@@ -66,11 +88,12 @@ function decodePCM(path, stream, onSamples, { timeoutMs = 5 * 60_000, command = 
   });
 }
 
-export async function loudness(input, { decode = decodePCM } = {}) {
+export async function loudness(input, { decode = decodePCM, channels: probe = probeChannels } = {}) {
   const info = await stat(input.path); if (!info.isFile()) throw Error('响度源无效');
   if (!Number.isInteger(input.stream_index) || input.stream_index < 0) throw Error('音频流无效');
   const plan = bucketPlan(Number(input.duration));
-  const acc = new LoudnessAccumulator(plan.samples);
-  await decode(input.path, input.stream_index, s => acc.push(s));
-  return { version: LOUDNESS_VERSION, stream_index: input.stream_index, duration: Number(input.duration), sample_rate: SAMPLE_RATE, bucket_seconds: plan.bucket_seconds, floor_db: FLOOR_DB, clip_db: CLIP_DB, encoding: 'u8-dbfs', ...acc.finish() };
+  const channels = await probe(input.path, input.stream_index);
+  const acc = new LoudnessAccumulator(plan.samples, channels);
+  await decode(input.path, input.stream_index, s => acc.push(s), { channels });
+  return { version: LOUDNESS_VERSION, stream_index: input.stream_index, duration: Number(input.duration), sample_rate: SAMPLE_RATE, bucket_seconds: plan.bucket_seconds, floor_db: FLOOR_DB, clip_db: CLIP_DB, encoding: 'u8-dbfs', channels, ...acc.finish() };
 }

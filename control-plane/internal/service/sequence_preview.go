@@ -238,7 +238,7 @@ func (s *Service) ResourceWaveform(ctx context.Context, projectID, id string, st
 
 // loudnessCacheVersion is part of the cache key; bump it when the worker's
 // bucket plan or encoding changes so stale envelopes are not served.
-const loudnessCacheVersion = "loudness-v1"
+const loudnessCacheVersion = "loudness-v2"
 
 func loudnessCachePath(root, sha string, stream int) string {
 	return filepath.Join(root, "previews", sha+"-"+loudnessCacheVersion+"-"+strconv.Itoa(stream)+".json")
