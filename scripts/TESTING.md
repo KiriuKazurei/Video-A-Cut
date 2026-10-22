@@ -101,7 +101,7 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 | 范围/候选 | 真实结果 | 证据与限制 |
 |---|---|---|
-| 0.2.2 升版工作副本 | 版本/锁定元数据、前端 96、类型/样式/构建、MCP 整包及文档契约通过 | 原根 0.2.2 custom/version-web-unit-{a,b}.log、version-web-build.log、version-mcp.log、output.log；源码为当前工作树。没有重新记入完整 Go/Python/媒体/原生或人工验收 |
+| 0.2.2 提交前工作副本（代码提交 c5fccf4） | 版本/锁定元数据、前端 96、类型/样式/构建、MCP 整包及文档契约通过 | 原根 0.2.2 custom/version-web-unit-{a,b}.log、version-web-build.log、version-mcp.log、output.log；源码为当前工作树。没有重新记入完整 Go/Python/媒体/原生或人工验收 |
 | 0.2.1 多轨工作副本，26e17fd + 未提交改动 | 完整 Go 17 个有测试包 + 1 个无测试包、vet 通过，service 399.261s；格式规范化后 MCP 整包再通过 31.722s | 原根短输出 custom/timeline-go-full-pass.log、timeline-mcp-final.log；AVP/AVS v2、真实完成入轨/去重/撤销重开、项目隔离与 Worker 边界纳入既有用例。未开启可选真实 ASR，不沿用历史模型质量 |
 | 当前多轨前端/浏览器/桌面构建 | 前端 96（46+50）、样式、TS/生产构建、浏览器 14 组、Rust 5/fmt/build 通过 | custom/timeline-web-final.log、timeline-build-final.log、timeline-rust-final.log、timeline-ui-final-pass.log、review-smokes/review_shortcuts_smoke.mjs.log；浏览器为生产界面配本机路由夹具，真实窗口另记 |
 | 当前 Python/Node 媒体 | Python 165/165、Timeline 58/58、Exporter 53/53 通过 | custom/timeline-python-final.log、timeline-node-final.log、timeline-exporter-final.log；真实多流、880Hz 变速保持音调、范围外音量、变换、真溶解/黑白淡变、字幕和波形测量见 custom/sequence/verification.json 与 effects-verification.json；不代表人工观感 |
