@@ -105,6 +105,15 @@ func (s *Server) sequenceMediaRoutes() {
 		v, e := s.svc.ResourceWaveform(r.Context(), r.PathValue("id"), r.PathValue("resource"), index)
 		skillResponse(w, v, e)
 	})
+	s.mux.HandleFunc("GET /api/projects/{id}/resources/{resource}/loudness", func(w http.ResponseWriter, r *http.Request) {
+		index, e := strconv.Atoi(r.URL.Query().Get("stream"))
+		if e != nil || index < 0 {
+			writeError(w, 400, "invalid_stream", "请选择音频流")
+			return
+		}
+		v, e := s.svc.ResourceLoudness(r.Context(), r.PathValue("id"), r.PathValue("resource"), index)
+		skillResponse(w, v, e)
+	})
 	s.mux.HandleFunc("GET /api/projects/{id}/resources/{resource}/thumbnail", func(w http.ResponseWriter, r *http.Request) {
 		at, e := strconv.ParseFloat(r.URL.Query().Get("at"), 64)
 		if e != nil {

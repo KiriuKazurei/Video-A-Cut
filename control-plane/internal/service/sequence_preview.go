@@ -235,6 +235,49 @@ func (s *Service) ResourceWaveform(ctx context.Context, projectID, id string, st
 	}
 	return raw, nil
 }
+
+// loudnessCacheVersion is part of the cache key; bump it when the worker's
+// bucket plan or encoding changes so stale envelopes are not served.
+const loudnessCacheVersion = "loudness-v1"
+
+func loudnessCachePath(root, sha string, stream int) string {
+	return filepath.Join(root, "previews", sha+"-"+loudnessCacheVersion+"-"+strconv.Itoa(stream)+".json")
+}
+
+// ResourceLoudness returns a per-stream peak/RMS envelope cached by source
+// hash, stream index and encoding version.
+func (s *Service) ResourceLoudness(ctx context.Context, projectID, id string, stream int) (json.RawMessage, error) {
+	r, err := s.ProjectResource(projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	if r.Missing || r.Removed || r.Changed || !slices.Contains(project.Streams(r, "audio"), stream) {
+		return nil, model.ErrArgument
+	}
+	output := loudnessCachePath(s.workspace.root, r.Source.SHA256, stream)
+	if raw, e := os.ReadFile(output); e == nil && json.Valid(raw) {
+		return raw, nil
+	}
+	release, err := s.acquireScript("loudness:" + output)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if raw, e := os.ReadFile(output); e == nil && json.Valid(raw) {
+		return raw, nil
+	}
+	raw, err := s.scriptProcess(ctx, true, "loudness", map[string]any{"path": r.Source.OriginalPath, "stream_index": stream, "duration": r.Metadata["duration"]})
+	if err != nil {
+		return nil, err
+	}
+	if err = os.MkdirAll(filepath.Dir(output), 0700); err != nil {
+		return nil, err
+	}
+	if err = project.WriteAtomic(output, json.RawMessage(raw)); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
 func (s *Service) ResourceThumbnail(ctx context.Context, projectID, id string, at float64) (string, error) {
 	r, err := s.ProjectResource(projectID, id)
 	if err != nil {
