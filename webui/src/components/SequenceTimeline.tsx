@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, type MenuProps } from 'antd';
+import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, Typography, type MenuProps } from 'antd';
 import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined, SelectOutlined, ColumnWidthOutlined, VerticalAlignMiddleOutlined, CompressOutlined, ExpandOutlined, AimOutlined } from '@ant-design/icons';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
@@ -54,8 +54,8 @@ function effectLabel(clip:TimelineClip) {
 export function SequenceTimeline() {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
  const scroller=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null),boxStart=useRef<{x:number;y:number}|null>(null);
- const [ghost,setGhost]=useState<Drag|null>(null),[box,setBox]=useState<{x:number;y:number;w:number;h:number}|null>(null),[drop,setDrop]=useState<{track:string;at:number;duration:number;insert:boolean}|null>(null),[insert,setInsert]=useState(false),[notice,setNotice]=useState('');
- const cancel=()=>{drag.current=null;setGhost(null);boxStart.current=null;setBox(null);setDrop(null);};
+ const [ghost,setGhost]=useState<Drag|null>(null),[box,setBox]=useState<{x:number;y:number;w:number;h:number}|null>(null),[drop,setDrop]=useState<{track:string;at:number;duration:number;insert:boolean}|null>(null),[insert,setInsert]=useState(false),[notice,setNotice]=useState(''),[headSnap,setHeadSnap]=useState(false);
+ const cancel=()=>{drag.current=null;setGhost(null);boxStart.current=null;setBox(null);setDrop(null);setHeadSnap(false);};
  useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='Escape'&&(drag.current||boxStart.current)){event.preventDefault();cancel();setNotice('已取消拖动，时间线未修改');}};window.addEventListener('keydown',key,true);return()=>window.removeEventListener('keydown',key,true);},[]);
  useEffect(()=>cancel(),[e.sequenceId]);
  useEffect(()=>{
@@ -81,19 +81,23 @@ export function SequenceTimeline() {
  const selected=new Set(e.selected),candidates=[e.head,...s.markers.map(m=>m.frame),...s.tracks.flatMap(t=>t.clips.filter(c=>!selected.has(c.id)).flatMap(c=>[c.at,c.at+c.duration]))];
  const displayTracks=[...s.tracks.filter(t=>t.kind!=='audio').reverse(),...s.tracks.filter(t=>t.kind==='audio')];
  const snap=(frame:number,disabled=false)=>snapFrame(frame,candidates,px,e.snap&&!disabled);
+ const scrubHead=(raw:number,alt=false)=>{const point=snap(raw,alt);setHeadSnap(e.snap&&!alt&&point!==Math.round(raw));e.setHead(point);};
+ const inMarker=[...s.markers].reverse().find(m=>m.kind==='in'),outMarker=[...s.markers].reverse().find(m=>m.kind==='out');
+ const inout=inMarker&&outMarker&&outMarker.frame>inMarker.frame?{start:inMarker.frame,end:outMarker.frame}:null;
+ const undoStack=(e.view?.history??[]).filter(h=>h.applied),undoNext=undoStack.at(-1);
  const command=(...args:Parameters<typeof e.command>)=>void e.command(...args).catch(()=>{});
  const toggle=(t:TimelineTrack,prop:'locked'|'muted'|'hidden'|'solo')=>command([{type:'track.update',track_id:t.id,[prop]:!t[prop]}],'修改轨道状态');
  const clipMenu=(clip:TimelineClip,track:TimelineTrack):MenuProps['items']=>[
   {key:'split',label:'在播放头分割  Ctrl+K',disabled:track.locked,onClick:()=>void e.split().catch(()=>{})},
   {key:'copy',label:'复制  Ctrl+C',onClick:()=>e.copy()},{key:'cut',label:'剪切  Ctrl+X',disabled:track.locked,onClick:()=>e.copy(true)},
-  {key:'delete',label:'删除  Delete',disabled:track.locked,onClick:()=>void e.remove().catch(()=>{})},{key:'ripple',label:'波纹删除  Shift+Delete',disabled:track.locked,onClick:()=>void e.remove(true).catch(()=>{})},
+  {key:'ripple',label:'波纹删除  Delete',disabled:track.locked,onClick:()=>void e.remove().catch(()=>{})},{key:'lift',label:'删除留空隙  Shift+Delete',disabled:track.locked,onClick:()=>void e.remove(false).catch(()=>{})},
   {type:'divider'},{key:'unlink',label:clip.link_id?'分离音画':'链接所选音画',disabled:track.locked,onClick:()=>command([{type:clip.link_id?'clip.unlink':'clip.link',clip_ids:e.selected}],'音画链接')},
   {key:'move',label:'移动到播放头',disabled:track.locked,onClick:()=>command([{type:'clip.move',clip_ids:e.selected,at:e.head}],'移动片段')},
   {key:'marker',label:'为源画面添加标记',onClick:()=>e.marker('point',true)}
  ];
  const begin=(event:PointerEvent<HTMLElement>,clip:TimelineClip,track:TimelineTrack,kind:Drag['kind'])=>{
   if(event.button!==0)return;event.stopPropagation();event.currentTarget.focus();if(track.locked||e.pending){e.select([clip.id],event.altKey);e.setSelectedTrack(track.id);return;}
-  if(e.tool==='razor'&&kind==='move'){const lane=event.currentTarget.closest('[data-lane]')!.getBoundingClientRect();command([{type:'clip.split',clip_ids:[clip.id],at:Math.round((event.clientX-lane.left)/px),unlinked:event.altKey}],'剃刀分割');return;}
+  if(e.tool==='razor'&&kind==='move'){const lane=event.currentTarget.closest('[data-lane]')!.getBoundingClientRect();const at=Math.round((event.clientX-lane.left)/px);command([{type:'clip.split',clip_ids:[clip.id],at,unlinked:event.altKey}],event.shiftKey?'剃刀切开（Lift）':'剃刀切开');return;}
   if(event.ctrlKey&&selected.has(clip.id)){e.select(e.selected.filter(id=>id!==clip.id),true);return;}
   const ids=selected.has(clip.id)?e.selected:linkedSelection(s,event.ctrlKey?[...e.selected,clip.id]:[clip.id],event.altKey);
   e.select(ids,event.altKey);e.setSelectedTrack(track.id);setNotice('');
@@ -112,9 +116,13 @@ export function SequenceTimeline() {
   <Flex className="timeline-toolbar" align="center" gap={6} wrap>
    <Space.Compact>
     <Tooltip title="选择工具 V"><Button size="small" aria-label="选择工具 V" aria-pressed={e.tool==='select'} type={e.tool==='select'?'primary':'default'} icon={<SelectOutlined/>} onClick={()=>e.setTool('select')}/></Tooltip>
-    <Tooltip title="剃刀工具 C"><Button size="small" aria-label="剃刀工具 C" aria-pressed={e.tool==='razor'} type={e.tool==='razor'?'primary':'default'} icon={<ScissorOutlined/>} onClick={()=>e.setTool('razor')}/></Tooltip>
+    <Tooltip title="剃刀工具 C · 切开；Delete 默认波纹闭合，Shift+Delete 留空隙"><Button size="small" aria-label="剃刀工具 C" aria-pressed={e.tool==='razor'} type={e.tool==='razor'?'primary':'default'} icon={<ScissorOutlined/>} onClick={()=>e.setTool('razor')}/></Tooltip>
    </Space.Compact>
-   <Tooltip title="撤销 Ctrl+Z"><Button size="small" aria-label="撤销时间线编辑" icon={<UndoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>h.applied)} onClick={()=>command([{type:'history.undo'}],'撤销')}/></Tooltip>
+   <Tooltip title={undoNext?`撤销 Ctrl+Z · ${undoNext.label}（${undoStack.length}）`:'撤销 Ctrl+Z'}>
+    <Button size="small" aria-label="撤销时间线编辑" icon={<UndoOutlined/>} disabled={e.pending||!undoStack.length} onClick={()=>command([{type:'history.undo'}],'撤销')}>
+     {undoStack.length>0&&<span className="undo-depth">{undoStack.length}</span>}
+    </Button>
+   </Tooltip>
    <Tooltip title="重做 Ctrl+Shift+Z"><Button size="small" aria-label="重做时间线编辑" icon={<RedoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>!h.applied)} onClick={()=>command([{type:'history.redo'}],'重做')}/></Tooltip>
    <Tooltip title="在播放头分割 Ctrl+K"><Button size="small" aria-label="分割" icon={<ColumnWidthOutlined/>} onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}/></Tooltip>
    <Tooltip title="添加标记 M"><Button size="small" aria-label="标记 M" icon={<PushpinOutlined/>} onClick={()=>e.marker()}/></Tooltip>
@@ -129,9 +137,11 @@ export function SequenceTimeline() {
   </Flex>
   <div className="timeline-scroll" ref={scroller} onPointerCancel={cancel}>
    <div className="timeline-grid" style={{width:width+148}}>
-    <div className="timeline-ruler"><div className="track-heading">{frameLabel(e.head,s.fps)}</div><div className="timeline-scale" style={{width}} onPointerDown={event=>{if(event.button===0){event.currentTarget.closest<HTMLElement>('.sequence-timeline')?.focus({preventScroll:true});e.setHead(snap((event.clientX-event.currentTarget.getBoundingClientRect().left)/px,event.altKey));}}}>
+    <div className="timeline-ruler"><div className="track-heading">{frameLabel(e.head,s.fps)}</div><div className="timeline-scale" style={{width}} onPointerDown={event=>{if(event.button!==0)return;const scale=event.currentTarget;scale.closest<HTMLElement>('.sequence-timeline')?.focus({preventScroll:true});const read=(clientX:number,alt:boolean)=>scrubHead((clientX-scale.getBoundingClientRect().left)/px,alt);read(event.clientX,event.altKey);const move=(ev:WindowEventMap['pointermove'])=>{read(ev.clientX,ev.altKey);};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);setTimeout(()=>setHeadSnap(false),180);};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);}}>
      {Array.from({length:Math.ceil(length/rate/Math.max(1,Math.ceil(104/e.zoom)))}).map((_,i)=>{const second=i*Math.max(1,Math.ceil(104/e.zoom));return <span className="ruler-label" key={i} style={{left:second*e.zoom}}>{frameLabel(Math.round(second*rate),s.fps)}</span>;})}
+     {inout&&<div className="timeline-inout-band" aria-hidden="true" style={{left:inout.start*px,width:(inout.end-inout.start)*px}}/>}
      {s.markers.map(m=><Tooltip key={m.id} title={`${m.notes}${m.locked?' · 固定时码':''}`}><button className={`timeline-marker marker-${m.kind}`} aria-label={`标记 ${m.notes}`} style={{left:m.frame*px}} onPointerDown={event=>event.stopPropagation()} onClick={()=>e.setHead(m.frame)}>{m.kind==='point'?'◆':m.kind==='in'?'［':'］'}<span>{m.notes}</span></button></Tooltip>)}
+     <div className={`timeline-playhead${headSnap||ghost?.snapped?' is-snapped':''}`} style={{left:e.head*px}} aria-hidden="true"><span className="timeline-playhead-time">{frameLabel(e.head,s.fps)}{headSnap?' · 吸附':''}</span></div>
     </div></div>
     {displayTracks.map((track,displayIndex)=>{const trackIndex=s.tracks.indexOf(track);const trackItems:MenuProps['items']=[{key:'up',label:'上移轨道',disabled:!displayIndex||(track.kind==='audio')!==(displayTracks[displayIndex-1]?.kind==='audio'),onClick:()=>command([{type:'track.update',track_id:track.id,order:s.tracks.indexOf(displayTracks[displayIndex-1])}],'排列轨道')},{key:'down',label:'下移轨道',disabled:displayIndex===displayTracks.length-1||(track.kind==='audio')!==(displayTracks[displayIndex+1]?.kind==='audio'),onClick:()=>command([{type:'track.update',track_id:track.id,order:s.tracks.indexOf(displayTracks[displayIndex+1])}],'排列轨道')},{key:'height',label:track.height<96?'增高轨道':'恢复轨高',onClick:()=>command([{type:'track.update',track_id:track.id,height:track.height<96?112:64}],'轨道高度')},{key:'remove',label:'移除此轨道',disabled:track.locked,onClick:()=>command([{type:'track.remove',track_id:track.id}],'移除轨道')}];const audioStart=track.kind==='audio'&&displayIndex>0&&displayTracks[displayIndex-1].kind!=='audio';return <Fragment key={track.id}>{audioStart&&<div className="timeline-track-divider" role="separator" aria-label="视频轨与音频轨分界"><div className="track-heading"/></div>}<div className={`timeline-row${track.locked?' is-locked':''}${e.selectedTrack===track.id?' is-target':''}${audioStart?' is-audio-start':''}`} data-track-id={track.id} style={{height:track.height}}>
      <Dropdown trigger={['contextMenu']} menu={{items:trackItems}}>
@@ -147,13 +157,16 @@ export function SequenceTimeline() {
      </Dropdown>
      <div data-lane className={`timeline-lane${track.group_id?' agent-lane':''}`} style={{width}} onPointerDown={event=>{if(event.button!==0||event.target!==event.currentTarget)return;event.currentTarget.closest<HTMLElement>('.sequence-timeline')?.focus({preventScroll:true});e.setSelectedTrack(track.id);e.select([]);boxStart.current={x:event.clientX,y:event.clientY};event.currentTarget.setPointerCapture(event.pointerId);}}
       onPointerMove={event=>{if(!boxStart.current)return;const a=boxStart.current,bounds=scroller.current!.getBoundingClientRect();setBox({x:Math.min(a.x,event.clientX)-bounds.left+scroller.current!.scrollLeft,y:Math.min(a.y,event.clientY)-bounds.top+scroller.current!.scrollTop,w:Math.abs(event.clientX-a.x),h:Math.abs(event.clientY-a.y)});}}
-      onPointerUp={event=>{if(!boxStart.current)return;const a=boxStart.current;boxStart.current=null;setBox(null);if(Math.abs(a.x-event.clientX)<4&&Math.abs(a.y-event.clientY)<4){e.setHead(snap((event.clientX-event.currentTarget.getBoundingClientRect().left)/px,event.altKey));return;}const ids=[...scroller.current!.querySelectorAll<HTMLElement>('[data-clip-id]')].filter(el=>{const r=el.getBoundingClientRect();return r.left<Math.max(a.x,event.clientX)&&r.right>Math.min(a.x,event.clientX)&&r.top<Math.max(a.y,event.clientY)&&r.bottom>Math.min(a.y,event.clientY);}).map(el=>el.dataset.clipId!);e.select(ids,event.altKey);}}
+      onPointerUp={event=>{if(!boxStart.current)return;const a=boxStart.current;boxStart.current=null;setBox(null);if(Math.abs(a.x-event.clientX)<4&&Math.abs(a.y-event.clientY)<4){scrubHead((event.clientX-event.currentTarget.getBoundingClientRect().left)/px,event.altKey);return;}const ids=[...scroller.current!.querySelectorAll<HTMLElement>('[data-clip-id]')].filter(el=>{const r=el.getBoundingClientRect();return r.left<Math.max(a.x,event.clientX)&&r.right>Math.min(a.x,event.clientX)&&r.top<Math.max(a.y,event.clientY)&&r.bottom>Math.min(a.y,event.clientY);}).map(el=>el.dataset.clipId!);e.select(ids,event.altKey);}}
       onDragOver={event=>{if(!event.dataTransfer.types.includes('application/x-vac-resource'))return;event.preventDefault();event.dataTransfer.dropEffect=track.locked?'none':'copy';const at=snap((event.clientX-event.currentTarget.getBoundingClientRect().left)/px,event.altKey),r=p.resource;setDrop({track:track.id,at,duration:Math.max(1,Math.round((r?.kind==='image'?5:(r?.out ?? 5)-(r?.in ?? 0))*rate)),insert:insert||event.shiftKey});}}
       onDragLeave={()=>setDrop(null)} onDrop={event=>{event.preventDefault();setDrop(null);try{const data=JSON.parse(event.dataTransfer.getData('application/x-vac-resource'));if(data.session!==p.session?.id||data.project!==e.projectId)throw Error('拖入资源来自其他工程');const at=snap((event.clientX-event.currentTarget.getBoundingClientRect().left)/px,event.altKey);void e.addResource(data.resource,track.id,at,insert||event.shiftKey?'insert':'overwrite').catch(reason=>setNotice(String(reason)));}catch(reason){setNotice(`无法拖入：${String(reason)}`);}}}>
-      <div className="timeline-playhead" style={{left:e.head*px}}/>
+      {inout&&<div className="timeline-inout-band" aria-hidden="true" style={{left:inout.start*px,width:(inout.end-inout.start)*px}}/>}
+      {(headSnap||ghost?.snapped)&&<div className="timeline-snap-flash" style={{left:e.head*px}} aria-hidden="true"/>}
+      <div className={`timeline-playhead${headSnap||ghost?.snapped?' is-snapped':''}`} style={{left:e.head*px}}/>
       {track.clips.map(clip=><Dropdown key={clip.id} trigger={['contextMenu']} menu={{items:clipMenu(clip,track)}} onOpenChange={open=>{if(open){if(!selected.has(clip.id))e.select([clip.id]);e.setSelectedTrack(track.id);}}}>
        <div className={`timeline-clip${clip.origin.actor.startsWith('agent')?' is-agent':''}${selected.has(clip.id)?' is-selected':''}${clip.link_id?' is-linked':''}${track.hidden||track.muted?' is-disabled':''}`} data-clip-id={clip.id} role="button" tabIndex={0} aria-label={`${clip.name} · ${track.kind} · ${frameLabel(clip.at,s.fps)}`} aria-pressed={selected.has(clip.id)} style={{left:clip.at*px,width:Math.max(3,clip.duration*px)}}
         onPointerDown={event=>begin(event,clip,track,'move')} onPointerMove={move} onPointerUp={finish}
+        onDoubleClick={event=>{event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);void p.selectResource(clip.resource_id);window.dispatchEvent(new CustomEvent('vac:open-source',{detail:{resourceId:clip.resource_id,time:timeSeconds(clip.source_in)}}));}}
         onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);}}}>
         {track.kind==='audio'?<><ClipLoudness clip={clip} track={track} px={px} scroller={scroller}/><ClipGainBand clip={clip} track={track} px={px} height={track.height}/></>:track.kind==='video'?<ClipThumbnails clip={clip}/>:null}
         <span className="clip-title">{clip.origin.actor.startsWith('agent')?'Agent · ':''}{clip.name}{track.kind==='audio'?` · 流 ${clip.stream_index}`:''}{clip.link_id?' ↔':''}</span>
@@ -169,6 +182,16 @@ export function SequenceTimeline() {
     </div></Fragment>;})}
    </div>{box&&<div className="timeline-selection-box" style={{left:box.x,top:box.y,width:box.w,height:box.h}}/>}
   </div>
-  <div className="timeline-help" role="status">{notice||'Alt 暂停吸附 · Esc 取消拖动'}</div>
+  <div className="editor-hotkey-strip" aria-label="当前工具快捷键">
+   <span><kbd>V</kbd> 选择</span><span className="hk-sep">·</span>
+   <span><kbd>C</kbd> 剃刀</span><span className="hk-sep">·</span>
+   <span><kbd>M</kbd> 标记</span><span className="hk-sep">·</span>
+   <span><kbd>I</kbd>/<kbd>O</kbd> 入出点</span><span className="hk-sep">·</span>
+   <span><kbd>Delete</kbd> 波纹删</span><span className="hk-sep">·</span>
+   <span><kbd>Shift</kbd>+<kbd>Delete</kbd> 留空隙</span><span className="hk-sep">·</span>
+   <span><kbd>Ctrl</kbd>+<kbd>K</kbd> 分割</span><span className="hk-sep">·</span>
+   <span><kbd>Space</kbd> 播放</span>
+   {notice?<Typography.Text type="secondary" style={{marginInlineStart:'auto'}}>{notice}</Typography.Text>:<Typography.Text type="secondary" style={{marginInlineStart:'auto'}}>Alt 暂停吸附 · Esc 取消</Typography.Text>}
+  </div>
  </section>;
 }
