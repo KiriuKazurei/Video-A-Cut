@@ -112,6 +112,55 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
       el?.focus(); el?.setSelectionRange(start + text.length, start + text.length);
     });
   };
+  const bodyRef = useRef(body);
+  const referencesRef = useRef(references);
+  bodyRef.current = body;
+  referencesRef.current = references;
+  useEffect(() => {
+    const onCite = (event: Event) => {
+      if (!active) return;
+      const name = (event as CustomEvent<{ citeName?: string }>).detail?.citeName?.trim();
+      if (!name) return;
+      const run = async () => {
+        await client.invalidateQueries({ queryKey: ['reference-directory'] });
+        await directory.refetch();
+        const dir = client.getQueryData<import('../timelineContracts').ReferenceCandidate[]>(
+          ['reference-directory', projectWorkspace.session?.id, sequenceEditor.sequenceId],
+        ) ?? directory.data ?? [];
+        const hit = dir.find((c) => c.name === name);
+        const { start, end } = selection.current;
+        const currentBody = bodyRef.current;
+        const currentRefs = referencesRef.current;
+        if (hit) {
+          const next = insertReference(currentBody, currentRefs, start, end, hit);
+          setBody(next.body);
+          setReferences(next.references);
+          selection.current = { start: next.caret, end: next.caret };
+          changed();
+          requestAnimationFrame(() => {
+            const el = editor.current?.resizableTextArea?.textArea;
+            el?.focus();
+            el?.setSelectionRange(next.caret, next.caret);
+          });
+        } else {
+          const token = `{@${name}}`;
+          const next = currentBody.slice(0, start) + token + currentBody.slice(end);
+          setReferences(rebaseReferences(currentBody, next, currentRefs));
+          setBody(next);
+          selection.current = { start: start + token.length, end: start + token.length };
+          changed();
+          requestAnimationFrame(() => {
+            const el = editor.current?.resizableTextArea?.textArea;
+            el?.focus();
+            el?.setSelectionRange(start + token.length, start + token.length);
+          });
+        }
+      };
+      void run();
+    };
+    window.addEventListener('vac:script-cite', onCite);
+    return () => window.removeEventListener('vac:script-cite', onCite);
+  }, [active, client, directory.data, directory.refetch, projectWorkspace.session?.id, sequenceEditor.sequenceId]);
   useEffect(() => {
     if (!scriptId || !record.data) return;
     return projectWorkspace.registerEditor(`script:${scriptId}`, { dirty, flush: async () => {

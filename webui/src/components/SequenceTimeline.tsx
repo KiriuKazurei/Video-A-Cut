@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, Typography, type MenuProps } from 'antd';
-import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined, SelectOutlined, ColumnWidthOutlined, VerticalAlignMiddleOutlined, CompressOutlined, ExpandOutlined, AimOutlined } from '@ant-design/icons';
+import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined, SelectOutlined, ColumnWidthOutlined, VerticalAlignMiddleOutlined, CompressOutlined, ExpandOutlined, AimOutlined, FormOutlined } from '@ant-design/icons';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
@@ -86,6 +86,17 @@ export function SequenceTimeline() {
  const inout=inMarker&&outMarker&&outMarker.frame>inMarker.frame?{start:inMarker.frame,end:outMarker.frame}:null;
  const undoStack=(e.view?.history??[]).filter(h=>h.applied),undoNext=undoStack.at(-1);
  const command=(...args:Parameters<typeof e.command>)=>void e.command(...args).catch(()=>{});
+ const citeToScript=()=>{
+  const existing=s.markers.find(m=>m.kind==='point'&&m.frame===e.head);
+  const notes=existing?.notes?.trim()||`标记 ${frameLabel(e.head,s.fps)}`;
+  const go=()=>{
+   window.dispatchEvent(new Event('vac:open-script-dock'));
+   window.setTimeout(()=>window.dispatchEvent(new CustomEvent('vac:script-cite',{detail:{citeName:notes,frame:e.head}})),180);
+  };
+  if(existing){go();return;}
+  void e.command([{type:'marker.add',marker:{id:'',notes,kind:'point',frame:e.head,locked:false}}],'引用到脚本').then(go).catch(()=>{});
+ };
+
  const toggle=(t:TimelineTrack,prop:'locked'|'muted'|'hidden'|'solo')=>command([{type:'track.update',track_id:t.id,[prop]:!t[prop]}],'修改轨道状态');
  const clipMenu=(clip:TimelineClip,track:TimelineTrack):MenuProps['items']=>[
   {key:'split',label:'在播放头分割  Ctrl+K',disabled:track.locked,onClick:()=>void e.split().catch(()=>{})},
@@ -93,7 +104,7 @@ export function SequenceTimeline() {
   {key:'ripple',label:'波纹删除  Delete',disabled:track.locked,onClick:()=>void e.remove().catch(()=>{})},{key:'lift',label:'删除留空隙  Shift+Delete',disabled:track.locked,onClick:()=>void e.remove(false).catch(()=>{})},
   {type:'divider'},{key:'unlink',label:clip.link_id?'分离音画':'链接所选音画',disabled:track.locked,onClick:()=>command([{type:clip.link_id?'clip.unlink':'clip.link',clip_ids:e.selected}],'音画链接')},
   {key:'move',label:'移动到播放头',disabled:track.locked,onClick:()=>command([{type:'clip.move',clip_ids:e.selected,at:e.head}],'移动片段')},
-  {key:'marker',label:'为源画面添加标记',onClick:()=>e.marker('point',true)}
+  {key:'marker',label:'为源画面添加标记',onClick:()=>e.marker('point',true)},{key:'cite',label:'引用到脚本',onClick:()=>citeToScript()}
  ];
  const begin=(event:PointerEvent<HTMLElement>,clip:TimelineClip,track:TimelineTrack,kind:Drag['kind'])=>{
   if(event.button!==0)return;event.stopPropagation();event.currentTarget.focus();if(track.locked||e.pending){e.select([clip.id],event.altKey);e.setSelectedTrack(track.id);return;}
@@ -126,6 +137,7 @@ export function SequenceTimeline() {
    <Tooltip title="重做 Ctrl+Shift+Z"><Button size="small" aria-label="重做时间线编辑" icon={<RedoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>!h.applied)} onClick={()=>command([{type:'history.redo'}],'重做')}/></Tooltip>
    <Tooltip title="在播放头分割 Ctrl+K"><Button size="small" aria-label="分割" icon={<ColumnWidthOutlined/>} onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}/></Tooltip>
    <Tooltip title="添加标记 M"><Button size="small" aria-label="标记 M" icon={<PushpinOutlined/>} onClick={()=>e.marker()}/></Tooltip>
+   <Tooltip title="引用到脚本：在播放头落点并插入工作台"><Button size="small" aria-label="引用到脚本" icon={<FormOutlined/>} onClick={citeToScript}/></Tooltip>
    <Tooltip title="吸附（Alt 临时关闭）"><Button size="small" aria-label="吸附" aria-pressed={e.snap} type={e.snap?'primary':'default'} icon={<AimOutlined/>} onClick={()=>e.setSnap(!e.snap)}/></Tooltip>
    <Tooltip title="插入模式"><Button size="small" aria-label="插入模式" aria-pressed={insert} type={insert?'primary':'default'} icon={<VerticalAlignMiddleOutlined/>} onClick={()=>setInsert(!insert)}/></Tooltip>
    <Dropdown menu={{items:[...(addTrackItems??[]),{type:'divider' as const},{key:'scope',label:'对照范围',type:'group' as const,children:[{key:'scope-all',label:'全部轨道',onClick:()=>command([{type:'scope.set',group_id:''}],'切换对照范围')},{key:'scope-original',label:'原剪辑',onClick:()=>command([{type:'scope.set',group_id:'original'}],'切换对照范围')},...s.groups.map(g=>({key:`scope-${g.id}`,label:g.name,onClick:()=>command([{type:'scope.set',group_id:g.id}],'切换对照范围')}))]}]}}><Button size="small" icon={<MoreOutlined/>} aria-label="更多">更多</Button></Dropdown>
@@ -186,6 +198,7 @@ export function SequenceTimeline() {
    <span><kbd>V</kbd> 选择</span><span className="hk-sep">·</span>
    <span><kbd>C</kbd> 剃刀</span><span className="hk-sep">·</span>
    <span><kbd>M</kbd> 标记</span><span className="hk-sep">·</span>
+   <span>引用到脚本</span><span className="hk-sep">·</span>
    <span><kbd>I</kbd>/<kbd>O</kbd> 入出点</span><span className="hk-sep">·</span>
    <span><kbd>Delete</kbd> 波纹删</span><span className="hk-sep">·</span>
    <span><kbd>Shift</kbd>+<kbd>Delete</kbd> 留空隙</span><span className="hk-sep">·</span>
