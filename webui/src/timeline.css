@@ -33,7 +33,7 @@
 .source-text-preview { align-self:stretch; justify-self:stretch; white-space:pre-wrap; padding:10px; margin:0; overflow:auto; color:var(--vac-text); }
 .sequence-timeline { display:flex; flex-direction:column; min-width:0; flex:1; border:1px solid var(--vac-hairline); background:var(--vac-bg); }
 .unified-editor :is(button,[tabindex]):focus-visible,.timeline-inspector :is(button,[tabindex]):focus-visible,.sequence-timeline:focus-visible { outline:2px solid var(--vac-accent); outline-offset:-2px; scroll-margin:44px 12px; }
-.timeline-toolbar { padding:8px; border-bottom:1px solid var(--vac-hairline); }
+.timeline-toolbar { padding:4px 6px; border-bottom:1px solid var(--vac-hairline); gap:4px; }
 .sequence-timeline .ant-btn { min-width:24px; min-height:24px; }
 .timeline-toolbar .ant-select { min-width:120px; }
 .timeline-zoom { display:flex; align-items:center; gap:8px; min-width:120px; margin-inline-start:auto; }

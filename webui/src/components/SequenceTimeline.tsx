@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, type MenuProps } from 'antd';
-import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined } from '@ant-design/icons';
+import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined, SelectOutlined, ColumnWidthOutlined, VerticalAlignMiddleOutlined, CompressOutlined, AimOutlined } from '@ant-design/icons';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
@@ -96,14 +96,19 @@ export function SequenceTimeline() {
  const sourceStreams=Array.isArray(p.resource?.metadata.streams)?p.resource.metadata.streams as {codec_type:string}[]:[],audioCount=sourceStreams.filter(stream=>stream.codec_type==='audio').length;
  const affectedDrop=(track:TimelineTrack)=>{if(!drop)return false;if(drop.track===track.id)return true;const target=s.tracks.find(t=>t.id===drop.track);if(!target||!p.resource||!['audio','video'].includes(p.resource.kind)||track.kind!=='audio'||target.group_id!==track.group_id)return false;const audio=s.tracks.filter(t=>t.kind==='audio'&&t.group_id===target.group_id),start=target.kind==='audio'?audio.findIndex(t=>t.id===target.id):0;return audio.slice(start,start+audioCount).some(t=>t.id===track.id);};
  return <section className="sequence-timeline" data-nav-anchor="timeline" aria-label="多轨时间线" tabIndex={0}>
-  <Flex className="timeline-toolbar" align="center" gap={6} wrap>
-   <Space.Compact><Button size="small" aria-pressed={e.tool==='select'} type={e.tool==='select'?'primary':'default'} onClick={()=>e.setTool('select')} title="选择工具 V">选择 V</Button><Button size="small" aria-pressed={e.tool==='razor'} type={e.tool==='razor'?'primary':'default'} icon={<ScissorOutlined/>} onClick={()=>e.setTool('razor')} title="剃刀工具 C">剃刀 C</Button></Space.Compact>
-   <Button size="small" aria-label="撤销时间线编辑" title="撤销 Ctrl+Z" icon={<UndoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>h.applied)} onClick={()=>command([{type:'history.undo'}],'撤销')}/><Button size="small" aria-label="重做时间线编辑" title="重做 Ctrl+Shift+Z" icon={<RedoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>!h.applied)} onClick={()=>command([{type:'history.redo'}],'重做')}/>
-   <Button size="small" onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}>分割</Button><Button size="small" onClick={()=>e.marker()} icon={<PushpinOutlined/>}>标记 M</Button>
-   <Button size="small" aria-pressed={e.snap} type={e.snap?'primary':'default'} onClick={()=>e.setSnap(!e.snap)} title="吸附到片段边缘与标记（Alt 临时关闭）">吸附</Button><Button size="small" aria-pressed={insert} type={insert?'primary':'default'} onClick={()=>setInsert(!insert)} title="插入模式：放下时后移后续片段">插入</Button>
-   <Dropdown menu={{items:addTrackItems}}><Button size="small" icon={<PlusOutlined/>}>轨道</Button></Dropdown>
+  <Flex className="timeline-toolbar" align="center" gap={4} wrap>
+   <Space.Compact>
+    <Tooltip title="选择工具 V"><Button size="small" aria-label="选择工具 V" aria-pressed={e.tool==='select'} type={e.tool==='select'?'primary':'default'} icon={<SelectOutlined/>} onClick={()=>e.setTool('select')}/></Tooltip>
+    <Tooltip title="剃刀工具 C"><Button size="small" aria-label="剃刀工具 C" aria-pressed={e.tool==='razor'} type={e.tool==='razor'?'primary':'default'} icon={<ScissorOutlined/>} onClick={()=>e.setTool('razor')}/></Tooltip>
+   </Space.Compact>
+   <Tooltip title="撤销 Ctrl+Z"><Button size="small" aria-label="撤销时间线编辑" icon={<UndoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>h.applied)} onClick={()=>command([{type:'history.undo'}],'撤销')}/></Tooltip>
+   <Tooltip title="重做 Ctrl+Shift+Z"><Button size="small" aria-label="重做时间线编辑" icon={<RedoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>!h.applied)} onClick={()=>command([{type:'history.redo'}],'重做')}/></Tooltip>
+   <Tooltip title="在播放头分割 Ctrl+K"><Button size="small" aria-label="分割" icon={<ColumnWidthOutlined/>} onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}/></Tooltip>
+   <Tooltip title="添加标记 M"><Button size="small" aria-label="标记 M" icon={<PushpinOutlined/>} onClick={()=>e.marker()}/></Tooltip>
+   <Tooltip title="吸附（Alt 临时关闭）"><Button size="small" aria-label="吸附" aria-pressed={e.snap} type={e.snap?'primary':'default'} icon={<AimOutlined/>} onClick={()=>e.setSnap(!e.snap)}/></Tooltip>
+   <Tooltip title="插入模式"><Button size="small" aria-label="插入模式" aria-pressed={insert} type={insert?'primary':'default'} icon={<VerticalAlignMiddleOutlined/>} onClick={()=>setInsert(!insert)}/></Tooltip>
+   <Dropdown menu={{items:[...(addTrackItems??[]),{type:'divider' as const},{key:'scope',label:'对照范围',type:'group' as const,children:[{key:'scope-all',label:'全部轨道',onClick:()=>command([{type:'scope.set',group_id:''}],'切换对照范围')},{key:'scope-original',label:'原剪辑',onClick:()=>command([{type:'scope.set',group_id:'original'}],'切换对照范围')},...s.groups.map(g=>({key:`scope-${g.id}`,label:g.name,onClick:()=>command([{type:'scope.set',group_id:g.id}],'切换对照范围')}))]}]}}><Button size="small" icon={<MoreOutlined/>} aria-label="更多">更多</Button></Dropdown>
    <span className="timeline-zoom"><span>缩放</span><Slider min={10} max={300} value={e.zoom} onChange={e.setZoom} aria-label="时间线缩放"/></span>
-   <Select size="small" aria-label="对照轨道范围" value={s.scope_group ?? ''} onChange={group=>command([{type:'scope.set',group_id:group}],'切换对照范围')} options={[{value:'',label:'全部轨道'},{value:'original',label:'原剪辑'},...s.groups.map(g=>({value:g.id,label:g.name}))]}/>
   </Flex>
   <div className="timeline-scroll" ref={scroller} onPointerCancel={cancel}>
    <div className="timeline-grid" style={{width:width+148}}>
