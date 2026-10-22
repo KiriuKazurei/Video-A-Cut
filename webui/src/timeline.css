@@ -164,3 +164,9 @@
 .program-inout-in,.program-inout-out { position:absolute; top:0; bottom:0; width:2px; background:var(--vac-warning-text); }
 .program-inout-label { margin-inline-start:8px; font-size:12px; }
 .editor-monitor-screen { position:relative; }
+
+.editor-dock-module.is-script { flex:1 1 auto; min-height:180px; }
+.editor-dock-module.is-script .editor-dock-body { overflow:auto; min-height:0; flex:1; }
+.dock-script-workbench { padding:4px 6px 8px; min-width:0; }
+.dock-script-workbench .ant-card { border-radius:2px; }
+.dock-script-workbench textarea { font-size:12px; }

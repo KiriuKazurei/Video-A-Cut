@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Flex, Segmented, Space, Spin, Tabs, Tooltip, Typography } from 'antd';
+import { Alert, Button, Empty, Flex, Space, Spin, Tabs, Tooltip, Typography } from 'antd';
 import { PlayCircleOutlined, StepBackwardOutlined, StepForwardOutlined, PlusOutlined, ExportOutlined, CloseOutlined } from '@ant-design/icons';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
 import type { RunSelection } from '../components/WorkflowPanel';
-import { ScriptWorkbench } from '../components/ScriptWorkbench';
 import { SequenceTimeline } from '../components/SequenceTimeline';
 import { ProgramVu } from '../components/ProgramVu';
 import { useSequenceEditor } from '../sequenceEditor';
@@ -44,14 +43,13 @@ function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; s
  </section>;
 }
 
-export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
+export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
- const [panel,setPanel]=useState<'timeline'|'script'>('timeline');
  const [sourceOpen,setSourceOpen]=useState(false);
  const [sourceSeek,setSourceSeek]=useState<number|null>(null);
- const [visited,setVisited]=useState<string[]>(['timeline']);
- useEffect(()=>{setVisited(old=>old.includes(panel)?old:[...old,panel]);},[panel]);
- useEffect(()=>{setPanel(route.editingSection==='content'?'script':'timeline');},[route.editingSection,route.scriptId]);
+ useEffect(()=>{
+  if(route.editingSection==='content'||route.scriptId)window.dispatchEvent(new Event('vac:open-script-dock'));
+ },[route.editingSection,route.scriptId]);
  useEffect(()=>{
   const onOpen=(event:Event)=>{
    const detail=(event as CustomEvent<{resourceId?:string;time?:number}>).detail;
@@ -61,13 +59,12 @@ export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
   window.addEventListener('vac:open-source',onOpen);
   return()=>window.removeEventListener('vac:open-source',onOpen);
  },[]);
- const scriptAsset=p.session?.document?.resources.find(r=>r.script_id===route.scriptId)?.asset_id ?? asset?.asset_id ?? p.session?.document?.resources.find(r=>r.asset_id)?.asset_id;
  const items=p.session?.document?.sequences?.map(seq=>({key:seq.id,label:seq.name,closable:(p.session?.document?.sequences.length ?? 0)>1}));
  const sourceLabel=p.resource?.name ?? '源';
  const inFrame=[...(s?.markers??[])].reverse().find(m=>m.kind==='in')?.frame;
  const outFrame=[...(s?.markers??[])].reverse().find(m=>m.kind==='out')?.frame;
  const hasRange=inFrame!==undefined&&outFrame!==undefined&&outFrame>inFrame;
- return <div className="unified-editor" data-panel={panel} tabIndex={-1} aria-label="统一多轨编辑器">
+ return <div className="unified-editor" data-panel="timeline" tabIndex={-1} aria-label="统一多轨编辑器">
   <Tabs className="sequence-tabs" type="editable-card" size="small" activeKey={e.sequenceId} items={items} onChange={e.switchSequence} onEdit={(key,action)=>void e.manageSequence(action==='add'?'create':'delete',typeof key==='string'?key:undefined).catch(()=>{})}/>
   {e.error&&<Alert type="error" showIcon message={e.error}/>}
   <div className={`editor-monitors${sourceOpen?' is-source-open':' is-primary-only'}`}>
@@ -99,12 +96,10 @@ export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
    </section>
   </div>
   <Flex className="editor-panels-bar" align="center" gap={8} wrap>
-   <Segmented aria-label="编辑器面板" value={panel} onChange={value=>void p.flushEditors().then(()=>setPanel(value as 'timeline'|'script')).catch(()=>{})} options={[{value:'timeline',label:'时间线'},{value:'script',label:'脚本工作台'}]}/>
+   <Typography.Text type="secondary">时间线</Typography.Text>
+   <Button size="small" type="link" onClick={()=>window.dispatchEvent(new Event('vac:open-script-dock'))}>脚本工作台</Button>
    <Space><Button size="small" icon={<PlusOutlined/>} onClick={()=>void e.manageSequence('duplicate',e.sequenceId).catch(()=>{})}>复制序列</Button>{e.pending&&<Typography.Text type="secondary">正在提交编辑…</Typography.Text>}</Space>
   </Flex>
-  {panel==='timeline'?(e.loading?<Spin/>:<SequenceTimeline/>):null}
-  <div className="editor-panel-content" hidden={panel==='timeline'}>
-   {visited.includes('script')&&<div hidden={panel!=='script'}>{scriptAsset?<ScriptWorkbench key={`script-${scriptAsset}`} assetId={scriptAsset} navigate={navigate} selectedScriptId={route.scriptId} active={route.workspace==='editing'&&panel==='script'}/>:<Empty description="导入素材或 .avs 脚本后开始编辑"/>}</div>}
-  </div>
+  {e.loading?<Spin/>:<SequenceTimeline/>}
  </div>;
 }

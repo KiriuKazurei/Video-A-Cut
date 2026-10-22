@@ -1,18 +1,21 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Table, Typography } from 'antd';
+import { Empty, Table, Typography } from 'antd';
 import { TimelineInspector } from './TimelineInspector';
 import { SkillRunModule } from './SkillRunModule';
+import { ScriptWorkbench } from './ScriptWorkbench';
 import { useSequenceEditor } from '../sequenceEditor';
+import { useProjectWorkspace } from '../projectWorkspace';
 import { skillApi } from '../skillApi';
 import { skillQueryKeys } from '../skillContracts';
 import { protectedQueryRetry } from '../skillView';
 import type { RouteState } from '../navigation';
 
-type ModuleId = 'properties' | 'skill' | 'history';
+export type DockModuleId = 'properties' | 'script' | 'skill' | 'history';
 
-const MODULES: { id: ModuleId; label: string }[] = [
+const MODULES: { id: DockModuleId; label: string }[] = [
   { id: 'properties', label: '属性' },
+  { id: 'script', label: '脚本工作台' },
   { id: 'skill', label: 'Skill 任务' },
   { id: 'history', label: '编辑历史' },
 ];
@@ -20,27 +23,34 @@ const MODULES: { id: ModuleId; label: string }[] = [
 const ACTIVE_RUN = new Set(['queued', 'running', 'waiting_human']);
 
 /**
- * Premiere-style right dock: each utility is a horizontal name strip;
- * click expands/collapses its body. Strip-only mode keeps just the names
- * when the whole dock is collapsed.
- * Skill 任务 stays collapsed by default; a badge marks active runs so the
- * strip can stay closed without losing awareness.
+ * Premiere-style right dock: horizontal name strips; click expands body.
+ * 脚本工作台 lives here (not as a competing main editing tab). Deep-link
+ * `#/editing/content` and vac:open-script-dock open this strip.
  */
 export function EditorRightDock({
   navigate,
   active,
   stripOnly = false,
   onExpand,
+  route,
+  assetId,
+  onModuleOpen,
 }: {
   navigate: (state: Partial<RouteState>) => void;
   active: boolean;
   stripOnly?: boolean;
-  /** When the dock is strip-only, clicking a name expands the whole sidebar. */
   onExpand?: () => void;
+  route?: RouteState;
+  assetId?: string;
+  /** Fired when a module is opened (e.g. widen sider for script). */
+  onModuleOpen?: (id: DockModuleId) => void;
 }) {
   const e = useSequenceEditor();
-  const [open, setOpen] = useState<Record<ModuleId, boolean>>({
-    properties: true,
+  const project = useProjectWorkspace();
+  const wantScript = route?.editingSection === 'content' || Boolean(route?.scriptId);
+  const [open, setOpen] = useState<Record<DockModuleId, boolean>>({
+    properties: !wantScript,
+    script: wantScript,
     skill: false,
     history: false,
   });
@@ -52,17 +62,69 @@ export function EditorRightDock({
     retry: protectedQueryRetry,
   });
   const activeSkillCount = (runs.data ?? []).filter((item) => ACTIVE_RUN.has(item.state)).length;
-  const toggle = (id: ModuleId) => {
-    if (stripOnly) {
-      setOpen({ properties: id === 'properties', skill: id === 'skill', history: id === 'history' });
-      onExpand?.();
-      return;
-    }
-    setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const openModule = (id: DockModuleId, exclusive = false) => {
+    setOpen((prev) => {
+      if (exclusive || stripOnly) {
+        return { properties: id === 'properties', script: id === 'script', skill: id === 'skill', history: id === 'history' };
+      }
+      return { ...prev, [id]: true };
+    });
+    onModuleOpen?.(id);
+    if (stripOnly) onExpand?.();
   };
 
-  const body = (id: ModuleId): ReactNode => {
+  useEffect(() => {
+    if (!active) return;
+    if (route?.editingSection === 'content' || route?.scriptId) {
+      setOpen({ properties: false, script: true, skill: false, history: false });
+      onModuleOpen?.('script');
+    }
+  }, [active, route?.editingSection, route?.scriptId]);
+
+  useEffect(() => {
+    const onOpen = () => {
+      onExpand?.();
+      setOpen({ properties: false, script: true, skill: false, history: false });
+      onModuleOpen?.('script');
+    };
+    window.addEventListener('vac:open-script-dock', onOpen);
+    return () => window.removeEventListener('vac:open-script-dock', onOpen);
+  }, [onExpand, onModuleOpen]);
+
+  const toggle = (id: DockModuleId) => {
+    if (stripOnly) {
+      openModule(id, true);
+      return;
+    }
+    setOpen((prev) => {
+      const next = !prev[id];
+      if (next) onModuleOpen?.(id);
+      return { ...prev, [id]: next };
+    });
+  };
+
+  const scriptAsset =
+    project.session?.document?.resources.find((r) => r.script_id === route?.scriptId)?.asset_id
+    ?? assetId
+    ?? project.session?.document?.resources.find((r) => r.asset_id)?.asset_id;
+
+  const body = (id: DockModuleId): ReactNode => {
     if (id === 'properties') return <TimelineInspector />;
+    if (id === 'script') {
+      if (!scriptAsset) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="导入素材或 .avs 脚本后开始编辑" />;
+      return (
+        <div className="dock-script-workbench">
+          <ScriptWorkbench
+            key={`script-dock-${scriptAsset}`}
+            assetId={scriptAsset}
+            navigate={navigate}
+            selectedScriptId={route?.scriptId}
+            active={active && open.script && !stripOnly}
+          />
+        </div>
+      );
+    }
     if (id === 'skill') return <SkillRunModule navigate={navigate} active={active && open.skill && !stripOnly} />;
     return (
       <Table
@@ -86,7 +148,7 @@ export function EditorRightDock({
         const expanded = !stripOnly && open[mod.id];
         const showBadge = mod.id === 'skill' && activeSkillCount > 0 && !expanded;
         return (
-          <section key={mod.id} className={`editor-dock-module${expanded ? ' is-open' : ''}`}>
+          <section key={mod.id} className={`editor-dock-module${expanded ? ' is-open' : ''}${mod.id === 'script' && expanded ? ' is-script' : ''}`}>
             <button
               type="button"
               className="editor-dock-strip"

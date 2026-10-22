@@ -58,7 +58,7 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
 
 export const EDITING_SECTIONS: readonly EditingSectionDef[] = [
   { id: 'import', label: '时间线', description: '当前序列的轨道、片段、效果及标记' },
-  { id: 'content', label: '脚本工作台', description: '编辑脚本与稳定素材/标记引用' },
+  { id: 'content', label: '脚本工作台', description: '右侧栏脚本工作台（深链打开）' },
 ];
 
 export const EXPORT_SECTIONS: readonly ExportSectionDef[] = [

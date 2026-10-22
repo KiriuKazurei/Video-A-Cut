@@ -78,13 +78,13 @@ export default function App() {
     setSize: setRightWidth,
     resetToDefault: resetRightWidth
   } = useResizable({
-    initial: screens.xxl ? 320 : 280,
-    min: 220,
-    max: 450,
+    initial: screens.xxl ? 360 : 320,
+    min: 240,
+    max: 640,
     direction: 'horizontal',
     reverse: true,
     storageKey: 'vac_right_sider_width',
-    defaultSize: 300
+    defaultSize: 360
   });
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -278,7 +278,7 @@ export default function App() {
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
       {workspace==='editing'
-        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)}/>
+        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)} route={route} assetId={selected?.asset_id} onModuleOpen={(id)=>{if(id==='script'){setRightCollapsed(false);if(rightSiderWidth<400)setRightWidth(Math.min(520,640));}}}/>
         : <ResourceInspector />}
     </ConfigProvider>
   );
@@ -453,9 +453,9 @@ export default function App() {
               className={`sider-resizer sider-resizer-right ${isRightDragging ? 'is-dragging' : ''}`}
               onMouseDown={startRightDrag}
               onDoubleClick={resetRightWidth}
-              title="左右拖拽调整属性面板宽度，双击重置 (300px)"
+              title="左右拖拽调整侧栏宽度，双击重置 (360px)"
               role="separator"
-              aria-label="右侧栏宽度调整手柄"
+              aria-label="右侧栏宽度调整手柄，展开脚本工作台时可拉宽"
             />
             {rightSiderContent}
           </Layout.Sider>
@@ -481,7 +481,7 @@ export default function App() {
         width={320}
       >
         {workspace==='editing'
-          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active stripOnly={false}/></ConfigProvider>
+          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active stripOnly={false} route={route} assetId={selected?.asset_id}/></ConfigProvider>
           : rightSiderContent}
       </Drawer>
 
