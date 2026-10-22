@@ -111,6 +111,10 @@
 .editor-dock-strip { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:28px; padding:4px 10px; border:0; background:var(--vac-control); color:var(--vac-text); font:inherit; font-size:12px; font-weight:500; cursor:pointer; text-align:left; border-radius:0; }
 .editor-dock-strip:hover { background:var(--vac-panel); }
 .editor-dock-strip-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.editor-dock-badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--vac-accent); color:#fff; font-size:10px; font-weight:600; line-height:1; flex-shrink:0; }
+.editor-right-dock.is-strip-only .editor-dock-badge { position:absolute; top:4px; inset-inline-end:2px; min-width:8px; width:8px; height:8px; padding:0; border-radius:4px; font-size:0; color:transparent; }
+.editor-right-dock.is-strip-only .editor-dock-strip { position:relative; }
+
 .editor-dock-body { flex:1; min-height:0; overflow:auto; padding:8px; background:var(--vac-bg); }
 .editor-right-dock.is-strip-only { padding:0; }
 .editor-right-dock.is-strip-only .editor-dock-strip { writing-mode:vertical-rl; text-orientation:mixed; justify-content:center; align-items:center; min-height:72px; padding:8px 4px; }
