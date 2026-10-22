@@ -65,6 +65,19 @@ export function SequenceTimeline() {
  },[s?.id,e.active]);
  if(!s)return null;
  const rate=fpsValue(s.fps),px=e.zoom/rate,length=Math.max(rate*10,...s.tracks.flatMap(t=>t.clips.map(c=>c.at+c.duration)))+rate*5,width=Math.max(640,length*px);
+ const fitZoom=(spanFrames:number)=>{
+  const lane=Math.max(160,(scroller.current?.clientWidth??640)-148);
+  const seconds=Math.max(0.5,spanFrames/rate);
+  e.setZoom(Math.min(300,Math.max(10,Math.round(lane/seconds))));
+ };
+ const fitAll=()=>fitZoom(length);
+ const fitSelection=()=>{
+  const clips=s.tracks.flatMap(t=>t.clips).filter(c=>selected.has(c.id));
+  if(!clips.length){fitAll();return;}
+  const start=Math.min(...clips.map(c=>c.at)),end=Math.max(...clips.map(c=>c.at+c.duration));
+  fitZoom(Math.max(1,end-start));
+ };
+
  const selected=new Set(e.selected),candidates=[e.head,...s.markers.map(m=>m.frame),...s.tracks.flatMap(t=>t.clips.filter(c=>!selected.has(c.id)).flatMap(c=>[c.at,c.at+c.duration]))];
  const displayTracks=[...s.tracks.filter(t=>t.kind!=='audio').reverse(),...s.tracks.filter(t=>t.kind==='audio')];
  const snap=(frame:number,disabled=false)=>snapFrame(frame,candidates,px,e.snap&&!disabled);
@@ -108,7 +121,11 @@ export function SequenceTimeline() {
    <Tooltip title="吸附（Alt 临时关闭）"><Button size="small" aria-label="吸附" aria-pressed={e.snap} type={e.snap?'primary':'default'} icon={<AimOutlined/>} onClick={()=>e.setSnap(!e.snap)}/></Tooltip>
    <Tooltip title="插入模式"><Button size="small" aria-label="插入模式" aria-pressed={insert} type={insert?'primary':'default'} icon={<VerticalAlignMiddleOutlined/>} onClick={()=>setInsert(!insert)}/></Tooltip>
    <Dropdown menu={{items:[...(addTrackItems??[]),{type:'divider' as const},{key:'scope',label:'对照范围',type:'group' as const,children:[{key:'scope-all',label:'全部轨道',onClick:()=>command([{type:'scope.set',group_id:''}],'切换对照范围')},{key:'scope-original',label:'原剪辑',onClick:()=>command([{type:'scope.set',group_id:'original'}],'切换对照范围')},...s.groups.map(g=>({key:`scope-${g.id}`,label:g.name,onClick:()=>command([{type:'scope.set',group_id:g.id}],'切换对照范围')}))]}]}}><Button size="small" icon={<MoreOutlined/>} aria-label="更多">更多</Button></Dropdown>
-   <span className="timeline-zoom"><span>缩放</span><Slider min={10} max={300} value={e.zoom} onChange={e.setZoom} aria-label="时间线缩放"/></span>
+   <span className="timeline-zoom">
+    <Tooltip title="适配全部"><Button size="small" aria-label="适配全部" icon={<CompressOutlined/>} onClick={fitAll}/></Tooltip>
+    <Tooltip title="适配选中"><Button size="small" aria-label="适配选中" icon={<ExpandOutlined/>} onClick={fitSelection} disabled={!selected.size}/></Tooltip>
+    <span>缩放</span><Slider min={10} max={300} value={e.zoom} onChange={e.setZoom} aria-label="时间线缩放"/>
+   </span>
   </Flex>
   <div className="timeline-scroll" ref={scroller} onPointerCancel={cancel}>
    <div className="timeline-grid" style={{width:width+148}}>

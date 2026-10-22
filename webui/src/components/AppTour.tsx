@@ -28,11 +28,6 @@ export function AppTour({ open, onClose }: { open: boolean; onClose: () => void 
         target: find('.app-nav-wrap')
       },
       {
-        title: '流程阶段：现在做到哪一步',
-        description: '这里显示五个阶段各自的进度：绿色是完成，黄色是进行中，带蓝点的是推荐的下一步。点任意阶段会直接跳到它所在的页面。',
-        target: find('[data-tour="stepper"]')
-      },
-      {
         title: '下一步：不知道做什么就点它',
         description: '页面右上方的蓝色按钮会根据当前素材和流程的真实状态，告诉你下一步该做什么；如果暂时不能点，鼠标放上去会写明还缺什么。',
         target: find('.next-step-btn')
