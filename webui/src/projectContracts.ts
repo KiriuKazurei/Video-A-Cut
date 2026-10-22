@@ -1,4 +1,5 @@
 import type { ScriptSegment } from './scriptWorkbench';
+import type { TimelineSequence, TimelineMarker, ScriptReference } from './timelineContracts';
 
 export type ResourceKind = 'video' | 'audio' | 'image' | 'subtitle' | 'document' | 'script';
 export interface ProjectResource {
@@ -6,17 +7,19 @@ export interface ProjectResource {
   source: { relative_path?: string; original_path?: string; sha256?: string; size_bytes: number; modified_ns?: number };
   metadata: Record<string, unknown>; notes: string; in: number; out: number;
   missing: boolean; removed?: boolean; changed?: boolean; referenced?: boolean; asset_id?: string; script_id?: string;
+  markers?: TimelineMarker[];
 }
 export interface ScriptBinding { id: string; name: string; kind: ResourceKind; resource_id?: string; unresolved: boolean }
 export interface AvsDocument {
-  format: 'avs'; schema_version: 1; id: string; title: string; body: string;
+  format: 'avs'; schema_version: 1 | 2; id: string; title: string; body: string; references?: ScriptReference[];
   segments: ScriptSegment[]; bindings: ScriptBinding[];
   tts_enabled: boolean; subtitles_enabled: boolean; allow_web_research: boolean;
 }
 export interface AvpDocument {
-  format: 'avp'; schema_version: 1;
+  format: 'avp'; schema_version: 1 | 2;
   project: { id: string; name: string; created_at: string; updated_at: string };
   resources: ProjectResource[]; scripts: AvsDocument[];
+  sequences: TimelineSequence[];
   settings: Record<string, unknown>; workspace: Record<string, unknown>;
 }
 export interface ProjectSession {

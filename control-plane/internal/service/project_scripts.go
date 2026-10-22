@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -46,6 +45,9 @@ func (s *Service) InspectScriptFile(path string) (project.AvsDocument, error) {
 	// Explicit media names in the syntax are dependencies too, even in an
 	// ungenerated draft without segments.
 	for _, paragraph := range scriptsyntax.Parse(doc.Body).Paragraphs {
+		if doc.SchemaVersion >= 2 && len(doc.References) > 0 {
+			break
+		}
 		if paragraph.Video != "" && !known[paragraph.Video] {
 			found := false
 			for _, binding := range doc.Bindings {
@@ -143,13 +145,55 @@ func (s *Service) ImportScriptFile(ctx context.Context, projectID string, req Sc
 			for _, resource := range append(list, newResources...) {
 				if resource.ID == binding.ResourceID {
 					name := filepath.Base(resource.Source.OriginalPath)
-					doc.Body = strings.ReplaceAll(doc.Body, "{@"+binding.Name+"}", "{@"+name+"}")
+					if doc.SchemaVersion >= 2 && len(doc.References) > 0 {
+						temporary := &project.AvpDocument{Scripts: []project.AvsDocument{doc}}
+						project.RenameResourceReferences(temporary, binding.ID, name)
+						doc.Body = temporary.Scripts[0].Body
+						doc.References = temporary.Scripts[0].References
+					} else {
+						doc.Body = strings.ReplaceAll(doc.Body, "{@"+binding.Name+"}", "{@"+name+"}")
+					}
 					binding.Name = name
 				}
 			}
 		}
 	}
 	doc.Segments, _ = json.Marshal(segments)
+	doc.SchemaVersion = project.SchemaVersion
+	for i := range doc.References {
+		ref := &doc.References[i]
+		ref.Unresolved = true
+		if req.ScriptOnly {
+			continue
+		}
+		for _, b := range doc.Bindings {
+			if b.ID == ref.ResourceID || b.ID == ref.TargetID {
+				if b.Unresolved {
+					continue
+				}
+				ref.ResourceID = b.ResourceID
+				if ref.Kind == "video" || ref.Kind == "audio" {
+					ref.TargetID = b.ResourceID
+					ref.SequenceID = ""
+					ref.ClipID = ""
+					ref.Unresolved = false
+				}
+			}
+		}
+	}
+	if !req.ScriptOnly {
+		w.mu.Lock()
+		parent := cloneProject(w.document)
+		w.mu.Unlock()
+		parent.Resources = append(parent.Resources, newResources...)
+		for i := range doc.References {
+			ref := &doc.References[i]
+			ref.Unresolved = false
+			if _, e := project.ResolveReference(parent, *ref); e != nil {
+				ref.Unresolved = true
+			}
+		}
+	}
 	doc.ID = newID("scr")
 	r, err := inspectResource(ctx, req.Path)
 	if err != nil {
@@ -206,7 +250,7 @@ func (s *Service) hydrateScript(ctx context.Context, parent *project.AvpDocument
 	if err = json.Unmarshal(doc.Segments, &segments); err != nil {
 		return err
 	}
-	w := ScriptWorkbench{Script: sc, Version: 1, Document: scriptsyntax.Parse(doc.Body), Segments: segments, Sources: []ScriptSource{}, Questions: []string{}, TTSEnabled: doc.TTSEnabled, SubtitlesEnabled: doc.SubtitlesEnabled, AllowWebResearch: doc.AllowWebResearch}
+	w := ScriptWorkbench{Script: sc, Version: 1, Document: scriptsyntax.Parse(doc.Body), Segments: segments, Sources: []ScriptSource{}, Questions: []string{}, TTSEnabled: doc.TTSEnabled, SubtitlesEnabled: doc.SubtitlesEnabled, AllowWebResearch: doc.AllowWebResearch, References: doc.References}
 	if len(doc.Sources) > 0 {
 		_ = json.Unmarshal(doc.Sources, &w.Sources)
 	}
@@ -227,7 +271,7 @@ func (s *Service) exportScriptDocument(ctx context.Context, id string) (project.
 	if err != nil {
 		return project.AvsDocument{}, err
 	}
-	doc := project.AvsDocument{Format: "avs", SchemaVersion: 1, ID: id, Title: w.Script.Title, Body: w.Script.Body, TTSEnabled: w.TTSEnabled, SubtitlesEnabled: w.SubtitlesEnabled, AllowWebResearch: w.AllowWebResearch, Bindings: []project.Binding{}}
+	doc := project.AvsDocument{Format: "avs", SchemaVersion: project.SchemaVersion, ID: id, Title: w.Script.Title, Body: w.Script.Body, TTSEnabled: w.TTSEnabled, SubtitlesEnabled: w.SubtitlesEnabled, AllowWebResearch: w.AllowWebResearch, Bindings: []project.Binding{}, References: w.References}
 	doc.Segments, _ = json.Marshal(w.Segments)
 	doc.Sources, _ = json.Marshal(w.Sources)
 	revisions, err := s.ScriptRevisions(ctx, id)
@@ -249,6 +293,17 @@ func (s *Service) exportScriptDocument(ctx context.Context, id string) (project.
 			}
 		}
 		doc.Bindings = append(doc.Bindings, b)
+	}
+	for _, ref := range w.References {
+		if ref.ResourceID == "" || seen[ref.ResourceID] {
+			continue
+		}
+		for _, r := range list {
+			if r.ID == ref.ResourceID && (r.Kind == "video" || r.Kind == "audio") {
+				doc.Bindings = append(doc.Bindings, project.Binding{ID: r.ID, ResourceID: r.ID, Name: r.Name, Kind: r.Kind, Unresolved: r.Missing || r.Removed})
+				seen[r.ID] = true
+			}
+		}
 	}
 	// A draft can bind explicit syntax before it has generated any segments.
 	// Preserve those bindings as well as pending import descriptors.
@@ -297,28 +352,6 @@ func (s *Service) captureProjectScripts(ctx context.Context, doc *project.AvpDoc
 			return err
 		}
 		doc.Scripts[i] = current
-	}
-	doc.Sequences = []json.RawMessage{}
-	for _, resource := range doc.Resources {
-		if resource.AssetID == "" {
-			continue
-		}
-		a, err := s.st.GetAsset(ctx, resource.AssetID)
-		if err != nil {
-			return err
-		}
-		if ref := a.Artifacts["edl"]; ref != "" {
-			path, _, err := s.deliveryPath(filepath.FromSlash(ref), false)
-			if err == nil {
-				raw, err := os.ReadFile(path)
-				if err != nil {
-					return err
-				}
-				if json.Valid(raw) {
-					doc.Sequences = append(doc.Sequences, raw)
-				}
-			}
-		}
 	}
 	return nil
 }
@@ -392,7 +425,40 @@ func (s *Service) BindProjectScript(ctx context.Context, projectID, id string, r
 			}
 			found = true
 			name := filepath.Base(resource.Source.OriginalPath)
-			doc.Body = strings.ReplaceAll(doc.Body, "{@"+binding.Name+"}", "{@"+name+"}")
+			if doc.SchemaVersion >= 2 && len(doc.References) > 0 {
+				for j := range doc.References {
+					ref := &doc.References[j]
+					if ref.Unresolved && ref.Kind == "" && ref.TargetID == "" && ref.Name == binding.Name {
+						for _, other := range doc.Bindings {
+							if other.ID != binding.ID && other.Name == binding.Name {
+								return project.Session{}, fmt.Errorf("同名旧素材绑定请逐项重新选择: %w", model.ErrConflict)
+							}
+						}
+						ref.Kind = resource.Kind
+						ref.TargetID = binding.ID
+						ref.ResourceID = binding.ID
+					}
+				}
+				temporary := &project.AvpDocument{Scripts: []project.AvsDocument{doc}}
+				project.RenameResourceReferences(temporary, binding.ID, name)
+				if oldResource != "" {
+					project.RenameResourceReferences(temporary, oldResource, name)
+				}
+				doc.Body = temporary.Scripts[0].Body
+				doc.References = temporary.Scripts[0].References
+				for i := range doc.References {
+					ref := &doc.References[i]
+					if (oldResource != "" && ref.ResourceID == oldResource) || ref.ResourceID == binding.ID || ref.TargetID == binding.ID {
+						ref.ResourceID = resource.ID
+						if ref.Kind == "video" || ref.Kind == "audio" {
+							ref.TargetID = resource.ID
+							ref.Unresolved = false
+						}
+					}
+				}
+			} else {
+				doc.Body = strings.ReplaceAll(doc.Body, "{@"+binding.Name+"}", "{@"+name+"}")
+			}
 			for j := range segments {
 				pending := false
 				for _, index := range binding.SegmentIndexes {
@@ -431,7 +497,7 @@ func (s *Service) BindProjectScript(ctx context.Context, projectID, id string, r
 	if err != nil {
 		return project.Session{}, err
 	}
-	_, err = s.SaveScriptWorkbench(ctx, "human:window", id, SaveScriptRequest{ExpectedVersion: workbench.Version, VisibleSetSHA: visible.SHA256, Title: doc.Title, Body: doc.Body, Segments: segments, TTSEnabled: doc.TTSEnabled, SubtitlesEnabled: doc.SubtitlesEnabled, AllowWebResearch: doc.AllowWebResearch})
+	_, err = s.SaveScriptWorkbench(context.WithValue(ctx, projectMutationContextKey{}, w), "human:window", id, SaveScriptRequest{ExpectedVersion: workbench.Version, VisibleSetSHA: visible.SHA256, Title: doc.Title, Body: doc.Body, References: doc.References, Segments: segments, TTSEnabled: doc.TTSEnabled, SubtitlesEnabled: doc.SubtitlesEnabled, AllowWebResearch: doc.AllowWebResearch})
 	if err != nil {
 		return project.Session{}, err
 	}
@@ -459,6 +525,13 @@ func (s *Service) projectScriptBindingsReady(ctx context.Context, id string) err
 		if binding.Unresolved {
 			return fmt.Errorf("请先关联脚本素材 %s: %w", binding.Name, model.ErrConflict)
 		}
+	}
+	ws := s.workspace
+	ws.mu.Lock()
+	_, err = project.BindReferences(ws.document, doc.Body, doc.References, "", true)
+	ws.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("%v: %w", err, model.ErrConflict)
 	}
 	return nil
 }

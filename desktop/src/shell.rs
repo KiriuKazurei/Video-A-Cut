@@ -82,7 +82,7 @@ async fn project_dialog(
         let mut dialog = app.dialog().file();
         let save = matches!(
             mode.as_str(),
-            "new-project" | "save-project" | "save-script"
+            "new-project" | "save-project" | "save-script" | "save-video"
         );
         dialog = match mode.as_str() {
             "new-project" | "save-project" => dialog
@@ -94,6 +94,9 @@ async fn project_dialog(
             "save-script" => dialog
                 .set_title("导出脚本")
                 .add_filter("VAC 脚本", &["avs"]),
+            "save-video" => dialog
+                .set_title("导出当前序列轨道范围")
+                .add_filter("MP4 视频", &["mp4"]),
             "transcription-model" => dialog.set_title("选择本地转录模型目录"),
             "transcription-python" => dialog
                 .set_title("选择本地转录 Python")

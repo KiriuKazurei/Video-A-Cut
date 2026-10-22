@@ -15,6 +15,7 @@ import (
 
 var sseEventNames = []string{
 	"workspace.changed", "workspace.saved", "resource.changed",
+	"workspace.timeline.changed", "workspace.timeline.import-failed",
 	"project.changed", "skill.changed", "skill.run.changed",
 	"asset_created", "asset_updated", "task_created", "task_updated",
 	"workflow.changed", "review.changed", "acceptance.changed", "profile.changed",
@@ -116,7 +117,9 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 			// snapshot; reconnecting EventSource alone does not fetch one.
 			return
 		case ev := <-stream:
-			if s.svc.ProjectSessionID() != projectSession && ev.Name != "workspace.changed" { return }
+			if s.svc.ProjectSessionID() != projectSession && ev.Name != "workspace.changed" {
+				return
+			}
 			if err := prepareSSEWrite(controller); err != nil {
 				slog.Default().Debug("sse: write deadline failed", "err", err)
 				return

@@ -1,235 +1,56 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, Segmented, Tabs } from 'antd';
-import { api } from '../api';
-import { enterScriptAllowed, startGenerationAllowed } from '../visibleSet';
-import { StageDot } from '../components/PipelineContext';
+import { Alert, Button, Empty, Flex, Segmented, Space, Spin, Table, Tabs, Typography } from 'antd';
+import { PlayCircleOutlined, StepBackwardOutlined, StepForwardOutlined, PlusOutlined, ExportOutlined } from '@ant-design/icons';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
-import { EDITING_SECTIONS } from '../navigation';
-import { SECTION_STAGE } from '../pipeline';
 import type { RunSelection } from '../components/WorkflowPanel';
-import { IngestPanel, IngestRegister } from '../components/IngestPanel';
-import { DeliveryImport } from '../components/DeliveryPanel';
-import { WorkflowPanel, useWorkflowData } from '../components/WorkflowPanel';
-import { displayWorkflowPreview, samePreviewContext, workflowPreviewContext } from '../previewContext';
-import { Monitor, PreviewScope, type PreviewSource } from '../components/Monitor';
-import { PreparationPanel } from '../components/PreparationPanel';
-import { NoAssetEmpty } from '../components/NoAssetEmpty';
-import { AutoRunProgress, AutoRunStart, useAutoView } from '../components/AutoRunPanel';
-import { autoPolling } from '../autoRun';
 import { ScriptWorkbench } from '../components/ScriptWorkbench';
 import { SkillRunModule } from '../components/SkillRunModule';
+import { SequenceTimeline } from '../components/SequenceTimeline';
+import { useSequenceEditor } from '../sequenceEditor';
+import { useProjectWorkspace } from '../projectWorkspace';
+import { projectApi } from '../projectApi';
+import { fpsValue, frameLabel } from '../timelineContracts';
+import '../timeline.css';
 
-type StartMode = 'manual' | 'auto';
-
-/** 「开始生成」卡：分步生成（预设 + 预检 + 开始）与自动模式（一句话 + 全局授权 + 一键）并存；当前流程是自动模式时先展示进度。 */
-function StartCard({ asset, run, selection, navigate, onPreparedStarted }: {
-  asset: Asset;
-  run?: WorkflowRun;
-  selection: RunSelection;
-  navigate: (state: Partial<RouteState>) => void;
-  onPreparedStarted: (run: WorkflowRun) => void;
-}) {
-  const [mode, setMode] = useState<StartMode>('manual');
-  const auto = useAutoView(run?.run_id);
-  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
-  const live = autoPolling(auto.data?.state);
-  const canGenerate = visibleSet.isSuccess && startGenerationAllowed(visibleSet.data.confirmed);
-  // 自动流程已结束（完成/停止/撤销/取消）：默认只看结果，需要时再展开「重新生成」。
-  const ended = Boolean(auto.data) && !live;
-  const [showForm, setShowForm] = useState(false);
-  useEffect(() => { setShowForm(false); }, [run?.run_id]);
-  const goReview = () => navigate({ workspace: 'editing', editingSection: 'review' });
-  return (
-    <Card size="small" className="quickstart-card" title="开始生成" data-nav-anchor="quickstart-card" tabIndex={-1}
-      extra={<span className="quickstart-extra">{mode === 'auto' ? '写一句要求，Agent 自动剪辑并导出' : '自动完成识别、撰稿、配音与字幕，随后进入审查'}</span>}>
-      <AutoRunProgress run={run} onGoReview={goReview} />
-      {ended && !showForm && <Button type="link" className="auto-restart" style={{ paddingInline: 0, marginTop: 8 }} onClick={() => setShowForm(true)}>重新生成…</Button>}
-      {!live && (!ended || showForm) && !visibleSet.isSuccess && (
-        <Alert type={visibleSet.isError ? 'error' : 'info'} showIcon style={{ marginTop: 12 }}
-          message={visibleSet.isError ? '暂时读不到工程素材' : '正在读取工程素材'}
-          action={visibleSet.isError ? <Button size="small" onClick={() => void visibleSet.refetch()}>重试</Button> : undefined} />
-      )}
-      {!live && (!ended || showForm) && visibleSet.isSuccess && !canGenerate && (
-        <Alert type="warning" showIcon style={{ marginTop: 12 }} message="请先确认 Agent 可见素材"
-          description="手动和自动模式在进入脚本或开始生成前，都要先确认当前可见集。"
-          action={<Button type="primary" onClick={() => navigate({ workspace: 'resources' })}>去资源页确认</Button>} />
-      )}
-      {!live && (!ended || showForm) && canGenerate && (
-        <div className={auto.data ? 'auto-after-progress' : undefined}>
-          <Segmented<StartMode> className="start-mode" aria-label="生成方式" value={mode} onChange={setMode}
-            options={[{ value: 'manual', label: '分步生成' }, { value: 'auto', label: '自动模式' }]} />
-          <div className="start-mode-body">
-            {mode === 'auto'
-              ? <AutoRunStart assetId={asset.asset_id} onGoSettings={() => navigate({ workspace: 'settings', settingsCategory: 'profiles' })}
-                  onStarted={(r) => { selection.setOffset(0); selection.setRunId(r.run_id); }} />
-              : <PreparationPanel assetId={asset.asset_id} activeSection="quickstart" onStarted={onPreparedStarted} onNavigate={navigate} />}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
+interface EditingWorkspaceProps { route:RouteState;navigate:(state:Partial<RouteState>)=>void;asset?:Asset;selection:RunSelection;onSelect:(id:string)=>void;onPreparedStarted:(run:WorkflowRun)=>void }
+function SourceMonitor() {
+ const p=useProjectWorkspace(),e=useSequenceEditor(),r=p.resource,[proxy,setProxy]=useState(false),[proxyError,setProxyError]=useState(''),request=useRef<AbortController|null>(null);
+ useEffect(()=>{const media=e.source.current;media?.pause();request.current?.abort();setProxy(false);setProxyError('');return()=>{media?.pause();request.current?.abort();};},[e.active,p.session?.id,r?.id,r?.source.sha256]);
+ const textual=r?.kind==='script'||r?.kind==='document'||r?.kind==='subtitle';
+ const text=useQuery({queryKey:['source-text',p.session?.id,r?.id],queryFn:async({signal})=>{const response=await fetch(projectApi.contentURL(e.projectId,r!.id),{signal});if(!response.ok)throw Error('内容加载失败');return (await response.text()).slice(0,65536);},enabled:e.active&&!!r&&textual});
+ const url=r?projectApi.contentURL(e.projectId,r.id,proxy):'';
+ const fallback=()=>{if(!e.active||request.current&&!request.current.signal.aborted)return;if(!r||proxy){setProxyError('源预览加载失败，请检查资源或重新定位');return;}const controller=new AbortController();request.current=controller;void projectApi.createPreview(e.projectId,r.id,controller.signal).then(()=>{if(!controller.signal.aborted)setProxy(true);}).catch(reason=>{if(!controller.signal.aborted)setProxyError(String(reason));}).finally(()=>{if(request.current===controller)request.current=null;});};
+ if(!e.active)return null;
+ return <section className="editor-monitor source-monitor" aria-label="源监视器"><div className="editor-monitor-title"><strong>源</strong><Typography.Text ellipsis>{r?.name ?? '选择工程资源'}</Typography.Text></div>
+  <div className="editor-monitor-screen">{!r?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧资源管理选择素材"/>:r.missing||r.removed?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="源文件待重新关联"/>:r.kind==='video'||r.kind==='audio'?<video key={`${r.id}-${proxy}`} ref={e.source} data-resource-id={r.id} controls preload="metadata" src={url} aria-label="源素材播放器" onError={fallback}/>:r.kind==='image'?<img alt={r.name} src={url} onError={fallback}/>:<pre className="source-text-preview">{text.data ?? (text.isError?'内容读取失败':'正在读取…')}</pre>}</div>
+  {proxyError&&<Alert type="warning" message={proxyError}/>}<Flex gap={6} className="editor-monitor-controls" wrap><Button size="small" onClick={()=>e.marker('point',true)} disabled={!r||!['video','audio','image'].includes(r.kind)}>源标记</Button><Button size="small" onClick={()=>void e.addResource(r!.id).catch(()=>{})} disabled={!r||r.missing||r.removed||!['video','audio','image','subtitle'].includes(r.kind)}>加入序列</Button></Flex>
+ </section>;
 }
-
-interface EditingWorkspaceProps {
-  route: RouteState;
-  navigate: (state: Partial<RouteState>) => void;
-  asset?: Asset;
-  selection: RunSelection;
-  onSelect: (id: string) => void;
-  onPreparedStarted: (run: WorkflowRun) => void;
-}
-
-/**
- * 编辑工作区：导入与粗剪 / 内容编辑 / 审查
- * 源/节目状态独立；节目监视器与两份审查面板使用同一实际流程及修订快照。
- */
-export function EditingWorkspace({ route, navigate, asset, selection, onSelect, onPreparedStarted }: EditingWorkspaceProps) {
-  const { editingSection = 'import' } = route;
-  const [lane, setLane] = useState<'legacy' | 'skill'>('legacy');
-  const assetId = asset?.asset_id;
-  const workflowData = useWorkflowData(assetId ?? '', selection);
-  const owner = workflowPreviewContext(workflowData.current);
-
-  // 导入源监视器状态：随资产切换同步清空
-  const [sourcePreview, setSourcePreview] = useState<PreviewSource>(null);
-  const [sourceAssetId, setSourceAssetId] = useState(assetId);
-  useLayoutEffect(() => {
-    setSourcePreview(null);
-    setSourceAssetId(assetId);
-  }, [assetId]);
-
-  // 渲染时验证归属；effect 仅回收已失效的保存记录。
-  const [programPreview, setProgramPreview] = useState<PreviewSource>(null);
-  useEffect(() => {
-    setProgramPreview(previous => samePreviewContext(previous?.workflowContext, owner) ? previous : null);
-  }, [owner?.assetId, owner?.runId, owner?.revisionId]);
-  // 「开始生成」入口放在导入页底部：从别处跳来时切到导入页并滚动、聚焦到它
-  const goStart = () => {
-    navigate({ workspace: 'editing', editingSection: 'import' });
-    let tries = 0;
-    const attempt = () => {
-      const el = [...document.querySelectorAll<HTMLElement>('.page:not([hidden]) [data-nav-anchor="quickstart-card"]')].find((n) => n.offsetParent !== null);
-      if (!el) { if (++tries < 15) requestAnimationFrame(attempt); return; }
-      // 吸顶的源监视器与位置条会盖住上沿：滚到它们的下沿，而不是视口顶
-      const scroller = el.closest<HTMLElement>('.stage-main');
-      const pinned = document.querySelector<HTMLElement>('.page:not([hidden]) .sticky-monitor') ?? document.querySelector<HTMLElement>('.context-bar');
-      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-      if (scroller && pinned && getComputedStyle(pinned).position === 'sticky') {
-        scroller.scrollTo({ top: scroller.scrollTop + el.getBoundingClientRect().top - pinned.getBoundingClientRect().bottom - 8, behavior });
-      } else {
-        el.scrollIntoView({ block: 'start', behavior });
-      }
-      el.focus({ preventScroll: true });
-    };
-    requestAnimationFrame(attempt);
-  };
-  const visibleProgramPreview = displayWorkflowPreview(programPreview, owner, workflowData.review.data);
-  const visibleSet = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet });
-  const scriptOpen = Boolean(asset) && enterScriptAllowed({
-    confirmed: visibleSet.isSuccess && visibleSet.data.confirmed,
-    assetVisible: Boolean(asset?.agent_visible),
-    hasWorkflow: Boolean(workflowData.current)
-  });
-
-  return (
-    <div className="page-body">
-      <Segmented className="skill-lane" aria-label="编辑模块" value={lane} onChange={(value) => setLane(value as 'legacy' | 'skill')}
-        options={[{ value: 'legacy', label: '现有剪辑' }, { value: 'skill', label: 'Skill 运行' }]} style={{ marginBottom: 16 }} />
-      {lane === 'skill' && <SkillRunModule navigate={navigate} active={route.workspace === 'editing'} />}
-      {lane === 'legacy' && <Tabs
-        activeKey={editingSection}
-        onChange={(key) => navigate({ editingSection: key as typeof editingSection })}
-        items={EDITING_SECTIONS.map((section) => ({
-          key: section.id,
-          label: <span className="section-tab-label">{section.label}<StageDot stage={SECTION_STAGE.editing[section.id]} /></span>,
-          children: (
-            <div className="section-content" data-nav-anchor={section.id === 'import' ? 'ingest' : section.id} tabIndex={-1}>
-              {section.id === 'import' && (
-                <PreviewScope onPreview={setSourcePreview}>
-                  <div className="sticky-monitor">
-                    <Monitor 
-                      label="源" 
-                      preview={sourceAssetId === assetId ? sourcePreview : null}
-                      compact 
-                      emptyTitle="源监视器"
-                      emptyHint="单击时间线或缩略图预览；双击时间线片段加入/移出已选；短片生成后点击卡片在此播放。" 
-                    />
-                  </div>
-                  {asset && <Alert type="info" showIcon className="start-banner" message="素材导入好了？"
-                    description="在页面最下方的「开始生成」里检查条件并一键开始；也可以先在上方选好段落再开始。"
-                    action={<Button type="primary" className="vac-cta" onClick={goStart}>去开始生成</Button>} />}
-                  <Alert type="info" message="通过“文件 → 导入”管理当前工程素材。" />
-                  <IngestPanel asset={asset} />
-                  {asset && <StartCard asset={asset} run={workflowData.current} selection={selection} navigate={navigate} onPreparedStarted={onPreparedStarted} />}
-                </PreviewScope>
-              )}
-              
-              {section.id === 'content' && asset && !scriptOpen && (
-                <Alert type="warning" showIcon message="还不能进入脚本"
-                  description={visibleSet.isPending ? '正在读取工程素材。' : '请先在资源页确认当前 Agent 可见素材。已在进行的流程不受这次确认影响。'}
-                  action={<Button type="primary" onClick={() => navigate({ workspace: 'resources' })}>去资源页确认</Button>} />
-              )}
-              {section.id === 'content' && asset && scriptOpen && (
-                <PreviewScope onPreview={setProgramPreview}>
-                  <ScriptWorkbench key={`script-${asset.asset_id}`} assetId={asset.asset_id} navigate={navigate} selectedScriptId={route.scriptId} active={route.workspace === 'editing' && editingSection === 'content'} />
-                  <WorkflowPanel 
-                    mode="content"
-                    onGoStart={goStart}
-                    onGoReview={() => navigate({ workspace: 'editing', editingSection: 'review' })}
-                    key={asset.asset_id} 
-                    assetId={asset.asset_id} 
-                    selection={selection}
-                    data={workflowData}
-                    onGoExport={() => navigate({ workspace: 'export', exportSection: 'delivery' })}
-                    onGoTasks={() => navigate({ workspace: 'export', exportSection: 'tasks' })}
-                    monitor={
-                      <Monitor 
-                        label="节目" 
-                        preview={visibleProgramPreview}
-                        emptyTitle="节目监视器"
-                        emptyHint="单击时间线片段或卡片预览画面；证据缩略图可点进节目监视器。" 
-                      />
-                    }
-                  />
-                </PreviewScope>
-              )}
-              
-              {section.id === 'content' && !asset && (
-                <NoAssetEmpty navigate={navigate} />
-              )}
-              
-              {section.id === 'review' && asset && (
-                <PreviewScope onPreview={setProgramPreview}>
-                  <WorkflowPanel 
-                    mode="review"
-                    onGoStart={goStart}
-                    key={asset.asset_id} 
-                    assetId={asset.asset_id} 
-                    selection={selection}
-                    data={workflowData}
-                    onGoExport={() => navigate({ workspace: 'export', exportSection: 'delivery' })}
-                    onGoTasks={() => navigate({ workspace: 'export', exportSection: 'tasks' })}
-                    monitor={
-                      <Monitor 
-                        label="节目" 
-                        preview={visibleProgramPreview}
-                        emptyTitle="节目监视器"
-                        emptyHint="单击时间线片段或审查卡片预览画面。" 
-                      />
-                    }
-                  />
-                </PreviewScope>
-              )}
-              
-              {section.id === 'review' && !asset && (
-                <NoAssetEmpty navigate={navigate} />
-              )}
-            </div>
-          )
-        }))}
-      />}
-    </div>
-  );
+export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
+ const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence,[panel,setPanel]=useState('timeline'),[monitor,setMonitor]=useState('program'),[visited,setVisited]=useState<string[]>([]);
+ useEffect(()=>{setVisited(old=>old.includes(panel)?old:[...old,panel]);},[panel]);
+ useEffect(()=>{setPanel(route.editingSection==='content'?'script':route.editingSection==='review'?'skill':'timeline');},[route.editingSection,route.scriptId]);
+ const scriptAsset=p.session?.document?.resources.find(r=>r.script_id===route.scriptId)?.asset_id ?? asset?.asset_id ?? p.session?.document?.resources.find(r=>r.asset_id)?.asset_id;
+ const items=p.session?.document?.sequences?.map(seq=>({key:seq.id,label:seq.name,closable:(p.session?.document?.sequences.length ?? 0)>1}));
+ return <div className="unified-editor" data-panel={panel} tabIndex={-1} aria-label="统一多轨编辑器">
+  <Tabs className="sequence-tabs" type="editable-card" size="small" activeKey={e.sequenceId} items={items} onChange={e.switchSequence} onEdit={(key,action)=>void e.manageSequence(action==='add'?'create':'delete',typeof key==='string'?key:undefined).catch(()=>{})}/>
+  {e.error&&<Alert type="error" showIcon message={e.error}/>}
+  <Segmented className="compact-monitor-switch" aria-label="切换紧凑监视器" value={monitor} onChange={setMonitor} options={[{value:'source',label:'源素材'},{value:'program',label:'节目预览'}]}/>
+  <div className={`editor-monitors compact-${monitor}`}><SourceMonitor/>
+   <section className="editor-monitor program-monitor" aria-label="节目监视器"><div className="editor-monitor-title"><strong>节目</strong><Typography.Text ellipsis>{s?.name ?? '当前序列'}</Typography.Text><Typography.Text type="secondary">{s?`${s.width}×${s.height} · ${fpsValue(s.fps).toFixed(3)}fps`:''}</Typography.Text></div>
+    <div className="editor-monitor-screen">{e.previewURL?<video key={e.previewURL} ref={e.program} controls preload="metadata" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=e.head/fpsValue(s.fps);}} onTimeUpdate={event=>{if(s&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在更新当前轨道合成…':'把资源拖入时间线开始编辑'}/>}{e.previewLoading&&<div className="program-updating" role="status"><Spin size="small"/> 更新节目预览</div>}</div>
+    <Flex gap={6} align="center" className="editor-monitor-controls" wrap><Button size="small" icon={<StepBackwardOutlined/>} aria-label="节目后退一帧" onClick={()=>e.setHead(e.head-1)}/><Button size="small" icon={<PlayCircleOutlined/>} onClick={e.play} disabled={!e.preview}>播放 / 暂停</Button><Button size="small" icon={<StepForwardOutlined/>} aria-label="节目前进一帧" onClick={()=>e.setHead(e.head+1)}/><Typography.Text code>{s?frameLabel(e.head,s.fps):'--:--:--:--'}</Typography.Text><Button size="small" onClick={()=>e.marker('in')}>入点 I</Button><Button size="small" onClick={()=>e.marker('out')}>出点 O</Button><Button size="small" icon={<ExportOutlined/>} disabled={!e.preview||e.pending} onClick={()=>void e.exportVideo().catch(()=>{})}>导出当前范围</Button></Flex>
+    {e.previewError&&<Alert type="warning" message={e.previewError} action={<Button size="small" onClick={e.refreshPreview}>重试预览</Button>}/>}
+   </section>
+  </div>
+  {e.loading?<Spin/>:<SequenceTimeline/>}
+  <Flex className="editor-panels-bar" align="center" gap={8} wrap><Segmented aria-label="编辑器面板" value={panel} onChange={value=>void p.flushEditors().then(()=>setPanel(value)).catch(()=>{})} options={[{value:'timeline',label:'时间线'},{value:'script',label:'脚本工作台'},{value:'skill',label:'Skill 任务'},{value:'history',label:'编辑历史'}]}/><Space><Button size="small" icon={<PlusOutlined/>} onClick={()=>void e.manageSequence('duplicate',e.sequenceId).catch(()=>{})}>复制序列</Button>{e.pending&&<Typography.Text type="secondary">正在提交编辑…</Typography.Text>}</Space></Flex>
+  <div className="editor-panel-content" hidden={panel==='timeline'}>
+   {visited.includes('script')&&<div hidden={panel!=='script'}>{scriptAsset?<ScriptWorkbench key={`script-${scriptAsset}`} assetId={scriptAsset} navigate={navigate} selectedScriptId={route.scriptId} active={route.workspace==='editing'&&panel==='script'}/>:<Empty description="导入素材或 .avs 脚本后开始编辑"/>}</div>}
+   {visited.includes('skill')&&<div hidden={panel!=='skill'}><SkillRunModule navigate={navigate} active={route.workspace==='editing'&&panel==='skill'}/></div>}
+   {panel==='history'&&<Table size="small" pagination={false} rowKey="id" dataSource={e.view?.history ?? []} columns={[{title:'操作',dataIndex:'label'},{title:'来源',dataIndex:'actor'},{title:'状态',dataIndex:'applied',render:value=>value?'已应用':'已撤销'}]}/>}
+  </div>
+ </div>;
 }

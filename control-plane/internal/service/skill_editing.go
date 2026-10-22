@@ -258,6 +258,9 @@ func (s *Service) SaveSkillPlan(ctx context.Context, actor, id string, req Skill
 	if r.Version != req.ExpectedVersion || r.State == "running" || r.State == "cancelled" {
 		return r, model.ErrConflict
 	}
+	if err = s.bindHarnessReferences(&req.Plan); err != nil {
+		return r, err
+	}
 	if err = validateHarnessPlan(req.Plan, snap); err != nil {
 		return r, err
 	}

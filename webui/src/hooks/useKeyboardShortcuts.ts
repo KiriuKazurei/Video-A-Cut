@@ -171,6 +171,9 @@ export function useKeyboardShortcuts({
       if (isTypingContext(e.target)) {
         return;
       }
+      // The unified editor owns its frame/razor/marker keys. Let its handler
+      // decide instead of invoking a hidden legacy review panel or source player.
+      if (workspace==='editing' && e.target instanceof HTMLElement && e.target.closest('.unified-editor,.timeline-inspector') && ['c','v','m','i','o',' ','arrowleft','arrowright','delete'].includes(e.key.toLowerCase()))return;
 
       // 帮助面板开关：? 或 Shift + /
       if (e.key === '?' || (e.shiftKey && e.key === '/')) {

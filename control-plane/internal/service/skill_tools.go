@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/scriptsyntax"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
@@ -189,6 +190,9 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		return r, nil, err
 	}
 	s.publish("skill.run.changed", r)
+	if toolErr == nil {
+		s.importCompletedSequenceResult(ctx, r)
+	}
 	if toolErr != nil {
 		return r, result, toolErr
 	}
@@ -211,6 +215,61 @@ func decodeSkillArgs(raw json.RawMessage, out any) error {
 func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harnessSnapshot, name string, args json.RawMessage) (json.RawMessage, error) {
 	respond := func(v any) (json.RawMessage, error) { return json.Marshal(v) }
 	switch name {
+	case "timeline.read":
+		var req struct {
+			SequenceID string `json:"sequence_id"`
+		}
+		if e := decodeSkillArgs(args, &req); e != nil {
+			return nil, e
+		}
+		if req.SequenceID == "" {
+			req.SequenceID = r.SequenceID
+		}
+		v, e := s.Timeline(ctx, r.ProjectID, req.SequenceID)
+		if e != nil {
+			return nil, e
+		}
+		v.History = nil
+		return respond(v)
+	case "references.resolve":
+		var req struct {
+			References []project.Reference `json:"references"`
+		}
+		if e := decodeSkillArgs(args, &req); e != nil {
+			return nil, e
+		}
+		v, e := s.ResolveProjectReferences(r.ProjectID, req.References)
+		if e != nil {
+			return nil, e
+		}
+		return respond(v)
+	case "timeline.edit":
+		var req struct {
+			SequenceID string          `json:"sequence_id"`
+			Command    project.Command `json:"command"`
+		}
+		if e := decodeSkillArgs(args, &req); e != nil {
+			return nil, e
+		}
+		if req.SequenceID == "" {
+			req.SequenceID = r.SequenceID
+		}
+		if req.SequenceID != r.SequenceID || r.SequenceID == "" {
+			return nil, model.ErrForbidden
+		}
+		for _, op := range req.Command.Operations {
+			if op.Type == "history.undo" || op.Type == "history.redo" {
+				return nil, model.ErrForbidden
+			}
+		}
+		v, e := s.TimelineCommand(ctx, "agent:"+r.ID, r.ProjectID, req.SequenceID, req.Command)
+		if e != nil {
+			return nil, e
+		}
+		r.StructuredEdit = true
+		r.SequenceContentVersion = v.ContentVersion
+		v.History = nil
+		return respond(v)
 	case "agent.model":
 		var req struct {
 			History []map[string]any `json:"history"`
@@ -222,7 +281,22 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		if err != nil {
 			return nil, err
 		}
-		data, err := s.skillProcess(ctx, "agent", map[string]any{"run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools, "history": req.History, "provider": profile.Narration, "vision_provider": profile.Vision})
+		input := map[string]any{"run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools, "history": req.History, "provider": profile.Narration, "vision_provider": profile.Vision}
+		if s.WorkspaceEnabled() && r.SequenceID != "" {
+			view, e := s.Timeline(ctx, r.ProjectID, r.SequenceID)
+			if e != nil {
+				return nil, e
+			}
+			view.History = nil
+			view.Sequence.HistoryCursor = 0
+			refs, e := s.ReferenceDirectory(r.ProjectID, r.SequenceID)
+			if e != nil {
+				return nil, e
+			}
+			input["sequence"] = view
+			input["references"] = refs
+		}
+		data, err := s.skillProcess(ctx, "agent", input)
 		if err == nil {
 			var decision struct {
 				Wait string `json:"wait"`
@@ -251,6 +325,9 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 	case "scripts.propose":
 		var plan skill.Plan
 		if err := decodeSkillArgs(args, &plan); err != nil {
+			return nil, err
+		}
+		if err := s.bindHarnessReferences(&plan); err != nil {
 			return nil, err
 		}
 		if err := validateHarnessPlan(plan, snap); err != nil {
@@ -298,6 +375,9 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		if r.Plan == nil || !isHumanActor(r.Plan.FinalizedBy) || r.Plan.FinalizedAt == nil {
 			return nil, model.ErrForbidden
 		}
+		if err := s.bindHarnessReferences(r.Plan); err != nil {
+			return nil, err
+		}
 		if err := s.renderSkillPlan(ctx, r, snap); err != nil {
 			return nil, err
 		}
@@ -344,6 +424,13 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		}
 		return respond(map[string]any{"artifact": art, "base64": base64.StdEncoding.EncodeToString(raw)})
 	case "run.finish":
+		if r.StructuredEdit && r.Plan == nil {
+			v, e := s.finishSequenceEdit(ctx, r, args)
+			if e != nil {
+				return nil, e
+			}
+			return respond(v)
+		}
 		if r.EditRequest != nil {
 			return nil, model.ErrInvalidState
 		}
@@ -385,7 +472,7 @@ func validateHarnessPlan(p skill.Plan, snap harnessSnapshot) error {
 		if !ok || m.Kind == "audio" || !finiteScriptTime(seg.Start) || !finiteScriptTime(seg.End) || seg.Start < m.In || seg.End > m.Out || d < .1 || d > 120 || len(seg.Narration) > 16<<10 {
 			return model.ErrArgument
 		}
-		if name := doc.Paragraphs[i].Video; name != "" && name != m.Name {
+		if name := doc.Paragraphs[i].Video; len(p.References) == 0 && name != "" && name != m.Name {
 			return model.ErrArgument
 		}
 	}

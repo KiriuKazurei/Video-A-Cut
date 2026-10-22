@@ -22,7 +22,7 @@ func TestDirectivesAndNaturalInstructions(t *testing.T) {
 }
 
 func TestInvalidDirectivesFailClosed(t *testing.T) {
-	for _, s := range []string{`{@}`, `{@one}{@two}`, `{"x"}{"y"}`, `{"x",字号:0px}`, `{"x",字号:24}`, `{"x",字号:Infinitypx}`, `{"x",字体:""}`, `{"x",opi:24px}`, `{"x",字号:24px,字号:25px}`, `{"x",字体:Arial}`, `{未知转场}`, `{黑屏}{白屏}`, `{黑屏`, `普通文字}`, `{exec("rm")}`, `{a{b}}`, `{"unterminated}`} {
+	for _, s := range []string{`{@}`, `{"x"}{"y"}`, `{"x",字号:0px}`, `{"x",字号:24}`, `{"x",字号:Infinitypx}`, `{"x",字体:""}`, `{"x",opi:24px}`, `{"x",字号:24px,字号:25px}`, `{"x",字体:Arial}`, `{未知转场}`, `{黑屏}{白屏}`, `{黑屏`, `普通文字}`, `{exec("rm")}`, `{a{b}}`, `{"unterminated}`} {
 		if d := Parse(s); len(d.Diagnostics) == 0 {
 			t.Fatalf("accepted %s", s)
 		}
@@ -30,6 +30,10 @@ func TestInvalidDirectivesFailClosed(t *testing.T) {
 }
 
 func TestEscapesAndEmptyInput(t *testing.T) {
+	anchors := Parse(`在 {@标记点} 插入 {@video}`)
+	if len(anchors.Diagnostics) > 0 || len(anchors.Paragraphs[0].References) != 2 {
+		t.Fatalf("typed point plus media rejected: %+v", anchors)
+	}
 	if d := Parse(""); len(d.Paragraphs) != 0 || len(d.Diagnostics) != 0 {
 		t.Fatal(d)
 	}

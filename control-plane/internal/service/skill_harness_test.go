@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
 	"os"
@@ -83,6 +84,30 @@ func runSkillMediaDelivery(t *testing.T, native bool) {
 	r, err := svc.CreateSkillRun(ctx, "agent:test", skill.RunRequest{ProjectID: p.ID, Flow: "visual_heavy", SkillID: "vac-visual-summary", Mode: "external_mcp", AgentRole: "narrator", VisibleSHA: v.SHA, Goal: "Show scene", IdempotencyKey: "real"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	var parallelSequence string
+	if native {
+		view, e := svc.ProjectWorkspace(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		timeline, e := svc.Timeline(ctx, p.ID, r.SequenceID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		_, e = svc.TimelineCommand(ctx, "human:window", p.ID, r.SequenceID, project.Command{Session: view.ID, ExpectedRevision: timeline.Sequence.Revision, IdempotencyKey: "manual-before-skill", Operations: []project.Operation{{Type: "clip.insert", TrackID: timeline.Sequence.Tracks[0].ID, ResourceID: v.Media[0].ID}}})
+		if e != nil {
+			t.Fatal(e)
+		}
+		view, _ = svc.ProjectWorkspace(ctx)
+		view, e = svc.ManageSequence(ctx, p.ID, service.SequenceRequest{Session: view.ID, ExpectedRevision: view.Revision, IdempotencyKey: "parallel-sequence", Action: "create"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		parallelSequence = view.Document.Sequences[1].ID
+		if _, e = svc.UpdateProjectWorkspaceState(ctx, view.ID, map[string]any{"active_sequence": parallelSequence}); e != nil {
+			t.Fatal(e)
+		}
 	}
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "media.get_frames", Arguments: json.RawMessage("{}"), ExpectedVersion: r.Version, IdempotencyKey: "frames"})
 	if err != nil || len(r.Frames) < 2 {
@@ -184,6 +209,45 @@ func runSkillMediaDelivery(t *testing.T, native bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		launch, e := svc.Timeline(ctx, p.ID, r.SequenceID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		other, e := svc.Timeline(ctx, p.ID, parallelSequence)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if len(launch.Sequence.Groups) != 1 || launch.Sequence.ScopeGroup != launch.Sequence.Groups[0].ID || len(other.Sequence.Groups) != 0 || len(launch.Sequence.Tracks[0].Clips) != 1 {
+			t.Fatal("completed MP4 did not preserve manual edit in launch sequence")
+		}
+		for _, track := range launch.Sequence.Tracks {
+			if track.GroupID != "" {
+				for _, clip := range track.Clips {
+					if clip.At != 0 || clip.Origin.RunID != r.ID || clip.Origin.SHA256 != mp4.SHA {
+						t.Fatal("Agent source/position was lost")
+					}
+				}
+			}
+		}
+		session, _ := svc.ProjectWorkspace(ctx)
+		request := service.SequenceResultRequest{Session: session.ID, ExpectedRevision: launch.Sequence.Revision, IdempotencyKey: "repeat-result", RunID: r.ID, ArtifactID: mp4.ID}
+		again, e := svc.ImportSequenceSkillResult(ctx, p.ID, r.SequenceID, request)
+		if e != nil || again.Sequence.Revision != launch.Sequence.Revision || len(again.Sequence.Groups) != 1 {
+			t.Fatalf("completion retry imported twice: %v", e)
+		}
+		request.ExpectedRevision = other.Sequence.Revision
+		request.IdempotencyKey = "history-result"
+		historical, e := svc.ImportSequenceSkillResult(ctx, p.ID, parallelSequence, request)
+		if e != nil || len(historical.Sequence.Groups) != 1 {
+			t.Fatalf("explicit historical import: %v", e)
+		}
+		current, e := svc.Timeline(ctx, p.ID, r.SequenceID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = svc.TimelineCommand(ctx, "human:window", p.ID, r.SequenceID, project.Command{Session: session.ID, ExpectedRevision: current.Sequence.Revision, IdempotencyKey: "undo-import", Operations: []project.Operation{{Type: "history.undo"}}}); e != nil {
+			t.Fatal(e)
+		}
 		view, e := svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{})
 		if e != nil {
 			t.Fatal(e)
@@ -195,6 +259,10 @@ func runSkillMediaDelivery(t *testing.T, native bool) {
 		}
 		if _, e = fresh.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: originalProject}); e != nil {
 			t.Fatal(e)
+		}
+		kept, e := fresh.Timeline(ctx, p.ID, r.SequenceID)
+		if e != nil || len(kept.Sequence.Groups) != 0 || len(kept.Sequence.Tracks[0].Clips) != 1 {
+			t.Fatalf("recovery reapplied an undone automatic result: %v", e)
 		}
 		if _, _, e = fresh.SkillArtifactPath(ctx, "human:test", r.ID, mp4.ID); e != nil {
 			t.Fatal("fresh cache lost completed output reference", e)

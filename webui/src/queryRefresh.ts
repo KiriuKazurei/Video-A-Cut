@@ -6,7 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
  * prepared、workflows、workflow、review、acceptance、ingest。
  */
 export const REFRESH_DOMAINS = [
- 'project-workspace', 'resource-text',
+ 'project-workspace', 'resource-text', 'timeline','sequence-preview','reference-directory','source-text','resource-waveform',
  'vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context',
   'assets',
   'deliveryFiles',
@@ -120,7 +120,7 @@ function extractFromObject(obj: Record<string, unknown>): EventPayloadMeta {
 
 /** 支持的所有 SSE 事件名单 */
 export const SUPPORTED_SSE_EVENTS = [
- 'workspace.changed','workspace.saved','resource.changed',
+ 'workspace.changed','workspace.saved','resource.changed','workspace.timeline.changed','workspace.timeline.import-failed',
  'project.changed','skill.changed','skill.run.changed',
   'asset_created',
   'asset_updated',
@@ -157,6 +157,7 @@ export function handleSSEEvent(
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
   const promises: Promise<void>[] = [];
+  if(eventName==='workspace.timeline.changed'||eventName==='workspace.timeline.import-failed')return Promise.all(['project-workspace','timeline','reference-directory','script-workbench','script-revisions','resource-text','vu-visible'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
   if (['workspace.changed','workspace.saved','resource.changed'].includes(eventName)) {
     return Promise.all(['project-workspace','assets','visible-set','vu-project','vu-visible','resource-text'].map(key => queryClient.invalidateQueries({queryKey:[key]})));
   }

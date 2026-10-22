@@ -83,10 +83,11 @@ def generate(request, *, model=call_model, sampler=sample_frame, researcher=rese
     paragraphs = request['document']['paragraphs']
     catalogue = request['media']
     forced = {p.get('video') for p in paragraphs if p.get('video')}
+    forced_ids = {p.get('video_id') for p in paragraphs if p.get('video_id')}
     limit = min(profile['sampling']['max_frames'], 24)
-    ordered = [m for m in catalogue if m['name'] in forced]
+    ordered = [m for m in catalogue if m['id'] in forced_ids or m['name'] in forced]
     ordered += [m for m in catalogue if m not in ordered]
-    if len([m for m in ordered if m['name'] in forced]) > limit:
+    if len([m for m in ordered if m['id'] in forced_ids or m['name'] in forced]) > limit:
         raise ContentError('强制视频数量超过预设抽帧预算，请分批生成或收窄素材')
     selected = ordered[:limit]
     if not selected:
@@ -119,7 +120,9 @@ def generate(request, *, model=call_model, sampler=sample_frame, researcher=rese
             'knowledge_sources': sources, 'web_research_allowed': request.get('allow_web_research', False)}
     instruction = (skill + '\nReturn ONLY JSON: {"segments":[{"index":0,"narration":"actual generated Chinese narration",'
                    '"media_id":"one inspected media id","start":0.0,"end":4.0,"source_urls":[]}],"questions":[]}. '
-                   'One segment per input paragraph, in order. Respect forced video names. Source windows must fit '
+                   'One segment per input paragraph, in order. Respect video_id stable bindings before legacy names. '
+                   'resolved_references carry typed frame anchors: a point is a location, never a zero-length video clip. '
+                   'When an anchor media_id matches your segment, include its anchor_time in the source window. Source windows must fit '
                    'that media item. Do not repeat editing instructions as narration. A general request such as '
                    '介绍抽卡机制 can explain common mechanics without naming a game or quoting probabilities. '
                    'Ask which game only when the requested game-specific rules cannot be grounded; never fabricate them. '
@@ -132,6 +135,18 @@ def generate(request, *, model=call_model, sampler=sample_frame, researcher=rese
         raise ContentError('文稿结果格式无效')
     if any(not isinstance(seg, dict) or seg.get('media_id') not in valid_ids for seg in result.get('segments', [])):
         raise ContentError('文稿引用了本次未查看的视频，请重新生成或手动选段')
+    for index, segment in enumerate(result.get('segments', [])):
+        if index >= len(paragraphs):
+            raise ContentError('文稿段落数量与输入不一致')
+        paragraph = paragraphs[index]
+        if paragraph.get('video_id') and segment['media_id'] != paragraph['video_id']:
+            raise ContentError('文稿未使用绑定的画面素材')
+        for anchor in paragraph.get('resolved_references', []):
+            time = anchor.get('anchor_time')
+            if time and anchor.get('media_id') == segment['media_id']:
+                at = time['value'] / time['scale']
+                if not segment.get('start', -1) <= at < segment.get('end', -1):
+                    raise ContentError('文稿选段未包含绑定的源画面')
     result['sources'] = sources
     return result
 

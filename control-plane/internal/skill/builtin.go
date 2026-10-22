@@ -18,12 +18,12 @@ var ToolContracts string
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
-	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish"}
+	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve"}
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
-		{ID: "video-use", Name: "Video Use", Version: "0.1.0-vac.3", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
-		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.1.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
-		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "1.0.2", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
+		{ID: "video-use", Name: "Video Use", Version: "0.1.0-vac.4", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
+		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.2.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
+		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "2.0.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
 	}
 	_ = fs.WalkDir(upstream, "builtin/video-use", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -43,7 +43,7 @@ func Builtins() []Package {
 	packages[2].Content = syntaxContent + "\n" + SyntaxAdapter
 	for i := range packages {
 		packages[i].Resources["vac/tool-contracts.md"] = ToolContracts
-		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the mandatory renders.inspect -> artifacts.get images -> renders.review -> run.finish sequence.\n"
+		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.\n"
 	}
 	return packages
 }
@@ -97,10 +97,10 @@ renders.create, then inspect and finish. Never approve your own plan.
 `
 const SyntaxAdapter = `# VAC script syntax
 Blank lines separate paragraphs. Ordinary text is the user's instruction, not
-automatically narration. Explicit {@visible-media-name} chooses one authorized
+automatically narration. Explicit typed {@recognition-name} binds a resource or frame anchor; resolve IDs using references.resolve. A video binding chooses one current-project
 source; {"text",字号:32px,字体:"Microsoft YaHei",} forces a subtitle.
 {黑屏}, {白屏}, {交叉溶解} are supported entry effects; unknown or repeated
 blocks must fail. No expressions or arbitrary disk paths. Segment narration is
 independent text. Human finalization freezes the exact plan; subsequent changes
-require a new finalization. Use scripts.propose and the shared renderer.
+require a new finalization. Use scripts.propose and the shared renderer. For structured edits, timeline.read/edit operate only on the launch sequence with session/revision/idempotency checks; history and undo remain human-only. Single markers are valid frame anchors. After editing, run.finish uses sequence_revision and content_version from timeline.read; do not invent human acceptance.
 `

@@ -50,16 +50,16 @@ export interface SettingsCategoryDef {
 
 export const WORKSPACES: readonly WorkspaceDef[] = [
   { id: 'resources', label: '资源管理', english: 'Resources', description: '资产库、素材预览、属性治理、本地草稿', apis: 'API-01 · 03 · 43~45' },
-  { id: 'editing', label: '编辑', english: 'Editing', description: '导入、粗剪、内容编辑、场景审查', apis: 'API-03~16 · 19 · 28~38 · 42' },
+  { id: 'editing', label: '编辑', english: 'Editing', description: '多序列轨道编辑、脚本标记引用、Skill 与历史', apis: 'TL API · Script API · Skill API' },
   { id: 'export', label: '导出', english: 'Export', description: '交付文件、人工验收、任务监控', apis: 'API-28 · 30 · 39~41 · 43~49' },
   { id: 'tts', label: 'TTS', english: 'TTS', description: '文本试听、声音调控、模板版本与正式配音配置', apis: 'TTS API' },
   { id: 'settings', label: '设置', english: 'Settings', description: '处理预设、服务商、运行准备、日志诊断', apis: 'API-17~21 · 23~26 · 49~50' }
 ];
 
 export const EDITING_SECTIONS: readonly EditingSectionDef[] = [
-  { id: 'import', label: '导入与粗剪', description: '登记录像、自动切分、选段并生成短片' },
-  { id: 'content', label: '内容编辑', description: '查看生成进度、调整场景与解说' },
-  { id: 'review', label: '审查', description: '场景确认、解说批准、流程控制' }
+  { id: 'import', label: '时间线', description: '当前序列的轨道、片段、效果及标记' },
+  { id: 'content', label: '脚本工作台', description: '编辑脚本与稳定素材/标记引用' },
+  { id: 'review', label: 'Skill 任务', description: '围绕发起序列运行 Skill 并管理历史结果' }
 ];
 
 export const EXPORT_SECTIONS: readonly ExportSectionDef[] = [

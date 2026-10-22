@@ -81,7 +81,7 @@ func TestSecurityDesktopMCPConnectionBoundary(t *testing.T) {
 	if err := json.Unmarshal(listed.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Result.Tools) != 12 {
+	if len(envelope.Result.Tools) != 16 {
 		t.Fatalf("unexpected desktop tool projection: %s", listed.Body.String())
 	}
 	for _, tool := range envelope.Result.Tools {

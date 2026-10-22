@@ -23,7 +23,7 @@ try {
     # All build dependencies must already be available; no implicit downloads.
     $env:GOPROXY = 'off'
     $env:GOTOOLCHAIN = 'local'
-    $env:GOCACHE = Join-Path $runtimeRoot 'build/cache/go'
+    $env:GOCACHE = if ($env:VAC_TEST_ROOT) { Join-Path (Assert-VacPlainPath $env:VAC_TEST_ROOT) 'cache/go' } else { Join-Path $runtimeRoot 'build/cache/go' }
     Push-Location $sourceRoot
     try { & go build -o $binary .; if ($LASTEXITCODE) { throw 'Control-plane build failed; inspect the build output.' } }
     finally { Pop-Location }

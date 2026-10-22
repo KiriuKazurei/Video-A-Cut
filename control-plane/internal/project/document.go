@@ -10,12 +10,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Source struct {
 	RelativePath string `json:"relative_path,omitempty"`
@@ -40,6 +41,7 @@ type Resource struct {
 	Referenced bool           `json:"referenced,omitempty"`
 	AssetID    string         `json:"asset_id,omitempty"`
 	ScriptID   string         `json:"script_id,omitempty"`
+	Markers    []Marker       `json:"markers,omitempty"`
 }
 
 type Binding struct {
@@ -64,6 +66,7 @@ type AvsDocument struct {
 	AllowWebResearch bool            `json:"allow_web_research"`
 	Sources          json.RawMessage `json:"sources,omitempty"`
 	Revisions        json.RawMessage `json:"revisions,omitempty"`
+	References       []Reference     `json:"references,omitempty"`
 }
 
 type Identity struct {
@@ -74,15 +77,16 @@ type Identity struct {
 }
 
 type AvpDocument struct {
-	FileReferences map[string]string `json:"file_references,omitempty"`
-	Format         string            `json:"format"`
-	SchemaVersion  int               `json:"schema_version"`
-	Project        Identity          `json:"project"`
-	Resources      []Resource        `json:"resources"`
-	Scripts        []AvsDocument     `json:"scripts"`
-	Sequences      []json.RawMessage `json:"sequences"`
-	Settings       map[string]any    `json:"settings"`
-	Workspace      map[string]any    `json:"workspace"`
+	FileReferences  map[string]string `json:"file_references,omitempty"`
+	Format          string            `json:"format"`
+	SchemaVersion   int               `json:"schema_version"`
+	Project         Identity          `json:"project"`
+	Resources       []Resource        `json:"resources"`
+	Scripts         []AvsDocument     `json:"scripts"`
+	Sequences       []Sequence        `json:"sequences"`
+	LegacySequences []json.RawMessage `json:"legacy_sequences,omitempty"`
+	Settings        map[string]any    `json:"settings"`
+	Workspace       map[string]any    `json:"workspace"`
 	// Runtime is a versioned, allowlisted projection of this project's editable
 	// database records. Global configuration and credentials are never included.
 	Runtime json.RawMessage `json:"runtime,omitempty"`
@@ -117,15 +121,26 @@ func validID(id string) bool {
 }
 
 func (d AvpDocument) Validate() error {
-	if d.Format != "avp" || d.SchemaVersion != SchemaVersion || !validID(d.Project.ID) || strings.TrimSpace(d.Project.Name) == "" {
+	if d.Format != "avp" || (d.SchemaVersion != 1 && d.SchemaVersion != SchemaVersion) || !validID(d.Project.ID) || strings.TrimSpace(d.Project.Name) == "" {
 		return fmt.Errorf("不支持的 AVP 工程或格式版本")
 	}
 	seen := map[string]bool{}
+	resources := map[string]Resource{}
 	for _, r := range d.Resources {
 		if !validID(r.ID) || seen[r.ID] || !validKind(r.Kind) || math.IsNaN(r.In) || math.IsNaN(r.Out) || math.IsInf(r.In, 0) || math.IsInf(r.Out, 0) || r.In < 0 || r.Out < r.In {
 			return fmt.Errorf("无效或重复的工程资源 %q", r.ID)
 		}
 		seen[r.ID] = true
+		resources[r.ID] = r
+		for _, marker := range r.Markers {
+			if err := validateMarker(marker); err != nil {
+				return err
+			}
+			if marker.SourceTime == nil || seen["marker:"+marker.ID] {
+				return fmt.Errorf("无效或重复的素材标记")
+			}
+			seen["marker:"+marker.ID] = true
+		}
 	}
 	for _, sc := range d.Scripts {
 		if seen["script:"+sc.ID] {
@@ -134,6 +149,47 @@ func (d AvpDocument) Validate() error {
 		seen["script:"+sc.ID] = true
 		if err := sc.Validate(); err != nil {
 			return err
+		}
+	}
+	for _, sequence := range d.Sequences {
+		if seen["sequence:"+sequence.ID] {
+			return fmt.Errorf("重复的序列 ID")
+		}
+		seen["sequence:"+sequence.ID] = true
+		if err := sequence.Validate(); err != nil {
+			return err
+		}
+		for _, track := range sequence.Tracks {
+			for _, clip := range track.Clips {
+				if !seen[clip.ResourceID] {
+					return fmt.Errorf("片段引用工程外资源")
+				}
+				r := resources[clip.ResourceID]
+				if (track.Kind == "video" && r.Kind != "video" && r.Kind != "image") || (track.Kind == "audio" && r.Kind != "audio" && r.Kind != "video") || (track.Kind == "subtitle" && r.Kind != "subtitle") {
+					return fmt.Errorf("片段资源与轨道类型不匹配")
+				}
+				if (track.Kind == "audio" || track.Kind == "video") && r.Kind != "image" && r.Metadata["streams"] != nil && !slices.Contains(Streams(r, track.Kind), clip.StreamIndex) {
+					return fmt.Errorf("片段引用了错误的源流索引")
+				}
+				if clip.Effects.Transition > 0 {
+					var previous *Clip
+					for i := range track.Clips {
+						c := &track.Clips[i]
+						if c.At+c.Duration == clip.At {
+							previous = c
+							break
+						}
+					}
+					if previous == nil {
+						return fmt.Errorf("交叉溶解需要同轨相邻片段")
+					}
+					source := resources[previous.ResourceID]
+					end := number(source.Metadata["duration"])
+					if source.Kind != "image" && end > 0 && Seconds(previous.SourceOut)+sequence.FPS.Seconds(clip.Effects.Transition)*previous.Speed > end+1e-6 {
+						return fmt.Errorf("交叉溶解缺少源尾部，请先缩短前片段出点")
+					}
+				}
+			}
 		}
 	}
 	return nil
@@ -148,7 +204,7 @@ func validKind(k string) bool {
 }
 
 func (d AvsDocument) Validate() error {
-	if d.Format != "avs" || d.SchemaVersion != SchemaVersion || !validID(d.ID) || !json.Valid(d.Segments) {
+	if d.Format != "avs" || (d.SchemaVersion != 1 && d.SchemaVersion != SchemaVersion) || !validID(d.ID) || !json.Valid(d.Segments) {
 		return fmt.Errorf("不支持的 AVS 脚本或格式版本")
 	}
 	seen := map[string]bool{}
@@ -158,7 +214,7 @@ func (d AvsDocument) Validate() error {
 		}
 		seen[b.ID] = true
 	}
-	return nil
+	return ValidateReferences(d.Body, d.References)
 }
 
 func Read(path, format string, out any) error {
@@ -221,6 +277,32 @@ func WriteAtomic(path string, value any) error {
 		return closeErr
 	}
 	return replaceDocumentFile(temp, path)
+}
+
+// CopyAtomic publishes verified media without exposing a partly written file.
+func CopyAtomic(target, source string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.CreateTemp(filepath.Dir(target), ".vac-export-*.tmp")
+	if err != nil {
+		return err
+	}
+	temp := out.Name()
+	defer os.Remove(temp)
+	if _, err = io.Copy(out, in); err == nil {
+		err = out.Sync()
+	}
+	closeErr := out.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return replaceDocumentFile(temp, target)
 }
 
 func ResolveSource(documentPath string, source Source) string {

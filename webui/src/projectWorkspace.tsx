@@ -61,7 +61,7 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     if (!session) return;
     setProjectSession(session.id);
-    if (activeSession.current && activeSession.current !== session.id) { pauseMediaPlayers(); editors.current.clear(); setLocalDirty(false); setSelectedId(String(session.document?.workspace?.selected_resource ?? '')); }
+    if (activeSession.current !== session.id) { pauseMediaPlayers(); editors.current.clear(); setLocalDirty(false); setSelectedId(String(session.document?.workspace?.selected_resource ?? '')); }
     activeSession.current = session.id;
   }, [session?.id]);
   const flushEditors = async () => { for (const editor of [...editors.current.values()]) if (editor.dirty) await editor.flush(); };

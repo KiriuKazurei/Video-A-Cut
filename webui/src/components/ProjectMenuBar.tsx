@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { App, Menu, Typography, type MenuProps } from 'antd';
 import { desktopCommand, isDesktop } from '../desktop';
 import { useProjectWorkspace } from '../projectWorkspace';
@@ -7,6 +7,7 @@ import appPackage from '../../package.json';
 
 interface Props { navigate: (workspace: WorkspaceId) => void; toggleLeft: () => void; toggleRight: () => void; resetLayout: () => void; refresh: () => void; shortcuts: () => void; tour: () => void }
 export function ProjectMenuBar(props: Props) {
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
   const project = useProjectWorkspace();
   const { modal, message } = App.useApp();
   const title = project.session?.document
@@ -28,7 +29,8 @@ export function ProjectMenuBar(props: Props) {
       } else { document.execCommand(command); }
       return;
     }
-    if (command === 'undo' || command === 'redo') { const event = new CustomEvent('vac:edit-command', { detail: command, cancelable: true }); if (window.dispatchEvent(event)) await project.history(command); }
+    const event = new CustomEvent('vac:edit-command', { detail: command, cancelable: true }); if (!window.dispatchEvent(event)) return;
+    if (command === 'undo' || command === 'redo') { await project.history(command); }
     else if (command === 'copy') { const text = window.getSelection()?.toString(); if (text) await navigator.clipboard.writeText(text); }
   };
   const active = Boolean(project.session?.document);
@@ -76,5 +78,5 @@ export function ProjectMenuBar(props: Props) {
     ] },
     { key: 'about-menu', label: '关于', children: [{ key: 'about', label: '版本信息' }, { key: 'updates', label: '检查更新', disabled: !isDesktop() }, { key: 'shortcuts', label: '快捷键说明' }, { key: 'tour', label: '新手引导', disabled: !active }] }
   ];
-  return <div className="project-menu-bar" aria-busy={project.busy}><Menu mode="horizontal" aria-label="应用菜单" selectable={false} disabled={project.busy} items={items} onClick={({ key }) => edit(key)} /></div>;
+  return <div className="project-menu-bar" aria-busy={project.busy}><Menu mode="horizontal" aria-label="应用菜单" selectable={false} disabled={project.busy} items={items} openKeys={openKeys} onOpenChange={setOpenKeys} onClick={({ key }) => { setOpenKeys([]); edit(key); }} /></div>;
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
-var skillTools = []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish"}
+var skillTools = []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve"}
 
 func packageSHA(p skill.Package) string { p.Enabled = false; p.SHA = ""; return skillHash(p) }
 func (s *Service) loadBuiltinSkills(ctx context.Context) error {

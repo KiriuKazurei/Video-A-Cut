@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/scriptsyntax"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/tts"
@@ -60,6 +61,7 @@ func scriptOption(override *bool, fallback bool) bool {
 }
 
 type ScriptWorkbench struct {
+	References        []project.Reference   `json:"references"`
 	SourceFingerprint string                `json:"source_fingerprint,omitempty"`
 	Script            model.Script          `json:"script"`
 	Version           int                   `json:"version"`
@@ -76,14 +78,16 @@ type ScriptWorkbench struct {
 	Delivery          *store.ScriptDelivery `json:"delivery,omitempty"`
 }
 type SaveScriptRequest struct {
-	ExpectedVersion  int             `json:"expected_version"`
-	VisibleSetSHA    string          `json:"visible_set_sha"`
-	Title            string          `json:"title"`
-	Body             string          `json:"body"`
-	Segments         []ScriptSegment `json:"segments,omitempty"`
-	TTSEnabled       bool            `json:"tts_enabled"`
-	SubtitlesEnabled bool            `json:"subtitles_enabled"`
-	AllowWebResearch bool            `json:"allow_web_research"`
+	References       []project.Reference `json:"references,omitempty"`
+	SequenceID       string              `json:"sequence_id,omitempty"`
+	ExpectedVersion  int                 `json:"expected_version"`
+	VisibleSetSHA    string              `json:"visible_set_sha"`
+	Title            string              `json:"title"`
+	Body             string              `json:"body"`
+	Segments         []ScriptSegment     `json:"segments,omitempty"`
+	TTSEnabled       bool                `json:"tts_enabled"`
+	SubtitlesEnabled bool                `json:"subtitles_enabled"`
+	AllowWebResearch bool                `json:"allow_web_research"`
 }
 
 func workbenchAt(ctx context.Context, st *store.Store, id string) (ScriptWorkbench, error) {
@@ -192,7 +196,7 @@ func (s *Service) scriptMediaFromAssets(assets []model.Asset) ([]ScriptMedia, er
 		if resource, ok := s.registeredResource(a.AssetID); ok {
 			if (resource.Kind == "video" || resource.Kind == "audio") && !resource.Removed && !resource.Missing {
 				duration, _ := resource.Metadata["duration"].(float64)
-				out = append(out, ScriptMedia{Kind: resource.Kind, ID: resource.ID, AssetID: a.AssetID, Name: filepath.Base(resource.Source.OriginalPath), Source: "@resource/" + resource.ID, Path: resource.Source.OriginalPath, In: 0, Out: duration})
+				out = append(out, ScriptMedia{Kind: resource.Kind, ID: resource.ID, AssetID: a.AssetID, Name: resource.Name, Source: "@resource/" + resource.ID, Path: resource.Source.OriginalPath, In: 0, Out: duration})
 			}
 			continue
 		}
@@ -269,7 +273,7 @@ func validateScriptPlan(w ScriptWorkbench, media []ScriptMedia, requireGenerated
 		byName[m.Name] = append(byName[m.Name], m)
 	}
 	for _, p := range w.Document.Paragraphs {
-		if p.Video != "" && len(byName[p.Video]) != 1 {
+		if len(w.References) == 0 && p.Video != "" && len(byName[p.Video]) != 1 {
 			return fmt.Errorf("视频 %q 不在可见素材中或名称重复: %w", p.Video, model.ErrArgument)
 		}
 	}
@@ -304,7 +308,18 @@ func validateScriptPlan(w ScriptWorkbench, media []ScriptMedia, requireGenerated
 			return fmt.Errorf("第 %d 段的文稿或视频时间窗无效: %w", i+1, model.ErrArgument)
 		}
 		p := w.Document.Paragraphs[i]
-		if p.Video != "" && m.Name != p.Video {
+		if p.VideoID != "" && seg.MediaID != p.VideoID {
+			return fmt.Errorf("第 %d 段没有使用绑定的画面素材: %w", i+1, model.ErrForbidden)
+		}
+		for _, ref := range p.ResolvedReferences {
+			if ref.AnchorTime != nil && ref.MediaID == seg.MediaID {
+				at := project.Seconds(*ref.AnchorTime)
+				if at < seg.Start || at >= seg.End {
+					return fmt.Errorf("第 %d 段未包含引用的源画面: %w", i+1, model.ErrArgument)
+				}
+			}
+		}
+		if len(w.References) == 0 && p.Video != "" && m.Name != p.Video {
 			return fmt.Errorf("第 %d 段没有使用强制视频: %w", i+1, model.ErrForbidden)
 		}
 		for _, u := range seg.SourceURLs {
@@ -317,6 +332,12 @@ func validateScriptPlan(w ScriptWorkbench, media []ScriptMedia, requireGenerated
 }
 
 func (s *Service) scriptWrite(ctx context.Context, actor, id string, expected int, sha, action string, edit func(*ScriptWorkbench) error, checks ...func(*store.Store) error) (ScriptWorkbench, error) {
+	if ws := s.workspace; ws != nil && ctx.Value(projectMutationContextKey{}) != ws {
+		if err := ws.lockMutation(ctx); err != nil {
+			return ScriptWorkbench{}, err
+		}
+		defer ws.op.Unlock()
+	}
 	if err := requireHumanConfirm(actor, "script "+action); err != nil {
 		return ScriptWorkbench{}, err
 	}
@@ -401,6 +422,22 @@ func (s *Service) scriptWrite(ctx context.Context, actor, id string, expected in
 			return auditTx(ctx, tx, actor, "script.rename", id, title)
 		}
 		w.Document = scriptsyntax.Parse(w.Script.Body)
+		if action != "save" && action != "reject" {
+			resolved, err := s.resolveScriptDocument(w)
+			if err != nil {
+				return err
+			}
+			w.Document = resolved
+		}
+		if s.WorkspaceEnabled() && action != "save" && action != "reject" {
+			ws := s.workspace
+			ws.mu.Lock()
+			_, err := project.BindReferences(ws.document, w.Script.Body, w.References, "", true)
+			ws.mu.Unlock()
+			if err != nil {
+				return fmt.Errorf("%v: %w", err, model.ErrArgument)
+			}
+		}
 		if action != "reject" && !(s.WorkspaceEnabled() && action == "save") {
 			if err := validateScriptPlan(w, media, action == "finalize"); err != nil {
 				return err
@@ -472,6 +509,31 @@ func (s *Service) SaveScriptWorkbench(ctx context.Context, actor, id string, req
 		changed := w.Script.Body != req.Body
 		w.Script.Title = strings.TrimSpace(req.Title)
 		w.Script.Body = req.Body
+		if ws := s.workspace; ws != nil {
+			ws.mu.Lock()
+			bindings := req.References
+			if bindings == nil && !changed {
+				bindings = w.References
+			}
+			refs, err := project.BindReferences(ws.document, req.Body, bindings, req.SequenceID, false)
+			ws.mu.Unlock()
+			if err != nil {
+				return fmt.Errorf("%v: %w", err, model.ErrArgument)
+			}
+			w.References = refs
+			temporary := &project.AvpDocument{Scripts: []project.AvsDocument{{Body: w.Script.Body, References: w.References}}}
+			ws.mu.Lock()
+			for _, ref := range refs {
+				if ref.Kind == "source_marker" || ref.Kind == "sequence_marker" {
+					if resolved, e := project.ResolveReference(ws.document, ref); e == nil && resolved.Name != ref.Name {
+						project.RenameMarkerReferences(temporary, ref.TargetID, resolved.Name)
+					}
+				}
+			}
+			ws.mu.Unlock()
+			w.Script.Body = temporary.Scripts[0].Body
+			w.References = temporary.Scripts[0].References
+		}
 		w.Rejected = false
 		w.TTSEnabled = req.TTSEnabled
 		w.SubtitlesEnabled = req.SubtitlesEnabled

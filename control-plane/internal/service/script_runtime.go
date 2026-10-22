@@ -184,7 +184,11 @@ func (s *Service) GenerateScriptWorkbench(ctx context.Context, actor, id string,
 	if err != nil {
 		return w, err
 	}
-	if err = validateScriptPlan(ScriptWorkbench{Document: w.Document}, media, false); err != nil {
+	w.Document, err = s.resolveScriptDocument(w)
+	if err != nil {
+		return w, err
+	}
+	if err = validateScriptPlan(ScriptWorkbench{Document: w.Document, References: w.References}, media, false); err != nil {
 		return w, err
 	}
 	if err = s.checkScriptContext(ctx, id, req.ExpectedVersion, req.VisibleSetSHA, media, true); err != nil {
@@ -210,7 +214,7 @@ func (s *Service) GenerateScriptWorkbench(ctx context.Context, actor, id string,
 	for _, m := range media {
 		privateMedia = append(privateMedia, map[string]any{"id": m.ID, "asset_id": m.AssetID, "name": m.Name, "path": m.Path, "in": m.In, "out": m.Out})
 	}
-	raw, err := s.scriptProcess(ctx, false, "generate", map[string]any{"profile": profile, "document": w.Document, "media": privateMedia, "allow_web_research": req.AllowWebResearch})
+	raw, err := s.scriptProcess(ctx, false, "generate", map[string]any{"profile": profile, "document": w.Document, "references": w.References, "media": privateMedia, "allow_web_research": req.AllowWebResearch})
 	if err != nil {
 		return w, err
 	}
@@ -301,6 +305,10 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 	}
 	if s.WorkspaceEnabled() {
 		sha = w.Script.VisibleSetSHA
+	}
+	w.Document, err = s.resolveScriptDocument(w)
+	if err != nil {
+		return store.ScriptDelivery{}, err
 	}
 	if err = s.requireVisibleConfirmation(ctx, s.st, w.Script.AssetID); err != nil {
 		return store.ScriptDelivery{}, err

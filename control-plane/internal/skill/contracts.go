@@ -3,6 +3,7 @@ package skill
 
 import (
 	"encoding/json"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/tts"
 	"time"
 )
@@ -74,12 +75,13 @@ type Segment struct {
 	Narration        string        `json:"narration"`
 }
 type Plan struct {
-	Body        string     `json:"body"`
-	Segments    []Segment  `json:"segments"`
-	Subtitles   bool       `json:"subtitles"`
-	Version     int        `json:"version"`
-	FinalizedBy string     `json:"finalized_by,omitempty"`
-	FinalizedAt *time.Time `json:"finalized_at,omitempty"`
+	References  []project.Reference `json:"references,omitempty"`
+	Body        string              `json:"body"`
+	Segments    []Segment           `json:"segments"`
+	Subtitles   bool                `json:"subtitles"`
+	Version     int                 `json:"version"`
+	FinalizedBy string              `json:"finalized_by,omitempty"`
+	FinalizedAt *time.Time          `json:"finalized_at,omitempty"`
 }
 type Budget struct {
 	MaxSteps   int `json:"max_steps,omitempty"`
@@ -87,6 +89,9 @@ type Budget struct {
 	MaxFrames  int `json:"max_frames,omitempty"`
 }
 type Run struct {
+	StructuredEdit          bool            `json:"structured_edit,omitempty"`
+	SequenceContentVersion  string          `json:"sequence_content_version,omitempty"`
+	SequenceID              string          `json:"sequence_id,omitempty"`
 	EditRequest             *EditRequest    `json:"edit_request,omitempty"`
 	LeaseUntil              *time.Time      `json:"lease_until,omitempty"`
 	AgentRole               string          `json:"agent_role,omitempty"`
@@ -165,6 +170,7 @@ type Artifact struct {
 	PlanVersion int    `json:"plan_version,omitempty"`
 }
 type RunRequest struct {
+	SequenceID          string `json:"sequence_id,omitempty"`
 	Flow                string `json:"flow,omitempty"`
 	AgentRole           string `json:"-"`
 	AcceptTranscription bool   `json:"accept_transcription,omitempty"`

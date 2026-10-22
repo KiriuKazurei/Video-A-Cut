@@ -22,26 +22,28 @@ import (
 )
 
 type projectWorkspace struct {
-	mu         sync.Mutex
-	op         sync.Mutex
-	gate       sync.RWMutex
-	document   *project.AvpDocument
-	path       string
-	session    string
-	revision   uint64
-	dirty      bool
-	closing    bool
-	root       string
-	recent     []project.Recent
-	policy     ProviderPolicy
-	stop       chan struct{}
-	done       chan struct{}
-	undo       []resourceEdit
-	undoCursor int
-	draining   map[string]string
+	mu               sync.Mutex
+	op               sync.Mutex
+	gate             sync.RWMutex
+	document         *project.AvpDocument
+	path             string
+	session          string
+	revision         uint64
+	dirty            bool
+	closing          bool
+	root             string
+	recent           []project.Recent
+	policy           ProviderPolicy
+	stop             chan struct{}
+	done             chan struct{}
+	undo             []resourceEdit
+	undoCursor       int
+	draining         map[string]string
+	timelineReceipts map[string]timelineReceipt
 }
 
 type projectContextKey struct{}
+type projectMutationContextKey struct{}
 
 type resourceEdit struct {
 	Before *project.Resource
@@ -237,7 +239,10 @@ func (s *Service) ProjectWorkspace(ctx context.Context) (project.Session, error)
 			view.Document.Scripts[i].Revisions = nil
 		}
 		view.Document.Runtime = nil
-		view.Document.Sequences = nil
+		for i := range view.Document.Sequences {
+			view.Document.Sequences[i].History = nil
+			view.Document.Sequences[i].HistoryCursor = 0
+		}
 	}
 	count, err := s.RuntimeActivity(ctx)
 	if err != nil {
@@ -340,6 +345,7 @@ func (s *Service) captureProject(ctx context.Context) (*project.AvpDocument, uin
 	if err = s.captureProjectOutputs(ctx, doc); err != nil {
 		return nil, revision, err
 	}
+	doc.Upgrade()
 	return doc, revision, nil
 }
 
@@ -485,7 +491,7 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 			return project.Session{}, err
 		}
 		now := s.autoNow()
-		incoming = &project.AvpDocument{Format: "avp", SchemaVersion: 1, Project: project.Identity{ID: newID("prj"), Name: strings.TrimSpace(req.Name), CreatedAt: now, UpdatedAt: now}, Resources: []project.Resource{}, Scripts: []project.AvsDocument{}, Sequences: []json.RawMessage{}, Settings: map[string]any{}, Workspace: map[string]any{}}
+		incoming = &project.AvpDocument{Format: "avp", SchemaVersion: project.SchemaVersion, Project: project.Identity{ID: newID("prj"), Name: strings.TrimSpace(req.Name), CreatedAt: now, UpdatedAt: now}, Resources: []project.Resource{}, Scripts: []project.AvsDocument{}, Sequences: []project.Sequence{project.NewSequence("主序列")}, Settings: map[string]any{}, Workspace: map[string]any{}}
 	} else if action != "close" && action != "save-as" {
 		return project.Session{}, model.ErrArgument
 	}
@@ -557,6 +563,7 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 		return view, errors.Join(e, restoreErr)
 	}
 	if incoming != nil {
+		incoming.Upgrade()
 		if err = s.hydrateProject(ctx, incoming, path); err != nil {
 			return rollback(err)
 		}
@@ -578,8 +585,12 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 	w.dirty = action == "recover"
 	w.undo = nil
 	w.undoCursor = 0
+	w.timelineReceipts = nil
 	w.mu.Unlock()
 	s.publish("workspace.changed", map[string]any{"session_id": s.ProjectSessionID(), "project_id": s.CurrentProjectID()})
+	if incoming != nil {
+		s.reconcileSequenceResults(ctx, incoming.Project.ID, s.ProjectSessionID())
+	}
 	return s.ProjectWorkspace(ctx)
 }
 

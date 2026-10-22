@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -43,6 +44,10 @@ func (s *Service) markRemovedResourceReferences(ctx context.Context, doc *projec
 		raw, _ := json.Marshal(script)
 		mark(raw)
 	}
+	for _, sequence := range doc.Sequences {
+		raw, _ := json.Marshal(sequence.Tracks)
+		mark(raw)
+	}
 	rows, err := s.st.DB().QueryContext(ctx, `SELECT document_json, 1 FROM script_workbenches UNION ALL SELECT body, 0 FROM vac_skill_runs`)
 	if err != nil {
 		return err
@@ -70,6 +75,34 @@ func (s *Service) markRemovedResourceReferences(ctx context.Context, doc *projec
 
 func (s *Service) scriptSourceFingerprint(ctx context.Context, w ScriptWorkbench) (string, error) {
 	ids := map[string]bool{}
+	anchors := []map[string]any{}
+	if ws := s.workspace; ws != nil {
+		ws.mu.Lock()
+		doc := cloneProject(ws.document)
+		ws.mu.Unlock()
+		if doc == nil {
+			return "", model.ErrInvalidState
+		}
+		for _, ref := range w.References {
+			resolved, err := project.ResolveReference(doc, ref)
+			if err != nil {
+				return "", fmt.Errorf("%v: %w", err, model.ErrConflict)
+			}
+			if resolved.MediaID != "" {
+				ids[resolved.MediaID] = true
+			}
+			if resolved.ResourceID != "" {
+				ids[resolved.ResourceID] = true
+			}
+			anchor := map[string]any{"kind": ref.Kind, "target": ref.TargetID, "clip": ref.ClipID, "frame": resolved.Frame, "source_time": resolved.AnchorTime}
+			if ref.Kind == "sequence_marker" {
+				if i := sequenceIndex(doc, ref.SequenceID); i >= 0 {
+					anchor["sequence_content"] = sequenceContentVersion(doc, doc.Sequences[i])
+				}
+			}
+			anchors = append(anchors, anchor)
+		}
+	}
 	for _, segment := range w.Segments {
 		if segment.MediaID != "" {
 			ids[segment.MediaID] = true
@@ -104,7 +137,7 @@ func (s *Service) scriptSourceFingerprint(ctx context.Context, w ScriptWorkbench
 		}
 		deps = append(deps, map[string]string{"id": id, "sha256": hex.EncodeToString(hash.Sum(nil))})
 	}
-	return skillHash(deps), nil
+	return skillHash(map[string]any{"sources": deps, "anchors": anchors}), nil
 }
 
 func (s *Service) checkScriptSources(ctx context.Context, w ScriptWorkbench) error {
@@ -135,5 +168,5 @@ func (s *Service) skillRunUsesResource(ctx context.Context, run skill.Run, id st
 }
 
 func scriptContentFingerprint(w ScriptWorkbench) string {
-	return skillHash(map[string]any{"body": w.Script.Body, "segments": w.Segments, "tts": w.TTSEnabled, "subtitles": w.SubtitlesEnabled, "research": w.AllowWebResearch})
+	return skillHash(map[string]any{"body": project.SemanticBody(w.Script.Body, w.References), "segments": w.Segments, "tts": w.TTSEnabled, "subtitles": w.SubtitlesEnabled, "research": w.AllowWebResearch})
 }

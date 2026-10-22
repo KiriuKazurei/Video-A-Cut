@@ -5,6 +5,7 @@ package scriptsyntax
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"math"
 	"regexp"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 	"unicode/utf8"
 )
 
-const Version = 1
+const Version = 2
 
 type Subtitle struct {
 	Text   string  `json:"text"`
@@ -21,12 +22,15 @@ type Subtitle struct {
 }
 
 type Paragraph struct {
-	Index       int       `json:"index"`
-	Source      string    `json:"source"`
-	Instruction string    `json:"instruction"`
-	Video       string    `json:"video,omitempty"`
-	Subtitle    *Subtitle `json:"subtitle,omitempty"`
-	Effect      string    `json:"effect,omitempty"`
+	VideoID            string                       `json:"video_id,omitempty"`
+	ResolvedReferences []project.ReferenceCandidate `json:"resolved_references,omitempty"`
+	References         []string                     `json:"references,omitempty"`
+	Index              int                          `json:"index"`
+	Source             string                       `json:"source"`
+	Instruction        string                       `json:"instruction"`
+	Video              string                       `json:"video,omitempty"`
+	Subtitle           *Subtitle                    `json:"subtitle,omitempty"`
+	Effect             string                       `json:"effect,omitempty"`
 }
 
 type Diagnostic struct {
@@ -96,10 +100,11 @@ func Parse(source string) Document {
 				name := strings.TrimSpace(strings.TrimPrefix(body, "@"))
 				if name == "" || len(name) > 512 || strings.ContainsAny(name, "\r\n") {
 					addError(start, "视频名称不能为空或跨行")
-				} else if p.Video != "" {
-					addError(start, "每段只能强制指定一个视频")
 				} else {
-					p.Video = name
+					p.References = append(p.References, name)
+					if p.Video == "" {
+						p.Video = name
+					}
 				}
 			case strings.HasPrefix(body, `"`):
 				sub, err := parseSubtitle(body)

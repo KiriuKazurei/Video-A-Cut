@@ -27,4 +27,4 @@ plan. Inspect cut boundaries via media.get_frames or artifact evidence, then cal
 run.finish only when deliverables exist. No success claim from an unrendered plan.
 Use at most the run budget. Do not fabricate visual evidence or human acceptance.
 
-Read vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the mandatory renders.inspect -> artifacts.get images -> renders.review -> run.finish sequence.
+Read vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.

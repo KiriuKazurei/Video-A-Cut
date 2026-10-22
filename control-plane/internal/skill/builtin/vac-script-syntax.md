@@ -3,7 +3,7 @@ name: vac-script-syntax
 description: Author and interpret Video Auto Cut paragraph scripts with forced visible-video references, literal subtitles, and supported screen transitions; generate grounded narration and a reviewable edit plan.
 ---
 
-# Video Auto Cut script syntax v1
+# Video Auto Cut script syntax v2
 
 Use this Skill for the script workbench. The Go control plane owns scope, validation and finalization. Script blocks are editing data; never evaluate them as Java, C#, JavaScript, shell or a template language.
 
@@ -13,18 +13,20 @@ Blank lines separate paragraphs. A block anywhere within a paragraph affects tha
 
 | Syntax | Meaning |
 | --- | --- |
-| `{@抽卡演示.mp4}` | Force this paragraph to use that exact visible video. Resolve its name against the supplied visible-media catalogue. Ambiguous or missing names require a user decision, never an arbitrary selection. |
+| `{@识别名}` | Refer to a typed resource or marker by a per-occurrence stable binding. Choose a concrete candidate from references.list/the editor completion; duplicate names never imply the first match. A video binding constrains the source; a marker binding anchors a frame. |
 | `{"字幕文字"}` | Display this exact subtitle, independent of generated narration. |
 | `{"字幕文字", 字号:24px, 字体:"Microsoft YaHei",}` | Optional size in pixels and installed system font; either parameter may be omitted, in either order. One trailing comma is accepted. `opi:` is not syntax. |
 | `{黑屏}` | Use a dip/fade through black at this paragraph's entrance. |
 | `{白屏}` | Use a dip/fade through white at this paragraph's entrance. |
 | `{交叉溶解}` | Blend the previous paragraph into this paragraph. |
 
-Each paragraph can contain at most one forced video, one subtitle and one effect. Quoted strings use JSON double-quote escapes (`\"`, `\\`, `\n`). Commas, braces and colons inside a quoted subtitle are literal content. Outside blocks, `\{` and `\}` mean ordinary braces. A font name is a family from the installed-font catalogue; never download fonts or substitute a missing forced font silently. Size range is 1–512px on the output canvas. Default subtitle styling applies when optional values are absent.
+Each paragraph may contain multiple typed references, one subtitle and one effect. Narration generation selects at most one video source per paragraph; use separate paragraphs for distinct sources. A point alone is a valid one-frame anchor and never requires an out point or produces a zero-duration clip. Quoted strings use JSON double-quote escapes (`\"`, `\\`, `\n`). Commas, braces and colons inside a quoted subtitle are literal content. Outside blocks, `\{` and `\}` mean ordinary braces. A font name is a family from the installed-font catalogue; never download fonts or substitute a missing forced font silently. Size range is 1–512px on the output canvas. Default subtitle styling applies when optional values are absent.
 
 The three effect names above are the first supported catalogue. Other block names are errors until a versioned implementation registers them. Do not invent camera, duration, expression, network, command or executable syntax. Further effects can extend the registry without changing the meaning of v1 blocks.
 
-Current render defaults are 1280x720 at 30fps, 36px white subtitles with a black outline centered near the bottom. A black/white dip uses at most 0.175 seconds on each side; cross dissolve overlaps at most about 0.35 seconds, limited by one third of either adjacent segment and rounded to whole frames. Overlap shortens the film. Script input is limited to 64KiB and 100 paragraphs; one render accepts 1-20 segments of 0.1-120 seconds each. Do not promise a render outside these limits.
+The paragraph renderer keeps its 1280x720/30fps defaults, 36px outlined subtitles, bounded entrance effects and 1–20 segments of 0.1–120 seconds; its dissolve overlap shortens that flattened film. The multitrack sequence renderer instead uses the sequence's integer frames, rational FPS, canvas and audio sample rate. Its cross dissolve requires adjacent clips and real source handles, preserving sequence duration. Never confuse these two models. Script input is limited to 64KiB and 100 paragraphs.
+
+AVS v2 stores each occurrence's UTF-16 start/end offsets, type, stable target ID and resource/sequence/clip ownership. Use references.list and choose explicitly when names collide. Source markers follow the same source frame in the specific clip instance; timeline markers move on ripple edits unless locked to absolute time. A normal clip move does not move a timeline marker. Renaming notes updates only bound occurrences; ordinary prose, namesakes and external AVS files stay intact. Deleted or trimmed anchors remain unresolved and must be re-associated before generation/render.
 
 ## Draft response
 

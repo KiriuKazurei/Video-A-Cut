@@ -1,20 +1,23 @@
 export interface ScriptSubtitle { text: string; size_px?: number; font?: string }
-export interface ScriptParagraph { index: number; source: string; instruction: string; video?: string; subtitle?: ScriptSubtitle; effect?: string }
+export interface ScriptParagraph { index: number; source: string; instruction: string; video?: string; references?: string[]; subtitle?: ScriptSubtitle; effect?: string }
 export interface ScriptDocument { version: number; paragraphs: ScriptParagraph[]; diagnostics: { paragraph: number; column: number; message: string }[] }
 export interface ScriptMedia { kind?: 'video' | 'audio'; id: string; asset_id: string; name: string; in: number; out: number }
 import type { TtsSettings } from './ttsContracts';
+import type { ScriptReference } from './timelineContracts';
 
 export interface ScriptVoice { settings: TtsSettings; offset_seconds: number; accept_external: boolean }
 export interface ScriptSegment { index: number; narration: string; media_id: string; start: number; end: number; source_urls?: string[]; tts_enabled?: boolean; subtitles_enabled?: boolean; voice?: ScriptVoice }
 export interface ScriptSource { url: string; title: string; excerpt?: string }
 export interface ScriptRecord { script_id: string; asset_id: string; status: string; visible_set_sha: string; title?: string; body?: string; stale_reason?: string }
 export interface ScriptWorkbenchView {
+  references?: ScriptReference[];
   script: ScriptRecord; version: number; document: ScriptDocument; segments: ScriptSegment[];
   sources: ScriptSource[]; questions: string[]; tts_enabled: boolean; subtitles_enabled: boolean;
   allow_web_research: boolean; rejected: boolean; profile_id?: string; profile_revision?: number;
   delivery?: ScriptDelivery;
 }
 export interface ScriptSave {
+  references?: ScriptReference[]; sequence_id?: string;
   expected_version: number; visible_set_sha: string; title: string; body: string; segments?: ScriptSegment[];
   tts_enabled: boolean; subtitles_enabled: boolean; allow_web_research: boolean;
 }
@@ -31,7 +34,7 @@ export interface ScriptDeliveryInfo {
 }
 
 /** Preserve manual edits when a paragraph is changed or another paragraph is inserted. */
-export function reconcileScriptSegments(before: ScriptDocument | undefined, after: ScriptDocument, segments: ScriptSegment[], media: ScriptMedia[]): ScriptSegment[] {
+export function reconcileScriptSegments(before: ScriptDocument | undefined, after: ScriptDocument, segments: ScriptSegment[], media: ScriptMedia[], references: ScriptReference[] = []): ScriptSegment[] {
   const used = new Set<number>();
   return after.paragraphs.map((paragraph, index) => {
     let old = before?.paragraphs.findIndex((p, i) => !used.has(i) && p.source === paragraph.source) ?? -1;
@@ -39,7 +42,7 @@ export function reconcileScriptSegments(before: ScriptDocument | undefined, afte
     if (old < 0 || !segments[old]) return initialScriptSegment(paragraph, media);
     used.add(old);
     const segment = { ...segments[old], index };
-    if (paragraph.video && media.find(m => m.id === segment.media_id)?.name !== paragraph.video) {
+    if (!references.length && paragraph.video && media.find(m => m.id === segment.media_id)?.name !== paragraph.video) {
       const bound = initialScriptSegment(paragraph, media);
       segment.media_id = bound.media_id; segment.start = bound.start; segment.end = bound.end;
     }

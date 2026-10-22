@@ -22,6 +22,8 @@ export function ResourceBin({ onOpenScript }: { onOpenScript: (asset: string, sc
         locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={all.length ? '没有匹配的资源' : '导入视频、音频、图片、字幕、文稿或脚本'} /> }}
         renderItem={item => <List.Item key={item.id} role="button" tabIndex={0} aria-pressed={project.selectedId === item.id}
           data-resource-id={item.id} className={project.selectedId === item.id ? 'is-selected' : ''}
+          draggable={!item.missing&&!item.removed&&['video','audio','image','subtitle'].includes(item.kind)}
+          onDragStart={event=>{event.dataTransfer.effectAllowed='copy';event.dataTransfer.setData('application/x-vac-resource',JSON.stringify({project:project.session?.document?.project.id,session:project.session?.id,resource:item.id}));void project.selectResource(item.id);}}
           onClick={() => void project.selectResource(item.id)}
           onDoubleClick={() => { if (item.script_id && item.asset_id) onOpenScript(item.asset_id, item.script_id); }}
           onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void project.selectResource(item.id); } }}>

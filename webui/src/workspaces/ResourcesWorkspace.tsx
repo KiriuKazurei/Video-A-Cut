@@ -7,7 +7,7 @@ import { projectApi } from '../projectApi';
 import { formatSeconds } from '../components/Monitor';
 import { errorText } from '../components/ui';
 
-export function ResourcesWorkspace({ onOpenScript }: { onOpenScript: (asset: string, script: string) => void }) {
+export function ResourcesWorkspace({ active, onOpenScript }: { active: boolean; onOpenScript: (asset: string, script: string) => void }) {
   const project = useProjectWorkspace();
   const resource = project.resource;
   const projectId = project.session?.document?.project.id ?? '';
@@ -26,7 +26,7 @@ export function ResourcesWorkspace({ onOpenScript }: { onOpenScript: (asset: str
   const timed = resource?.kind === 'video' || resource?.kind === 'audio';
   const textual = resource && ['document', 'subtitle', 'script'].includes(resource.kind);
   const source = resource ? projectApi.contentURL(projectId, resource.id, proxy) : '';
-  const text = useQuery({ queryKey: ['resource-text', projectId, resource?.id], enabled: Boolean(textual && !resource?.removed && !resource?.missing), queryFn: async ({ signal }) => {
+  const text = useQuery({ queryKey: ['resource-text', projectId, resource?.id], enabled: Boolean(active && textual && !resource?.removed && !resource?.missing), queryFn: async ({ signal }) => {
     const result = await fetch(source, { signal }); if (!result.ok) throw new Error('无法读取资源内容'); return result.text();
   } });
   useEffect(() => {
@@ -34,6 +34,7 @@ export function ResourcesWorkspace({ onOpenScript }: { onOpenScript: (asset: str
     setProxy(false); setPreparing(false); setFailure(''); setNotes(resource?.notes ?? ''); setZoom(100);
     return () => proxyRequest.current?.abort();
   }, [resource?.id, resource?.source.sha256, resource?.removed, resource?.missing]);
+  useEffect(() => { const node=media.current; return () => { node?.pause(); proxyRequest.current?.abort(); }; }, [active]);
   useEffect(() => {
     if (!resource) return;
     const id = resource.id;
@@ -46,12 +47,12 @@ export function ResourcesWorkspace({ onOpenScript }: { onOpenScript: (asset: str
   const frameDuration = 1 / (fps[0] && fps[1] ? fps[0] / fps[1] : 30);
   const mark = (edge: 'in' | 'out') => { if (!resource) return; void project.patchResource(resource.id, edge === 'in' ? { in: position, out: Math.max(position, resource.out) } : { out: position, in: Math.min(position, resource.in) }).catch(e => setFailure(errorText(e))); };
   const prepareProxy = async () => {
-    if (!resource || (!timed && resource.kind !== 'image') || preparing) return;
+    if (!active || !resource || (!timed && resource.kind !== 'image') || preparing || (proxyRequest.current && !proxyRequest.current.signal.aborted)) return;
     if (proxy) { setFailure('预览代理无法播放，请检查媒体或重新定位源文件。'); return; }
     const controller = new AbortController(); proxyRequest.current = controller; setPreparing(true); setFailure('');
     try { await projectApi.createPreview(projectId, resource.id, controller.signal); if (!controller.signal.aborted) setProxy(true); }
     catch (e) { if (!controller.signal.aborted) setFailure(errorText(e)); }
-    finally { if (!controller.signal.aborted) setPreparing(false); }
+    finally { if (proxyRequest.current === controller) { proxyRequest.current = null; setPreparing(false); } }
   };
   const mediaEvents = {
     onTimeUpdate: () => setPosition(media.current?.currentTime ?? 0),
@@ -59,6 +60,7 @@ export function ResourcesWorkspace({ onOpenScript }: { onOpenScript: (asset: str
     onPlay: () => setPlaying(true), onPause: () => setPlaying(false), onEnded: () => setPlaying(false),
     onError: () => { void prepareProxy(); }
   };
+  if (!active) return null;
   if (!resource || (resource.removed && !resource.referenced)) return <div className="resource-workspace-empty"><Empty description="在左侧选择资源，或通过“文件 → 导入”添加素材" /></div>;
   return <div className="resource-workspace">
     <Card className="resource-preview" size="small" title={<Typography.Text ellipsis>{resource.name}</Typography.Text>}>

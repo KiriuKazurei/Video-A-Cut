@@ -11,6 +11,8 @@ import { useEvents } from './useEvents';
 import { refreshSnapshot } from './queryRefresh';
 import { ResourceBin } from './components/ResourceBin';
 import { ResourceInspector } from './components/ResourceInspector';
+import { TimelineInspector } from './components/TimelineInspector';
+import { SequenceEditorProvider } from './sequenceEditor';
 import { ProjectMenuBar } from './components/ProjectMenuBar';
 import { DesktopServiceStatus } from './components/DesktopRuntime';
 import { ProjectHome } from './components/ProjectHome';
@@ -276,12 +278,13 @@ export default function App() {
   
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
-      <ResourceInspector />
+      {workspace==='editing'?<TimelineInspector/>:<ResourceInspector />}
     </ConfigProvider>
   );
 
   return (
     <SkillWorkspaceProvider key={projectWorkspace.session?.id} projectId={projectWorkspace.session?.document?.project.id}>
+    <SequenceEditorProvider active={workspace==='editing'}>
     <PipelineContext.Provider value={{ stages: pipeline.stages, goTo }}>
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
@@ -372,7 +375,8 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {workspace !== 'resources' && <ContextBar
+          {workspace==='editing'&&useSidebar&&<div className="sider-toggles editor-sider-toggles"><Button type="text" size="small" icon={leftCollapsed?<MenuUnfoldOutlined/>:<MenuFoldOutlined/>} onClick={()=>setLeftCollapsed(!leftCollapsed)} aria-label={leftCollapsed?'展开资源面板':'收起资源面板'}/><Button type="text" size="small" icon={rightCollapsed?<MenuUnfoldOutlined/>:<MenuFoldOutlined/>} onClick={()=>setRightCollapsed(!rightCollapsed)} aria-label={rightCollapsed?'展开片段属性面板':'收起片段属性面板'}/></div>}
+          {workspace !== 'resources' && workspace!=='editing' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}
@@ -394,7 +398,7 @@ export default function App() {
             <TtsWorkspace active={workspace === 'tts'} route={route} navigate={navigate} onReturnToScript={(assetId, scriptId) => { setSelectedId(assetId); navigate({ workspace: 'editing', editingSection: 'content', scriptId }); }} />
           </WorkspacePage>
           <WorkspacePage pageId="resources" active={workspace === 'resources'}>
-            <ResourcesWorkspace onOpenScript={(asset, script) => { setSelectedId(asset); navigate({ workspace: 'editing', editingSection: 'content', scriptId: script }); }} />
+            <ResourcesWorkspace active={workspace === 'resources'} onOpenScript={(asset, script) => { setSelectedId(asset); navigate({ workspace: 'editing', editingSection: 'content', scriptId: script }); }} />
           </WorkspacePage>
           
           <WorkspacePage pageId="editing" active={workspace === 'editing'}>
@@ -501,6 +505,7 @@ export default function App() {
       />
     </Layout>
     </PipelineContext.Provider>
+    </SequenceEditorProvider>
     </SkillWorkspaceProvider>
   );
 }

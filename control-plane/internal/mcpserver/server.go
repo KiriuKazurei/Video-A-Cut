@@ -101,7 +101,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration, options ...O
 	if lease <= 0 {
 		lease = DefaultLease
 	}
-	server := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.1"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.2"}, nil)
 	registerTools(server, svc)
 	registerSkillTools(server, svc)
 	registerTaskTools(server, svc, lease)
@@ -110,7 +110,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration, options ...O
 	var localBase http.Handler
 	if len(options) > 0 && options[0].LocalAccess {
 		local = &localConnections{sessions: map[string]localSession{}}
-		localServer := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.1"}, nil)
+		localServer := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.2"}, nil)
 		// Desktop clients never inherit the internal pipeline's task queue tools.
 		registerSkillTools(localServer, svc)
 		localBase = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return localServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
@@ -130,7 +130,10 @@ func New(agents []Agent, svc *service.Service, lease time.Duration, options ...O
 		authorization := r.Header.Get("Authorization")
 		if authorization == "" && local != nil {
 			ctx, release, err := svc.BeginProjectRequest(r.Context(), "")
-			if err != nil { http.Error(w,"project is changing; reconnect and read projects.list",http.StatusConflict); return }
+			if err != nil {
+				http.Error(w, "project is changing; reconnect and read projects.list", http.StatusConflict)
+				return
+			}
 			defer release()
 			local.serve(localBase, svc, w, r.WithContext(ctx))
 			return

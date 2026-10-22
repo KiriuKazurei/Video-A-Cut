@@ -160,6 +160,25 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 		return r, err
 	}
 	scope := "skill-run:" + actor
+	sequenceID := req.SequenceID
+	if w := s.workspace; w != nil {
+		w.mu.Lock()
+		if w.document == nil || w.document.Project.ID != req.ProjectID {
+			w.mu.Unlock()
+			return r, model.ErrNotFound
+		}
+		if sequenceID == "" {
+			sequenceID, _ = w.document.Workspace["active_sequence"].(string)
+			if sequenceIndex(w.document, sequenceID) < 0 && len(w.document.Sequences) > 0 {
+				sequenceID = w.document.Sequences[0].ID
+			}
+		}
+		valid := sequenceIndex(w.document, sequenceID) >= 0
+		w.mu.Unlock()
+		if !valid {
+			return r, fmt.Errorf("请选择当前工程序列: %w", model.ErrArgument)
+		}
+	}
 	hash := skillHash(req)
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		old, id, e := tx.SkillRequest(ctx, scope, req.IdempotencyKey)
@@ -194,6 +213,7 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 			r.ExternalAuthorized = true
 		}
 		r.AgentRole = req.AgentRole
+		r.SequenceID = sequenceID
 		if req.AgentRole != "" {
 			until := s.autoNow().Add(2 * time.Minute)
 			r.LeaseUntil = &until
@@ -301,7 +321,24 @@ func (s *Service) SkillRunContext(ctx context.Context, actor, id string) (map[st
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools}, nil
+	result := map[string]any{"run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools}
+	if s.WorkspaceEnabled() && r.SequenceID != "" {
+		view, e := s.Timeline(ctx, r.ProjectID, r.SequenceID)
+		if e != nil {
+			return nil, e
+		}
+		refs, e := s.ReferenceDirectory(r.ProjectID, r.SequenceID)
+		if e != nil {
+			return nil, e
+		}
+		result["sequence"] = view
+		if !isHumanActor(actor) {
+			view.History = nil
+			result["sequence"] = view
+		}
+		result["references"] = refs
+	}
+	return result, nil
 }
 func (s *Service) ClaimSkillRun(ctx context.Context, actor, id string, version int, roles ...string) (skill.Run, error) {
 	var r skill.Run

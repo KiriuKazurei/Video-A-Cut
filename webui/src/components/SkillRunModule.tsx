@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Flex, Form, Input, InputNumber, List, Radio, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Flex, Form, Input, InputNumber, List, Radio, Space, Tag, Typography } from 'antd';
 import { skillApi } from '../skillApi';
 import { api } from '../api';
+import { useSequenceEditor } from '../sequenceEditor';
+import { useProjectWorkspace } from '../projectWorkspace';
+import { timelineApi } from '../timelineApi';
 import { createSkillEdit, skillPreviewSource } from '../skillEditing';
 import { skillQueryKeys, type SkillFlow, type SkillExecutionMode, type SkillPlan, type SkillToolName } from '../skillContracts';
 import { useSkillWorkspace } from '../skillWorkspace';
@@ -21,6 +24,7 @@ type RunCommand = { project: string; run: string; key: string; controller?: Abor
 
 export function SkillRunModule({ navigate, active = true }: { navigate: (state: Partial<RouteState>) => void; active?: boolean }) {
   const workspace = useSkillWorkspace();
+  const editor=useSequenceEditor(),projectWorkspace=useProjectWorkspace();
   const client = useQueryClient();
   const projectId = workspace.projectId;
   const runId = workspace.runId;
@@ -38,6 +42,8 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<PreviewSource>(null);
   const [historical, setHistorical] = useState(false);
+  const [allSequences,setAllSequences]=useState(false),lastFocus=useRef(false);
+  useEffect(()=>{const focus=(event:FocusEvent)=>{if(event.target instanceof HTMLElement&&!event.target.closest('.project-menu-bar,[role=menu]'))lastFocus.current=!!event.target.closest('.skill-run-module');};document.addEventListener('focusin',focus);return()=>document.removeEventListener('focusin',focus);},[]);
   const [editMode, setEditMode] = useState<EditMode>('segment');
   const [segmentIndex, setSegmentIndex] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
@@ -49,6 +55,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
   const createKey = useRef(newIdempotencyKey('run'));
   const editKey = useRef(newIdempotencyKey('edit'));
   const abortRef = useRef<AbortController | null>(null);
+  useEffect(()=>{workspace.setRunId('');createKey.current=newIdempotencyKey('run');setPreview(null);setHistorical(false);},[editor.sequenceId]);
   const currentRunKey = JSON.stringify([projectId, runId, workspace.epoch]);
   const activeRunKey = useRef(currentRunKey);
   activeRunKey.current = currentRunKey;
@@ -138,6 +145,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
   useEffect(() => {
     if (!active) return;
     const edit = (event: Event) => {
+      if(event.defaultPrevented||!lastFocus.current||!['undo','redo'].includes((event as CustomEvent<string>).detail))return;
       if (!run.data || action.isPending) return;
       event.preventDefault();
       const command = (event as CustomEvent<'undo' | 'redo'>).detail;
@@ -194,6 +202,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
     if (!project.data || !visible.data?.confirmed) throw new Error('当前工程素材尚未载入');
     const created = await skillApi.createRun({
       project_id: projectId,
+      sequence_id:editor.sequenceId,
       flow,
       skill_id: skillId,
       execution_mode: mode,
@@ -271,13 +280,14 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
         <Button type="primary" disabled={!skillId || !goal.trim() || !visible.data?.confirmed} loading={action.isPending} onClick={create}>创建运行</Button>
       </Flex>
     </Card>}
-    <Card size="small" title="运行列表">
-      <List size="small" loading={runs.isFetching} dataSource={runs.data ?? []} locale={{ emptyText: projectId ? '这个项目还没有 Skill 运行' : '未选择项目' }}
+    <Card size="small" title="运行列表" extra={<Checkbox checked={allSequences} onChange={event=>setAllSequences(event.target.checked)}>查看工程全部序列</Checkbox>}>
+      <List size="small" loading={runs.isFetching} dataSource={(runs.data ?? []).filter(item=>allSequences||!item.sequence_id||item.sequence_id===editor.sequenceId)} locale={{ emptyText: projectId ? '当前序列还没有 Skill 运行' : '未选择项目' }}
         renderItem={(item) => <List.Item actions={[<Button key="open" type="link" onClick={() => workspace.setRunId(item.id)}>打开</Button>]}>
           <Space wrap>
             <Typography.Text strong>{item.goal || item.id}</Typography.Text>
             <Tag color={item.state === 'succeeded' ? 'success' : item.state === 'failed' || item.state === 'cancelled' ? 'error' : item.state === 'waiting_human' ? 'warning' : 'processing'}>{RUN_STATE_LABEL[item.state]}</Tag>
             <Typography.Text type="secondary">{FLOW_LABEL[item.flow]} · {item.execution_mode} · v{item.version}</Typography.Text>
+            {item.sequence_id&&<Typography.Text type="secondary">{projectWorkspace.session?.document?.sequences.find(seq=>seq.id===item.sequence_id)?.name ?? '原序列已移除'}</Typography.Text>}
           </Space>
         </List.Item>} />
     </Card>
@@ -320,7 +330,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
     {workbench.data && <Card size="small" title="成片工作台">
       <Flex vertical gap={12}>
         <Monitor label={historical ? '历史预览' : '成片'} preview={preview} compact emptyTitle="选择一条预览" emptyHint="当前成片可以发起修改。标成历史预览的版本只能浏览。" />
-        <List size="small" dataSource={workbench.data.previews} locale={{ emptyText: '还没有成片预览' }} renderItem={(item) => <List.Item actions={[<Button key="play" type="link" onClick={() => play(item)}>播放</Button>]}>
+        <List size="small" dataSource={workbench.data.previews} locale={{ emptyText: '还没有成片预览' }} renderItem={(item) => <List.Item actions={[<Button key="play" type="link" onClick={() => play(item)}>播放</Button>,<Button key="insert" type="link" disabled={!item.available||!editor.view||busy} onClick={()=>action.mutate(async()=>{await projectWorkspace.flushEditors();await timelineApi.importResult(projectId,editor.sequenceId,{session:editor.view!.session,expected_revision:editor.view!.sequence.revision,idempotency_key:crypto.randomUUID(),run_id:runId,artifact_id:item.artifact.id,...(item.historical?{checkpoint_id:item.checkpoint_id}:{})});await projectWorkspace.refresh();await client.invalidateQueries({queryKey:['timeline']});})}>加入当前序列</Button>]}>
           <Space wrap>
             <Typography.Text>{item.artifact.name}</Typography.Text>
             {item.historical && <Tag color="warning">历史预览</Tag>}

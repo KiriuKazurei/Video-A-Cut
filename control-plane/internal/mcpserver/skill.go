@@ -48,6 +48,7 @@ func requireSkillSessionRole(ctx context.Context, svc *service.Service, id strin
 	return nil
 }
 func registerSkillTools(server *mcp.Server, svc *service.Service) {
+	addProjectTimeline(server, svc)
 	addProjectResources(server, svc)
 	mcp.AddTool(server, &mcp.Tool{Name: "skills.list", Description: "List VAC Skill packages and their declared tool contracts"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, map[string]any, error) {
 		v, e := svc.ListSkills(ctx)

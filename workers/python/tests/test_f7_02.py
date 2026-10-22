@@ -669,25 +669,34 @@ class WindowsProcessTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, root, True)
         holder = root / "hold.py"
         holder.write_text(
-            "import sys, time\nfrom pathlib import Path\n"
+            "import sys, time, os\nfrom pathlib import Path\n"
             "sys.path.insert(0, sys.argv[1])\n"
             "from vac_worker.ingest.supervise import PhysicalLock, ProcessRegistry\n"
             "root=Path(sys.argv[2])\n"
             "reg=ProcessRegistry(root, 'holder')\n"
             "lock=PhysicalLock(root/'res.lock', {'runtime_instance_id':'holder','execution_id':'old','marker':reg.marker}, reg)\n"
             "print(lock.try_acquire(), flush=True)\n"
+            "print(os.getpid(), flush=True)\n"
             "time.sleep(30)\n",
             encoding="utf-8")
         proc = subprocess.Popen([sys.executable, str(holder), str(ROOT), str(root)], stdout=subprocess.PIPE, text=True)
-        self.addCleanup(lambda: proc.poll() is not None or proc.kill())
+        self.addCleanup(proc.stdout.close)
+        self.addCleanup(lambda: proc.poll() is not None or taskkill_tree(proc.pid))
         line = proc.stdout.readline().strip()
         self.assertEqual(line, "acquired")
+        holder_pid = int(proc.stdout.readline().strip())
+        self.addCleanup(lambda: not pid_alive(holder_pid) or taskkill_tree(holder_pid))
+        self.assertTrue(pid_alive(holder_pid))
+        print(f"lock holder: launcher={proc.pid}, actual={holder_pid}", flush=True)
         other = ProcessRegistry(root, "new-instance")
         lock = PhysicalLock(root / "res.lock", {"runtime_instance_id": "new-instance", "execution_id": "new", "marker": other.marker}, other)
         self.assertEqual(lock.try_acquire(), "busy")
         self.assertTrue((root / "res.lock").is_file())
-        proc.kill()
+        # A Windows venv executable can be a redirector. Kill only this test's
+        # owned tree, then prove that the actual lock holder also exited.
+        taskkill_tree(proc.pid)
         proc.wait(timeout=5)
+        self.assertFalse(pid_alive(holder_pid))
         self.assertEqual(lock.try_acquire(), "acquired")
         lock.release()
         self.assertTrue((root / "res.lock").is_file())

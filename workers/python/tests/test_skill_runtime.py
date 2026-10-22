@@ -10,7 +10,7 @@ import types
 import sys
 from decimal import Decimal
 from vac_worker.stages import StageContext, Tools, narrate, tts, subtitle
-from vac_worker.skill_runtime import select_frames, extract, ToolFailure, run, transcribe, probe_transcription
+from vac_worker.skill_runtime import agent, select_frames, extract, ToolFailure, run, transcribe, probe_transcription
 
 
 class LocalTranscriptionTests(unittest.TestCase):
@@ -77,6 +77,24 @@ class LocalTranscriptionTests(unittest.TestCase):
 
 
 class SkillSamplingTests(unittest.TestCase):
+    def test_builtin_agent_receives_typed_frame_context_and_current_tool_contract(self):
+        reference = {'kind': 'source_marker', 'target_id': 'point', 'clip_id': 'instance',
+                     'resource_id': 'media', 'name': '重名', 'source_time': {'value': 441, 'scale': 44100}}
+        request = {'history': [], 'run': {'goal': '编辑标记帧', 'sequence_id': 'seq'},
+                   'skill': {'content': 'VAC adapter', 'resources': {'vac/tool-contracts.md': 'current typed contract'}},
+                   'media': [], 'sequence': {'session': 'session', 'sequence': {'id': 'seq', 'fps': {'num': 30000, 'den': 1001}}},
+                   'references': [reference], 'tools': ['timeline.read', 'timeline.edit', 'references.resolve'],
+                   'provider': {'endpoint': 'local-fixture'}}
+        with mock.patch('vac_worker.skill_runtime.call_model', return_value={'tool': 'timeline.read', 'arguments': {}}) as model:
+            result = agent(request)
+        prompt = model.call_args.args[1]
+        payload = json.loads(prompt.rsplit('\n', 1)[1])
+        self.assertEqual(payload['references'], [reference])
+        self.assertEqual(payload['sequence'], request['sequence'])
+        self.assertIn('current typed contract', prompt)
+        self.assertIn('run.finish {sequence_revision,content_version}', prompt)
+        self.assertEqual(result['tool'], 'timeline.read')
+
     def test_media_playlist_cannot_make_hidden_network_requests(self):
         if not shutil.which('ffprobe'):
             self.skipTest('ffprobe not installed')

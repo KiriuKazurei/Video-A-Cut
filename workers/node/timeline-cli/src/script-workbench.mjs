@@ -6,6 +6,7 @@ import { resolve, join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runTool, probeMedia } from './media.mjs';
+import { renderSequence, waveform } from './sequence.mjs';
 import { installedFonts, resolveFonts } from './fonts.mjs';
 import { assText, assTime, wrapAssText } from '../adapters/ass.mjs';
 import { formatsAdapter } from '../adapters/formats.mjs';
@@ -159,7 +160,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const chunks = []; let bytes = 0;
       for await (const chunk of process.stdin) { bytes += chunk.length; if (bytes > 4 * 1024 * 1024) throw new Error('request too large'); chunks.push(chunk); }
       const raw = Buffer.concat(chunks).toString('utf8');
-      process.stdout.write(JSON.stringify({ ok: true, ...await renderScript(JSON.parse(raw)) }));
+      const operation=process.argv[2],input=JSON.parse(raw);
+      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='sequence' ? renderSequence(input) : operation==='waveform' ? waveform(input) : renderScript(input)) }));
     }
   } catch (e) { process.stdout.write(JSON.stringify({ ok: false, message: e.message })); process.exitCode = 1; }
 }

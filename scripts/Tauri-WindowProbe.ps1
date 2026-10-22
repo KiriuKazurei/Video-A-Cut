@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][int]$DesktopPid,[ValidateSet('inspect','capture','close','resize','choose','cancel','confirm')][string]$Action='inspect',[string]$DialogTitle,[string]$FilePath,[int]$Width=1900,[int]$Height=1200)
+param([Parameter(Mandatory)][int]$DesktopPid,[ValidateSet('inspect','capture','close','resize','choose','cancel','confirm','click','rightclick','drag','key')][string]$Action='inspect',[string]$DialogTitle,[string]$FilePath,[int]$Width=1900,[int]$Height=1200,[int]$X=-1,[int]$Y=-1,[int]$EndX=-1,[int]$EndY=-1,[string]$Key='SPACE',[switch]$CancelDrag)
 $ErrorActionPreference='Stop'
 $owned=Get-Process -Id $DesktopPid -ErrorAction Stop
 if($owned.ProcessName -ne 'video-auto-cut-desktop'){throw 'Probe requires the owned desktop process'}
@@ -41,12 +41,19 @@ public static class DesktopWindowProbe {
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,string l);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h,out Rect r);
+  [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;}
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h,ref Point point);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint x,uint y,uint data,UIntPtr extra);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte key,byte scan,uint flags,UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string title);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
 }
 '@
-if($Action -in @('inspect','capture','close','resize')) {
+if($Action -in @('inspect','capture','close','resize','click','rightclick','drag','key')) {
   $handle=[DesktopWindowProbe]::Main([uint32]$DesktopPid)
   [uint32]$windowOwner=0
   [DesktopWindowProbe]::GetWindowThreadProcessId($handle,[ref]$windowOwner)|Out-Null
@@ -56,8 +63,45 @@ if($Action -in @('inspect','capture','close','resize')) {
     [DesktopWindowProbe]::PostMessage($handle,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
   }
   if($Action -eq 'resize') {
-    if($Width -lt 1400 -or $Height -lt 950){throw 'Test size is below desktop minimum'}
+    if($Width -lt 900 -or $Height -lt 600){throw 'Test size is below desktop minimum'}
     if(![DesktopWindowProbe]::SetWindowPos($handle,[IntPtr]::Zero,0,0,$Width,$Height,6)){throw 'Owned window resize failed'}
+  }
+  if($Action -in @('click','rightclick','drag','key')) {
+    if($handle -eq 0 -or ![DesktopWindowProbe]::IsWindowVisible($handle)){throw 'Owned window must be visible for input'}
+    $inputDpi=[DesktopWindowProbe]::SetThreadDpiAwarenessContext([IntPtr](-4))
+    $buttonIsDown=$false
+    try {
+      [DesktopWindowProbe]::SetForegroundWindow($handle)|Out-Null
+      Start-Sleep -Milliseconds 150
+      if([DesktopWindowProbe]::GetForegroundWindow() -ne $handle){throw 'Owned window did not receive foreground; input was not sent'}
+      if($Action -eq 'key') {
+        $keys=@{SPACE=32;ESC=27;LEFT=37;RIGHT=39;DELETE=46;V=86;C=67;M=77;I=73;O=79;'CTRL+K'=75;'CTRL+Z'=90;'CTRL+Y'=89;'CTRL+C'=67;'CTRL+X'=88;'CTRL+V'=86;'CTRL+SHIFT+Z'=90;'SHIFT+DELETE'=46}
+        $gesture=$Key.ToUpperInvariant();if(!$keys.ContainsKey($gesture)){throw 'Unsupported timeline test key'}
+        $ctrl=$gesture.StartsWith('CTRL+');$shift=$gesture.Contains('SHIFT+')
+        try {if($ctrl){[DesktopWindowProbe]::keybd_event(17,0,0,[UIntPtr]::Zero)};if($shift){[DesktopWindowProbe]::keybd_event(16,0,0,[UIntPtr]::Zero)};[DesktopWindowProbe]::keybd_event([byte]$keys[$gesture],0,0,[UIntPtr]::Zero);[DesktopWindowProbe]::keybd_event([byte]$keys[$gesture],0,2,[UIntPtr]::Zero)}
+        finally {if($shift){[DesktopWindowProbe]::keybd_event(16,0,2,[UIntPtr]::Zero)};if($ctrl){[DesktopWindowProbe]::keybd_event(17,0,2,[UIntPtr]::Zero)}}
+      } else {
+        $clientBounds=[DesktopWindowProbe+Rect]::new();if(![DesktopWindowProbe]::GetClientRect($handle,[ref]$clientBounds)){throw 'Client bounds unavailable'}
+        $points=,@($X,$Y);if($Action -eq 'drag'){$points+=,@($EndX,$EndY)}
+        foreach($point in $points){if($point[0] -lt 0 -or $point[1] -lt 0 -or $point[0] -ge $clientBounds.Right -or $point[1] -ge $clientBounds.Bottom){throw 'Input point is outside owned window client bounds'}}
+        $origin=[DesktopWindowProbe+Point]::new();if(![DesktopWindowProbe]::ClientToScreen($handle,[ref]$origin)){throw 'Client origin unavailable'}
+        [DesktopWindowProbe]::SetCursorPos($origin.X+$X,$origin.Y+$Y)|Out-Null
+        # Let WebView process the cursor move before sending the button press.
+        Start-Sleep -Milliseconds 150
+        $downFlag=2;$upFlag=4;if($Action -eq 'rightclick'){$downFlag=8;$upFlag=16}
+        [DesktopWindowProbe]::mouse_event($downFlag,0,0,0,[UIntPtr]::Zero);$buttonIsDown=$true
+        if($Action -eq 'drag'){
+          Start-Sleep -Milliseconds 120
+          for($step=1;$step -le 24;$step++){if([DesktopWindowProbe]::GetForegroundWindow() -ne $handle){throw 'Owned window lost foreground; drag stopped'};[DesktopWindowProbe]::SetCursorPos($origin.X+$X+[int](($EndX-$X)*$step/24),$origin.Y+$Y+[int](($EndY-$Y)*$step/24))|Out-Null;Start-Sleep -Milliseconds 20}
+          Start-Sleep -Milliseconds 200
+          if($CancelDrag){[DesktopWindowProbe]::keybd_event(27,0,0,[UIntPtr]::Zero);[DesktopWindowProbe]::keybd_event(27,0,2,[UIntPtr]::Zero);Start-Sleep -Milliseconds 100}
+        }
+        [DesktopWindowProbe]::mouse_event($upFlag,0,0,0,[UIntPtr]::Zero);$buttonIsDown=$false
+      }
+    } finally {
+      if($buttonIsDown){[DesktopWindowProbe]::mouse_event($upFlag,0,0,0,[UIntPtr]::Zero)}
+      if($inputDpi -ne [IntPtr]::Zero){[DesktopWindowProbe]::SetThreadDpiAwarenessContext($inputDpi)|Out-Null}
+    }
   }
   $captionColor=$null
   if($Action -eq 'capture') {
@@ -85,7 +129,9 @@ if($Action -in @('inspect','capture','close','resize')) {
       if($previousDpi -ne [IntPtr]::Zero){[DesktopWindowProbe]::SetThreadDpiAwarenessContext($previousDpi)|Out-Null}
     }
   }
-  @{pid=$DesktopPid;handle=$handle.ToInt64();visible=($handle -ne 0 -and [DesktopWindowProbe]::IsWindowVisible($handle));title=[DesktopWindowProbe]::Title($handle);caption_color=$captionColor;caption_color_source=$(if($captionColor){'screen_pixel'}else{$null})}|ConvertTo-Json -Compress
+  $inspectDpi=[DesktopWindowProbe]::SetThreadDpiAwarenessContext([IntPtr](-4));$client=[DesktopWindowProbe+Rect]::new();[DesktopWindowProbe]::GetClientRect($handle,[ref]$client)|Out-Null
+  if($inspectDpi -ne [IntPtr]::Zero){[DesktopWindowProbe]::SetThreadDpiAwarenessContext($inspectDpi)|Out-Null}
+  @{pid=$DesktopPid;handle=$handle.ToInt64();client_width=$client.Right;client_height=$client.Bottom;visible=($handle -ne 0 -and [DesktopWindowProbe]::IsWindowVisible($handle));title=[DesktopWindowProbe]::Title($handle);caption_color=$captionColor;caption_color_source=$(if($captionColor){'screen_pixel'}else{$null})}|ConvertTo-Json -Compress
   exit
 }
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes

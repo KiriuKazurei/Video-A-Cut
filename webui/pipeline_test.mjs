@@ -112,7 +112,7 @@ test('route → stage highlight is consistent with the stage targets', () => {
 
 test('breadcrumbs: consistent shape, clickable parents, current last', () => {
   const c = locationCrumbs(R('editing', { editingSection: 'review' }), 'a1');
-  assert.deepEqual(c.map((x) => x.label), ['编辑', '审查', 'a1']);
+  assert.deepEqual(c.map((x) => x.label), ['编辑', 'Skill 任务', 'a1']);
   assert.ok(c[0].target && c[1].target && c[2].target, 'asset crumb links back to resources');
   assert.deepEqual(c[2].target, { workspace: 'resources' });
   assert.deepEqual(locationCrumbs(R('resources'), 'a1').map((x) => x.label), ['资源管理', 'a1']);

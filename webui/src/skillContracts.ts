@@ -63,7 +63,7 @@ export interface SkillRun {
   inspection?: { plan_version: number; frame_ids: string[]; verdict: 'pending' | 'passed' | 'needs_changes'; issues: string[] };
   id: string; project_id: string; project_version: number; skill_id: string;
   skill_sha256: string; skill_version: string; execution_mode: SkillExecutionMode;
-  flow: SkillFlow; visible_set_sha: string;
+  flow: SkillFlow; visible_set_sha: string; sequence_id?:string;
   state: 'queued' | 'running' | 'waiting_human' | 'succeeded' | 'failed' | 'cancelled';
   reason?: string; owner: string; version: number; steps: number; budget: SkillBudget;
   goal: string; profile_id?: string; profile_revision?: number; profile_sha256?: string;
@@ -91,6 +91,7 @@ export interface SkillWorkbench {
   previews: { artifact: SkillArtifact; available: boolean; is_current: boolean; historical: boolean; checkpoint_id: string; exportable: boolean; preview_url?: string }[];
 }
 export interface SkillRunCreate {
+  sequence_id?: string;
   flow?: SkillFlow;
   accept_transcription?: boolean;
   project_id: string; skill_id: string; execution_mode: SkillExecutionMode; visible_set_sha: string;
@@ -98,6 +99,7 @@ export interface SkillRunCreate {
   idempotency_key: string; budget?: Partial<SkillBudget>;
 }
 export type SkillToolName = 'media.list' | 'media.get_frames' | 'media.transcribe'
+  | 'timeline.read' | 'timeline.edit' | 'references.resolve'
   | 'summaries.get' | 'summaries.submit' | 'scripts.propose' | 'renders.create'
   | 'renders.inspect' | 'renders.review' | 'artifacts.list' | 'artifacts.get' | 'run.finish';
 export interface SkillToolRequest {

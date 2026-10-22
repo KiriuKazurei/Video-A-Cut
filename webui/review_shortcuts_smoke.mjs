@@ -1,198 +1,41 @@
-// 审查面板：「内容编辑」与「审查」的差异 + 审查快捷键（C 确认场景 / A 批准解说 / N 下一待处理）。
-// 用法：PLAYWRIGHT_CORE=... CHROME=... node review_shortcuts_smoke.mjs http://127.0.0.1:8816
-// 流程与审查数据用 Playwright 路由拦截模拟，不改后端数据；写操作只记录请求体，不发给后端。
+// Existing keyboard browser suite updated for the unified editor. API writes are
+// recorded local fixtures; authoritative editing/rendering is covered in Go/native.
 import assert from 'node:assert/strict';
-const base = process.argv[2] ?? 'http://127.0.0.1:8816';
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
-const browser = await chromium.launch({ executablePath: process.env.CHROME, channel: process.env.CHROME ? undefined : 'msedge', args: ['--no-sandbox'] });
+const base=process.argv[2]??'http://127.0.0.1:8816';
+const {chromium}=await import(process.env.PLAYWRIGHT_CORE??'playwright-core');
+let page;
+const browser=await chromium.launch({executablePath:process.env.CHROME,channel:process.env.CHROME?undefined:'msedge',args:['--no-sandbox']});
 try {
-const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
-await context.addInitScript(() => { try { localStorage.setItem('vac_tour_seen_v1', '1'); } catch { /* ignore */ } });
-const page = await context.newPage();
-page.on('pageerror', error => console.error('PAGEERROR', error));
-const posts = [];
-const run = (stage) => ({ run_id: 'run_kb', asset_id: '_selfcheck', base_revision_id: 'b', current_revision_id: state.revision, status: 'awaiting_review', stage, version: 3, content_mode: 'builtin' });
-const state = { stage: 'scene_review', revision: 'rev1' };
-const review = () => ({ run: { ...run(state.stage), current_revision_id: state.revision }, revision: { revision_id: state.revision, package_ref: 'p', edl_sha256: 's' },
-  scenes: [{ scene_id: 's1', label: '场景一', decision: 'confirmed', sequence_rank: 0 }, { scene_id: 's2', label: '场景二', sequence_rank: 1 }, { scene_id: 's3', label: '场景三', sequence_rank: 2 }],
-  narration: [{ id: 'n1', text: '第一句', start: 0, end: 2, source_scene_id: 's1', approved_hash: 'h' }, { id: 'n2', text: '第二句', start: 2, end: 4, source_scene_id: 's2' }, { id: 'n3', text: '第三句', start: 4, end: 6, source_scene_id: 's3' }], evidence_files: [] });
-await page.route(/\/api\/assets(\?.*)?$/, async (route) => { const r = await route.fetch(); const l = await r.json(); await route.fulfill({ response: r, json: l.map((a) => a.asset_id === '_selfcheck' ? { ...a, agent_visible: true } : a) }); });
-await page.route('**/api/assets/_selfcheck/workflows**', (route) => route.fulfill({ json: [run(state.stage)] }));
-await page.route('**/api/workflows/run_kb', (route) => route.fulfill({ json: { run: run(state.stage), stages: [], tasks: [] } }));
-await page.route('**/api/workflows/run_kb/review', (route) => route.fulfill({ json: review() }));
-await page.route('**/api/workflows/run_kb/acceptance', (route) => route.fulfill({ json: [] }));
-await page.route(/\/api\/workflows\/run_kb\/(scene|narration)-reviews$/, (route) => { posts.push({ url: route.request().url().replace(/^.*\/api/, '/api'), body: route.request().postDataJSON() }); route.fulfill({ status: 409, json: { error: 'smoke: not applied' } }); });
-
-const visible = (sel) => page.locator(`.page:not([hidden]) ${sel}:visible`);
-let n = 0; const ok = (m) => console.log(`ok ${++n} ${m}`);
-async function load(h) {
-  await page.goto('about:blank'); await page.goto(`${base}/${h}`, { waitUntil: 'domcontentloaded' });
-  await page.locator('[data-resource-id="review-resource"]').first().click();
-  await page.evaluate(hash => { location.hash = hash; }, h);
-  await page.waitForSelector('.context-bar'); await visible('.workflow-panel').waitFor();
-}
-
-// 1) 内容编辑：没有确认/批准按钮，但有改稿表单；审查：有按钮、有待处理提示
-await load('#/editing/content');
-assert.match(await visible('.workflow-panel #workflow-title').innerText(), /内容编辑/);
-assert.equal(await visible('button:has-text("确认此场景")').count(), 0);
-assert.equal(await visible('button:has-text("保存新修订")').count() >= 1, true);
-assert.equal(await visible('.review-todo button:has-text("去审查")').count(), 1);
-await load('#/editing/review');
-assert.match(await visible('.workflow-panel #workflow-title').innerText(), /审查/);
-assert.equal(await visible('button:has-text("确认此场景")').count(), 3);
-assert.match(await visible('.review-todo').innerText(), /还有 2 个场景待确认/);
-ok('内容编辑 hides approval buttons; 审查 shows them plus a pending counter');
-
-// 2) N 跳到下一个待处理场景（循环），C 确认当前聚焦的场景
-await page.locator('body').click({ position: { x: 5, y: 400 } });
-posts.length = 0;
-await page.keyboard.press('c'); await page.keyboard.press('a'); await page.waitForTimeout(300);
-assert.equal(posts.length, 0, 'approval shortcuts do nothing outside a review card or timeline');
-await page.keyboard.press('n'); await page.waitForTimeout(300);
-assert.match(await visible('.workflow-card.is-focused').innerText(), /场景二/);
-await page.keyboard.press('n'); await page.waitForTimeout(300);
-assert.match(await visible('.workflow-card.is-focused').innerText(), /场景三/);
-await page.keyboard.press('n'); await page.waitForTimeout(300);
-assert.match(await visible('.workflow-card.is-focused').innerText(), /场景二/);
-await page.keyboard.press('c'); await page.waitForTimeout(500);
-const confirm = posts.find((p) => /scene-reviews/.test(p.url));
-assert.ok(confirm, 'confirm request sent'); assert.equal(confirm.body.scene_id, 's2'); assert.equal(confirm.body.decision, 'confirmed'); assert.equal(confirm.body.expected_version, 3);
-ok('N cycles pending scenes; C confirms the focused scene (request body checked)');
-
-// Direct keyboard focus must select its own card; completed cards must not approve another item.
-posts.length = 0;
-await visible('.scene-card[data-focus-key="scene:s3"]').focus();
-await page.keyboard.press('c'); await page.waitForTimeout(500);
-assert.equal(posts.find(p => /scene-reviews/.test(p.url))?.body.scene_id, 's3');
-posts.length = 0;
-await visible('.scene-card[data-focus-key="scene:s1"]').focus();
-await page.keyboard.press('c'); await page.waitForTimeout(300);
-assert.equal(posts.length, 0, 'an already confirmed card must not approve a different scene');
-ok('keyboard focus selects the exact card; confirmed cards never approve another item');
-
-// 3) 打字时不触发：焦点在输入框里按 c/n/a 不会发请求，也不会移动聚焦
-posts.length = 0;
-await visible('input[aria-label="场景标签"]').first().click();
-await page.keyboard.type('can'); await page.waitForTimeout(400);
-assert.equal(posts.length, 0);
-ok('typing c/a/n in an input does not fire shortcuts');
-
-// 3b) 焦点在按钮上时不触发：停在「退回场景」上按 c/n/a 不会确认场景，也不会移动聚焦；链接同理
-posts.length = 0;
-const reject = visible('button:has-text("退回场景")').first();
-await reject.focus();
-await page.keyboard.press('c'); await page.keyboard.press('a'); await page.keyboard.press('n'); await page.waitForTimeout(400);
-assert.equal(posts.length, 0, 'no request when a button has focus');
-assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'BUTTON');
-assert.match(await page.evaluate(() => document.activeElement?.textContent ?? ''), /退回场景/);
-const focusedBefore = await visible('.workflow-card.is-focused').count();
-await page.keyboard.press('n'); await page.waitForTimeout(200);
-assert.equal(await visible('.workflow-card.is-focused').count(), focusedBefore, 'N does not move focus when a button has focus');
-await page.evaluate(() => { const a = document.createElement('a'); a.href = '#/editing/review'; a.textContent = 'smoke-link'; a.id = 'smoke-link'; document.body.appendChild(a); a.focus(); });
-await page.keyboard.press('c'); await page.waitForTimeout(300);
-assert.equal(posts.length, 0, 'no request when a link has focus');
-await page.evaluate(() => document.getElementById('smoke-link')?.remove());
-ok('shortcuts C/A/N are ignored while a button or link has focus');
-
-// 3c) 点击时间线片段（<button>）后焦点留在片段上，C/N 仍然可用；只有审查卡片上的操作按钮才让路
-posts.length = 0;
-await page.locator('.page:not([hidden]) .timeline-clip:visible', { hasText: '场景二' }).first().click(); await page.waitForTimeout(300);
-assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('timeline-clip')), true, 'focus stays on the timeline segment button');
-await page.keyboard.press('n'); await page.waitForTimeout(300);
-assert.match(await visible('.workflow-card.is-focused').innerText(), /场景/);
-await page.locator('.page:not([hidden]) .timeline-clip:visible', { hasText: '场景二' }).first().click(); await page.waitForTimeout(300);
-await page.keyboard.press('c'); await page.waitForTimeout(500);
-const afterClip = posts.find((p) => /scene-reviews/.test(p.url));
-assert.ok(afterClip, 'C works while a timeline segment button has focus'); assert.equal(afterClip.body.decision, 'confirmed');
-ok('C/N still work after clicking a timeline segment button');
-
-// CR03: 纯键盘焦点必须与请求目标一致，不能继续批准此前卡片。
-posts.length = 0;
-await visible('.scene-card[data-focus-key="scene:s3"]').focus();
-await visible('.timeline-clip[data-focus-key="scene:s2"]').focus();
-await page.keyboard.press('c'); await page.waitForTimeout(350);
-assert.equal(posts.find(p => /scene-reviews/.test(p.url))?.body.scene_id, 's2');
-posts.length = 0;
-await visible('.timeline-clip[data-focus-key="scene:s1"]').focus();
-await page.keyboard.press('c'); await page.waitForTimeout(250);
-assert.equal(posts.length, 0, 'confirmed timeline scene cannot approve an old pending selection');
-ok('keyboard timeline focus confirms exactly s2; completed clips do not approve another scene');
-
-// 4) 解说阶段：A 批准当前聚焦（或第一条待批准）解说；非闸口阶段 C 不动作
-state.stage = 'draft_review'; await load('#/editing/review');
-await page.locator('body').click({ position: { x: 5, y: 400 } });
-posts.length = 0;
-await page.keyboard.press('c'); await page.waitForTimeout(300);
-assert.equal(posts.length, 0);
-await page.keyboard.press('n'); await page.waitForTimeout(300);
-await page.keyboard.press('a'); await page.waitForTimeout(500);
-const approve = posts.find((p) => /narration-reviews/.test(p.url));
-assert.ok(approve); assert.equal(approve.body.narration_id, 'n2');
-ok('A approves the first unapproved line; C is ignored outside the scene gate');
-
-posts.length = 0;
-await visible('.narration-card[data-focus-key="line:n3"]').focus();
-await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
-await page.keyboard.press('a'); await page.waitForTimeout(350);
-assert.equal(posts.find(p => /narration-reviews/.test(p.url))?.body.narration_id, 'n2');
-posts.length = 0;
-await visible('.timeline-clip[data-focus-key="line:n1"]').focus();
-await page.keyboard.press('a'); await page.waitForTimeout(250);
-assert.equal(posts.length, 0, 'approved narration timeline cannot approve another line');
-ok('keyboard narration timeline focus approves exactly n2 and ignores approved n1');
-
-// 修订更换后，旧焦点不能沿用；调用现有刷新菜单，不把 DOM 焦点移出时间线。
-await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
-state.revision = 'rev2';
-const revised = page.waitForResponse(response => response.url().endsWith('/api/workflows/run_kb/review'));
-await page.getByRole('menuitem', { name: '视图', exact: true }).hover();
-await page.getByRole('menuitem', { name: '刷新', exact: true }).evaluate(element => element.click());
-await revised;
-await page.waitForFunction(() => !document.querySelector('.page:not([hidden]) .workflow-card.is-focused'));
-posts.length = 0;
-await page.keyboard.press('a'); await page.waitForTimeout(250);
-assert.equal(posts.length, 0, 'revision switch invalidates old focus');
-ok('revision refresh never approves using stale focus');
-
-// 5) 内容编辑页按 C/A 不会确认
-posts.length = 0; await load('#/editing/content');
-await page.locator('body').click({ position: { x: 5, y: 400 } });
-await page.keyboard.press('a'); await page.keyboard.press('c'); await page.waitForTimeout(400);
-assert.equal(posts.length, 0);
-ok('content-edit page ignores C/A');
-
-// 6) 快捷键帮助里列出新快捷键
-await load('#/editing/review');
-await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
-await page.keyboard.press('?'); await page.waitForSelector('.ant-modal');
-const text = await page.locator('.ant-modal').innerText();
-assert.match(text, /确认当前场景/); assert.match(text, /批准当前解说/); assert.match(text, /下一个待处理/);
-posts.length = 0; await page.keyboard.press('c'); await page.keyboard.press('a');
-assert.equal(posts.length, 0, 'help modal suppresses background approval');
-ok('shortcut help lists C / A / N');
-await page.locator('.ant-modal:visible .ant-modal-close').click();
-await page.locator('.ant-modal:visible').waitFor({ state: 'hidden' });
-await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
-posts.length = 0;
-await page.keyboard.press('a'); await page.waitForTimeout(300);
-assert.equal(posts.find(p => /narration-reviews/.test(p.url))?.body.narration_id, 'n2', 'approval resumes after closing help');
-await page.evaluate(() => { location.hash = '/resources'; });
-posts.length = 0;
-await page.keyboard.press('a'); await page.keyboard.press('c'); await page.waitForTimeout(250);
-assert.equal(posts.length, 0, 'hidden review page ignores approval');
-ok('closing help restores focused approval; hidden workspaces cannot approve');
-
-await load('#/editing/review');
-await visible('.timeline-clip[data-focus-key="line:n2"]').focus();
-await page.route('**/api/workspace', async route => {
-  const response = await route.fetch(); const value = await response.json();
-  await route.fulfill({ json: { ...value, id: 'review-session-two', document: { ...value.document, project: { id: 'project-two', name: '另一工程' }, resources: [] } } });
-});
-await visible('.workflow-panel').waitFor({ state: 'hidden' });
-posts.length = 0;
-await page.keyboard.press('a'); await page.keyboard.press('c'); await page.waitForTimeout(250);
-assert.equal(posts.length, 0, 'project switch discards old approval context');
-ok('project switch cannot approve the previous project');
-console.log(`review shortcuts smoke passed (${n} groups)`);
-} finally { await browser.close(); }
+ const context=await browser.newContext({viewport:{width:1600,height:1000}});
+ await context.addInitScript(()=>localStorage.setItem('vac_tour_seen_v1','1'));
+ page=await context.newPage();const errors=[],writes=[],approvals=[];page.on('pageerror',error=>errors.push(String(error)));
+ let view,number=0;
+ const ok=text=>console.log(`ok ${++number} ${text}`);
+ await page.route('**/api/projects/review-project/sequences/seq-review',async route=>{
+  if(!view)view=await (await route.fetch()).json();await route.fulfill({json:view});
+ });
+ await page.route('**/api/projects/review-project/sequences/seq-review/commands',async route=>{
+  const request=route.request().postDataJSON();writes.push(request);view={...view,sequence:{...view.sequence,revision:view.sequence.revision+1}};await route.fulfill({json:view});
+ });
+ await page.route(/\/api\/workflows\/[^/]+\/(scene|narration)-reviews$/,route=>{approvals.push(route.request().postDataJSON());return route.fulfill({status:409,json:{error:'unexpected legacy approval'}});});
+ const load=async()=>{await page.goto(base+'/#/editing/import');await page.locator('.sequence-timeline').waitFor();await page.locator('[data-clip-id="clip-0"]').waitFor();};
+ const clip=page.locator('[data-clip-id="clip-0"]'),timeline=page.locator('.sequence-timeline');
+ const press=async key=>{await page.keyboard.press(key);await page.waitForTimeout(200);};
+ const cancel=async()=>{await page.locator('.ant-modal-confirm:visible').waitFor();await page.locator('.ant-modal-confirm:visible .ant-btn').filter({hasText:'取消'}).click();await page.locator('.ant-modal-confirm:visible').waitFor({state:'hidden'});};
+ const command=async key=>{const count=writes.length;await press(key);for(let i=0;i<100&&writes.length===count;i++)await page.waitForTimeout(20);assert.equal(writes.length,count+1);return writes.at(-1);};
+ await load();assert.equal(await page.locator('.timeline-row').count(),6);assert.equal(await page.locator('.workflow-panel:visible').count(),0);assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');await page.reload();await clip.waitFor();assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');ok('unified editor restores a saved nonzero playhead on load and reload with six tracks');
+ assert.equal(await clip.evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(62, 111, 176)');assert.match(await page.locator('[data-clip-id="clip-3"]').innerText(),/流 1/);ok('ordinary video and audio use theme blue and show actual stream identity');
+ await clip.focus();await press('Enter');assert.equal(await clip.getAttribute('aria-pressed'),'true');assert.equal(await page.locator('[data-clip-id="clip-3"]').getAttribute('aria-pressed'),'true');ok('keyboard clip selection includes its linked sound');
+ await press('c');assert.equal(await page.getByRole('button',{name:/剃刀 C/}).getAttribute('aria-pressed'),'true');assert.equal(approvals.length,0);ok('C selects the razor without legacy approval');
+ await press('v');assert.equal(await page.getByRole('button',{name:/选择 V/}).getAttribute('aria-pressed'),'true');ok('V restores selection tool');
+ const split=await command('Control+k');assert.equal(split.session,'review-session');assert.equal(split.operations[0].type,'clip.split');assert.deepEqual(split.operations[0].clip_ids,['clip-0','clip-3']);assert(split.expected_revision>=1&&split.idempotency_key);ok('Ctrl+K dispatches linked stable IDs with CAS and idempotency');
+ const search=page.getByRole('searchbox',{name:'搜索当前工程资源'});await search.focus();const count=writes.length;await page.keyboard.type('mcio');assert.equal(writes.length,count);assert.equal(await page.locator('.ant-modal:visible').count(),0);await search.fill('');ok('typing letters in a resource input never edits tracks');
+ await search.focus();await page.locator('.timeline-scale').click({position:{x:60,y:8}});assert.equal(await timeline.evaluate(n=>document.activeElement===n),true);await press('m');assert.equal(await page.getByRole('textbox',{name:'标记备注',exact:true}).count(),1);await press('Control+k');assert.equal(writes.length,count);await cancel();ok('M offers one point and visible modal guards background editing');
+ await timeline.focus();await press('i');assert.match(await page.getByRole('textbox',{name:'标记备注',exact:true}).inputValue(),/^入点/);await cancel();await timeline.focus();await press('o');assert.match(await page.getByRole('textbox',{name:'标记备注',exact:true}).inputValue(),/^出点/);await cancel();ok('I and O open separately editable in and out markers');
+ await timeline.focus();const before=await page.locator('.timeline-ruler>.track-heading').innerText();await press('ArrowRight');assert.notEqual(await page.locator('.timeline-ruler>.track-heading').innerText(),before);await press('ArrowLeft');assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),before);ok('arrows step one frame and return to the same timecode');
+ await clip.click({button:'right'});await page.getByRole('menuitem',{name:/在播放头分割/}).waitFor();const n=writes.length;await page.getByRole('menuitem',{name:/在播放头分割/}).click();await page.waitForTimeout(250);assert.equal(writes.length,n+1);assert.equal(writes.at(-1).operations[0].type,'clip.split');ok('context menu uses the same split command');
+ await clip.focus();await press('Control+c');const pasted=await command('Control+v');assert.equal(pasted.operations.length,2);assert(pasted.operations.every(op=>op.type==='clip.paste'));ok('copy and paste dispatch video and sound as one command');
+ await clip.focus();assert.equal((await command('Control+z')).operations[0].type,'history.undo');assert.equal((await command('Control+Shift+z')).operations[0].type,'history.redo');ok('undo and redo stay in the focused sequence');
+ await timeline.focus();await press('?');await page.locator('.ant-modal:visible').waitFor();assert.match(await page.locator('.ant-modal:visible').innerText(),/时间线剃刀工具/);const prior=writes.length;await press('Control+k');assert.equal(writes.length,prior);await page.locator('.ant-modal:visible .ant-modal-close').click();await page.locator('.ant-modal:visible').waitFor({state:'hidden'});await page.evaluate(()=>location.hash='/resources');await page.locator('.sequence-timeline:visible').waitFor({state:'hidden'});assert.equal(await page.locator('.source-monitor video').count(),0);await press('Control+k');assert.equal(writes.length,prior);assert.deepEqual(errors,[]);assert.equal(approvals.length,0);ok('help and hidden editor suppress stale commands and hidden source media without page errors');
+ console.log(`unified editor browser smoke passed (${number} groups)`);
+} catch(error) {console.error('Browser failure state',await page?.evaluate(()=>({body:document.body.innerText.slice(-4000),url:location.href})).catch(()=>undefined));throw error;} finally {await browser.close();}

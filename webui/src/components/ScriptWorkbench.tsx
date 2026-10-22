@@ -8,10 +8,18 @@ import { errorText } from './ui';
 import { initialScriptSegment, reconcileScriptSegments, scriptTokens, type ScriptDocument, type ScriptRevision, type ScriptSegment, type ScriptWorkbenchView } from '../scriptWorkbench';
 import type { RouteState } from '../navigation';
 import { ScriptDeliveryPanel } from './ScriptDeliveryPanel';
+import { ScriptCompletion } from './ScriptCompletion';
+import { useSequenceEditor } from '../sequenceEditor';
+import { timelineApi } from '../timelineApi';
+import type { ScriptReference } from '../timelineContracts';
+import { candidateLabel, insertReference, rebaseReferences, synchronizeReferenceNames } from '../scriptReferences';
 
 export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean }) {
   const client = useQueryClient();
   const projectWorkspace = useProjectWorkspace();
+  const sequenceEditor=useSequenceEditor();
+  const projectId=projectWorkspace.session?.document?.project.id ?? '';
+  const directory=useQuery({queryKey:['reference-directory',projectWorkspace.session?.id,sequenceEditor.sequenceId],queryFn:({signal})=>timelineApi.references(projectId,sequenceEditor.sequenceId,signal),enabled:!!projectId,retry:false});
   const list = useQuery({ queryKey: ['scripts', assetId], queryFn: () => api.listScripts(assetId), retry: false });
   const visible = useQuery({ queryKey: ['visible-set'], queryFn: api.visibleSet, retry: false });
   const media = useQuery({ queryKey: ['script-media', visible.data?.sha256], queryFn: api.scriptMedia, enabled: Boolean(visible.data?.confirmed), retry: false });
@@ -24,6 +32,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   const revisions = useQuery({ queryKey: ['script-revisions', scriptId], queryFn: () => api.scriptRevisions(scriptId!), enabled: Boolean(scriptId), retry: false });
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [references,setReferences]=useState<ScriptReference[]>([]);
   const [parseBody, setParseBody] = useState('');
   const [segments, setSegments] = useState<ScriptSegment[]>([]);
   const [tts, setTts] = useState(false);
@@ -50,10 +59,12 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   const apply = (w: ScriptWorkbenchView) => {
     previousDocument.current = w.document; previousBody.current = w.script.body ?? '';
     setTitle(w.script.title ?? ''); setBody(w.script.body ?? ''); setParseBody(w.script.body ?? '');
+    setReferences(w.references ?? []);
     setSegments(w.segments ?? []); setTts(w.tts_enabled); setSubtitles(w.subtitles_enabled);
     setResearch(w.allow_web_research); setDirty(false); setLoadedId(w.script.script_id); setLoadedVersion(w.version); setConsent('');
   };
   useEffect(() => { if (record.data && (!dirty || loadedId !== record.data.script.script_id)) apply(record.data); }, [record.data]); // query data changes only
+  useEffect(()=>{if(!dirty||!directory.data)return;const next=synchronizeReferenceNames(body,references,directory.data);if(next.body!==body){setBody(next.body);setReferences(next.references);}},[directory.data]);
   useEffect(() => { const timer = setTimeout(() => setParseBody(body), 200); return () => clearTimeout(timer); }, [body]);
   const parsed = useQuery({ queryKey: ['script-parse', parseBody], queryFn: () => api.parseScript(parseBody), retry: false });
   const doc = parsed.data;
@@ -63,7 +74,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     if (!doc || parseBody !== body || previousBody.current === body) return;
     const before = previousDocument.current;
     previousDocument.current = doc; previousBody.current = body;
-    setSegments(current => reconcileScriptSegments(before, doc, current, currentMedia));
+    setSegments(current => reconcileScriptSegments(before, doc, current, currentMedia,references));
   }, [doc, parseBody, body, currentMedia]);
   const drafts = paragraphs.map((p, i) => segments[i] ?? initialScriptSegment(p, currentMedia));
   const usableProfiles = (profiles.data ?? []).filter(p => p.content_mode === 'configured');
@@ -85,14 +96,16 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     client.setQueryData(['script-workbench', w.script.script_id], w); apply(w);
     await Promise.all(['scripts', 'script-revisions', 'auto', 'workflow', 'audit'].map(k => client.invalidateQueries({ queryKey: [k] })));
   };
-  const versionBody = () => ({ expected_version: loadedVersion, visible_set_sha: visible.data!.sha256 });
+  const versionBody = () => ({ expected_version: loadedVersion, visible_set_sha: visible.data!.sha256, references, sequence_id:sequenceEditor.sequenceId });
   const canEdit = Boolean(scriptId && record.data && visible.data?.confirmed && !mutate.isPending);
   const busy = mutate.isPending;
   const tokens = useMemo(() => scriptTokens(body), [body]);
+  const referenceTokens=useMemo(()=>{let start=0;return tokens.flatMap(token=>{const offset=start;start+=token.text.length;const match=token.kind==='directive'?/^\{@([^{}]+)\}$/.exec(token.text):null;return match?[{start:offset,end:start,name:match[1]}]:[];});},[tokens]);
+  const pendingReferences=referenceTokens.filter(token=>!references.some(ref=>ref.start===token.start&&ref.end===token.end&&!ref.unresolved&&(directory.data ?? []).some(c=>c.kind===ref.kind&&c.target_id===ref.target_id&&c.resource_id===ref.resource_id&&c.sequence_id===ref.sequence_id&&c.clip_id===ref.clip_id)));
   const editSegment = (i: number, value: Partial<ScriptSegment>) => { const next = [...drafts]; next[i] = { ...next[i], ...value }; setSegments(next); changed(); };
   const insert = (text: string) => {
     const { start, end } = selection.current;
-    setBody(previous => previous.slice(0, start) + text + previous.slice(end)); changed();
+    const next=body.slice(0,start)+text+body.slice(end);setReferences(rebaseReferences(body,next,references));setBody(next);changed();
     selection.current = { start: start + text.length, end: start + text.length };
     requestAnimationFrame(() => {
       const el = editor.current?.resizableTextArea?.textArea;
@@ -103,10 +116,10 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     if (!scriptId || !record.data) return;
     return projectWorkspace.registerEditor(`script:${scriptId}`, { dirty, flush: async () => {
       if (!dirty) return;
-      const saved = await api.saveScript(scriptId, { expected_version: loadedVersion, visible_set_sha: visible.data?.sha256 ?? '', title, body, segments: drafts, tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research });
+      const saved = await api.saveScript(scriptId, { expected_version: loadedVersion, visible_set_sha: visible.data?.sha256 ?? '', title, body, references,sequence_id:sequenceEditor.sequenceId, segments: drafts, tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research });
       await accept(saved);
     } });
-  }, [scriptId, dirty, loadedVersion, title, body, segments, tts, subtitles, research, visible.data?.sha256, projectWorkspace.registerEditor]);
+  }, [scriptId, dirty, loadedVersion, title, body, references,segments, tts, subtitles, research, visible.data?.sha256, projectWorkspace.registerEditor]);
   const latest = record.data;
 
   return <Card size="small" title="脚本工作台" className="script-workbench" data-testid="script-workbench"
@@ -136,11 +149,12 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
               onSelect={e => { const el = e.currentTarget; selection.current = { start: el.selectionStart, end: el.selectionEnd }; }}
               placeholder={'{@抽卡演示.mp4}介绍抽卡机制\n\n{"重点说明", 字号:32px, 字体:"Microsoft YaHei",}{白屏}展示结果'}
               onScroll={e => { if (overlay.current) overlay.current.scrollTop = e.currentTarget.scrollTop; }}
-              onChange={e => { setBody(e.target.value); changed(); }} />
+              onChange={e => {setReferences(rebaseReferences(body,e.target.value,references));setBody(e.target.value); changed(); }} />
+            <ScriptCompletion editor={editor} body={body} references={references} directory={directory.data ?? []} onEdit={(next,refs)=>{setBody(next);setReferences(refs);changed();}}/>
           </div>
+          {pendingReferences.length>0&&<Alert type="warning" message="引用需要选择具体对象；失效引用会保留，生成或渲染前请重新关联。" description={<Flex vertical gap={6}>{pendingReferences.map(token=><Select<number> key={token.start} aria-label={`关联引用 ${token.name} ${token.start}`} placeholder={`{@${token.name}} · 选择类型、所属素材及位置`} value={undefined} options={(directory.data ?? []).map((candidate,index)=>({value:index,label:candidateLabel(candidate)}))} showSearch optionFilterProp="label" onChange={index=>{const next=insertReference(body,references,token.start,token.end,directory.data![index]);setBody(next.body);setReferences(next.references);changed();}}/>)}</Flex>}/>}
           <Space wrap>
-            <Select aria-label="插入指定视频" placeholder="插入指定视频" disabled={!canEdit} value={undefined} style={{ minWidth: 180 }}
-              options={currentMedia.map(m => ({ value: m.id, label: `${m.name} · ${m.asset_id}` }))} onChange={id => insert(`{@${currentMedia.find(m => m.id === id)!.name}}`)} />
+            <Select<number> aria-label="插入素材或标记引用" placeholder="插入素材或标记引用" showSearch optionFilterProp="label" disabled={!canEdit} value={undefined} style={{minWidth:240,maxWidth:'100%'}} options={(directory.data ?? []).map((item,index)=>({value:index,label:candidateLabel(item)}))} onChange={index=>{const item=directory.data![index],{start,end}=selection.current;const next=insertReference(body,references,start,end,item);setBody(next.body);setReferences(next.references);changed();requestAnimationFrame(()=>{const el=editor.current?.resizableTextArea?.textArea;el?.focus();el?.setSelectionRange(next.caret,next.caret);});}}/>
             <Select aria-label="插入系统字体字幕" placeholder="插入字体字幕" disabled={!canEdit || !fonts.data?.length} value={undefined} showSearch style={{ minWidth: 180 }}
               options={(fonts.data ?? []).map(f => ({ value: f, label: f }))} onChange={f => insert(`{"字幕文字", 字体:${JSON.stringify(f)}}`)} />
             {['黑屏', '白屏', '交叉溶解'].map(effect => <Button key={effect} disabled={!canEdit} onClick={() => insert(`{${effect}}`)}>插入{effect}</Button>)}
