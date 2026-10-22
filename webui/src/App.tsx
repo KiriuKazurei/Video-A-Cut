@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  CompassOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, VideoCameraOutlined, SoundOutlined
+  CompassOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api, ingestApi } from './api';
 import type { CreateTask, WorkflowRun } from './types';
@@ -309,15 +309,7 @@ export default function App() {
       {!projectWorkspace.session?.document && workspace !== 'settings' ? <ProjectHome /> : <>
       
       <Layout.Header className="app-header">
-        <div className="app-brand">
-          <VideoCameraOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
-          <div className="app-brand-text">
-            <Typography.Text strong>Video Auto Cut</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>剪辑预处理工作区</Typography.Text>
-          </div>
-        </div>
-        
-        {/* 工作区导航：资源、编辑、导出、TTS + 右侧设置 */}
+        {/* 工作区导航：资源、编辑、导出、TTS（顶栏标志已移除，菜单在 ProjectMenuBar） */}
         <div className="app-nav-wrap" ref={navWrapRef} data-tour="nav">
           <Menu 
             className="app-nav seg-nav" 
