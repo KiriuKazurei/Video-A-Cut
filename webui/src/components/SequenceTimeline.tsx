@@ -41,9 +41,10 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
  if(!data)return <div className="clip-loudness is-loading" aria-label="正在计算音量谱"/>;
  return <canvas ref={canvas} className="clip-loudness" aria-label={`音量谱${clipped?` · ${clipped}`:''}`} style={{left:span[0],width:span[1]-span[0]}}/>;
 }
+/** Premiere-style: one source-in poster at the clip start, aspect ratio preserved. */
 function ClipThumbnails({clip}:{clip:TimelineClip}) {
- const e=useSequenceEditor(),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out);
- return <div className="clip-thumbnails" aria-hidden="true">{[0,.5,.95].map(t=><img key={t} draggable={false} loading="lazy" alt="" src={timelineApi.thumbnailURL(e.projectId,clip.resource_id,from+(to-from)*t)}/>)}</div>;
+ const e=useSequenceEditor(),from=timeSeconds(clip.source_in);
+ return <div className="clip-thumbnails" aria-hidden="true"><img draggable={false} loading="lazy" alt="" src={timelineApi.thumbnailURL(e.projectId,clip.resource_id,from)}/></div>;
 }
 type Drag={id:string;ids:string[];kind:'move'|'left'|'right';x:number;y:number;scroll:number;at:number;end:number;delta:number;target:string;started:boolean;snapped:boolean};
 function effectLabel(clip:TimelineClip) {

@@ -54,8 +54,9 @@
 .timeline-clip.is-disabled { opacity:.5; }
 .clip-title { position:relative; z-index:2; display:block; max-width:100%; padding:2px 8px; font-size:12px; font-weight:500; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; background:var(--vac-clip-video); pointer-events:none; }
 .is-agent .clip-title { background:var(--vac-clip-effect); }
-.clip-thumbnails { position:absolute; inset:19px 0 0; display:flex; opacity:.7; pointer-events:none; }
-.clip-thumbnails img { width:33.333%; height:100%; object-fit:cover; min-width:0; }
+/* Premiere-like: single start poster, height fills body, width from intrinsic AR (no stretch). */
+.clip-thumbnails { position:absolute; inset:19px 0 0; display:flex; align-items:stretch; justify-content:flex-start; overflow:hidden; opacity:.85; pointer-events:none; }
+.clip-thumbnails img { height:100%; width:auto; max-width:100%; object-fit:contain; object-position:left center; flex-shrink:0; background:var(--vac-bg); }
 .clip-loudness { position:absolute; left:0; width:100%; top:20px; height:calc(100% - 20px); display:block; pointer-events:none; }
 .clip-loudness.is-loading { left:4px; right:4px; width:auto; top:calc(50% + 10px); height:1px; background:var(--vac-hairline); }
 .clip-loudness.is-empty { height:0; }
