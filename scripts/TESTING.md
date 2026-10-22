@@ -4,7 +4,7 @@
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前 0.2.2。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前 0.2.4。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
 
@@ -36,7 +36,7 @@ $npmCLI = Join-Path (Split-Path (Get-Command node).Source) 'node_modules/npm/bin
 ```powershell
 $managerRoot = 'E:/AI/Video Auto Cut'
 $sourceRoot = "$managerRoot/.run-data/worktrees/codex-skill-harness"
-& "$managerRoot/scripts/TestWorkspace.ps1" -Action Run -Suite custom -Version '0.2.2' -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-vet=off','-count=1','-timeout=600s')
+& "$managerRoot/scripts/TestWorkspace.ps1" -Action Run -Suite custom -Version '0.2.4' -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-vet=off','-count=1','-timeout=600s')
 ```
 
 Go vet 单独执行，不跳过原失败用例。按变更选择现有包/命名用例；不要在相同结果通过后无理由重复全包。并发入口须避免共享测试根、端口、数据库和管理锁。正常失败保留退出码、摘要与日志。
@@ -75,8 +75,8 @@ node scripts/update-interface-documentation.mjs --refresh-inventory --write
 可见桌面既有调用形状如下；exe、生产前端、Go runtime 清单、desktop.json 和独立测试业务数据须先配套准备，不能把本机历史生成物当作 fresh checkout 自带资源：
 
 ```powershell
-$env:VAC_DESKTOP_EXECUTABLE = "$managerRoot/.run-data/tests/0.2.2/cache/cargo/debug/video-auto-cut-desktop.exe"
-& $runner -Action Run -Suite custom -Executable node -WorkingDirectory $sourceRoot -Arguments @('scripts/verify-tauri-desktop.mjs','9223','launch',"$sourceRoot/.run-data/tests/0.2.2/artifacts/custom/desktop-native-ui","$sourceRoot/.run-data/tests/0.2.2/artifacts/custom/desktop-native/desktop.json")
+$env:VAC_DESKTOP_EXECUTABLE = "$managerRoot/.run-data/tests/0.2.4/cache/cargo/debug/video-auto-cut-desktop.exe"
+& $runner -Action Run -Suite custom -Executable node -WorkingDirectory $sourceRoot -Arguments @('scripts/verify-tauri-desktop.mjs','9223','launch',"$sourceRoot/.run-data/tests/0.2.4/artifacts/custom/desktop-native-ui","$sourceRoot/.run-data/tests/0.2.4/artifacts/custom/desktop-native/desktop.json")
 ```
 
 Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的路径，避免 E: 被当 URL；测试数据根独立于源码资源根。测试应自己在管理器内部启动和退出，不预启窗口绕过在用进程守卫。正式打包仍使用 Build-TauriDesktop.ps1，不以测试 overlay 发行。
@@ -101,6 +101,7 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 | 范围/候选 | 真实结果 | 证据与限制 |
 |---|---|---|
+| 0.2.4 `agent/timeline-audio-viz` 升版工作副本 | 版本/锁文件与 MCP Implementation 元数据对齐；本地 webui tsc/build、相关单元与样式检查通过 | 本机工作树；未重跑完整 Go/Python/媒体/原生桌面或外部模型验收 |
 | 0.2.2 提交前工作副本（代码提交 c5fccf4） | 版本/锁定元数据、前端 96、类型/样式/构建、MCP 整包及文档契约通过 | 原根 0.2.2 custom/version-web-unit-{a,b}.log、version-web-build.log、version-mcp.log、output.log；源码为当前工作树。没有重新记入完整 Go/Python/媒体/原生或人工验收 |
 | 0.2.1 多轨工作副本，26e17fd + 未提交改动 | 完整 Go 17 个有测试包 + 1 个无测试包、vet 通过，service 399.261s；格式规范化后 MCP 整包再通过 31.722s | 原根短输出 custom/timeline-go-full-pass.log、timeline-mcp-final.log；AVP/AVS v2、真实完成入轨/去重/撤销重开、项目隔离与 Worker 边界纳入既有用例。未开启可选真实 ASR，不沿用历史模型质量 |
 | 当前多轨前端/浏览器/桌面构建 | 前端 96（46+50）、样式、TS/生产构建、浏览器 14 组、Rust 5/fmt/build 通过 | custom/timeline-web-final.log、timeline-build-final.log、timeline-rust-final.log、timeline-ui-final-pass.log、review-smokes/review_shortcuts_smoke.mjs.log；浏览器为生产界面配本机路由夹具，真实窗口另记 |

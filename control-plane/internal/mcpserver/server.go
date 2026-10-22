@@ -101,7 +101,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration, options ...O
 	if lease <= 0 {
 		lease = DefaultLease
 	}
-	server := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.2"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.4"}, nil)
 	registerTools(server, svc)
 	registerSkillTools(server, svc)
 	registerTaskTools(server, svc, lease)
@@ -110,7 +110,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration, options ...O
 	var localBase http.Handler
 	if len(options) > 0 && options[0].LocalAccess {
 		local = &localConnections{sessions: map[string]localSession{}}
-		localServer := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.2"}, nil)
+		localServer := mcp.NewServer(&mcp.Implementation{Name: "video-auto-cut", Version: "0.2.4"}, nil)
 		// Desktop clients never inherit the internal pipeline's task queue tools.
 		registerSkillTools(localServer, svc)
 		localBase = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return localServer }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
