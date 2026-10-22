@@ -7,6 +7,7 @@ import type { RouteState } from '../navigation';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { ScriptWorkbench } from '../components/ScriptWorkbench';
 import { SequenceTimeline } from '../components/SequenceTimeline';
+import { ProgramVu } from '../components/ProgramVu';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { projectApi } from '../projectApi';
@@ -15,9 +16,16 @@ import '../timeline.css';
 
 interface EditingWorkspaceProps { route:RouteState;navigate:(state:Partial<RouteState>)=>void;asset?:Asset;selection:RunSelection;onSelect:(id:string)=>void;onPreparedStarted:(run:WorkflowRun)=>void }
 
-function SourceMonitor({ onCollapse }:{ onCollapse:()=>void }) {
+function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; seekTo?:number|null; onSeeked?:()=>void }) {
  const p=useProjectWorkspace(),e=useSequenceEditor(),r=p.resource,[proxy,setProxy]=useState(false),[proxyError,setProxyError]=useState(''),request=useRef<AbortController|null>(null);
  useEffect(()=>{const media=e.source.current;media?.pause();request.current?.abort();setProxy(false);setProxyError('');return()=>{media?.pause();request.current?.abort();};},[e.active,p.session?.id,r?.id,r?.source.sha256]);
+ useEffect(()=>{
+  if(seekTo==null)return;
+  const media=e.source.current;
+  if(!media)return;
+  const apply=()=>{try{media.currentTime=seekTo;}catch{/* ignore */}onSeeked?.();};
+  if(media.readyState>=1)apply();else media.addEventListener('loadedmetadata',apply,{once:true});
+ },[seekTo,r?.id,proxy]);
  const textual=r?.kind==='script'||r?.kind==='document'||r?.kind==='subtitle';
  const text=useQuery({queryKey:['source-text',p.session?.id,r?.id],queryFn:async({signal})=>{const response=await fetch(projectApi.contentURL(e.projectId,r!.id),{signal});if(!response.ok)throw Error('内容加载失败');return (await response.text()).slice(0,65536);},enabled:e.active&&!!r&&textual});
  const url=r?projectApi.contentURL(e.projectId,r.id,proxy):'';
@@ -40,25 +48,44 @@ export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
  const [panel,setPanel]=useState<'timeline'|'script'>('timeline');
  const [sourceOpen,setSourceOpen]=useState(false);
+ const [sourceSeek,setSourceSeek]=useState<number|null>(null);
  const [visited,setVisited]=useState<string[]>(['timeline']);
  useEffect(()=>{setVisited(old=>old.includes(panel)?old:[...old,panel]);},[panel]);
  useEffect(()=>{setPanel(route.editingSection==='content'?'script':'timeline');},[route.editingSection,route.scriptId]);
+ useEffect(()=>{
+  const onOpen=(event:Event)=>{
+   const detail=(event as CustomEvent<{resourceId?:string;time?:number}>).detail;
+   setSourceOpen(true);
+   if(typeof detail?.time==='number')setSourceSeek(detail.time);
+  };
+  window.addEventListener('vac:open-source',onOpen);
+  return()=>window.removeEventListener('vac:open-source',onOpen);
+ },[]);
  const scriptAsset=p.session?.document?.resources.find(r=>r.script_id===route.scriptId)?.asset_id ?? asset?.asset_id ?? p.session?.document?.resources.find(r=>r.asset_id)?.asset_id;
  const items=p.session?.document?.sequences?.map(seq=>({key:seq.id,label:seq.name,closable:(p.session?.document?.sequences.length ?? 0)>1}));
  const sourceLabel=p.resource?.name ?? '源';
+ const inFrame=[...(s?.markers??[])].reverse().find(m=>m.kind==='in')?.frame;
+ const outFrame=[...(s?.markers??[])].reverse().find(m=>m.kind==='out')?.frame;
+ const hasRange=inFrame!==undefined&&outFrame!==undefined&&outFrame>inFrame;
  return <div className="unified-editor" data-panel={panel} tabIndex={-1} aria-label="统一多轨编辑器">
   <Tabs className="sequence-tabs" type="editable-card" size="small" activeKey={e.sequenceId} items={items} onChange={e.switchSequence} onEdit={(key,action)=>void e.manageSequence(action==='add'?'create':'delete',typeof key==='string'?key:undefined).catch(()=>{})}/>
   {e.error&&<Alert type="error" showIcon message={e.error}/>}
   <div className={`editor-monitors${sourceOpen?' is-source-open':' is-primary-only'}`}>
-   {sourceOpen?<SourceMonitor onCollapse={()=>setSourceOpen(false)}/>:null}
+   {sourceOpen?<SourceMonitor onCollapse={()=>setSourceOpen(false)} seekTo={sourceSeek} onSeeked={()=>setSourceSeek(null)}/>:null}
    <section className="editor-monitor program-monitor" aria-label="节目监视器">
     <div className="editor-monitor-title">
      <strong>节目</strong>
      <Typography.Text ellipsis>{s?.name ?? '当前序列'}</Typography.Text>
      <Typography.Text type="secondary">{s?`${s.width}×${s.height} · ${fpsValue(s.fps).toFixed(3)}fps`:''}</Typography.Text>
+     {hasRange&&<Typography.Text type="secondary" className="program-inout-label">导出 {frameLabel(inFrame!,s!.fps)}–{frameLabel(outFrame!,s!.fps)}</Typography.Text>}
      {!sourceOpen&&<button type="button" className="source-monitor-badge" onClick={()=>setSourceOpen(true)} title="打开源监视器" aria-label={`打开源监视器：${sourceLabel}`}>源 · {sourceLabel}</button>}
     </div>
-    <div className="editor-monitor-screen">{e.previewURL?<video key={e.previewURL} ref={e.program} controls preload="metadata" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=e.head/fpsValue(s.fps);}} onTimeUpdate={event=>{if(s&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在更新当前轨道合成…':'把资源拖入时间线开始编辑'}/>}{e.previewLoading&&<div className="program-updating" role="status"><Spin size="small"/> 更新节目预览</div>}</div>
+    <div className="program-monitor-row">
+     <div className="editor-monitor-screen">{e.previewURL?<video key={e.previewURL} ref={e.program} controls preload="metadata" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=e.head/fpsValue(s.fps);}} onTimeUpdate={event=>{if(s&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在更新当前轨道合成…':'把资源拖入时间线开始编辑'}/>}{e.previewLoading&&<div className="program-updating" role="status"><Spin size="small"/> 更新节目预览</div>}
+      {hasRange&&s&&e.previewURL&&<div className="program-inout-overlay" aria-hidden="true"><span className="program-inout-in" style={{left:`${Math.min(100,Math.max(0,inFrame!/Math.max(1,outFrame!))*100)}%`}}/><span className="program-inout-out" style={{left:`${Math.min(100,Math.max(0,outFrame!/Math.max(outFrame!,inFrame!+1))*100)}%`}}/></div>}
+     </div>
+     {e.previewURL?<ProgramVu media={e.program}/>:null}
+    </div>
     <Flex gap={6} align="center" className="editor-monitor-controls" wrap>
      <Button size="small" icon={<StepBackwardOutlined/>} aria-label="节目后退一帧" onClick={()=>e.setHead(e.head-1)}/>
      <Button size="small" icon={<PlayCircleOutlined/>} onClick={e.play} disabled={!e.preview}>播放 / 暂停</Button>
