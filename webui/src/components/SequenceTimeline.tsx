@@ -1,19 +1,41 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Checkbox, Dropdown, Flex, Select, Slider, Space, Tooltip, type MenuProps } from 'antd';
 import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined } from '@ant-design/icons';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
+import { buildLevels, columns, drawColumns } from '../loudness';
 import { fpsValue, frameLabel, linkedSelection, snapFrame, timeSeconds, type TimelineClip, type TimelineTrack } from '../timelineContracts';
 
-function ClipWaveform({clip}:{clip:TimelineClip}) {
- const e=useSequenceEditor(),p=useProjectWorkspace();
- const data=useQuery({queryKey:['resource-waveform',p.session?.id,e.projectId,clip.resource_id,clip.stream_index],queryFn:({signal})=>timelineApi.waveform(e.projectId,clip.resource_id,clip.stream_index,signal),staleTime:Infinity,retry:1});
- const peaks=data.data?.peaks ?? [],duration=data.data?.duration ?? 1,start=timeSeconds(clip.source_in),end=timeSeconds(clip.source_out);
- const used=peaks.slice(Math.floor(start/duration*peaks.length),Math.max(1,Math.ceil(end/duration*peaks.length)));
- const points=used.flatMap((value,i)=>[[i/Math.max(1,used.length-1)*100,50-value*48],[i/Math.max(1,used.length-1)*100,50+value*48]]).map(p=>p.join(',')).join(' ');
- return <svg className="clip-waveform" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label={data.isError?'波形暂不可用':'源音频波形'}><polyline points={points}/></svg>;
+function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:TimelineTrack;px:number;scroller:RefObject<HTMLDivElement|null>}) {
+ const e=useSequenceEditor(),p=useProjectWorkspace(),canvas=useRef<HTMLCanvasElement>(null);
+ const query=useQuery({queryKey:['resource-loudness',p.session?.id,e.projectId,clip.resource_id,clip.stream_index],queryFn:({signal})=>timelineApi.loudness(e.projectId,clip.resource_id,clip.stream_index,signal),staleTime:Infinity,retry:1});
+ // The pyramid is built once per asset; zoom/scroll only re-read it.
+ const data=useMemo(()=>query.data?buildLevels(query.data):null,[query.data]);
+ const left=clip.at*px,width=Math.max(3,clip.duration*px),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out),gain=(clip.effects.gain_db||0)+(track.gain_db||0);
+ const [span,setSpan]=useState<[number,number]>([0,0]);
+ useEffect(()=>{
+  const node=scroller.current;if(!node)return;let frame=0;
+  // Only the visible slice (+overscan) gets a canvas, so hour-long clips at
+  // high zoom never allocate a canvas wider than the viewport.
+  const update=()=>{frame=0;const over=256,x0=Math.max(0,Math.floor(node.scrollLeft-left-over)),x1=Math.min(width,Math.ceil(node.scrollLeft+node.clientWidth-148-left+over));setSpan(prev=>prev[0]===x0&&prev[1]===Math.max(x0,x1)?prev:[x0,Math.max(x0,x1)]);};
+  const schedule=()=>{if(!frame)frame=requestAnimationFrame(update);};
+  update();node.addEventListener('scroll',schedule,{passive:true});const observer=new ResizeObserver(schedule);observer.observe(node);
+  return()=>{node.removeEventListener('scroll',schedule);observer.disconnect();if(frame)cancelAnimationFrame(frame);};
+ },[scroller,left,width]);
+ useEffect(()=>{
+  const node=canvas.current;if(!node||!data)return;const w=span[1]-span[0];if(w<=0)return;
+  const dpr=Math.min(2,window.devicePixelRatio||1),h=Math.max(1,node.clientHeight),pw=Math.round(w*dpr),ph=Math.round(h*dpr);
+  if(node.width!==pw)node.width=pw;if(node.height!==ph)node.height=ph;
+  const ctx=node.getContext('2d');if(!ctx)return;
+  const a=from+(to-from)*span[0]/width,b=from+(to-from)*span[1]/width;
+  drawColumns(ctx,columns(data,a,b,pw,gain),ph,data.floorDb);
+ },[data,span,from,to,width,gain]);
+ const clipped=data&&query.data?.clipped_buckets?'含接近 0 dBFS 的峰值':'';
+ if(query.isError)return <div className="clip-loudness is-empty" title="音量谱暂不可用" aria-label="音量谱暂不可用"/>;
+ if(!data)return <div className="clip-loudness is-loading" aria-label="正在计算音量谱"/>;
+ return <canvas ref={canvas} className="clip-loudness" aria-label={`音量谱${clipped?` · ${clipped}`:''}${gain?` · 增益 ${gain}dB`:''}`} style={{left:span[0],width:span[1]-span[0]}}/>;
 }
 function ClipThumbnails({clip}:{clip:TimelineClip}) {
  const e=useSequenceEditor(),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out);
@@ -84,7 +106,7 @@ export function SequenceTimeline() {
      {Array.from({length:Math.ceil(length/rate/Math.max(1,Math.ceil(104/e.zoom)))}).map((_,i)=>{const second=i*Math.max(1,Math.ceil(104/e.zoom));return <span className="ruler-label" key={i} style={{left:second*e.zoom}}>{frameLabel(Math.round(second*rate),s.fps)}</span>;})}
      {s.markers.map(m=><Tooltip key={m.id} title={`${m.notes}${m.locked?' · 固定时码':''}`}><button className={`timeline-marker marker-${m.kind}`} aria-label={`标记 ${m.notes}`} style={{left:m.frame*px}} onPointerDown={event=>event.stopPropagation()} onClick={()=>e.setHead(m.frame)}>{m.kind==='point'?'◆':m.kind==='in'?'［':'］'}<span>{m.notes}</span></button></Tooltip>)}
     </div></div>
-    {displayTracks.map((track,displayIndex)=>{const trackIndex=s.tracks.indexOf(track);const trackItems:MenuProps['items']=[{key:'up',label:'上移轨道',disabled:!displayIndex||(track.kind==='audio')!==(displayTracks[displayIndex-1]?.kind==='audio'),onClick:()=>command([{type:'track.update',track_id:track.id,order:s.tracks.indexOf(displayTracks[displayIndex-1])}],'排列轨道')},{key:'down',label:'下移轨道',disabled:displayIndex===displayTracks.length-1||(track.kind==='audio')!==(displayTracks[displayIndex+1]?.kind==='audio'),onClick:()=>command([{type:'track.update',track_id:track.id,order:s.tracks.indexOf(displayTracks[displayIndex+1])}],'排列轨道')},{key:'height',label:track.height<96?'增高轨道':'恢复轨高',onClick:()=>command([{type:'track.update',track_id:track.id,height:track.height<96?112:64}],'轨道高度')},{key:'remove',label:'移除此轨道',disabled:track.locked,onClick:()=>command([{type:'track.remove',track_id:track.id}],'移除轨道')}];return <div className={`timeline-row${track.locked?' is-locked':''}${e.selectedTrack===track.id?' is-target':''}`} key={track.id} data-track-id={track.id} style={{height:track.height}}>
+    {displayTracks.map((track,displayIndex)=>{const trackIndex=s.tracks.indexOf(track);const trackItems:MenuProps['items']=[{key:'up',label:'上移轨道',disabled:!displayIndex||(track.kind==='audio')!==(displayTracks[displayIndex-1]?.kind==='audio'),onClick:()=>command([{type:'track.update',track_id:track.id,order:s.tracks.indexOf(displayTracks[displayIndex-1])}],'排列轨道')},{key:'down',label:'下移轨道',disabled:displayIndex===displayTracks.length-1||(track.kind==='audio')!==(displayTracks[displayIndex+1]?.kind==='audio'),onClick:()=>command([{type:'track.update',track_id:track.id,order:s.tracks.indexOf(displayTracks[displayIndex+1])}],'排列轨道')},{key:'height',label:track.height<96?'增高轨道':'恢复轨高',onClick:()=>command([{type:'track.update',track_id:track.id,height:track.height<96?112:64}],'轨道高度')},{key:'remove',label:'移除此轨道',disabled:track.locked,onClick:()=>command([{type:'track.remove',track_id:track.id}],'移除轨道')}];const audioStart=track.kind==='audio'&&displayIndex>0&&displayTracks[displayIndex-1].kind!=='audio';return <Fragment key={track.id}>{audioStart&&<div className="timeline-track-divider" role="separator" aria-label="视频轨与音频轨分界"><div className="track-heading"/></div>}<div className={`timeline-row${track.locked?' is-locked':''}${e.selectedTrack===track.id?' is-target':''}${audioStart?' is-audio-start':''}`} data-track-id={track.id} style={{height:track.height}}>
      <Dropdown trigger={['contextMenu']} menu={{items:trackItems}}>
       <div className="track-heading">
        <button className="track-name" onClick={()=>e.setSelectedTrack(track.id)} aria-pressed={e.selectedTrack===track.id} title={track.name}>{track.kind==='video'?'V':track.kind==='audio'?'A':'S'}{s.tracks.slice(0,trackIndex+1).filter(t=>t.kind===track.kind).length} · {track.name}{track.group_id?' · Agent':''}</button>
@@ -103,7 +125,7 @@ export function SequenceTimeline() {
        <div className={`timeline-clip${clip.origin.actor.startsWith('agent')?' is-agent':''}${selected.has(clip.id)?' is-selected':''}${clip.link_id?' is-linked':''}${track.hidden||track.muted?' is-disabled':''}`} data-clip-id={clip.id} role="button" tabIndex={0} aria-label={`${clip.name} · ${track.kind} · ${frameLabel(clip.at,s.fps)}`} aria-pressed={selected.has(clip.id)} style={{left:clip.at*px,width:Math.max(3,clip.duration*px)}}
         onPointerDown={event=>begin(event,clip,track,'move')} onPointerMove={move} onPointerUp={finish}
         onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);}}}>
-        {track.kind==='audio'?<ClipWaveform clip={clip}/>:track.kind==='video'?<ClipThumbnails clip={clip}/>:null}
+        {track.kind==='audio'?<ClipLoudness clip={clip} track={track} px={px} scroller={scroller}/>:track.kind==='video'?<ClipThumbnails clip={clip}/>:null}
         <span className="clip-title">{clip.origin.actor.startsWith('agent')?'Agent · ':''}{clip.name}{track.kind==='audio'?` · 流 ${clip.stream_index}`:''}{clip.link_id?' ↔':''}</span>
         {clip.effects.fade_in>0&&<span className="clip-effect fade-in" style={{width:clip.effects.fade_in*px}} title="淡入"/>}{clip.effects.fade_out>0&&<span className="clip-effect fade-out" style={{width:clip.effects.fade_out*px}} title="淡出"/>}{clip.effects.transition>0&&<span className="clip-transition" style={{width:clip.effects.transition*px}}>溶解</span>}
         {effectLabel(clip)&&<><span className="clip-effects-label">{effectLabel(clip)}</span><span className="clip-effect-scope" aria-label={`效果范围 ${clip.effects.from_frame??0} 至 ${clip.effects.to_frame??clip.duration} 帧`} style={{left:(clip.effects.from_frame??0)*px,width:Math.max(1,((clip.effects.to_frame??clip.duration)-(clip.effects.from_frame??0))*px)}}/></>}
@@ -114,7 +136,7 @@ export function SequenceTimeline() {
       {ghost&&ghost.target===track.id&&<div className="timeline-ghost" style={{left:(ghost.kind==='left'?ghost.at+ghost.delta:ghost.at+(ghost.kind==='move'?ghost.delta:0))*px,width:Math.max(1,(ghost.end-ghost.at+(ghost.kind==='right'?ghost.delta:ghost.kind==='left'?-ghost.delta:0))*px)}}>{track.locked?'轨道已锁定':`${frameLabel(ghost.at+ghost.delta,s.fps)}${ghost.snapped?' · 已吸附':''} · Esc 取消`}</div>}
       {drop&&affectedDrop(track)&&<div className="timeline-drop" style={{left:drop.at*px,width:drop.duration*px}}>{track.locked?'涉及锁定轨道，不能放入':`${drop.insert?'插入 · 后续内容及标记后移':`覆盖 ${clipCount(track,drop.at,drop.duration)} 个片段`}${track.kind==='video'&&audioCount?` · 同时放入 ${audioCount} 条音轨，不足时扩展`:''}`}</div>}
      </div>
-    </div>;})}
+    </div></Fragment>;})}
    </div>{box&&<div className="timeline-selection-box" style={{left:box.x,top:box.y,width:box.w,height:box.h}}/>}
   </div>
   <div className="timeline-help" role="status">{notice||'拖动时 Alt 暂停吸附，Esc 取消。右侧属性可精确设置位置与时长；源监视器可直接加入资源。'}</div>

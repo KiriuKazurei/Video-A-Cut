@@ -56,7 +56,12 @@
 .is-agent .clip-title { background:var(--vac-clip-effect); }
 .clip-thumbnails { position:absolute; inset:19px 0 0; display:flex; opacity:.7; pointer-events:none; }
 .clip-thumbnails img { width:33.333%; height:100%; object-fit:cover; min-width:0; }
-.clip-waveform { position:absolute; width:100%; height:calc(100% - 20px); top:20px; stroke:var(--vac-on-media); stroke-width:.3; fill:none; opacity:.6; pointer-events:none; }
+.clip-loudness { position:absolute; left:0; width:100%; top:20px; height:calc(100% - 20px); display:block; pointer-events:none; }
+.clip-loudness.is-loading { left:4px; right:4px; width:auto; top:calc(50% + 10px); height:1px; background:var(--vac-hairline); }
+.clip-loudness.is-empty { height:0; }
+/* Video/audio boundary: a solid band in the border color, spanning heading + lanes. */
+.timeline-track-divider { display:flex; height:6px; background:var(--vac-hairline); }
+.timeline-track-divider>.track-heading { height:6px; padding:0; background:var(--vac-hairline); border-right:0; }
 .clip-effects-label { position:absolute; bottom:6px; left:5px; font-size:12px; background:var(--vac-bg); padding:0 4px; z-index:2; pointer-events:none; }
 .clip-effect-scope { position:absolute; bottom:1px; height:5px; box-sizing:border-box; border:1px solid var(--vac-on-media); border-top:0; z-index:3; pointer-events:none; }
 .clip-trim { position:absolute; top:0; bottom:0; width:10px; z-index:5; cursor:ew-resize; }

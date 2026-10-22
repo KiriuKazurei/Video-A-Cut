@@ -2,6 +2,7 @@ import { request } from './api';
 import { apiURL } from './runtimeUrl';
 import type { ProjectSession } from './projectContracts';
 import type { ReferenceCandidate, ScriptReference, TimelineOperation, TimelineView, SequencePreview } from './timelineContracts';
+import type { LoudnessEnvelope } from './loudness';
 const id = encodeURIComponent;
 const body = (value: unknown): RequestInit => ({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
 const base = (project: string,sequence: string) => `/api/projects/${id(project)}/sequences/${id(sequence)}`;
@@ -16,5 +17,6 @@ export const timelineApi = {
  references: (project:string,sequence?:string,signal?:AbortSignal) => request<ReferenceCandidate[]>(`/api/projects/${id(project)}/references${sequence ? `?sequence=${id(sequence)}` : ''}`,{signal}),
  resolve: (project:string,references:ScriptReference[]) => request<ReferenceCandidate[]>(`/api/projects/${id(project)}/references/resolve`,body({references})),
  waveform: (project:string,resource:string,stream:number,signal?:AbortSignal) => request<{peaks:number[];duration:number;stream_index:number}>(`/api/projects/${id(project)}/resources/${id(resource)}/waveform?stream=${stream}`,{signal}),
+ loudness: (project:string,resource:string,stream:number,signal?:AbortSignal) => request<LoudnessEnvelope>(`/api/projects/${id(project)}/resources/${id(resource)}/loudness?stream=${stream}`,{signal}),
  thumbnailURL: (project:string,resource:string,at:number) => apiURL(`/api/projects/${id(project)}/resources/${id(resource)}/thumbnail?at=${at}`)
 };
