@@ -253,3 +253,55 @@ func TestReferenceLiteralSubtitleAndIndependentInstances(t *testing.T) {
 		t.Fatalf("literal subtitle bound as reference: %+v", tokens)
 	}
 }
+
+func TestGainKeyframesRoundTripAndSliceRemap(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: s.Tracks[0].ID, ResourceID: "r"}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	audio := s.Tracks[3]
+	clip := audio.Clips[0]
+	keys := []GainKeyframe{{T: 0, DB: 0}, {T: 0.5, DB: 6}, {T: 1, DB: -12}}
+	fx := clip.Effects
+	fx.GainDB = 0
+	fx.GainKeyframes = keys
+	if err := s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{clip.ID}, Effects: &fx}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(s.Tracks[3].Clips[0].Effects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"gain_keyframes"`) || !strings.Contains(string(raw), `"db":6`) {
+		t.Fatalf("keyframes missing from JSON: %s", raw)
+	}
+	var back Effects
+	if err = json.Unmarshal(raw, &back); err != nil || len(back.GainKeyframes) != 3 || back.GainKeyframes[1].DB != 6 {
+		t.Fatalf("round-trip %+v %v", back, err)
+	}
+	// Split at midpoint: left half should end at +6 dB, right half start at +6 dB.
+	mid := clip.At + clip.Duration/2
+	if err = s.Apply(&d, Operation{Type: "clip.split", ClipIDs: []string{clip.ID}, At: mid}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	left, right := s.Tracks[3].Clips[0], s.Tracks[3].Clips[1]
+	if len(left.Effects.GainKeyframes) < 2 || left.Effects.GainKeyframes[len(left.Effects.GainKeyframes)-1].DB != 6 {
+		t.Fatalf("left remap %+v", left.Effects.GainKeyframes)
+	}
+	if len(right.Effects.GainKeyframes) < 2 || right.Effects.GainKeyframes[0].DB != 6 {
+		t.Fatalf("right remap %+v", right.Effects.GainKeyframes)
+	}
+	if err = d.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	bad := left.Effects
+	bad.GainKeyframes = []GainKeyframe{{T: 0.5, DB: 0}, {T: 0.2, DB: 1}}
+	if err = s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{left.ID}, Effects: &bad}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	if err = d.Validate(); err == nil {
+		t.Fatal("unsorted keyframes must be rejected by Validate")
+	}
+}
+

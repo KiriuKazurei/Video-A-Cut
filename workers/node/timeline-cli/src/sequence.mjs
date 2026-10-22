@@ -8,6 +8,32 @@ import { assText, assTime } from '../adapters/ass.mjs';
 
 const seconds = time => time.value / time.scale;
 const n = value => { if (!Number.isFinite(value)) throw Error('无效时间或效果参数'); return String(Number(value.toFixed(9))); };
+
+/** Build an ffmpeg volume expression for clip-local keyframes (t in seconds of the trimmed clip).
+ *  Returns null when keyframes are absent so callers keep the constant gain_db path. */
+export function gainEnvelopeExpression(effects, durationSeconds) {
+  const keys=[...(effects?.gain_keyframes||[])].filter(k=>Number.isFinite(k?.t)&&Number.isFinite(k?.db))
+    .map(k=>({t:Math.min(1,Math.max(0,k.t)),db:k.db})).sort((a,b)=>a.t-b.t);
+  if(!keys.length||!(durationSeconds>0)) return null;
+  // Piecewise linear dB envelope in clip-local seconds (after asetpts).
+  const esc=v=>n(v);
+  let expr=esc(keys[keys.length-1].db);
+  for(let i=keys.length-2;i>=0;i--){
+    const a=keys[i],b=keys[i+1], ta=a.t*durationSeconds, tb=b.t*durationSeconds, d=Math.max(1e-12,tb-ta);
+    const seg=`${esc(a.db)}+(${esc(b.db)}-(${esc(a.db)}))*(t-${esc(ta)})/${esc(d)}`;
+    expr=`if(lt(t\\,${esc(ta)})\\,${esc(a.db)}\\,if(lt(t\\,${esc(tb)})\\,${seg}\\,${expr}))`;
+  }
+  return expr;
+}
+
+export function audioGainFilters(track, effects, durationSeconds, from, to) {
+  const trackGain=`volume=${n(track.gain_db||0)}dB`;
+  const env=gainEnvelopeExpression(effects, durationSeconds);
+  if(!env) return `${trackGain},volume=${n(effects.gain_db||0)}dB:enable='gte(t,${n(from)})*lt(t,${n(to)})'`;
+  // Expression returns dB; convert to linear multiplier inside the effect scope.
+  return `${trackGain},volume='if(gte(t\\,${n(from)})*lt(t\\,${n(to)})\\,pow(10\\,(${env})/20)\\,1)':eval=frame`;
+}
+
 const filterPath = path => path.replaceAll('\\', '/').replaceAll(':', '\\:').replaceAll("'", "'\\''");
 export async function sequenceFileHash(path) { const hash = createHash('sha256'); for await (const bytes of createReadStream(path)) hash.update(bytes); return hash.digest('hex'); }
 export function selectedTracks(sequence) {
@@ -49,7 +75,7 @@ export function sequenceGraph(sequence, resources) {
     const label = `audio${audio.length}`;
     let chain = `[${source}]atrim=start=${n(seconds(clip.source_in))}:end=${n(seconds(clip.source_out) + tail * clip.speed)},asetpts=PTS-STARTPTS,aresample=${sequence.sample_rate},${tempo(clip.speed)},atrim=duration=${n(len+tail)}`;
     const from = (e.from_frame ?? 0) / fps, to = (e.to_frame ?? clip.duration) / fps;
-    chain += `,volume=${n(track.gain_db || 0)}dB,volume=${n(e.gain_db || 0)}dB:enable='gte(t,${n(from)})*lt(t,${n(to)})'`;
+    chain += ','+audioGainFilters(track, e, len, from, to);
     if (e.fade_in) chain += `,afade=t=in:st=${n(from)}:d=${n(Math.min(e.fade_in / fps,to-from))}:enable='gte(t,${n(from)})*lt(t,${n(to)})'`;
     if (e.fade_out) chain += `,afade=t=out:st=${n(Math.max(from,to-e.fade_out/fps))}:d=${n(Math.min(e.fade_out/fps,to-from))}:enable='gte(t,${n(from)})*lt(t,${n(to)})'`;
     if (transition) chain += `,afade=t=in:d=${n(transition)}`;

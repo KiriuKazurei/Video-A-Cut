@@ -79,21 +79,30 @@ type Origin struct {
 	SHA256      string `json:"sha256,omitempty"`
 	PlanVersion int    `json:"plan_version,omitempty"`
 }
+
+// GainKeyframe is clip-local: T is 0..1 of clip duration, DB is the gain at that point.
+// Empty GainKeyframes means constant GainDB; when set, GainDB is kept equal to the
+// first keyframe for inspectors that only show a single number.
+type GainKeyframe struct {
+	T  float64 `json:"t"`
+	DB float64 `json:"db"`
+}
 type Effects struct {
-	GainDB     float64 `json:"gain_db"`
-	FadeIn     int64   `json:"fade_in"`
-	FadeOut    int64   `json:"fade_out"`
-	FadeColor  string  `json:"fade_color,omitempty"`
-	Scale      float64 `json:"scale"`
-	X          float64 `json:"x"`
-	Y          float64 `json:"y"`
-	CropLeft   float64 `json:"crop_left"`
-	CropRight  float64 `json:"crop_right"`
-	CropTop    float64 `json:"crop_top"`
-	CropBottom float64 `json:"crop_bottom"`
-	Transition int64   `json:"transition"`
-	FromFrame  *int64  `json:"from_frame,omitempty"`
-	ToFrame    *int64  `json:"to_frame,omitempty"`
+	GainDB        float64        `json:"gain_db"`
+	GainKeyframes []GainKeyframe `json:"gain_keyframes,omitempty"`
+	FadeIn        int64          `json:"fade_in"`
+	FadeOut       int64          `json:"fade_out"`
+	FadeColor     string         `json:"fade_color,omitempty"`
+	Scale         float64        `json:"scale"`
+	X             float64        `json:"x"`
+	Y             float64        `json:"y"`
+	CropLeft      float64        `json:"crop_left"`
+	CropRight     float64        `json:"crop_right"`
+	CropTop       float64        `json:"crop_top"`
+	CropBottom    float64        `json:"crop_bottom"`
+	Transition    int64          `json:"transition"`
+	FromFrame     *int64         `json:"from_frame,omitempty"`
+	ToFrame       *int64         `json:"to_frame,omitempty"`
 }
 type Clip struct {
 	ID          string  `json:"id"`
@@ -316,6 +325,9 @@ func (s Sequence) Validate() error {
 				if !finite(v) {
 					return fmt.Errorf("无效的片段效果")
 				}
+			}
+			if err := validateGainKeyframes(e.GainKeyframes); err != nil {
+				return err
 			}
 			if e.Scale <= 0 || e.FadeIn < 0 || e.FadeOut < 0 || e.FadeIn > c.Duration || e.FadeOut > c.Duration || e.Transition < 0 || e.Transition > c.Duration || e.CropLeft < 0 || e.CropRight < 0 || e.CropTop < 0 || e.CropBottom < 0 || e.CropLeft+e.CropRight >= 1 || e.CropTop+e.CropBottom >= 1 || (e.FadeColor != "" && e.FadeColor != "black" && e.FadeColor != "white") {
 				return fmt.Errorf("效果范围超出片段")
@@ -602,6 +614,7 @@ func insertGap(s *Sequence, at, duration int64, group string) error {
 }
 func sliceClip(c Clip, from, to int64, fps Rate) Clip {
 	original := c.At
+	originalDuration := c.Duration
 	c.At = from
 	c.Duration = to - from
 	in := Seconds(c.SourceIn)
@@ -624,14 +637,98 @@ func sliceClip(c Clip, from, to int64, fps Rate) Clip {
 		start = max(int64(0), start-(from-original))
 		end = min(c.Duration, end-(from-original))
 		if end <= start {
-			c.Effects = Effects{Scale: 1}
+			gain, keys := c.Effects.GainDB, c.Effects.GainKeyframes
+			c.Effects = Effects{Scale: 1, GainDB: gain, GainKeyframes: keys}
 		} else {
 			c.Effects.FromFrame = &start
 			c.Effects.ToFrame = &end
 		}
 	}
+	if len(c.Effects.GainKeyframes) > 0 && originalDuration > 0 {
+		lo := float64(from-original) / float64(originalDuration)
+		hi := float64(to-original) / float64(originalDuration)
+		c.Effects.GainKeyframes = remapGainKeyframes(c.Effects.GainKeyframes, lo, hi)
+		if len(c.Effects.GainKeyframes) > 0 {
+			c.Effects.GainDB = c.Effects.GainKeyframes[0].DB
+		}
+	}
 	return c
 }
+
+func validateGainKeyframes(keys []GainKeyframe) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	prev := -1.0
+	for _, k := range keys {
+		if !finite(k.T) || !finite(k.DB) || k.T < 0 || k.T > 1 {
+			return fmt.Errorf("增益关键帧无效")
+		}
+		if k.T < prev {
+			return fmt.Errorf("增益关键帧必须按时间排序")
+		}
+		prev = k.T
+	}
+	return nil
+}
+
+func interpolateGainKeyframes(keys []GainKeyframe, t float64) float64 {
+	if len(keys) == 0 {
+		return 0
+	}
+	if t <= keys[0].T {
+		return keys[0].DB
+	}
+	last := keys[len(keys)-1]
+	if t >= last.T {
+		return last.DB
+	}
+	for i := 0; i < len(keys)-1; i++ {
+		a, b := keys[i], keys[i+1]
+		if t >= a.T && t <= b.T {
+			d := b.T - a.T
+			if d <= 1e-12 {
+				return b.DB
+			}
+			return a.DB + (b.DB-a.DB)*((t-a.T)/d)
+		}
+	}
+	return last.DB
+}
+
+// remapGainKeyframes keeps the envelope for the kept [lo,hi] portion of the
+// original clip and rewrites T into 0..1 of the new clip.
+func remapGainKeyframes(keys []GainKeyframe, lo, hi float64) []GainKeyframe {
+	if hi-lo <= 1e-12 {
+		return nil
+	}
+	out := []GainKeyframe{{T: 0, DB: interpolateGainKeyframes(keys, lo)}}
+	for _, k := range keys {
+		if k.T <= lo+1e-12 || k.T >= hi-1e-12 {
+			continue
+		}
+		out = append(out, GainKeyframe{T: (k.T - lo) / (hi - lo), DB: k.DB})
+	}
+	out = append(out, GainKeyframe{T: 1, DB: interpolateGainKeyframes(keys, hi)})
+	// Drop exact duplicates produced when a keyframe sat on the cut.
+	dedup := out[:0]
+	for _, k := range out {
+		if len(dedup) > 0 && absFloat(dedup[len(dedup)-1].T-k.T) < 1e-9 {
+			dedup[len(dedup)-1] = k
+			continue
+		}
+		dedup = append(dedup, k)
+	}
+	return dedup
+}
+
+func absFloat(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
 func cutTrack(t *Track, at, end int64, fps Rate, except map[string]bool) error {
 	out := []Clip{}
 	for _, c := range t.Clips {

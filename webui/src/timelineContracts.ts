@@ -2,7 +2,8 @@ export interface MediaTime { value: number; scale: number }
 export interface FrameRate { num: number; den: number }
 export interface TimelineMarker { id: string; notes: string; kind: 'point' | 'in' | 'out'; frame: number; source_time?: MediaTime; locked: boolean }
 export interface EditOrigin { actor: string; run_id?: string; artifact_id?: string; sha256?: string; plan_version?: number }
-export interface ClipEffects { gain_db: number; fade_in: number; fade_out: number; fade_color?: 'black' | 'white' | ''; scale: number; x: number; y: number; crop_left: number; crop_right: number; crop_top: number; crop_bottom: number; transition: number; from_frame?: number; to_frame?: number }
+export interface GainKeyframe { t: number; db: number }
+export interface ClipEffects { gain_db: number; gain_keyframes?: GainKeyframe[]; fade_in: number; fade_out: number; fade_color?: 'black' | 'white' | ''; scale: number; x: number; y: number; crop_left: number; crop_right: number; crop_top: number; crop_bottom: number; transition: number; from_frame?: number; to_frame?: number }
 export interface TimelineClip { id: string; resource_id: string; name: string; stream_index: number; at: number; duration: number; source_in: MediaTime; source_out: MediaTime; speed: number; link_id?: string; origin: EditOrigin; effects: ClipEffects; text?: string; font?: string; font_size?: number }
 export interface TimelineTrack { id: string; name: string; kind: 'video' | 'audio' | 'subtitle'; height: number; locked: boolean; muted: boolean; hidden: boolean; solo: boolean; group_id?: string; gain_db: number; clips: TimelineClip[] }
 export interface TimelineSequence { id: string; revision: number; name: string; width: number; height: number; fps: FrameRate; sample_rate: number; configured: boolean; tracks: TimelineTrack[]; markers: TimelineMarker[]; groups: { id: string; name: string; origin: EditOrigin }[]; scope_group?: string; history_cursor: number }

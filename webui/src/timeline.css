@@ -59,6 +59,9 @@
 .clip-loudness { position:absolute; left:0; width:100%; top:20px; height:calc(100% - 20px); display:block; pointer-events:none; }
 .clip-loudness.is-loading { left:4px; right:4px; width:auto; top:calc(50% + 10px); height:1px; background:var(--vac-hairline); }
 .clip-loudness.is-empty { height:0; }
+.clip-gain-band { position:absolute; left:0; right:0; top:20px; height:calc(100% - 20px); width:100%; z-index:3; overflow:visible; pointer-events:none; }
+.clip-gain-band polyline, .clip-gain-band rect { pointer-events:auto; }
+.clip-gain-readout { position:absolute; z-index:6; padding:0 4px; font-size:11px; line-height:16px; color:var(--vac-text); background:var(--vac-control); border:1px solid var(--vac-hairline); border-radius:2px; pointer-events:none; white-space:nowrap; }
 /* Video/audio boundary: a solid band in the border color, spanning heading + lanes. */
 .timeline-track-divider { display:flex; height:6px; background:var(--vac-hairline); }
 .timeline-track-divider>.track-heading { height:6px; padding:0; background:var(--vac-hairline); border-right:0; }

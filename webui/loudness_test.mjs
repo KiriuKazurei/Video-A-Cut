@@ -38,14 +38,16 @@ test('hour-long envelope stays cheap per redraw', () => {
   for (let i = 0; i < 60; i++) columns(d, i * 10, i * 10 + 1800, 2400);
   assert.ok(performance.now() - t < 1500, 'sixty 2400px redraws');
 });
-test('drawing paints mirrored bars and clip ticks', () => {
+test('drawing paints bottom-aligned bars and top clip ticks', () => {
   const calls = [];
   const ctx = { clearRect() {}, fillRect(...a) { calls.push([ctx.fillStyle, ...a]); }, fillStyle: '', globalAlpha: 1 };
   drawColumns(ctx, [{ peakDb: 0, rmsDb: -30, clipped: true }, { peakDb: -Infinity, rmsDb: -Infinity, clipped: false }], 40, -60);
   assert.equal(barHeight(-30, -60), 0.5);
-  assert.ok(calls.some(c => c[1] === 0 && c[2] === 0 && c[4] === 40));
-  assert.ok(calls.some(c => c[1] === 0 && c[2] === 10 && c[4] === 20));
-  assert.equal(calls.filter(c => c[0] === '#DC4446').length, 2);
+  // full-scale peak: from y=0 height 40; half-scale RMS: from y=20 height 20
+  assert.ok(calls.some(c => c[0] === '#9A9A9A' && c[1] === 0 && c[2] === 0 && c[4] === 40));
+  assert.ok(calls.some(c => c[0] === '#E6E6E6' && c[1] === 0 && c[2] === 20 && c[4] === 20));
+  assert.equal(calls.filter(c => c[0] === '#DC4446').length, 1);
+  assert.ok(calls.some(c => c[0] === '#DC4446' && c[2] === 0 && c[4] === 2));
   assert.ok(!calls.some(c => c[1] === 1));
 });
 test('409 conflicts back off and retry several times; other errors retry once', () => {
@@ -73,4 +75,14 @@ test('source window maps pixel span through trim in/out', () => {
 test('total gain adds clip and track gain', () => {
   assert.equal(totalGain({ effects: { gain_db: -6 } }, { gain_db: 3 }), -3);
   assert.equal(totalGain({ effects: {} }, {}), 0);
+});
+
+test('columns accept per-pixel gain array', () => {
+  const peak = new Array(100).fill(255);
+  const d = buildLevels(env(peak));
+  const cols = columns(d, 0, 2, 4, [0, -6, -12, -60]);
+  assert.ok(Math.abs(cols[0].peakDb) < 1e-6);
+  assert.ok(Math.abs(cols[1].peakDb + 6) < 1e-6);
+  assert.equal(cols[0].clipped, true);
+  assert.equal(cols[3].clipped, false);
 });

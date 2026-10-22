@@ -4,6 +4,7 @@ import { Button, Card, Checkbox, Descriptions, Divider, Empty, Flex, Input, Inpu
 import { useProjectWorkspace } from '../projectWorkspace';
 import { useSequenceEditor } from '../sequenceEditor';
 import { frameLabel, fpsValue, timeSeconds, type TimelineClip, type TimelineMarker, type ClipEffects } from '../timelineContracts';
+import { constantGainEffects } from '../gainEnvelope';
 import { ResourceInspector } from './ResourceInspector';
 import { api } from '../api';
 
@@ -40,7 +41,8 @@ function ClipProperties({clip,trackId}:{clip:TimelineClip;trackId:string}) {
   <Divider plain>速度与效果</Divider>
   <div className="timeline-property-grid">
    <label>速度（保持音调）<InputNumber aria-label="片段速度" min={.05} max={100} step={.1} value={speed} onChange={value=>setSpeed(value ?? 1)}/></label>
-   <label>音量 dB<InputNumber aria-label="片段音量" min={-96} max={24} value={effects.gain_db} onChange={value=>fx('gain_db',value ?? 0)}/></label>
+   <label>音量 dB<InputNumber aria-label="片段音量" min={-96} max={24} value={effects.gain_db} onChange={value=>setEffects(old=>constantGainEffects({...old,gain_db:value ?? 0}, value ?? 0))}/></label>
+   {!!effects.gain_keyframes?.length&&<Typography.Text type="secondary" style={{gridColumn:'1 / -1'}}>时间线增益线有 {effects.gain_keyframes.length} 个关键帧；在此改音量会替换为恒定增益。</Typography.Text>}
    <label>淡入（秒）<InputNumber aria-label="片段淡入" min={0} max={clip.duration/rate} step={.1} value={effects.fade_in/rate} onChange={value=>fx('fade_in',Math.round((value ?? 0)*rate))}/></label>
    <label>淡出（秒）<InputNumber aria-label="片段淡出" min={0} max={clip.duration/rate} step={.1} value={effects.fade_out/rate} onChange={value=>fx('fade_out',Math.round((value ?? 0)*rate))}/></label>
    <label>淡变颜色<Select aria-label="淡变颜色" value={effects.fade_color || 'black'} onChange={value=>setEffects(fx=>({...fx,fade_color:value}))} options={[{value:'black',label:'黑场'},{value:'white',label:'白场'}]}/></label>

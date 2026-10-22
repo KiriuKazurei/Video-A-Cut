@@ -5,7 +5,9 @@ import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, Scis
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
-import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow, totalGain } from '../loudness';
+import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow } from '../loudness';
+import { pixelGains } from '../gainEnvelope';
+import { ClipGainBand } from './ClipGainBand';
 import { fpsValue, frameLabel, linkedSelection, snapFrame, timeSeconds, type TimelineClip, type TimelineTrack } from '../timelineContracts';
 
 function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:TimelineTrack;px:number;scroller:RefObject<HTMLDivElement|null>}) {
@@ -13,7 +15,7 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
  const query=useQuery({queryKey:['resource-loudness',p.session?.id,e.projectId,clip.resource_id,clip.stream_index],queryFn:({signal})=>timelineApi.loudness(e.projectId,clip.resource_id,clip.stream_index,signal),staleTime:Infinity,retry:loudnessRetry,retryDelay:loudnessRetryDelay,refetchInterval:q=>loudnessRefetchInterval(q.state.status)});
  // The pyramid is built once per asset; zoom/scroll only re-read it.
  const data=useMemo(()=>query.data?buildLevels(query.data):null,[query.data]);
- const left=clip.at*px,width=Math.max(3,clip.duration*px),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out),gain=totalGain(clip,track);
+ const left=clip.at*px,width=Math.max(3,clip.duration*px),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out),trackGain=track.gain_db||0;
  const [span,setSpan]=useState<[number,number]>([0,0]);
  useEffect(()=>{
   const node=scroller.current;if(!node)return;let frame=0;
@@ -30,12 +32,13 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
   if(node.width!==pw)node.width=pw;if(node.height!==ph)node.height=ph;
   const ctx=node.getContext('2d');if(!ctx)return;
   const [a,b]=sourceWindow(from,to,width,span);
-  drawColumns(ctx,columns(data,a,b,pw,gain),ph,data.floorDb);
- },[data,span,from,to,width,gain]);
+  const gains=pixelGains(clip.effects,trackGain,width,span[0],span[1],pw);
+  drawColumns(ctx,columns(data,a,b,pw,gains),ph,data.floorDb);
+ },[data,span,from,to,width,trackGain,clip.effects]);
  const clipped=data&&query.data?.clipped_buckets?'含接近 0 dBFS 的峰值':'';
  if(query.isError)return <div className="clip-loudness is-empty" title="音量谱暂不可用" aria-label="音量谱暂不可用"/>;
  if(!data)return <div className="clip-loudness is-loading" aria-label="正在计算音量谱"/>;
- return <canvas ref={canvas} className="clip-loudness" aria-label={`音量谱${clipped?` · ${clipped}`:''}${gain?` · 增益 ${gain}dB`:''}`} style={{left:span[0],width:span[1]-span[0]}}/>;
+ return <canvas ref={canvas} className="clip-loudness" aria-label={`音量谱${clipped?` · ${clipped}`:''}`} style={{left:span[0],width:span[1]-span[0]}}/>;
 }
 function ClipThumbnails({clip}:{clip:TimelineClip}) {
  const e=useSequenceEditor(),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out);
@@ -44,7 +47,7 @@ function ClipThumbnails({clip}:{clip:TimelineClip}) {
 type Drag={id:string;ids:string[];kind:'move'|'left'|'right';x:number;y:number;scroll:number;at:number;end:number;delta:number;target:string;started:boolean;snapped:boolean};
 function effectLabel(clip:TimelineClip) {
  const fx=clip.effects;
- return [clip.speed!==1?`${clip.speed}×`:'',fx.gain_db?`${fx.gain_db}dB`:'',fx.scale!==1||fx.x||fx.y?'变换':'',fx.crop_left||fx.crop_right||fx.crop_top||fx.crop_bottom?'裁切':'',fx.fade_in||fx.fade_out?'淡变':'',fx.transition?'溶解':'',clip.text?'字幕':''].filter(Boolean).join(' · ');
+ return [clip.speed!==1?`${clip.speed}×`:'',fx.gain_keyframes?.length?`音量 ${fx.gain_keyframes.length}点`:(fx.gain_db?`${fx.gain_db}dB`:''),fx.scale!==1||fx.x||fx.y?'变换':'',fx.crop_left||fx.crop_right||fx.crop_top||fx.crop_bottom?'裁切':'',fx.fade_in||fx.fade_out?'淡变':'',fx.transition?'溶解':'',clip.text?'字幕':''].filter(Boolean).join(' · ');
 }
 export function SequenceTimeline() {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
@@ -125,7 +128,7 @@ export function SequenceTimeline() {
        <div className={`timeline-clip${clip.origin.actor.startsWith('agent')?' is-agent':''}${selected.has(clip.id)?' is-selected':''}${clip.link_id?' is-linked':''}${track.hidden||track.muted?' is-disabled':''}`} data-clip-id={clip.id} role="button" tabIndex={0} aria-label={`${clip.name} · ${track.kind} · ${frameLabel(clip.at,s.fps)}`} aria-pressed={selected.has(clip.id)} style={{left:clip.at*px,width:Math.max(3,clip.duration*px)}}
         onPointerDown={event=>begin(event,clip,track,'move')} onPointerMove={move} onPointerUp={finish}
         onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);}}}>
-        {track.kind==='audio'?<ClipLoudness clip={clip} track={track} px={px} scroller={scroller}/>:track.kind==='video'?<ClipThumbnails clip={clip}/>:null}
+        {track.kind==='audio'?<><ClipLoudness clip={clip} track={track} px={px} scroller={scroller}/><ClipGainBand clip={clip} track={track} px={px} height={track.height}/></>:track.kind==='video'?<ClipThumbnails clip={clip}/>:null}
         <span className="clip-title">{clip.origin.actor.startsWith('agent')?'Agent · ':''}{clip.name}{track.kind==='audio'?` · 流 ${clip.stream_index}`:''}{clip.link_id?' ↔':''}</span>
         {clip.effects.fade_in>0&&<span className="clip-effect fade-in" style={{width:clip.effects.fade_in*px}} title="淡入"/>}{clip.effects.fade_out>0&&<span className="clip-effect fade-out" style={{width:clip.effects.fade_out*px}} title="淡出"/>}{clip.effects.transition>0&&<span className="clip-transition" style={{width:clip.effects.transition*px}}>溶解</span>}
         {effectLabel(clip)&&<><span className="clip-effects-label">{effectLabel(clip)}</span><span className="clip-effect-scope" aria-label={`效果范围 ${clip.effects.from_frame??0} 至 ${clip.effects.to_frame??clip.duration} 帧`} style={{left:(clip.effects.from_frame??0)*px,width:Math.max(1,((clip.effects.to_frame??clip.duration)-(clip.effects.from_frame??0))*px)}}/></>}
