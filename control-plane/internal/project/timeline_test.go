@@ -304,4 +304,3 @@ func TestGainKeyframesRoundTripAndSliceRemap(t *testing.T) {
 		t.Fatal("unsorted keyframes must be rejected by Validate")
 	}
 }
-

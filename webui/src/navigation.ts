@@ -7,9 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 export type WorkspaceId = 'resources' | 'editing' | 'export' | 'settings' | 'tts';
 
 /**
- * 编辑页二级分区：导入与粗剪 / 内容编辑 / 审查
+ * 编辑页二级分区：时间线 / 脚本工作台（审查已并入时间线节目监视，不再单独成页）
  */
-export type EditingSection = 'import' | 'content' | 'review';
+export type EditingSection = 'import' | 'content';
 
 /**
  * 导出页二级分区：交付 / 人工验收 / 任务监控
@@ -59,7 +59,6 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
 export const EDITING_SECTIONS: readonly EditingSectionDef[] = [
   { id: 'import', label: '时间线', description: '当前序列的轨道、片段、效果及标记' },
   { id: 'content', label: '脚本工作台', description: '编辑脚本与稳定素材/标记引用' },
-  { id: 'review', label: 'Skill 任务', description: '围绕发起序列运行 Skill 并管理历史结果' }
 ];
 
 export const EXPORT_SECTIONS: readonly ExportSectionDef[] = [
@@ -123,7 +122,9 @@ function parseHash(): RouteState {
   if (Number.isInteger(segment) && segment >= 0 && parameters.has('segment')) state.scriptSegment = segment;
 
   if (workspace === 'editing') {
-    state.editingSection = EDITING_SECTIONS.find((s) => s.id === second)?.id ?? DEFAULT_EDITING_SECTION;
+    // Legacy `#/editing/review` (旧「审查」页) → 时间线；效果在节目监视器查看
+    state.editingSection = second === 'review' ? 'import'
+      : (EDITING_SECTIONS.find((s) => s.id === second)?.id ?? DEFAULT_EDITING_SECTION);
   } else if (workspace === 'export') {
     state.exportSection = EXPORT_SECTIONS.find((s) => s.id === second)?.id ?? DEFAULT_EXPORT_SECTION;
   } else if (workspace === 'settings') {

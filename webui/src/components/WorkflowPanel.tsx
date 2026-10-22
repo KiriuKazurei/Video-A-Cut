@@ -132,7 +132,7 @@ interface WorkflowPanelProps {
   onGoStart?: () => void;
   /** content：侧重改文稿/场景/时间线，不放确认与批准按钮；review：侧重逐项确认场景、批准解说，并带流程控制。 */
   mode?: 'content' | 'review';
-  /** 去「审查」页（内容编辑页提示用） */
+  /** 去编辑时间线（原「审查」页已移除） */
   onGoReview?: () => void;
 }
 
@@ -265,14 +265,14 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
       </Flex>
       <Typography.Text type="secondary">{isReview
         ? '先看画面、确认场景，再批准解说。点时间线或卡片可在监视器预览。快捷键：C 确认场景 · A 批准解说 · N 跳到下一个待处理。'
-        : '在这里修改场景名称、顺序和解说文字，保存后会生成新修订并重新审查。逐项确认与批准请到「审查」页。'}
+        : '在这里修改场景名称、顺序和解说文字，保存后会生成新修订并重新审查。逐项确认与批准可在导出验收完成；成片效果请在编辑时间线的节目监视器查看。'}
         {' '}<Tooltip title="「证据」是系统从素材里截取的取样画面，说明为什么识别出这个场景；点缩略图可在节目监视器查看。"><span className="jargon-hint"><QuestionCircleOutlined /> 什么是证据</span></Tooltip></Typography.Text>
       {isReview && current && (sceneGate || draftGate) && <Alert type="info" showIcon className="review-todo"
         message={sceneGate ? `还有 ${pendingScenes.length} 个场景待确认` : `还有 ${pendingLines.length} 段解说待批准`}
         action={<Button size="small" disabled={sceneGate ? !pendingScenes.length : !pendingLines.length} onClick={() => { jumpNext(); }}>跳到下一个 (N)</Button>} />}
       {!isReview && current && (sceneGate || draftGate) && onGoReview && <Alert type="warning" showIcon className="review-todo"
         message={sceneGate ? '流程在等待场景确认' : '流程在等待解说批准'}
-        action={<Button type="primary" className="vac-cta" onClick={onGoReview}>去审查</Button>} />}
+        action={<Button type="primary" className="vac-cta" onClick={onGoReview}>去时间线</Button>} />}
       {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
       {(failure || runs.error || review.error || snapshot.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || review.error || snapshot.error)} />}
       {runs.isSuccess && !current && <Empty description="此资产还没有生成内容。先到「导入与粗剪」完成导入，再点「开始生成」。">

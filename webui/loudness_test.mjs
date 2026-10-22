@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLevels, pickLevel, columns, drawColumns, barHeight, loudnessRetry, loudnessRetryDelay, loudnessRefetchInterval, visibleSpan, sourceWindow, totalGain, LOUDNESS_CONFLICT_RETRIES } from './src/loudness.ts';
+import { buildLevels, pickLevel, columns, drawColumns, barHeight, loudnessRetry, loudnessRetryDelay, loudnessRefetchInterval, visibleSpan, sourceWindow, totalGain, loudnessDisplayGain, LOUDNESS_CONFLICT_RETRIES } from './src/loudness.ts';
 
 const b64 = bytes => Buffer.from(Uint8Array.from(bytes)).toString('base64');
 const env = (peak, rms = peak, bucket = 0.02) => ({ version: 1, stream_index: 1, duration: peak.length * bucket, bucket_seconds: bucket, buckets: peak.length, floor_db: -60, clip_db: -0.1, encoding: 'u8-dbfs', peak: b64(peak), rms: b64(rms), clipped_buckets: 0 });
@@ -49,6 +49,11 @@ test('drawing paints bottom-aligned bars and top clip ticks', () => {
   assert.equal(calls.filter(c => c[0] === '#DC4446').length, 1);
   assert.ok(calls.some(c => c[0] === '#DC4446' && c[2] === 0 && c[4] === 2));
   assert.ok(!calls.some(c => c[1] === 1));
+  // half-height peak (-30 dB) rises from bottom (y=20), not from the top
+  const half = [];
+  const ctx2 = { clearRect() {}, fillRect(...a) { half.push([ctx2.fillStyle, ...a]); }, fillStyle: '', globalAlpha: 1 };
+  drawColumns(ctx2, [{ peakDb: -30, rmsDb: -45, clipped: false }], 40, -60);
+  assert.ok(half.some(c => c[0] === '#9A9A9A' && c[2] === 20 && c[4] === 20), 'half-height peak bottom-aligned');
 });
 test('409 conflicts back off and retry several times; other errors retry once', () => {
   const conflict = { status: 409 };
@@ -85,4 +90,10 @@ test('columns accept per-pixel gain array', () => {
   assert.ok(Math.abs(cols[1].peakDb + 6) < 1e-6);
   assert.equal(cols[0].clipped, true);
   assert.equal(cols[3].clipped, false);
+});
+
+test('loudnessDisplayGain ignores keyframe envelopes', () => {
+  assert.equal(loudnessDisplayGain({ gain_db: -6, gain_keyframes: [{ t: 0, db: 12 }, { t: 1, db: -24 }] }, 3), -3);
+  assert.equal(loudnessDisplayGain({ gain_db: 2 }, 0), 2);
+  assert.notEqual(loudnessDisplayGain({ gain_db: 0, gain_keyframes: [{ t: 0, db: 12 }, { t: 1, db: 12 }] }, 0), 12);
 });

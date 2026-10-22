@@ -188,7 +188,7 @@ export function autoPanelModel(a: AutoView, run?: { status?: string; stage?: str
       return { ...base, kind: 'decision', alert: 'warning', live: false, title: h.title, description: h.description };
     }
     case 'completed':
-      return { ...base, kind: 'done', alert: 'success', live: false, title: '自动剪辑完成', description: 'AI 自评不等于人工验收，请在审查页确认后再正式使用。' };
+      return { ...base, kind: 'done', alert: 'success', live: false, title: '自动剪辑完成', description: 'AI 自评不等于人工验收，请在编辑时间线确认效果后再正式使用。' };
     case 'halted':
       return { ...base, kind: 'halted', alert: 'error', live: false, canTakeOver: true, title: '自动剪辑已停止', description: HALT_TEXT[a.halt_reason ?? ''] ?? '自动模式已停止，请你接着处理。' };
     case 'revoked':

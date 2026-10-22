@@ -92,3 +92,6 @@ export function sourceWindow(from:number,to:number,width:number,span:[number,num
  return [from+(to-from)*span[0]/width,from+(to-from)*span[1]/width];
 }
 export const totalGain=(clip:{effects:{gain_db?:number}},track:{gain_db?:number})=>(clip.effects.gain_db||0)+(track.gain_db||0);
+/** Spectrum scaling ignores keyframe envelopes — only constant clip+track gain (UX: rubber-band stays independent). */
+export const loudnessDisplayGain=(effects:{gain_db?:number;gain_keyframes?:unknown},trackGain=0)=>(effects.gain_db||0)+trackGain;
+

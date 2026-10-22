@@ -143,7 +143,7 @@ export function AutoRunProgress({ run, onGoReview }: { run?: WorkflowRun; onGoRe
             <Space wrap>
               {d.delivered && d.preview_id && <Button type="primary" className="vac-cta" icon={<DownloadOutlined />} href={previewFileURL(d.preview_id, 'mp4', true)} download>下载成片（{d.spec} 预览规格）</Button>}
               {d.package_ready && <Button icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(a.run_id)}/delivery.zip`)}>下载交付包（含原画质分段）</Button>}
-              <Button onClick={onGoReview}>去审查验收</Button>
+              <Button onClick={onGoReview}>去时间线确认</Button>
             </Space>
             {footnote && <Typography.Text type="secondary" className="auto-delivery-note" style={{ fontSize: 12 }}>{footnote}</Typography.Text>}
           </Flex>

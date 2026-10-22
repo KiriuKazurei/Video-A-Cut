@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent } from 'react';
 import { useSequenceEditor } from '../sequenceEditor';
 import {
   GAIN_HANDLE, GAIN_LINE, dbToY, yToDb, effectiveKeyframes, interpolateGain,
-  insertKeyframe, deleteKeyframe, moveKeyframe, shiftGain, formatGainDb, constantGainEffects, type GainKeyframe
+  insertKeyframe, deleteKeyframe, moveKeyframe, shiftGain, formatGainDb, constantGainEffects, gainBandShowsHandles, type GainKeyframe
 } from '../gainEnvelope';
 import type { ClipEffects, TimelineClip, TimelineTrack } from '../timelineContracts';
 
@@ -21,7 +21,7 @@ export function ClipGainBand({clip,track,px,height}:{clip:TimelineClip;track:Tim
   const drag=useRef<Drag|null>(null);
   const active=draft??points;
   // Handles only when the user has (or is editing) a real envelope — not the synthetic flat endpoints.
-  const showHandles=Boolean(draft||(Array.isArray(clip.effects.gain_keyframes)&&clip.effects.gain_keyframes.length));
+  const showHandles=gainBandShowsHandles(clip.effects,draft);
   const editable=!track.locked&&e.tool==='select'&&!e.pending;
 
   const commit=(next:GainKeyframe[], label:string)=>{

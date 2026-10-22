@@ -220,7 +220,7 @@ export function useKeyboardShortcuts({
       }
 
       // 审查快捷键 C / A / N：仅在「编辑 › 内容编辑/审查」生效；焦点在滑块、页签、下拉上时不触发
-      if (workspace === 'editing' && (route.editingSection === 'content' || route.editingSection === 'review') && !e.shiftKey) {
+      if (workspace === 'editing' && route.editingSection === 'content' && !e.shiftKey) {
         const action = REVIEW_KEYS[e.key.toLowerCase()];
         if (action && !lettersBlocked(e.target)) {
           if (action !== 'next' && !(e.target instanceof Element && e.target.closest('.workflow-card, .timeline-clip'))) return;

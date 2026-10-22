@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   dbToY, yToDb, interpolateGain, insertKeyframe, deleteKeyframe, moveKeyframe,
   shiftGain, effectiveKeyframes, normalizeKeyframes, pixelGains, constantGainEffects,
-  GAIN_TOP_DB, GAIN_BOTTOM_DB
+  gainBandShowsHandles, GAIN_TOP_DB, GAIN_BOTTOM_DB
 } from './src/gainEnvelope.ts';
 
 test('db↔y: top=+12, middle=0, bottom=−24', () => {
@@ -54,4 +54,17 @@ test('inspector constantGainEffects clears keyframes', () => {
   assert.equal(next.gain_db, -2);
   assert.equal(next.gain_keyframes, undefined);
   assert.equal(next.fade_in, 0);
+});
+
+test('handles hidden without keyframes; draft or stored envelope shows them', () => {
+  assert.equal(gainBandShowsHandles({ gain_db: 0 }, null), false);
+  assert.equal(gainBandShowsHandles({ gain_db: -3, gain_keyframes: [] }, null), false);
+  assert.equal(gainBandShowsHandles({ gain_db: 0, gain_keyframes: [{ t: 0, db: 0 }, { t: 1, db: 6 }] }, null), true);
+  assert.equal(gainBandShowsHandles({ gain_db: 0 }, [{ t: 0, db: 1 }, { t: 1, db: 1 }]), true);
+});
+
+test('whole-line constant path clears keyframes via constantGainEffects', () => {
+  const next = constantGainEffects({ gain_db: 0, gain_keyframes: [{ t: 0, db: 2 }, { t: 1, db: 2 }] }, -4);
+  assert.equal(next.gain_db, -4);
+  assert.equal(next.gain_keyframes, undefined);
 });

@@ -7,7 +7,7 @@ const find = (selector: string) => () => {
 };
 
 /**
- * 新手引导：antd Tour。用大白话讲清「导入 → 准备 → 生成 → 审查 → 交付」以及每块区域是做什么的。
+ * 新手引导：antd Tour。用大白话讲清「导入 → 准备 → 生成 → 确认 → 交付」以及每块区域是做什么的。
  * 目标元素不在当前页面（如窄屏没有侧栏）时，该步改为居中说明，不会指向空位。
  */
 export function AppTour({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -19,12 +19,12 @@ export function AppTour({ open, onClose }: { open: boolean; onClose: () => void 
     return [
       {
         title: '欢迎使用 Video Auto Cut',
-        description: '把一段录像剪成带解说和字幕的短视频，只需要五步：导入 → 准备 → 生成 → 审查 → 交付。接下来用 1 分钟带你认识界面，随时可以跳过。',
+        description: '把一段录像剪成带解说和字幕的短视频，只需要五步：导入 → 准备 → 生成 → 确认 → 交付。接下来用 1 分钟带你认识界面，随时可以跳过。',
         target: null
       },
       {
         title: '顶部：工作区',
-        description: '「资源管理」放素材；「编辑」里导入、剪辑和审查；「导出」下载成片并验收；「TTS」试听配音；「设置」放高级选项。按键盘 1~5 也能直接切换。',
+        description: '「资源管理」放素材；「编辑」里导入与多轨剪辑；「导出」下载成片并验收；「TTS」试听配音；「设置」放高级选项。按键盘 1~5 也能直接切换。',
         target: find('.app-nav-wrap')
       },
       {

@@ -11,7 +11,7 @@ import { useEvents } from './useEvents';
 import { refreshSnapshot } from './queryRefresh';
 import { ResourceBin } from './components/ResourceBin';
 import { ResourceInspector } from './components/ResourceInspector';
-import { TimelineInspector } from './components/TimelineInspector';
+import { EditorRightDock } from './components/EditorRightDock';
 import { SequenceEditorProvider } from './sequenceEditor';
 import { ProjectMenuBar } from './components/ProjectMenuBar';
 import { DesktopServiceStatus } from './components/DesktopRuntime';
@@ -256,10 +256,10 @@ export default function App() {
     return () => cancelAnimationFrame(frame);
   }, [focusTick]);
   
-  // 准备页启动流程后：选中新流程并切到编辑/审查
+  // 准备页启动流程后：选中新流程并切到编辑时间线（节目监视查看效果；不再跳「审查」页）
   const onPreparedStarted = (run: WorkflowRun) => {
     setRunState({ assetId, runId: run.run_id, offset: 0 });
-    navigate({ workspace: 'editing', editingSection: 'review' });
+    navigate({ workspace: 'editing', editingSection: 'import' });
   };
   
 
@@ -278,7 +278,9 @@ export default function App() {
   
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
-      {workspace==='editing'?<TimelineInspector/>:<ResourceInspector />}
+      {workspace==='editing'
+        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)}/>
+        : <ResourceInspector />}
     </ConfigProvider>
   );
 
@@ -445,11 +447,11 @@ export default function App() {
           <Layout.Sider 
             theme="light" 
             width={rightSiderWidth}
-            collapsedWidth={0}
+            collapsedWidth={workspace==='editing' ? 36 : 0}
             collapsed={rightCollapsed}
             collapsible
             trigger={null}
-            className={`dock dock-right dock-resizable${isRightDragging ? " is-dragging-resize" : ""}`} 
+            className={`dock dock-right dock-resizable${isRightDragging ? " is-dragging-resize" : ""}${workspace==='editing'&&rightCollapsed?' is-strip-collapsed':''}`} 
             aria-label="属性面板" 
             style={{ borderInlineStart: siderBorder }}
           >
@@ -478,13 +480,15 @@ export default function App() {
       </Drawer>
       
       <Drawer
-        title="属性面板"
+        title={workspace==='editing'?'编辑器面板':'属性面板'}
         placement="right"
         open={rightDrawerOpen && !independentWorkspace}
         onClose={() => setRightDrawerOpen(false)}
         width={320}
       >
-        {rightSiderContent}
+        {workspace==='editing'
+          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active stripOnly={false}/></ConfigProvider>
+          : rightSiderContent}
       </Drawer>
 
       </>}

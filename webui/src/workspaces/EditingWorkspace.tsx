@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Flex, Segmented, Space, Spin, Table, Tabs, Typography } from 'antd';
+import { Alert, Button, Empty, Flex, Segmented, Space, Spin, Tabs, Typography } from 'antd';
 import { PlayCircleOutlined, StepBackwardOutlined, StepForwardOutlined, PlusOutlined, ExportOutlined } from '@ant-design/icons';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { ScriptWorkbench } from '../components/ScriptWorkbench';
-import { SkillRunModule } from '../components/SkillRunModule';
 import { SequenceTimeline } from '../components/SequenceTimeline';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
@@ -29,9 +28,9 @@ function SourceMonitor() {
  </section>;
 }
 export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
- const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence,[panel,setPanel]=useState('timeline'),[monitor,setMonitor]=useState('program'),[visited,setVisited]=useState<string[]>([]);
+ const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence,[panel,setPanel]=useState<'timeline'|'script'>('timeline'),[monitor,setMonitor]=useState('program'),[visited,setVisited]=useState<string[]>(['timeline']);
  useEffect(()=>{setVisited(old=>old.includes(panel)?old:[...old,panel]);},[panel]);
- useEffect(()=>{setPanel(route.editingSection==='content'?'script':route.editingSection==='review'?'skill':'timeline');},[route.editingSection,route.scriptId]);
+ useEffect(()=>{setPanel(route.editingSection==='content'?'script':'timeline');},[route.editingSection,route.scriptId]);
  const scriptAsset=p.session?.document?.resources.find(r=>r.script_id===route.scriptId)?.asset_id ?? asset?.asset_id ?? p.session?.document?.resources.find(r=>r.asset_id)?.asset_id;
  const items=p.session?.document?.sequences?.map(seq=>({key:seq.id,label:seq.name,closable:(p.session?.document?.sequences.length ?? 0)>1}));
  return <div className="unified-editor" data-panel={panel} tabIndex={-1} aria-label="统一多轨编辑器">
@@ -45,12 +44,10 @@ export function EditingWorkspace({route,navigate,asset}:EditingWorkspaceProps) {
     {e.previewError&&<Alert type="warning" message={e.previewError} action={<Button size="small" onClick={e.refreshPreview}>重试预览</Button>}/>}
    </section>
   </div>
-  {e.loading?<Spin/>:<SequenceTimeline/>}
-  <Flex className="editor-panels-bar" align="center" gap={8} wrap><Segmented aria-label="编辑器面板" value={panel} onChange={value=>void p.flushEditors().then(()=>setPanel(value)).catch(()=>{})} options={[{value:'timeline',label:'时间线'},{value:'script',label:'脚本工作台'},{value:'skill',label:'Skill 任务'},{value:'history',label:'编辑历史'}]}/><Space><Button size="small" icon={<PlusOutlined/>} onClick={()=>void e.manageSequence('duplicate',e.sequenceId).catch(()=>{})}>复制序列</Button>{e.pending&&<Typography.Text type="secondary">正在提交编辑…</Typography.Text>}</Space></Flex>
+  <Flex className="editor-panels-bar" align="center" gap={8} wrap><Segmented aria-label="编辑器面板" value={panel} onChange={value=>void p.flushEditors().then(()=>setPanel(value as 'timeline'|'script')).catch(()=>{})} options={[{value:'timeline',label:'时间线'},{value:'script',label:'脚本工作台'}]}/><Space><Button size="small" icon={<PlusOutlined/>} onClick={()=>void e.manageSequence('duplicate',e.sequenceId).catch(()=>{})}>复制序列</Button>{e.pending&&<Typography.Text type="secondary">正在提交编辑…</Typography.Text>}</Space></Flex>
+  {panel==='timeline'?(e.loading?<Spin/>:<SequenceTimeline/>):null}
   <div className="editor-panel-content" hidden={panel==='timeline'}>
    {visited.includes('script')&&<div hidden={panel!=='script'}>{scriptAsset?<ScriptWorkbench key={`script-${scriptAsset}`} assetId={scriptAsset} navigate={navigate} selectedScriptId={route.scriptId} active={route.workspace==='editing'&&panel==='script'}/>:<Empty description="导入素材或 .avs 脚本后开始编辑"/>}</div>}
-   {visited.includes('skill')&&<div hidden={panel!=='skill'}><SkillRunModule navigate={navigate} active={route.workspace==='editing'&&panel==='skill'}/></div>}
-   {panel==='history'&&<Table size="small" pagination={false} rowKey="id" dataSource={e.view?.history ?? []} columns={[{title:'操作',dataIndex:'label'},{title:'来源',dataIndex:'actor'},{title:'状态',dataIndex:'applied',render:value=>value?'已应用':'已撤销'}]}/>}
   </div>
  </div>;
 }

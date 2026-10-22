@@ -288,7 +288,8 @@ button.timeline-clip:focus-visible { outline: 2px solid var(--vac-on-media); out
 /* ---------- 响应式 ---------- */
 /* xl 及以上（≥1280px）：正常侧栏 */
 @media (min-width: 1280px) {
-  .dock.ant-layout-sider-collapsed { flex: 0 0 0px !important; max-width: 0 !important; min-width: 0 !important; width: 0 !important; }
+  .dock.ant-layout-sider-collapsed:not(.is-strip-collapsed) { flex: 0 0 0px !important; max-width: 0 !important; min-width: 0 !important; width: 0 !important; }
+  .dock-right.is-strip-collapsed.ant-layout-sider-collapsed { flex: 0 0 36px !important; max-width: 36px !important; min-width: 36px !important; width: 36px !important; }
 }
 
 /* lg 及以下（<1280px）：编辑页双栏改单栏 */

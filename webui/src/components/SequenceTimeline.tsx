@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Checkbox, Dropdown, Flex, Select, Slider, Space, Tooltip, type MenuProps } from 'antd';
+import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, type MenuProps } from 'antd';
 import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined } from '@ant-design/icons';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
-import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow, totalGain } from '../loudness';
+import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow, loudnessDisplayGain } from '../loudness';
 import { ClipGainBand } from './ClipGainBand';
 import { fpsValue, frameLabel, linkedSelection, snapFrame, timeSeconds, type TimelineClip, type TimelineTrack } from '../timelineContracts';
 
@@ -33,7 +33,7 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
   const [a,b]=sourceWindow(from,to,width,span);
   // Spectrum uses constant clip+track gain only — never the keyframe rubber-band —
   // so the blue line stays a manual envelope editor, independent of loudness shape.
-  const gain=totalGain({effects:clip.effects},{gain_db:trackGain});
+  const gain=loudnessDisplayGain(clip.effects,trackGain);
   drawColumns(ctx,columns(data,a,b,pw,gain),ph,data.floorDb);
  },[data,span,from,to,width,trackGain,clip.effects.gain_db]);
  const clipped=data&&query.data?.clipped_buckets?'含接近 0 dBFS 的峰值':'';
@@ -95,12 +95,12 @@ export function SequenceTimeline() {
  const clipCount=(track:TimelineTrack,at:number,duration:number)=>track.clips.filter(c=>c.at<at+duration&&c.at+c.duration>at).length;
  const sourceStreams=Array.isArray(p.resource?.metadata.streams)?p.resource.metadata.streams as {codec_type:string}[]:[],audioCount=sourceStreams.filter(stream=>stream.codec_type==='audio').length;
  const affectedDrop=(track:TimelineTrack)=>{if(!drop)return false;if(drop.track===track.id)return true;const target=s.tracks.find(t=>t.id===drop.track);if(!target||!p.resource||!['audio','video'].includes(p.resource.kind)||track.kind!=='audio'||target.group_id!==track.group_id)return false;const audio=s.tracks.filter(t=>t.kind==='audio'&&t.group_id===target.group_id),start=target.kind==='audio'?audio.findIndex(t=>t.id===target.id):0;return audio.slice(start,start+audioCount).some(t=>t.id===track.id);};
- return <section className="sequence-timeline" aria-label="多轨时间线" tabIndex={0}>
+ return <section className="sequence-timeline" data-nav-anchor="timeline" aria-label="多轨时间线" tabIndex={0}>
   <Flex className="timeline-toolbar" align="center" gap={6} wrap>
    <Space.Compact><Button size="small" aria-pressed={e.tool==='select'} type={e.tool==='select'?'primary':'default'} onClick={()=>e.setTool('select')} title="选择工具 V">选择 V</Button><Button size="small" aria-pressed={e.tool==='razor'} type={e.tool==='razor'?'primary':'default'} icon={<ScissorOutlined/>} onClick={()=>e.setTool('razor')} title="剃刀工具 C">剃刀 C</Button></Space.Compact>
    <Button size="small" aria-label="撤销时间线编辑" title="撤销 Ctrl+Z" icon={<UndoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>h.applied)} onClick={()=>command([{type:'history.undo'}],'撤销')}/><Button size="small" aria-label="重做时间线编辑" title="重做 Ctrl+Shift+Z" icon={<RedoOutlined/>} disabled={e.pending||!e.view?.history.some(h=>!h.applied)} onClick={()=>command([{type:'history.redo'}],'重做')}/>
    <Button size="small" onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}>分割</Button><Button size="small" onClick={()=>e.marker()} icon={<PushpinOutlined/>}>标记 M</Button>
-   <Checkbox checked={e.snap} onChange={event=>e.setSnap(event.target.checked)}>吸附</Checkbox><Checkbox checked={insert} onChange={event=>setInsert(event.target.checked)}>插入模式</Checkbox>
+   <Button size="small" aria-pressed={e.snap} type={e.snap?'primary':'default'} onClick={()=>e.setSnap(!e.snap)} title="吸附到片段边缘与标记（Alt 临时关闭）">吸附</Button><Button size="small" aria-pressed={insert} type={insert?'primary':'default'} onClick={()=>setInsert(!insert)} title="插入模式：放下时后移后续片段">插入</Button>
    <Dropdown menu={{items:addTrackItems}}><Button size="small" icon={<PlusOutlined/>}>轨道</Button></Dropdown>
    <span className="timeline-zoom"><span>缩放</span><Slider min={10} max={300} value={e.zoom} onChange={e.setZoom} aria-label="时间线缩放"/></span>
    <Select size="small" aria-label="对照轨道范围" value={s.scope_group ?? ''} onChange={group=>command([{type:'scope.set',group_id:group}],'切换对照范围')} options={[{value:'',label:'全部轨道'},{value:'original',label:'原剪辑'},...s.groups.map(g=>({value:g.id,label:g.name}))]}/>
@@ -144,6 +144,6 @@ export function SequenceTimeline() {
     </div></Fragment>;})}
    </div>{box&&<div className="timeline-selection-box" style={{left:box.x,top:box.y,width:box.w,height:box.h}}/>}
   </div>
-  <div className="timeline-help" role="status">{notice||'拖动时 Alt 暂停吸附，Esc 取消。右侧属性可精确设置位置与时长；源监视器可直接加入资源。'}</div>
+  <div className="timeline-help" role="status">{notice||'Alt 暂停吸附 · Esc 取消拖动'}</div>
  </section>;
 }

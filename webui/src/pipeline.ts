@@ -70,19 +70,19 @@ export const STAGE_TARGET: Record<StageId, StageTarget> = {
   import: { route: { workspace: 'editing', editingSection: 'import' }, anchor: 'ingest' },
   prepare: { route: { workspace: 'settings', settingsCategory: 'preparation' }, anchor: 'prepare-start' },
   generate: { route: { workspace: 'export', exportSection: 'tasks' }, anchor: 'tasks' },
-  review: { route: { workspace: 'editing', editingSection: 'review' }, anchor: 'review' },
+  review: { route: { workspace: 'editing', editingSection: 'import' }, anchor: 'timeline' },
   delivery: { route: { workspace: 'export', exportSection: 'delivery' }, anchor: 'delivery' }
 };
 
 /** 二级分区 → 对应的流程阶段（用于二级菜单标记；没有对应阶段的返回 undefined） */
 export function stageOfRoute(route: RouteState): StageId | undefined {
-  if (route.workspace === 'editing') return route.editingSection === 'import' ? 'import' : 'review';
+  if (route.workspace === 'editing') return route.editingSection === 'content' ? undefined : 'import';
   if (route.workspace === 'export') return route.exportSection === 'tasks' ? 'generate' : 'delivery';
   if (route.workspace === 'settings') return route.settingsCategory === 'preparation' ? 'prepare' : undefined;
   return undefined;
 }
 export const SECTION_STAGE = {
-  editing: { import: 'import', content: 'review', review: 'review' },
+  editing: { import: 'import', content: 'import' },
   export: { delivery: 'delivery', acceptance: 'delivery', tasks: 'generate' },
   settings: { preparation: 'prepare' }
 } as const;
@@ -165,8 +165,8 @@ export function derivePipeline(input: PipelineInput): { stages: StageInfo[]; nex
         stat.delivery = { status: 'blocked', text: '生成中', reason: `流程仍在生成（${st}），审查完成后才能交付` };
         break;
       case 'failed':
-        stat.generate = { status: 'error', text: '生成失败', reason: workflow.blocked_reason || workflow.error_code || `流程失败（${st}），到「审查」页重试` };
-        stat.review = { status: 'error', text: '需要重试', reason: '流程失败：在「审查」页的流程控制里重试失败步骤' };
+        stat.generate = { status: 'error', text: '生成失败', reason: workflow.blocked_reason || workflow.error_code || `流程失败（${st}），到「导出 › 任务监控」或编辑时间线查看` };
+        stat.review = { status: 'error', text: '需要重试', reason: '流程失败：在「导出 › 任务监控」重试失败步骤' };
         stat.delivery = { status: 'blocked', text: '流程失败', reason: `流程失败（${st}）` };
         break;
       case 'cancelled':
@@ -256,7 +256,7 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
     case 'failed': return go('review', '查看失败并重试', stat.generate.reason ?? '流程失败');
     case 'cancelled': return restart('重新启动流程', '上次流程已取消，可重新运行准备');
     case 'awaiting_review':
-      return go('review', workflow.stage === 'scene_review' ? '去确认场景' : workflow.stage === 'draft_review' ? '去批准解说' : '去审查', stat.review.text);
+      return go('review', workflow.stage === 'scene_review' ? '去时间线确认场景' : workflow.stage === 'draft_review' ? '去时间线确认解说' : '去时间线查看', stat.review.text);
     case 'ready_for_acceptance':
       return asset.status === 'exported' ? go('delivery', '查看交付结果', '成片已导出：可下载或继续验收') : go('delivery', '去交付与验收', '生成完成：先看预览，没问题就在验收页点通过');
     default: return { label: '下一步', stage: null, hint: `流程状态 ${workflow.status} / ${workflow.stage}`, disabledReason: `无法判断下一步：流程状态为 ${workflow.status} / ${workflow.stage}` };

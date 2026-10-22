@@ -82,3 +82,8 @@ export function constantGainEffects<T extends {gain_db?:number;gain_keyframes?:G
  const {gain_keyframes:_, ...rest}=effects as T & {gain_keyframes?:unknown};
  return {...rest, gain_db:db, gain_keyframes:undefined} as T;
 }
+
+/** True when the rubber-band should show keyframe handles (stored envelope or live draft). */
+export function gainBandShowsHandles(effects:{gain_keyframes?:GainKeyframe[]|null}, draft:GainKeyframe[]|null|undefined):boolean {
+  return Boolean(draft||(Array.isArray(effects.gain_keyframes)&&effects.gain_keyframes.length));
+}
