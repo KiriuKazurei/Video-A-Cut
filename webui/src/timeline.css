@@ -16,7 +16,6 @@
 .unified-editor[data-panel="timeline"] .timeline-toolbar { flex-wrap:nowrap; overflow-x:auto; flex-shrink:0; }
 .unified-editor[data-panel="timeline"] .timeline-help { flex-shrink:0; }
 .compact-monitor-switch { display:none; }
-.editor-sider-toggles { display:flex; justify-content:flex-end; padding:4px 8px 0; }
 .sequence-tabs .ant-tabs-nav { margin-bottom:0; }
 .editor-monitors { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .editor-monitor { min-width:0; display:flex; flex-direction:column; background:var(--vac-panel); border:1px solid var(--vac-hairline); border-radius:2px; overflow:hidden; }

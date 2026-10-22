@@ -377,7 +377,6 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {workspace==='editing'&&useSidebar&&<div className="sider-toggles editor-sider-toggles"><Button type="text" size="small" icon={leftCollapsed?<MenuUnfoldOutlined/>:<MenuFoldOutlined/>} onClick={()=>setLeftCollapsed(!leftCollapsed)} aria-label={leftCollapsed?'展开资源面板':'收起资源面板'}/><Button type="text" size="small" icon={rightCollapsed?<MenuUnfoldOutlined/>:<MenuFoldOutlined/>} onClick={()=>setRightCollapsed(!rightCollapsed)} aria-label={rightCollapsed?'展开片段属性面板':'收起片段属性面板'}/></div>}
           {workspace !== 'resources' && workspace!=='editing' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
