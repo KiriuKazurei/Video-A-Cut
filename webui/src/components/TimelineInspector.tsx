@@ -62,7 +62,7 @@ export function TimelineInspector() {
  const track=s?.tracks.find(t=>t.clips.some(c=>e.selected.includes(c.id))),clip=track?.clips.find(c=>e.selected.includes(c.id));
  const resource=p.session?.document?.resources.find(r=>r.id===clip?.resource_id) ?? p.resource;
  return <div className="timeline-inspector" tabIndex={-1}>
-  <Card size="small" variant="borderless" title="片段与效果" styles={{body:{padding:12}}}>{clip&&track?<ClipProperties clip={clip} trackId={track.id}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择时间线片段以编辑属性"/>}</Card>
+  <Card size="small" variant="borderless" title="片段与效果" styles={{body:{padding:12}}}>{clip&&track?<ClipProperties clip={clip} trackId={track.id}/>:<Typography.Text type="secondary">点选片段查看</Typography.Text>}</Card>
   <Card size="small" variant="borderless" title="标记" extra={<Space size={4}><Button size="small" onClick={()=>e.marker()}>时间线</Button><Button size="small" disabled={!resource||!['video','audio','image'].includes(resource.kind)} onClick={()=>e.marker('point',true)}>素材</Button></Space>}>
    <Flex vertical gap={8}>{s?.markers.map(m=><MarkerRow key={m.id} marker={m}/>)}{resource?.markers?.map(m=><MarkerRow key={m.id} marker={m} resourceId={resource.id}/>)}{!s?.markers.length&&!resource?.markers?.length&&<Typography.Text type="secondary">M 添加标记；I / O 添加入出点。备注可直接在脚本中引用。</Typography.Text>}</Flex>
   </Card>
