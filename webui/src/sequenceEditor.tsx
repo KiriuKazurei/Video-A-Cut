@@ -95,7 +95,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
   if(!sequence || !selected.length)return;const chosen=sequence.tracks.flatMap(t=>t.clips).filter(c=>selected.includes(c.id)),start=Math.min(...chosen.map(c=>c.at));
   const first:Partial<Record<TimelineTrack['kind'],number>>={},counts:Partial<Record<TimelineTrack['kind'],number>>={};clipboard.current=[];clipboardRate.current=fpsValue(sequence.fps);
   sequence.tracks.forEach(t=>{const i=counts[t.kind]??0;counts[t.kind]=i+1;const clips=t.clips.filter(c=>selected.includes(c.id));if(!clips.length)return;first[t.kind]??=i;clipboard.current.push({kind:t.kind,offset:i-first[t.kind]!,clips:clips.map(c=>({...structuredClone(c),at:c.at-start}))});});
-  if(cut)void command([{type:'clip.delete',clip_ids:selected}],'剪切片段').catch(()=>{});else void message.info('已复制所选片段');
+  if(cut)void command([{type:'clip.delete',clip_ids:selected,mode:'ripple'}],'剪切片段').catch(()=>{});else void message.info('已复制所选片段');
  };
  const paste=async()=>{
   if(!sequence || !clipboard.current.length)return;const operations:TimelineOperation[]=[],links=new Map<string,string>();
@@ -103,7 +103,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
   for(const row of clipboard.current){const tracks=sequence.tracks.filter(t=>t.kind===row.kind && !t.group_id),target=tracks[row.offset];if(!target)throw Error('请先创建足够的对应轨道，粘贴未执行');operations.push({type:'clip.paste',track_id:target.id,at:head,clips:row.clips.map(c=>{if(c.link_id&&!links.has(c.link_id))links.set(c.link_id,crypto.randomUUID());return {...c,at:frame(c.at),duration:Math.max(1,frame(c.duration)),effects:{...c.effects,fade_in:frame(c.effects.fade_in),fade_out:frame(c.effects.fade_out),transition:frame(c.effects.transition),from_frame:c.effects.from_frame===undefined?undefined:frame(c.effects.from_frame),to_frame:c.effects.to_frame===undefined?undefined:frame(c.effects.to_frame)},link_id:c.link_id?links.get(c.link_id):undefined};})});}
   await command(operations,'粘贴片段');
  };
- const remove=(ripple=false)=>command([{type:'clip.delete',clip_ids:selected,mode:ripple?'ripple':'delete'}],ripple?'波纹删除':'删除片段');
+ const remove=(ripple=true)=>command([{type:'clip.delete',clip_ids:selected,mode:ripple?'ripple':'delete'}],ripple?'波纹删除':'删除留空隙');
  const split=()=>command([{type:'clip.split',clip_ids:selected.length?selected:sequence?.tracks.flatMap(t=>t.clips).filter(c=>c.at<head&&c.at+c.duration>head).map(c=>c.id),at:head}],'分割片段');
  const play=()=>{const media=program.current;if(!media || !preview)return;if(media.paused)void media.play().catch(reason=>setError(errorText(reason)));else media.pause();};
  const exportVideo=async()=>{try{if(!view || !session)return;await project.flushEditors();let path:string|undefined;if(isDesktop())path=(await desktopCommand<string[]>('project_dialog',{mode:'save-video',defaultPath:`${sequence?.name ?? '序列'}.mp4` }))[0];else path=window.prompt('导出 MP4 的绝对路径') ?? undefined;if(!path)return;await timelineApi.export(projectId,sequenceId,{session:session.id,expected_revision:view.sequence.revision,content_version:view.content_version,path});void message.success('已导出当前轨道范围');}catch(reason){setError(errorText(reason));throw reason;}};
@@ -116,7 +116,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
    const key=event.key.toLowerCase(),ctrl=event.ctrlKey||event.metaKey;let action:(()=>unknown)|undefined;
    if(!ctrl&&[' ','arrowleft','arrowright'].includes(key)&&event.target instanceof HTMLElement&&event.target.closest('button,a[href]'))return;
    if(ctrl){if(key==='k')action=split;else if(['c','v','x','z','y'].includes(key))action=()=>dispatch(key==='c'?'copy':key==='v'?'paste':key==='x'?'cut':key==='y'||event.shiftKey?'redo':'undo');}
-   else if(key==='v')action=()=>setTool('select');else if(key==='c')action=()=>setTool('razor');else if(key==='m')action=()=>marker();else if(key==='i'||key==='o')action=()=>marker(key==='i'?'in':'out');else if(key===' ')action=play;else if(key==='arrowleft'||key==='arrowright')action=()=>setHead(head+(key==='arrowright'?1:-1));else if(key==='delete')action=()=>remove(event.shiftKey);
+   else if(key==='v')action=()=>setTool('select');else if(key==='c')action=()=>setTool('razor');else if(key==='m')action=()=>marker();else if(key==='i'||key==='o')action=()=>marker(key==='i'?'in':'out');else if(key===' ')action=play;else if(key==='arrowleft'||key==='arrowright')action=()=>setHead(head+(key==='arrowright'?1:-1));else if(key==='delete')action=()=>remove(!event.shiftKey);
    if(action){event.preventDefault();const result=action();if(result instanceof Promise)void result.catch(()=>{});}
   };
   window.addEventListener('keydown',onKey);window.addEventListener('vac:edit-command',onMenu);return()=>{window.removeEventListener('keydown',onKey);window.removeEventListener('vac:edit-command',onMenu);};
