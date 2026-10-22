@@ -6,11 +6,13 @@
 .workspace-editing .stage-main>.page[data-page-view="editing"]:not([hidden])>.unified-editor { flex:1; min-height:0; }
 .unified-editor[data-panel="timeline"] { height:100%; min-height:0; overflow:hidden; }
 .unified-editor[data-panel="timeline"]>.sequence-tabs,.unified-editor[data-panel="timeline"]>.compact-monitor-switch,.unified-editor[data-panel="timeline"]>.editor-panels-bar { flex-shrink:0; }
-/* Preview stays fixed; only the timeline module scrolls. */
-.unified-editor[data-panel="timeline"]>.editor-monitors { flex:0 0 auto; min-height:0; max-height:none; }
-.unified-editor[data-panel="timeline"] .editor-monitor { min-height:0; }
+/* Preview stays put (not in timeline scroll); canvas may grow; only timeline scrolls. */
+.unified-editor[data-panel="timeline"]>.editor-monitors { flex:0 1 auto; min-height:0; max-height:min(42vh,420px); align-items:stretch; }
+.unified-editor[data-panel="timeline"] .editor-monitor { min-height:0; height:100%; }
 .unified-editor[data-panel="timeline"] .editor-monitor-title { flex-shrink:0; }
-.unified-editor[data-panel="timeline"] .editor-monitor-screen { flex:0 0 auto; }
+.unified-editor[data-panel="timeline"] .editor-monitor-controls { flex-shrink:0; margin-top:auto; }
+.unified-editor[data-panel="timeline"] .editor-monitor-screen { flex:1 1 auto; min-height:0; }
+.unified-editor[data-panel="timeline"] .program-monitor-row { flex:1 1 auto; min-height:0; display:flex; align-items:stretch; }
 .unified-editor[data-panel="timeline"]>.sequence-timeline { flex:1 1 auto; min-height:120px; overflow:hidden; }
 .unified-editor[data-panel="timeline"] .timeline-scroll { min-height:0; max-height:none; flex:1; }
 .unified-editor[data-panel="timeline"] .timeline-toolbar { flex-wrap:nowrap; overflow-x:auto; flex-shrink:0; }
@@ -25,8 +27,10 @@
 .editor-monitor { min-width:0; display:flex; flex-direction:column; background:var(--vac-panel); border:1px solid var(--vac-hairline); border-radius:2px; overflow:hidden; }
 .editor-monitor-title { display:flex; align-items:center; gap:8px; padding:4px 8px; min-width:0; border-bottom:1px solid var(--vac-hairline); }
 .editor-monitor-title .ant-typography { min-width:0; margin:0; }
-.editor-monitor-screen { position:relative; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); place-items:center; min-height:96px; height:clamp(110px,16vh,200px); background:var(--vac-media); overflow:hidden; }
-.editor-monitors.is-primary-only .program-monitor .editor-monitor-screen { height:clamp(140px,22vh,280px); }
+.editor-monitor-screen { position:relative; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); place-items:center; min-height:clamp(110px,16vh,200px); height:auto; background:var(--vac-media); overflow:hidden; }
+.editor-monitors.is-primary-only .program-monitor .editor-monitor-screen,
+.editor-monitors.is-primary-only .program-monitor-row .editor-monitor-screen { min-height:clamp(160px,26vh,320px); }
+.program-monitor .editor-monitor-controls { border-top:1px solid var(--vac-hairline); }
 .editor-monitor-screen video,.editor-monitor-screen img { width:100%; height:100%; min-width:0; min-height:0; object-fit:contain; }
 .editor-monitor-controls { padding:3px 8px; flex-shrink:0; min-height:28px; }
 .program-updating { position:absolute; inset:0; display:flex; justify-content:center; align-items:center; gap:10px; background:var(--vac-bg); color:var(--vac-text); }
@@ -103,8 +107,8 @@
 .editor-hotkey-strip .hk-sep { color:var(--vac-hairline); }
 .program-vu { display:flex; align-items:flex-end; gap:2px; width:14px; height:72px; padding:2px; border:1px solid var(--vac-hairline); border-radius:2px; background:var(--vac-control); flex-shrink:0; }
 .program-vu-bar { flex:1; width:100%; border-radius:2px; background:var(--vac-accent); transform-origin:bottom; min-height:2px; }
-.program-monitor-row { display:flex; align-items:stretch; gap:6px; min-width:0; }
-.program-monitor-row .editor-monitor-screen { flex:1; min-width:0; }
+.program-monitor-row { display:flex; align-items:stretch; gap:6px; min-width:0; min-height:0; }
+.program-monitor-row .editor-monitor-screen { flex:1 1 auto; min-width:0; min-height:0; }
 .resource-bin-thumb { width:40px; height:28px; object-fit:cover; border-radius:2px; background:var(--vac-media); border:1px solid var(--vac-hairline); flex-shrink:0; }
 .resource-bin-thumb.is-icon { display:inline-flex; align-items:center; justify-content:center; color:var(--vac-muted); font-size:14px; }
 .resource-bin-badges { display:inline-flex; gap:3px; margin-inline-start:4px; vertical-align:middle; }
@@ -118,7 +122,7 @@
 .timeline-ghost,.timeline-drop { position:absolute; top:2px; bottom:2px; border:2px dashed var(--vac-accent); color:var(--vac-text); background:var(--vac-panel); opacity:.8; z-index:8; white-space:nowrap; pointer-events:none; font-size:11px; overflow:hidden; }
 .timeline-selection-box { position:absolute; border:1px solid var(--vac-accent); z-index:9; pointer-events:none; }
 .timeline-help { padding:4px 8px; min-height:24px; box-sizing:border-box; color:var(--vac-muted); font-size:12px; border-top:1px solid var(--vac-hairline); }
-.editor-panels-bar { padding:3px 0; }
+.editor-panels-bar { padding:1px 0; flex-shrink:0; }
 .editor-panel-content { max-height:52vh; overflow:auto; border:1px solid var(--vac-hairline); padding:8px; }
 .timeline-inspector { min-width:0; }
 .timeline-property-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:8px 0; }
@@ -148,7 +152,7 @@
 .editor-right-dock.is-strip-only .editor-dock-strip { writing-mode:vertical-rl; text-orientation:mixed; justify-content:center; align-items:center; min-height:72px; padding:8px 4px; }
 .editor-right-dock.is-strip-only .editor-dock-strip-label { white-space:nowrap; }
 .dock-right.is-strip-collapsed > .ant-layout-sider-children { overflow:hidden; }
-.editor-panels-bar { padding:2px 0; }
+.editor-panels-bar { padding:1px 0; }
 
 .program-inout-overlay { position:absolute; left:0; right:0; bottom:0; height:4px; pointer-events:none; background:color-mix(in srgb, var(--vac-accent) 12%, transparent); }
 .program-inout-in,.program-inout-out { position:absolute; top:0; bottom:0; width:2px; background:var(--vac-warning-text); }
