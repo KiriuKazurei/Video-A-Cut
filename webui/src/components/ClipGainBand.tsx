@@ -25,7 +25,7 @@ export function ClipGainBand({clip,track,px,height}:{clip:TimelineClip;track:Tim
   const commit=(next:GainKeyframe[], label:string)=>{
     const normalized=next.length?next:[{t:0,db:clip.effects.gain_db||0},{t:1,db:clip.effects.gain_db||0}];
     const effects:ClipEffects={...clip.effects,gain_db:normalized[0].db,gain_keyframes:normalized};
-    void e.command([{type:'clip.update',clip_ids:[clip.id],effects}],label).catch(()=>{});
+    void e.command([{type:'clip.update',clip_ids:[clip.id],effects,unlinked:true}],label).catch(()=>{});
   };
 
   const onLineDown=(event:PointerEvent<SVGElement>)=>{
@@ -42,7 +42,7 @@ export function ClipGainBand({clip,track,px,height}:{clip:TimelineClip;track:Tim
       const next=deleteKeyframe(active,index);
       if(next.length<=1){
         const db=next[0]?.db ?? (clip.effects.gain_db||0);
-        void e.command([{type:'clip.update',clip_ids:[clip.id],effects:{...clip.effects,gain_db:db,gain_keyframes:undefined}}],'删除音量关键帧').catch(()=>{});
+        void e.command([{type:'clip.update',clip_ids:[clip.id],effects:{...clip.effects,gain_db:db,gain_keyframes:undefined},unlinked:true}],'删除音量关键帧').catch(()=>{});
       } else commit(next,'删除音量关键帧');
       return;
     }
