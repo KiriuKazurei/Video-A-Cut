@@ -93,7 +93,7 @@
 .timeline-playhead { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--vac-accent); z-index:4; pointer-events:none; }
 .timeline-playhead::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:10px; height:10px; background:var(--vac-accent); border-radius:2px; }
 .timeline-playhead-time { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:5; padding:1px 6px; border-radius:2px; background:var(--vac-panel); border:1px solid var(--vac-hairline); color:var(--vac-text); font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; pointer-events:none; }
-.timeline-playhead.is-snapped { box-shadow:0 0 0 1px color-mix(in srgb, var(--vac-accent) 55%, transparent); }
+.timeline-playhead.is-snapped { outline:1px solid color-mix(in srgb, var(--vac-accent) 55%, transparent); outline-offset:0; }
 .timeline-playhead.is-snapped .timeline-playhead-time { border-color:var(--vac-accent); color:var(--vac-accent); }
 .timeline-snap-flash { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:color-mix(in srgb, var(--vac-accent) 45%, transparent); z-index:3; pointer-events:none; }
 .timeline-inout-band { position:absolute; top:0; bottom:0; background:color-mix(in srgb, var(--vac-accent) 14%, transparent); border-left:2px solid var(--vac-warning-text); border-right:2px solid var(--vac-warning-text); z-index:2; pointer-events:none; }
@@ -102,7 +102,7 @@
 .editor-hotkey-strip kbd { display:inline-block; min-width:14px; padding:0 4px; border:1px solid var(--vac-hairline); border-radius:2px; background:var(--vac-control); color:var(--vac-text); font:inherit; font-size:10px; font-weight:600; text-align:center; }
 .editor-hotkey-strip .hk-sep { color:var(--vac-hairline); }
 .program-vu { display:flex; align-items:flex-end; gap:2px; width:14px; height:72px; padding:2px; border:1px solid var(--vac-hairline); border-radius:2px; background:var(--vac-control); flex-shrink:0; }
-.program-vu-bar { flex:1; width:100%; border-radius:1px; background:var(--vac-accent); transform-origin:bottom; min-height:2px; }
+.program-vu-bar { flex:1; width:100%; border-radius:2px; background:var(--vac-accent); transform-origin:bottom; min-height:2px; }
 .program-monitor-row { display:flex; align-items:stretch; gap:6px; min-width:0; }
 .program-monitor-row .editor-monitor-screen { flex:1; min-width:0; }
 .resource-bin-thumb { width:40px; height:28px; object-fit:cover; border-radius:2px; background:var(--vac-media); border:1px solid var(--vac-hairline); flex-shrink:0; }
