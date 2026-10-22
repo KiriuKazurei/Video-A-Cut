@@ -33,11 +33,19 @@
 .source-text-preview { align-self:stretch; justify-self:stretch; white-space:pre-wrap; padding:10px; margin:0; overflow:auto; color:var(--vac-text); }
 .sequence-timeline { display:flex; flex-direction:column; min-width:0; flex:1; border:1px solid var(--vac-hairline); background:var(--vac-bg); }
 .unified-editor :is(button,[tabindex]):focus-visible,.timeline-inspector :is(button,[tabindex]):focus-visible,.sequence-timeline:focus-visible { outline:2px solid var(--vac-accent); outline-offset:-2px; scroll-margin:44px 12px; }
-.timeline-toolbar { padding:4px 6px; border-bottom:1px solid var(--vac-hairline); gap:4px; }
+.timeline-toolbar { padding:6px 8px; border-bottom:1px solid var(--vac-hairline); gap:6px; }
 .sequence-timeline .ant-btn { min-width:24px; min-height:24px; }
+/* ~25% larger hit targets than ant small (24→30); scoped so track heads stay compact */
+.timeline-toolbar .ant-btn {
+  min-width:30px; min-height:30px; height:30px; padding:0 8px;
+  font-size:13px; line-height:1; border-radius:3px;
+}
+.timeline-toolbar .ant-btn .anticon { font-size:16px; }
+.timeline-toolbar .ant-space-compact .ant-btn { min-width:30px; }
 .timeline-toolbar .ant-select { min-width:120px; }
-.timeline-zoom { display:flex; align-items:center; gap:8px; min-width:120px; margin-inline-start:auto; }
-.timeline-zoom .ant-slider { width:80px; margin:4px; }
+.timeline-zoom { display:flex; align-items:center; gap:10px; min-width:140px; margin-inline-start:auto; }
+.timeline-zoom .ant-slider { width:96px; margin:4px; }
+.timeline-zoom > span:not(.ant-slider) { font-size:13px; }
 .timeline-scroll { position:relative; overflow:auto; min-height:0; flex:1; overscroll-behavior:contain; }
 .timeline-grid { position:relative; min-height:100%; }
 .sequence-timeline .timeline-ruler { display:flex; gap:0; margin:0; height:52px; position:sticky; top:0; z-index:6; background:var(--vac-panel); border-bottom:1px solid var(--vac-hairline); }

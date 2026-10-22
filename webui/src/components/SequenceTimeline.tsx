@@ -109,7 +109,7 @@ export function SequenceTimeline() {
  const sourceStreams=Array.isArray(p.resource?.metadata.streams)?p.resource.metadata.streams as {codec_type:string}[]:[],audioCount=sourceStreams.filter(stream=>stream.codec_type==='audio').length;
  const affectedDrop=(track:TimelineTrack)=>{if(!drop)return false;if(drop.track===track.id)return true;const target=s.tracks.find(t=>t.id===drop.track);if(!target||!p.resource||!['audio','video'].includes(p.resource.kind)||track.kind!=='audio'||target.group_id!==track.group_id)return false;const audio=s.tracks.filter(t=>t.kind==='audio'&&t.group_id===target.group_id),start=target.kind==='audio'?audio.findIndex(t=>t.id===target.id):0;return audio.slice(start,start+audioCount).some(t=>t.id===track.id);};
  return <section className="sequence-timeline" data-nav-anchor="timeline" aria-label="多轨时间线" tabIndex={0}>
-  <Flex className="timeline-toolbar" align="center" gap={4} wrap>
+  <Flex className="timeline-toolbar" align="center" gap={6} wrap>
    <Space.Compact>
     <Tooltip title="选择工具 V"><Button size="small" aria-label="选择工具 V" aria-pressed={e.tool==='select'} type={e.tool==='select'?'primary':'default'} icon={<SelectOutlined/>} onClick={()=>e.setTool('select')}/></Tooltip>
     <Tooltip title="剃刀工具 C"><Button size="small" aria-label="剃刀工具 C" aria-pressed={e.tool==='razor'} type={e.tool==='razor'?'primary':'default'} icon={<ScissorOutlined/>} onClick={()=>e.setTool('razor')}/></Tooltip>
