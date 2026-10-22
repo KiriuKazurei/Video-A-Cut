@@ -42,6 +42,11 @@ export function useResizable({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ startPos: number; startSize: number } | null>(null);
   const lastSavedRef = useRef<number | null>(null); // 跟踪上次保存的值，避免重复写入
+  const maxRef = useRef(max);
+  maxRef.current = max;
+  useEffect(() => {
+    setSize((current) => Math.min(Math.max(current, min), max));
+  }, [min, max]);
 
   const startDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -67,7 +72,7 @@ export function useResizable({
       const currentPos = direction === 'horizontal' ? e.clientX : e.clientY;
       const delta = currentPos - dragStartRef.current.startPos;
       const factor = reverse ? -1 : 1;
-      const nextSize = Math.max(min, Math.min(max, dragStartRef.current.startSize + delta * factor));
+      const nextSize = Math.max(min, Math.min(maxRef.current, dragStartRef.current.startSize + delta * factor));
       setSize(nextSize);
     };
 

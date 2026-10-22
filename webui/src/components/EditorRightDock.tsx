@@ -25,7 +25,8 @@ const ACTIVE_RUN = new Set(['queued', 'running', 'waiting_human']);
 /**
  * Premiere-style right dock: horizontal name strips; click expands body.
  * 脚本工作台 lives here (not as a competing main editing tab). Deep-link
- * `#/editing/content` and vac:open-script-dock open this strip.
+ * `#/editing/content` and vac:open-script-dock open this strip. Timeline
+ * stays in the center stage and remains interactive while script is open.
  */
 export function EditorRightDock({
   navigate,
@@ -35,6 +36,7 @@ export function EditorRightDock({
   route,
   assetId,
   onModuleOpen,
+  onModuleClose,
 }: {
   navigate: (state: Partial<RouteState>) => void;
   active: boolean;
@@ -44,6 +46,8 @@ export function EditorRightDock({
   assetId?: string;
   /** Fired when a module is opened (e.g. widen sider for script). */
   onModuleOpen?: (id: DockModuleId) => void;
+  /** Fired when a module is collapsed. */
+  onModuleClose?: (id: DockModuleId) => void;
 }) {
   const e = useSequenceEditor();
   const project = useProjectWorkspace();
@@ -64,8 +68,11 @@ export function EditorRightDock({
   const activeSkillCount = (runs.data ?? []).filter((item) => ACTIVE_RUN.has(item.state)).length;
 
   const openModule = (id: DockModuleId, exclusive = false) => {
+    // Script shares the stage with the timeline — keep it exclusive in the dock
+    // so the side panel stays usable without burying the center editor.
+    const forceExclusive = exclusive || stripOnly || id === 'script';
     setOpen((prev) => {
-      if (exclusive || stripOnly) {
+      if (forceExclusive) {
         return { properties: id === 'properties', script: id === 'script', skill: id === 'skill', history: id === 'history' };
       }
       return { ...prev, [id]: true };
@@ -99,8 +106,15 @@ export function EditorRightDock({
     }
     setOpen((prev) => {
       const next = !prev[id];
-      if (next) onModuleOpen?.(id);
-      return { ...prev, [id]: next };
+      if (next) {
+        onModuleOpen?.(id);
+        if (id === 'script') {
+          return { properties: false, script: true, skill: false, history: false };
+        }
+        return { ...prev, [id]: true };
+      }
+      onModuleClose?.(id);
+      return { ...prev, [id]: false };
     });
   };
 
@@ -121,6 +135,7 @@ export function EditorRightDock({
             navigate={navigate}
             selectedScriptId={route?.scriptId}
             active={active && open.script && !stripOnly}
+            variant="dock"
           />
         </div>
       );

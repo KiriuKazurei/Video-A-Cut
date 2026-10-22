@@ -80,7 +80,8 @@ export default function App() {
   } = useResizable({
     initial: screens.xxl ? 360 : 320,
     min: 240,
-    max: 640,
+    // Cap so monitors+timeline keep a usable center stage (Premiere-like coexistence).
+    max: 480,
     direction: 'horizontal',
     reverse: true,
     storageKey: 'vac_right_sider_width',
@@ -91,6 +92,20 @@ export default function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
+  const [scriptDockOpen, setScriptDockOpen] = useState(false);
+
+  // Keep center stage ≥ ~560px when the script dock is wide (resize / window shrink).
+  useEffect(() => {
+    const onResize = () => {
+      const left = leftCollapsed ? 0 : leftSiderWidth;
+      const floor = 560;
+      const allowed = Math.max(240, Math.min(480, window.innerWidth - left - floor));
+      if (rightSiderWidth > allowed) setRightWidth(allowed);
+    };
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [leftCollapsed, leftSiderWidth, rightSiderWidth, setRightWidth]);
   
   const siderBorder = `1px solid ${token.colorBorderSecondary}`;
   const { route, navigate } = useWorkspaceRoute();
@@ -102,7 +117,7 @@ export default function App() {
     const next = workspaceState?.workspace;
     navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
     if (typeof workspaceState?.left_width === 'number') setLeftWidth(Math.min(420, Math.max(200, workspaceState.left_width)));
-    if (typeof workspaceState?.right_width === 'number') setRightWidth(Math.min(450, Math.max(220, workspaceState.right_width)));
+    if (typeof workspaceState?.right_width === 'number') setRightWidth(Math.min(480, Math.max(240, workspaceState.right_width)));
     setLeftCollapsed(workspaceState?.left_collapsed === true); setRightCollapsed(workspaceState?.right_collapsed === true);
   }, []);
   useEffect(() => projectWorkspace.registerEditor('workspace-state', { dirty: false, flush: async () => {} }), []);
@@ -278,7 +293,7 @@ export default function App() {
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
       {workspace==='editing'
-        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)} route={route} assetId={selected?.asset_id} onModuleOpen={(id)=>{if(id==='script'){setRightCollapsed(false);if(rightSiderWidth<400)setRightWidth(Math.min(520,640));}}}/>
+        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)} route={route} assetId={selected?.asset_id} onModuleOpen={(id)=>{if(id==='script'){setScriptDockOpen(true);setRightCollapsed(false);const left=leftCollapsed?0:leftSiderWidth;const allowed=Math.max(240,Math.min(420,window.innerWidth-left-560));if(rightSiderWidth<360)setRightWidth(Math.min(400,allowed));}}} onModuleClose={(id)=>{if(id==='script')setScriptDockOpen(false);}}/>
         : <ResourceInspector />}
     </ConfigProvider>
   );
@@ -346,7 +361,7 @@ export default function App() {
         </div>
       </Layout.Header>
 
-      <Layout hasSider={Boolean(showLeftSider || showRightSider)} className={`workspace workspace-${workspace}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
+      <Layout hasSider={Boolean(showLeftSider || showRightSider)} className={`workspace workspace-${workspace}${workspace==='editing'&&scriptDockOpen&&!rightCollapsed?' is-script-dock-open':''}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
         {/* 左侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showLeftSider && (
           <Layout.Sider 
@@ -453,9 +468,9 @@ export default function App() {
               className={`sider-resizer sider-resizer-right ${isRightDragging ? 'is-dragging' : ''}`}
               onMouseDown={startRightDrag}
               onDoubleClick={resetRightWidth}
-              title="左右拖拽调整侧栏宽度，双击重置 (360px)"
+              title="左右拖拽调整侧栏宽度（脚本展开时上限约 480px，为时间线留空），双击重置 (360px)"
               role="separator"
-              aria-label="右侧栏宽度调整手柄，展开脚本工作台时可拉宽"
+              aria-label="右侧栏宽度调整手柄；脚本工作台展开时可拉宽，但会保留时间线可用宽度"
             />
             {rightSiderContent}
           </Layout.Sider>

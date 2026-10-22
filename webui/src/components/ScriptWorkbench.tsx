@@ -14,7 +14,7 @@ import { timelineApi } from '../timelineApi';
 import type { ScriptReference } from '../timelineContracts';
 import { candidateLabel, insertReference, rebaseReferences, synchronizeReferenceNames } from '../scriptReferences';
 
-export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean }) {
+export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true, variant = 'page' }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean; /** dock = compact side panel; timeline stays primary */ variant?: 'page' | 'dock' }) {
   const client = useQueryClient();
   const projectWorkspace = useProjectWorkspace();
   const sequenceEditor=useSequenceEditor();
@@ -171,10 +171,12 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   }, [scriptId, dirty, loadedVersion, title, body, references,segments, tts, subtitles, research, visible.data?.sha256, projectWorkspace.registerEditor]);
   const latest = record.data;
 
-  return <Card size="small" title="脚本工作台" className="script-workbench" data-testid="script-workbench"
+  const dock = variant === 'dock';
+  return <Card size="small" title={dock ? null : '脚本工作台'} className={`script-workbench${dock ? ' is-dock' : ''}`} data-testid="script-workbench"
     extra={<Tag>{latest?.script.status === 'finalized' ? '已定稿' : latest?.script.status === 'needs_refinalize' ? '待重新定稿' : '草稿'}</Tag>}>
-    <Flex vertical gap={12}>
-      <Typography.Text type="secondary">空行分段。普通文字是生成要求；花括号指定视频、字幕或画面效果。生成文稿后可逐段修改并人工定稿。</Typography.Text>
+    <Flex vertical gap={dock ? 8 : 12}>
+      {!dock && <Typography.Text type="secondary">空行分段。普通文字是生成要求；花括号指定视频、字幕或画面效果。生成文稿后可逐段修改并人工定稿。</Typography.Text>}
+      {dock && <Typography.Text type="secondary" style={{fontSize:12}}>空行分段；{'{@标记}'} 引用时间线。中心时间线可同时剪辑。</Typography.Text>}
       {scriptId && projectWorkspace.session?.document?.scripts.some(script => script.id === scriptId && script.bindings.some(binding => binding.unresolved)) && <Alert type="warning" message="脚本有待关联素材，可继续编辑。使用相关素材生成或渲染前请完成关联。" action={<Button onClick={() => void projectWorkspace.rebindScript(scriptId).catch(reason => setFailure(errorText(reason)))}>关联素材</Button>} />}
       {list.isError && <Alert type="error" message={errorText(list.error)} />}
       {!list.isPending && !list.data?.length && <Button type="primary" loading={busy} onClick={() => invoke(async () => {
@@ -194,7 +196,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
           <label htmlFor="script-body">脚本指令</label>
           <div className="script-code-field">
             <pre aria-hidden="true" ref={overlay} className="script-highlight">{tokens.map((t, i) => t.kind === 'text' ? t.text : <mark key={i} className={`script-token-${t.kind}`}>{t.text}</mark>)}{'\n'}</pre>
-            <Input.TextArea ref={editor} id="script-body" aria-label="脚本指令" value={body} rows={9} disabled={!canEdit} spellCheck={false}
+            <Input.TextArea ref={editor} id="script-body" aria-label="脚本指令" value={body} rows={dock ? 7 : 9} disabled={!canEdit} spellCheck={false}
               onSelect={e => { const el = e.currentTarget; selection.current = { start: el.selectionStart, end: el.selectionEnd }; }}
               placeholder={'{@抽卡演示.mp4}介绍抽卡机制\n\n{"重点说明", 字号:32px, 字体:"Microsoft YaHei",}{白屏}展示结果'}
               onScroll={e => { if (overlay.current) overlay.current.scrollTop = e.currentTarget.scrollTop; }}
@@ -225,6 +227,9 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             <Button onClick={() => void projectWorkspace.exportScript(scriptId).catch(e => setFailure(errorText(e)))}>导出 .avs</Button>
             <Tag>{dirty ? '尚未保存' : `已保存 · 修订 ${latest?.version ?? 0}`}</Tag>
           </Space>
+          {dock ? (
+            <Collapse size="small" defaultActiveKey={[]} items={[{ key: 'advanced', label: 'Agent 出稿 · 分段 · 定稿 · 历史', children: (
+              <Flex vertical gap={8}>
           <Card size="small" title="让 Agent 理解脚本并出稿">
             <Flex vertical gap={8}>
               <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={v => { setProfileId(v); setConsent(''); }}
@@ -278,6 +283,65 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
           </Space>
           {!dirty && latest && <ScriptDeliveryPanel scriptId={scriptId} active={active} />}
           <Collapse items={[{ key: 'history', label: `修订历史（${revisions.data?.length ?? 0}）`, children: <Space wrap>{revisions.data?.map(r => <Button key={r.version} onClick={() => setHistory(r)}>修订 {r.version} · {r.action}</Button>)}</Space> }]} />
+              </Flex>
+            )}]} />
+          ) : (
+            <>
+          <Card size="small" title="让 Agent 理解脚本并出稿">
+            <Flex vertical gap={8}>
+              <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={v => { setProfileId(v); setConsent(''); }}
+                options={usableProfiles.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
+              <Typography.Text type="secondary">将向所选预设发送当前工程素材的抽帧和脚本要求。允许查证时会查询文字资料并保留实际来源；游戏或规则不明确时会先提出问题。</Typography.Text>
+              <Space>
+                <Button disabled={!canEdit || dirty || !canParse || !profile} onClick={() => invoke(async () => {
+                  stop.current = new AbortController();
+                  setGenerating(true);
+                  stop.current.signal.throwIfAborted();
+                  await accept(await api.generateScript(scriptId!, { ...versionBody(), profile_id: profile!.profile_id, profile_revision: profile!.revision, allow_web_research: research }, stop.current.signal));
+                })}>理解脚本并生成文稿</Button>
+                {busy && generating && <Button onClick={() => stop.current?.abort()}>停止生成</Button>}
+              </Space>
+            </Flex>
+          </Card>
+          {latest?.questions?.length ? <Alert type="warning" message="Agent 需要补充信息" description={latest.questions.map((q, i) => <div key={i}>{q}</div>)} /> : null}
+          {paragraphs.map((p, i) => {
+            const seg = drafts[i];
+            const choices = p.video ? currentMedia.filter(m => m.name === p.video) : currentMedia;
+            return <Card size="small" title={`第 ${i + 1} 段`} key={`${i}-${p.source}`} className="script-paragraph">
+              <Flex vertical gap={8}>
+                <Typography.Text>{p.instruction || '仅特殊语法段'}</Typography.Text>
+                <Space wrap>
+                  <Checkbox checked={seg.tts_enabled ?? tts} disabled={!canEdit || !canParse} onChange={e => editSegment(i, { tts_enabled: e.target.checked })}>本段配音</Checkbox>
+                  <Checkbox checked={seg.subtitles_enabled ?? subtitles} disabled={!canEdit || !canParse} onChange={e => editSegment(i, { subtitles_enabled: e.target.checked })}>本段自动字幕</Checkbox>
+                  {(seg.tts_enabled ?? tts) && <Button disabled={dirty || busy || !navigate} onClick={() => navigate?.({ workspace: 'tts', scriptId, scriptVersion: loadedVersion, scriptSegment: i })}>到 TTS 专页调整第 {i + 1} 段</Button>}
+                </Space>
+                <Space wrap>{p.video && <Tag>强制视频：{p.video}</Tag>}{p.subtitle && <Tag>强制字幕：{p.subtitle.text}</Tag>}{p.effect && <Tag>画面效果：{p.effect}</Tag>}</Space>
+                <label htmlFor={`script-narration-${i}`}>实际旁白文稿（可手写，也可由 Agent 生成）</label>
+                <Input.TextArea id={`script-narration-${i}`} value={seg.narration} disabled={!canEdit || !canParse} rows={3} maxLength={2000}
+                  onChange={e => editSegment(i, { narration: e.target.value })} />
+                <Select aria-label={`第${i + 1}段视频`} value={seg.media_id || undefined} disabled={!canEdit || !canParse} placeholder="选择搭配的视频"
+                  options={choices.map(m => ({ value: m.id, label: `${m.name} · ${m.asset_id}` }))} onChange={id => {
+                    const m = currentMedia.find(m => m.id === id)!; editSegment(i, { media_id: id, start: m.in, end: Math.min(m.out, m.in + 8) });
+                  }} />
+                <Space wrap>
+                  <span>源视频起点（秒）</span><InputNumber aria-label={`第${i + 1}段起点`} min={0} value={seg.start} disabled={!canEdit || !canParse} onChange={v => editSegment(i, { start: v ?? 0 })} />
+                  <span>终点（秒）</span><InputNumber aria-label={`第${i + 1}段终点`} min={0} value={seg.end} disabled={!canEdit || !canParse} onChange={v => editSegment(i, { end: v ?? 0 })} />
+                </Space>
+              </Flex>
+            </Card>;
+          })}
+          {(latest?.sources?.length ?? 0) > 0 && <Collapse items={[{ key: 'sources', label: '本次实际查证的文字资料', children: latest!.sources.map(s => <div key={s.url}><Typography.Link href={s.url} target="_blank" rel="noreferrer">{s.title}</Typography.Link></div>) }]} />}
+          <Space wrap>
+            <Button disabled={!canEdit || dirty || !canParse || !complete || (latest?.questions?.length ?? 0) > 0 || latest?.rejected || latest?.script.status === 'finalized'}
+              onClick={() => invoke(async () => accept(await api.finalizeScriptWorkbench(scriptId!, versionBody())))}>人工定稿</Button>
+            <Popconfirm title="否决当前文稿？" description="保留指令和历史修订，清除当前生成文稿。" onConfirm={() => invoke(async () => accept(await api.rejectScript(scriptId!, versionBody())))}>
+              <Button danger disabled={!canEdit}>否决文稿</Button>
+            </Popconfirm>
+          </Space>
+          {!dirty && latest && <ScriptDeliveryPanel scriptId={scriptId} active={active} />}
+          <Collapse items={[{ key: 'history', label: `修订历史（${revisions.data?.length ?? 0}）`, children: <Space wrap>{revisions.data?.map(r => <Button key={r.version} onClick={() => setHistory(r)}>修订 {r.version} · {r.action}</Button>)}</Space> }]} />
+            </>
+          )}
         </Flex>
       </Spin>}
       {failure && <Alert type="error" showIcon role="alert" message={failure} closable onClose={() => setFailure('')} />}

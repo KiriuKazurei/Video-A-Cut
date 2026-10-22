@@ -170,3 +170,10 @@
 .dock-script-workbench { padding:4px 6px 8px; min-width:0; }
 .dock-script-workbench .ant-card { border-radius:2px; }
 .dock-script-workbench textarea { font-size:12px; }
+
+/* Script dock open: keep center stage from collapsing under a wide sider */
+.workspace-editing.is-script-dock-open .stage-main { min-width: 0; }
+.workspace-editing.is-script-dock-open .unified-editor { min-width: 420px; }
+.dock-script-workbench .script-workbench.is-dock > .ant-card-head { min-height: 36px; padding: 0 8px; }
+.dock-script-workbench .script-workbench.is-dock > .ant-card-body { padding: 8px; }
+.dock-script-workbench .script-workbench.is-dock .ant-collapse { background: transparent; }
