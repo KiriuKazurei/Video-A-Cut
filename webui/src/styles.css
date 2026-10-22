@@ -66,8 +66,16 @@ body { background: var(--vac-bg); }
 .skip-link:focus { top: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.app-header { display: flex; background: var(--vac-bg); align-items: center; gap: 8px; height: auto; min-height: 40px; line-height: normal; border-bottom: 1px solid var(--vac-hairline); padding-inline: 8px; }
-.app-nav-wrap { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-start; }
+.app-header,
+.app-header.ant-layout-header {
+  display: flex; background: var(--vac-bg); align-items: center; gap: 8px;
+  height: auto; min-height: 0; line-height: normal;
+  border-bottom: 1px solid var(--vac-hairline);
+  /* 6px outer gap above/below tab row; option height remains 32px */
+  padding: 6px 8px;
+}
+/* Outer gaps only — tab control height stays 32px (.app-nav.seg-nav items). */
+.app-nav-wrap { flex: 0 1 auto; min-width: 0; display: flex; justify-content: flex-start; align-items: center; }
 /* 宽度由外层决定而非由内容决定：flex-basis 恰好容纳四个工作区页签 */
 .app-nav { flex: 1 1 auto; width: 100%; min-width: 260px; justify-content: center; border-bottom: 0 !important; }
 .app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
