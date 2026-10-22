@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent } from 'react';
 import { useSequenceEditor } from '../sequenceEditor';
 import {
   GAIN_HANDLE, GAIN_LINE, dbToY, yToDb, effectiveKeyframes, interpolateGain,
-  insertKeyframe, deleteKeyframe, moveKeyframe, shiftGain, formatGainDb, type GainKeyframe
+  insertKeyframe, deleteKeyframe, moveKeyframe, shiftGain, formatGainDb, constantGainEffects, type GainKeyframe
 } from '../gainEnvelope';
 import type { ClipEffects, TimelineClip, TimelineTrack } from '../timelineContracts';
 
@@ -20,12 +20,17 @@ export function ClipGainBand({clip,track,px,height}:{clip:TimelineClip;track:Tim
   const [readout,setReadout]=useState<{x:number;y:number;text:string}|null>(null);
   const drag=useRef<Drag|null>(null);
   const active=draft??points;
+  // Handles only when the user has (or is editing) a real envelope — not the synthetic flat endpoints.
+  const showHandles=Boolean(draft||(Array.isArray(clip.effects.gain_keyframes)&&clip.effects.gain_keyframes.length));
   const editable=!track.locked&&e.tool==='select'&&!e.pending;
 
   const commit=(next:GainKeyframe[], label:string)=>{
     const normalized=next.length?next:[{t:0,db:clip.effects.gain_db||0},{t:1,db:clip.effects.gain_db||0}];
     const effects:ClipEffects={...clip.effects,gain_db:normalized[0].db,gain_keyframes:normalized};
     void e.command([{type:'clip.update',clip_ids:[clip.id],effects,unlinked:true}],label).catch(()=>{});
+  };
+  const commitConstant=(db:number, label:string)=>{
+    void e.command([{type:'clip.update',clip_ids:[clip.id],effects:constantGainEffects(clip.effects,db),unlinked:true}],label).catch(()=>{});
   };
 
   const onLineDown=(event:PointerEvent<SVGElement>)=>{
@@ -72,7 +77,12 @@ export function ClipGainBand({clip,track,px,height}:{clip:TimelineClip;track:Tim
     const d=drag.current;drag.current=null;setReadout(null);
     if(!d||!draft){setDraft(null);return;}
     event.stopPropagation();
-    commit(draft, d.kind==='line'?'调节音量':'调节音量关键帧');
+    // Whole-line drag with no stored keyframes stays a constant (straight line), not a 2-point envelope.
+    if(d.kind==='line'&&!(Array.isArray(clip.effects.gain_keyframes)&&clip.effects.gain_keyframes.length)){
+      commitConstant(interpolateGain(draft,0.5),'调节音量');
+    } else {
+      commit(draft, d.kind==='line'?'调节音量':'调节音量关键帧');
+    }
     setDraft(null);
   };
   const onDouble=(event:PointerEvent<SVGElement>)=>{
@@ -90,7 +100,7 @@ export function ClipGainBand({clip,track,px,height}:{clip:TimelineClip;track:Tim
       <polyline points={active.map(p=>`${p.t*width},${dbToY(p.db,bandH)}`).join(' ')} fill="none" stroke={GAIN_LINE} strokeWidth={2} vectorEffect="non-scaling-stroke" style={{pointerEvents:'stroke'}}/>
       {/* Invisible wider stroke for easier grabbing */}
       <polyline points={active.map(p=>`${p.t*width},${dbToY(p.db,bandH)}`).join(' ')} fill="none" stroke="transparent" strokeWidth={10} vectorEffect="non-scaling-stroke" style={{pointerEvents:'stroke',cursor:editable?'ns-resize':'default'}} onDoubleClick={onDouble as never}/>
-      {active.map((p,i)=><rect key={i} x={p.t*width-GAIN_HANDLE/2} y={dbToY(p.db,bandH)-GAIN_HANDLE/2} width={GAIN_HANDLE} height={GAIN_HANDLE} rx={2} ry={2} fill={GAIN_LINE}
+      {showHandles&&active.map((p,i)=><rect key={i} x={p.t*width-GAIN_HANDLE/2} y={dbToY(p.db,bandH)-GAIN_HANDLE/2} width={GAIN_HANDLE} height={GAIN_HANDLE} rx={2} ry={2} fill={GAIN_LINE}
         style={{cursor:editable?'move':'default',pointerEvents:editable?'all':'none'}}
         onPointerDown={ev=>onPointDown(ev,i)} onPointerMove={onMove} onPointerUp={onUp}/>)}
     </svg>

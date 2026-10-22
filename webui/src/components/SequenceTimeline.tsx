@@ -5,8 +5,7 @@ import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, Scis
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
-import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow } from '../loudness';
-import { pixelGains } from '../gainEnvelope';
+import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow, totalGain } from '../loudness';
 import { ClipGainBand } from './ClipGainBand';
 import { fpsValue, frameLabel, linkedSelection, snapFrame, timeSeconds, type TimelineClip, type TimelineTrack } from '../timelineContracts';
 
@@ -32,9 +31,11 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
   if(node.width!==pw)node.width=pw;if(node.height!==ph)node.height=ph;
   const ctx=node.getContext('2d');if(!ctx)return;
   const [a,b]=sourceWindow(from,to,width,span);
-  const gains=pixelGains(clip.effects,trackGain,width,span[0],span[1],pw);
-  drawColumns(ctx,columns(data,a,b,pw,gains),ph,data.floorDb);
- },[data,span,from,to,width,trackGain,clip.effects]);
+  // Spectrum uses constant clip+track gain only — never the keyframe rubber-band —
+  // so the blue line stays a manual envelope editor, independent of loudness shape.
+  const gain=totalGain({effects:clip.effects},{gain_db:trackGain});
+  drawColumns(ctx,columns(data,a,b,pw,gain),ph,data.floorDb);
+ },[data,span,from,to,width,trackGain,clip.effects.gain_db]);
  const clipped=data&&query.data?.clipped_buckets?'含接近 0 dBFS 的峰值':'';
  if(query.isError)return <div className="clip-loudness is-empty" title="音量谱暂不可用" aria-label="音量谱暂不可用"/>;
  if(!data)return <div className="clip-loudness is-loading" aria-label="正在计算音量谱"/>;
