@@ -6051,8 +6051,8 @@
       "frontend_function": "timelineApi.loudness",
       "frontend_ui": "统一编辑器 / 序列音频轨片段音量谱",
       "request": "query stream=真实全局音频流索引（非负整数）；可选 AbortSignal",
-      "success_response": "LoudnessEnvelope {ok,version:1,stream_index,duration,sample_rate:8000,bucket_seconds,buckets,floor_db:-60,clip_db:-0.1,encoding:u8-dbfs,peak,rms,clipped_buckets}；peak/rms 为 base64 每桶一字节（0=≤-60 dBFS，255=0 dBFS，按 dB 线性）",
-      "behavior": "FFmpeg 流式解码单声道 8 kHz PCM，按桶（max(0.02s, 时长/200000)）求峰值与 RMS；按源 SHA256+loudness-v1+流索引缓存于 previews/；同一缓存计算中 409；非音频流/资源失效 400",
+      "success_response": "LoudnessEnvelope {ok,version:2,stream_index,duration,sample_rate:8000,channels,bucket_seconds,buckets,floor_db:-60,clip_db:-0.1,encoding:u8-dbfs,peak,rms,clipped_buckets}；peak/rms 为 base64 每桶一字节，按 dB 线性：0=不高于 -60 dBFS（显示为静音，正增益下也不会显示出来），255=0 dBFS（更高的值钳到 0 dBFS，负增益下真实超载不再提示削波）",
+      "behavior": "FFmpeg 流式解码 8 kHz PCM，不下混（保留原声道，最多 8 声道）；每桶 peak=各声道 max|x|（单声道满幅也会标记削波），RMS=各声道功率均值；桶宽 max(0.02s, 时长/200000)；按源 SHA256+loudness-v2+流索引缓存于 previews/；同一缓存计算中 409（前端退避重试 8 次，错误态每 30s 重新请求）；非音频流/资源失效 400",
       "usage": "当前工程、当前会话；实现接线与真实验收分开记录",
       "backend_handler": "HandleFunc",
       "backend_source": {

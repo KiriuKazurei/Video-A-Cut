@@ -1,6 +1,6 @@
 /** Timeline loudness envelope: decoding, zoom pyramid and per-pixel drawing.
  *  Pure logic is kept free of React/DOM so it is unit-testable. */
-export interface LoudnessEnvelope { version:number; stream_index:number; duration:number; bucket_seconds:number; buckets:number; floor_db:number; clip_db:number; encoding:'u8-dbfs'; peak:string; rms:string; clipped_buckets:number }
+export interface LoudnessEnvelope { version:number; stream_index:number; channels?:number; duration:number; bucket_seconds:number; buckets:number; floor_db:number; clip_db:number; encoding:'u8-dbfs'; peak:string; rms:string; clipped_buckets:number }
 export interface LoudnessLevel { bucketSeconds:number; peak:Uint8Array; rms:Uint8Array }
 export interface LoudnessData { floorDb:number; clipDb:number; levels:LoudnessLevel[] }
 
@@ -67,3 +67,28 @@ export function drawColumns(ctx:Pick<CanvasRenderingContext2D,'clearRect'|'fillR
  ctx.globalAlpha=1;ctx.fillStyle=LOUDNESS_COLORS.clip;
  cols.forEach((c,x)=>{if(c.clipped){ctx.fillRect(x,0,1,2);ctx.fillRect(x,height-2,1,2);}});
 }
+
+/** 409 means the same envelope is being computed (another tab/request);
+ *  back off and retry several times instead of failing permanently. */
+export const LOUDNESS_CONFLICT_RETRIES=8;
+export function loudnessRetry(failureCount:number,error:unknown):boolean {
+ const status=(error as {status?:number}|null)?.status;
+ return status===409?failureCount<LOUDNESS_CONFLICT_RETRIES:failureCount<1;
+}
+export const loudnessRetryDelay=(attempt:number)=>Math.min(15000,500*2**attempt);
+/** Errors are not terminal: a failed envelope is retried periodically while shown. */
+export const LOUDNESS_ERROR_REFETCH_MS=30000;
+export const loudnessRefetchInterval=(status:string)=>status==='error'?LOUDNESS_ERROR_REFETCH_MS:false;
+
+/** Timeline header width; lanes start after it inside the scroller. */
+export const TRACK_HEADING_PX=148,LOUDNESS_OVERSCAN_PX=256;
+/** Clip-local [x0,x1) pixel span that is visible in the scroller (+overscan). */
+export function visibleSpan(scrollLeft:number,clientWidth:number,left:number,width:number,overscan=LOUDNESS_OVERSCAN_PX):[number,number] {
+ const x0=Math.min(width,Math.max(0,Math.floor(scrollLeft-left-overscan))),x1=Math.min(width,Math.ceil(scrollLeft+clientWidth-TRACK_HEADING_PX-left+overscan));
+ return [x0,Math.max(x0,x1)];
+}
+/** Source seconds covered by a clip-local pixel span (respects trim in/out). */
+export function sourceWindow(from:number,to:number,width:number,span:[number,number]):[number,number] {
+ return [from+(to-from)*span[0]/width,from+(to-from)*span[1]/width];
+}
+export const totalGain=(clip:{effects:{gain_db?:number}},track:{gain_db?:number})=>(clip.effects.gain_db||0)+(track.gain_db||0);

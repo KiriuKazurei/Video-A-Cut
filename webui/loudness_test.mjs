@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLevels, pickLevel, columns, drawColumns, barHeight } from './src/loudness.ts';
+import { buildLevels, pickLevel, columns, drawColumns, barHeight, loudnessRetry, loudnessRetryDelay, loudnessRefetchInterval, visibleSpan, sourceWindow, totalGain, LOUDNESS_CONFLICT_RETRIES } from './src/loudness.ts';
 
 const b64 = bytes => Buffer.from(Uint8Array.from(bytes)).toString('base64');
 const env = (peak, rms = peak, bucket = 0.02) => ({ version: 1, stream_index: 1, duration: peak.length * bucket, bucket_seconds: bucket, buckets: peak.length, floor_db: -60, clip_db: -0.1, encoding: 'u8-dbfs', peak: b64(peak), rms: b64(rms), clipped_buckets: 0 });
@@ -47,4 +47,30 @@ test('drawing paints mirrored bars and clip ticks', () => {
   assert.ok(calls.some(c => c[1] === 0 && c[2] === 10 && c[4] === 20));
   assert.equal(calls.filter(c => c[0] === '#DC4446').length, 2);
   assert.ok(!calls.some(c => c[1] === 1));
+});
+test('409 conflicts back off and retry several times; other errors retry once', () => {
+  const conflict = { status: 409 };
+  for (let i = 0; i < LOUDNESS_CONFLICT_RETRIES; i++) assert.equal(loudnessRetry(i, conflict), true);
+  assert.equal(loudnessRetry(LOUDNESS_CONFLICT_RETRIES, conflict), false);
+  assert.ok(LOUDNESS_CONFLICT_RETRIES >= 3);
+  assert.equal(loudnessRetry(0, { status: 500 }), true); assert.equal(loudnessRetry(1, { status: 500 }), false);
+  assert.equal(loudnessRetry(1, new Error('x')), false);
+  assert.ok(loudnessRetryDelay(1) > loudnessRetryDelay(0)); assert.ok(loudnessRetryDelay(20) <= 15000);
+  assert.ok(loudnessRefetchInterval('error') > 0); assert.equal(loudnessRefetchInterval('success'), false);
+});
+test('visible span covers only the viewport plus overscan', () => {
+  // clip 12000px at lane x=0, viewport 981px wide incl. 148px heading, scrolled 5000px
+  assert.deepEqual(visibleSpan(5000, 981, 0, 12000), [4744, 6089]);
+  assert.deepEqual(visibleSpan(0, 981, 0, 12000), [0, 1089]);
+  assert.deepEqual(visibleSpan(0, 981, 5000, 300), [0, 0]); // off-screen right
+  assert.deepEqual(visibleSpan(20000, 981, 0, 300), [300, 300]); // off-screen left
+  assert.deepEqual(visibleSpan(0, 981, 100, 300), [0, 300]);
+});
+test('source window maps pixel span through trim in/out', () => {
+  assert.deepEqual(sourceWindow(10, 20, 1000, [0, 1000]), [10, 20]);
+  assert.deepEqual(sourceWindow(10, 20, 1000, [250, 500]), [12.5, 15]);
+});
+test('total gain adds clip and track gain', () => {
+  assert.equal(totalGain({ effects: { gain_db: -6 } }, { gain_db: 3 }), -3);
+  assert.equal(totalGain({ effects: {} }, {}), 0);
 });

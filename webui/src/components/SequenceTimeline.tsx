@@ -5,21 +5,21 @@ import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, Scis
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
-import { buildLevels, columns, drawColumns } from '../loudness';
+import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow, totalGain } from '../loudness';
 import { fpsValue, frameLabel, linkedSelection, snapFrame, timeSeconds, type TimelineClip, type TimelineTrack } from '../timelineContracts';
 
 function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:TimelineTrack;px:number;scroller:RefObject<HTMLDivElement|null>}) {
  const e=useSequenceEditor(),p=useProjectWorkspace(),canvas=useRef<HTMLCanvasElement>(null);
- const query=useQuery({queryKey:['resource-loudness',p.session?.id,e.projectId,clip.resource_id,clip.stream_index],queryFn:({signal})=>timelineApi.loudness(e.projectId,clip.resource_id,clip.stream_index,signal),staleTime:Infinity,retry:1});
+ const query=useQuery({queryKey:['resource-loudness',p.session?.id,e.projectId,clip.resource_id,clip.stream_index],queryFn:({signal})=>timelineApi.loudness(e.projectId,clip.resource_id,clip.stream_index,signal),staleTime:Infinity,retry:loudnessRetry,retryDelay:loudnessRetryDelay,refetchInterval:q=>loudnessRefetchInterval(q.state.status)});
  // The pyramid is built once per asset; zoom/scroll only re-read it.
  const data=useMemo(()=>query.data?buildLevels(query.data):null,[query.data]);
- const left=clip.at*px,width=Math.max(3,clip.duration*px),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out),gain=(clip.effects.gain_db||0)+(track.gain_db||0);
+ const left=clip.at*px,width=Math.max(3,clip.duration*px),from=timeSeconds(clip.source_in),to=timeSeconds(clip.source_out),gain=totalGain(clip,track);
  const [span,setSpan]=useState<[number,number]>([0,0]);
  useEffect(()=>{
   const node=scroller.current;if(!node)return;let frame=0;
   // Only the visible slice (+overscan) gets a canvas, so hour-long clips at
   // high zoom never allocate a canvas wider than the viewport.
-  const update=()=>{frame=0;const over=256,x0=Math.max(0,Math.floor(node.scrollLeft-left-over)),x1=Math.min(width,Math.ceil(node.scrollLeft+node.clientWidth-148-left+over));setSpan(prev=>prev[0]===x0&&prev[1]===Math.max(x0,x1)?prev:[x0,Math.max(x0,x1)]);};
+  const update=()=>{frame=0;const [x0,x1]=visibleSpan(node.scrollLeft,node.clientWidth,left,width);setSpan(prev=>prev[0]===x0&&prev[1]===x1?prev:[x0,x1]);};
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(update);};
   update();node.addEventListener('scroll',schedule,{passive:true});const observer=new ResizeObserver(schedule);observer.observe(node);
   return()=>{node.removeEventListener('scroll',schedule);observer.disconnect();if(frame)cancelAnimationFrame(frame);};
@@ -29,7 +29,7 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
   const dpr=Math.min(2,window.devicePixelRatio||1),h=Math.max(1,node.clientHeight),pw=Math.round(w*dpr),ph=Math.round(h*dpr);
   if(node.width!==pw)node.width=pw;if(node.height!==ph)node.height=ph;
   const ctx=node.getContext('2d');if(!ctx)return;
-  const a=from+(to-from)*span[0]/width,b=from+(to-from)*span[1]/width;
+  const [a,b]=sourceWindow(from,to,width,span);
   drawColumns(ctx,columns(data,a,b,pw,gain),ph,data.floorDb);
  },[data,span,from,to,width,gain]);
  const clipped=data&&query.data?.clipped_buckets?'含接近 0 dBFS 的峰值':'';
