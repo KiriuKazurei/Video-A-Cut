@@ -40,7 +40,7 @@ import { AssetThumbGrid } from './AssetThumbGrid';
 
 const VIEW_KEY = 'vac_asset_view';
 type AssetView = 'list' | 'grid';
-const loadView = (): AssetView => { try { return localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list'; } catch { return 'list'; } };
+const loadView = (): AssetView => { try { const v = localStorage.getItem(VIEW_KEY); if (v === 'list') return 'list'; return 'grid'; } catch { return 'grid'; } };
 
 /* ------------------------------------------------------------------ *
  * 资产治理面板

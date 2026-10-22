@@ -580,8 +580,8 @@ button.timeline-clip:focus-visible { outline: 2px solid var(--vac-on-media); out
 .asset-badge-slot { display: inline-flex; }
 .asset-badge { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: var(--vac-radius); background: color-mix(in srgb, var(--vac-media) 62%, transparent); font-size: var(--vac-font-md); color: var(--vac-text-2); transition: color var(--vac-dur) var(--vac-ease), background-color var(--vac-dur) var(--vac-ease), transform var(--vac-dur-fast) var(--vac-ease); }
 .asset-badge.ant-btn:not(:disabled):hover { background: color-mix(in srgb, var(--vac-media) 82%, transparent); color: var(--vac-on-media); }
-.asset-badge-eye.is-on { color: var(--vac-accent); }
-.asset-badge-check.is-on { color: var(--vac-success-text); }
+.asset-badge-eye.is-on { color: var(--vac-text); }
+.asset-badge-check.is-on { color: var(--vac-text-2); }
 .asset-badge.ant-btn:disabled { color: color-mix(in srgb, var(--vac-on-media) 30%, transparent); background: color-mix(in srgb, var(--vac-media) 50%, transparent); }
 .asset-card-lock { position: absolute; top: 6px; right: 6px; font-size: var(--vac-font-sm); color: var(--vac-text-2); }
 .asset-card-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
