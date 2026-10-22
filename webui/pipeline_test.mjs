@@ -68,8 +68,8 @@ test('workflow query failure offers a clickable reload instead of stuck reading'
 test('workflow states map to generate / review / delivery', () => {
   const table = [
     [wf('running', 'recognize'), '查看生成进度', 'generate', { generate: 'active', review: 'blocked', delivery: 'blocked', prepare: 'done' }],
-    [wf('awaiting_review', 'scene_review'), '去确认场景', 'review', { generate: 'done', review: 'todo', delivery: 'blocked' }],
-    [wf('awaiting_review', 'draft_review'), '去批准解说', 'review', { review: 'todo' }],
+    [wf('awaiting_review', 'scene_review'), '去时间线确认场景', 'review', { generate: 'done', review: 'todo', delivery: 'blocked' }],
+    [wf('awaiting_review', 'draft_review'), '去时间线确认解说', 'review', { review: 'todo' }],
     [wf('failed', 'narrate'), '查看失败并重试', 'review', { generate: 'error', review: 'error' }],
     [wf('cancelled'), '重新启动流程', 'prepare', { generate: 'todo', review: 'blocked' }],
     [wf('ready_for_acceptance', 'acceptance'), '去交付与验收', 'delivery', { generate: 'done', review: 'done', delivery: 'todo' }]
@@ -100,8 +100,9 @@ test('blocked stages always carry a concrete reason; no next step is a dead end'
 
 test('route → stage highlight is consistent with the stage targets', () => {
   assert.equal(stageOfRoute(R('editing', { editingSection: 'import' })), 'import');
-  assert.equal(stageOfRoute(R('editing', { editingSection: 'content' })), 'review');
-  assert.equal(stageOfRoute(R('editing', { editingSection: 'review' })), 'review');
+  // 脚本工作台不是流程阶段页；旧「审查」分区已并入时间线
+  assert.equal(stageOfRoute(R('editing', { editingSection: 'content' })), undefined);
+  assert.equal(stageOfRoute(R('editing', { editingSection: 'review' })), 'import');
   assert.equal(stageOfRoute(R('settings', { settingsCategory: 'preparation' })), 'prepare');
   assert.equal(stageOfRoute(R('settings', { settingsCategory: 'logs' })), undefined);
   assert.equal(stageOfRoute(R('export', { exportSection: 'tasks' })), 'generate');
@@ -112,7 +113,7 @@ test('route → stage highlight is consistent with the stage targets', () => {
 
 test('breadcrumbs: consistent shape, clickable parents, current last', () => {
   const c = locationCrumbs(R('editing', { editingSection: 'review' }), 'a1');
-  assert.deepEqual(c.map((x) => x.label), ['编辑', 'Skill 任务', 'a1']);
+  assert.deepEqual(c.map((x) => x.label), ['编辑', '时间线', 'a1']);
   assert.ok(c[0].target && c[1].target && c[2].target, 'asset crumb links back to resources');
   assert.deepEqual(c[2].target, { workspace: 'resources' });
   assert.deepEqual(locationCrumbs(R('resources'), 'a1').map((x) => x.label), ['资源管理', 'a1']);

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, type MenuProps } from 'antd';
-import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined, SelectOutlined, ColumnWidthOutlined, VerticalAlignMiddleOutlined, CompressOutlined, AimOutlined } from '@ant-design/icons';
+import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, ScissorOutlined, UndoOutlined, RedoOutlined, PlusOutlined, PushpinOutlined, MoreOutlined, SelectOutlined, ColumnWidthOutlined, VerticalAlignMiddleOutlined, CompressOutlined, ExpandOutlined, AimOutlined } from '@ant-design/icons';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
