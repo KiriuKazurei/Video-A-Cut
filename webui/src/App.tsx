@@ -23,7 +23,6 @@ import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
 import { siderTheme } from './theme';
 import { useResizable } from './hooks/useResizable';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { PipelineStepper } from './components/PipelineStepper';
 import { ContextBar } from './components/ContextBar';
 import { PipelineContext } from './components/PipelineContext';
 import { derivePipeline, type StageTarget } from './pipeline';
@@ -322,9 +321,6 @@ export default function App() {
           />
         </div>
 
-        {/* Phase 3: 全流程阶段指示器（仅在宽屏 ≥1200px 时在页头居中展示，防止 960-1024px 挤压导航） */}
-        {/* ≥1600 在页头放完整阶段条；更窄时改放位置条里的紧凑阶段条（见 ContextBar），避免挤掉「设置」 */}{screens.xxl && workspace !== 'tts' && workspace !== 'resources' && <PipelineStepper stages={pipeline.stages} onGo={goTo} />}
-        
         <div className="app-header-right">
           {!useSidebar && !independentWorkspace && (
             <>
@@ -384,7 +380,6 @@ export default function App() {
             onGo={goTo}
             onRetryWorkflow={() => { void workflowData.runs.refetch(); }}
             onNavigate={navigate}
-            stepper={!screens.xxl && workspace !== 'tts' ? <PipelineStepper compact stages={pipeline.stages} onGo={goTo} /> : undefined}
             extra={useSidebar && !independentWorkspace ? (
               <div className="sider-toggles">
                 <Button type="text" size="small" icon={leftCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
