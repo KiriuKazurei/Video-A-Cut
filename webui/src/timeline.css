@@ -68,6 +68,21 @@
 .track-head-controls .ant-btn { width:22px; min-width:22px; height:22px; padding:0; color:var(--vac-muted); }
 .track-head-controls .ant-btn.is-on { color:var(--vac-accent); }
 .track-head-controls .ant-btn:hover { color:var(--vac-text); }
+.track-heading .timecode-readout,.track-heading .timecode-input { max-width:136px; }
+.timecode-readout { border:1px solid var(--vac-hairline); background:var(--vac-control); color:var(--vac-text); border-radius:2px; padding:0 6px; min-height:22px; font:inherit; font-variant-numeric:tabular-nums; font-size:12px; cursor:text; }
+.timecode-input { width:118px; font-variant-numeric:tabular-nums; }
+.timeline-gap { position:absolute; top:4px; height:calc(100% - 8px); margin:0; padding:0 4px; border:1px dashed var(--vac-hairline); border-radius:2px; background:var(--vac-control); color:var(--vac-text-2); font:inherit; font-size:11px; line-height:1; text-align:left; overflow:hidden; cursor:pointer; z-index:1; }
+.timeline-gap:hover,.timeline-gap:focus-visible { border-color:var(--vac-accent); color:var(--vac-text); }
+.timeline-gap:disabled { cursor:default; opacity:.6; }
+.timeline-row.is-drop-target > .track-heading,.timeline-row.is-drop-affected > .track-heading { background:var(--vac-control); }
+.timeline-row.is-drop-target .timeline-lane { background:var(--vac-panel); }
+.timeline-drop-guide { position:absolute; top:0; bottom:0; width:0; border-left:2px solid var(--vac-accent); z-index:7; pointer-events:none; }
+.timeline-drop-guide span { position:absolute; top:2px; left:4px; padding:0 4px; background:var(--vac-panel); border:1px solid var(--vac-hairline); border-radius:2px; color:var(--vac-text); font-size:11px; white-space:nowrap; }
+.editor-export-bar { display:flex; align-items:center; gap:10px; flex-shrink:0; min-height:28px; padding:4px 8px; background:var(--vac-panel); border:1px solid var(--vac-hairline); border-radius:2px; color:var(--vac-text); font-size:12px; }
+.editor-export-bar .ant-progress { flex:1; margin:0; min-width:80px; }
+.script-marker-jump { display:flex; flex-direction:column; gap:6px; padding:6px; background:var(--vac-panel); border:1px solid var(--vac-hairline); border-radius:2px; }
+.script-marker-row { min-width:0; }
+.script-marker-row .ant-btn { max-width:100%; }
 .timeline-row.is-target>.track-heading { border-left:2px solid var(--vac-accent); }
 .timeline-row.is-locked .timeline-lane { background:var(--vac-panel); }
 .sequence-timeline .timeline-lane { position:relative; height:100%; border:0; border-radius:0; background:var(--vac-bg); flex-shrink:0; touch-action:none; }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Empty, Flex, Space, Spin, Tabs, Tooltip, Typography } from 'antd';
+import { Alert, Button, Empty, Flex, Progress, Space, Spin, Tabs, Tooltip, Typography } from 'antd';
 import { PlayCircleOutlined, StepBackwardOutlined, StepForwardOutlined, PlusOutlined, ExportOutlined, CloseOutlined } from '@ant-design/icons';
 import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
@@ -11,13 +11,15 @@ import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { projectApi } from '../projectApi';
 import { fpsValue, frameLabel } from '../timelineContracts';
+import { TimecodeField } from '../components/TimecodeField';
+import { ACCENT, CONTROL_BG } from '../theme';
 import '../timeline.css';
 
 interface EditingWorkspaceProps { route:RouteState;navigate:(state:Partial<RouteState>)=>void;asset?:Asset;selection:RunSelection;onSelect:(id:string)=>void;onPreparedStarted:(run:WorkflowRun)=>void }
 
 function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; seekTo?:number|null; onSeeked?:()=>void }) {
- const p=useProjectWorkspace(),e=useSequenceEditor(),r=p.resource,[proxy,setProxy]=useState(false),[proxyError,setProxyError]=useState(''),request=useRef<AbortController|null>(null);
- useEffect(()=>{const media=e.source.current;media?.pause();request.current?.abort();setProxy(false);setProxyError('');return()=>{media?.pause();request.current?.abort();};},[e.active,p.session?.id,r?.id,r?.source.sha256]);
+ const p=useProjectWorkspace(),e=useSequenceEditor(),r=p.resource,[proxy,setProxy]=useState(false),[proxyError,setProxyError]=useState(''),[sourceTime,setSourceTime]=useState(0),request=useRef<AbortController|null>(null);
+ useEffect(()=>{const media=e.source.current;media?.pause();request.current?.abort();setProxy(false);setProxyError('');setSourceTime(0);return()=>{media?.pause();request.current?.abort();};},[e.active,p.session?.id,r?.id,r?.source.sha256]);
  useEffect(()=>{
   if(seekTo==null)return;
   const media=e.source.current;
@@ -34,9 +36,10 @@ function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; s
   <div className="editor-monitor-title"><strong>源</strong><Typography.Text ellipsis>{r?.name ?? '选择工程资源'}</Typography.Text>
    <Tooltip title="收起源监视器"><Button type="text" size="small" icon={<CloseOutlined/>} aria-label="收起源监视器" onClick={onCollapse}/></Tooltip>
   </div>
-  <div className="editor-monitor-screen">{!r?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧资源管理选择素材"/>:r.missing||r.removed?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="源文件待重新关联"/>:r.kind==='video'||r.kind==='audio'?<video key={`${r.id}-${proxy}`} ref={e.source} data-resource-id={r.id} controls preload="metadata" src={url} aria-label="源素材播放器" onError={fallback}/>:r.kind==='image'?<img alt={r.name} src={url} onError={fallback}/>:<pre className="source-text-preview">{text.data ?? (text.isError?'内容读取失败':'正在读取…')}</pre>}</div>
+  <div className="editor-monitor-screen">{!r?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧资源管理选择素材"/>:r.missing||r.removed?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="源文件待重新关联"/>:r.kind==='video'||r.kind==='audio'?<video key={`${r.id}-${proxy}`} ref={e.source} data-resource-id={r.id} controls preload="metadata" src={url} aria-label="源素材播放器" onError={fallback} onTimeUpdate={event=>setSourceTime(event.currentTarget.currentTime)} onLoadedMetadata={event=>setSourceTime(event.currentTarget.currentTime)}/>:r.kind==='image'?<img alt={r.name} src={url} onError={fallback}/>:<pre className="source-text-preview">{text.data ?? (text.isError?'内容读取失败':'正在读取…')}</pre>}</div>
   {proxyError&&<Alert type="warning" message={proxyError}/>}
-  <Flex gap={6} className="editor-monitor-controls" wrap>
+  <Flex gap={6} className="editor-monitor-controls" wrap align="center">
+   {e.view?.sequence&&(r?.kind==='video'||r?.kind==='audio')&&<TimecodeField label="源时间码" frame={Math.max(0,Math.round(sourceTime*fpsValue(e.view.sequence.fps)))} rate={e.view.sequence.fps} onSeek={frame=>{const rate=e.view?.sequence?.fps;if(!rate)return;const media=e.source.current;const seconds=frame/fpsValue(rate);if(media){try{media.currentTime=seconds;}catch{/* ignore */}}setSourceTime(seconds);}}/>}
    <Button size="small" onClick={()=>e.marker('point',true)} disabled={!r||!['video','audio','image'].includes(r.kind)}>源标记</Button>
    <Button size="small" onClick={()=>void e.addResource(r!.id).catch(()=>{})} disabled={!r||r.missing||r.removed||!['video','audio','image','subtitle'].includes(r.kind)}>加入序列</Button>
   </Flex>
@@ -87,14 +90,22 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
      <Button size="small" icon={<StepBackwardOutlined/>} aria-label="节目后退一帧" onClick={()=>e.setHead(e.head-1)}/>
      <Button size="small" icon={<PlayCircleOutlined/>} onClick={e.play} disabled={!e.preview}>播放 / 暂停</Button>
      <Button size="small" icon={<StepForwardOutlined/>} aria-label="节目前进一帧" onClick={()=>e.setHead(e.head+1)}/>
-     <Typography.Text code>{s?frameLabel(e.head,s.fps):'--:--:--:--'}</Typography.Text>
+     {s?<TimecodeField label="节目时间码" frame={e.head} rate={s.fps} onSeek={frame=>e.setHead(frame)}/>:<Typography.Text code>--:--:--:--</Typography.Text>}
      <Button size="small" onClick={()=>e.marker('in')}>入点 I</Button>
      <Button size="small" onClick={()=>e.marker('out')}>出点 O</Button>
-     <Button size="small" icon={<ExportOutlined/>} disabled={!e.preview||e.pending} onClick={()=>void e.exportVideo().catch(()=>{})}>导出当前范围</Button>
+     <Button size="small" icon={<ExportOutlined/>} disabled={!e.preview||e.pending||e.exportStatus.active} onClick={()=>void e.exportVideo().catch(()=>{})}>导出当前范围</Button>
     </Flex>
     {e.previewError&&<Alert type="warning" message={e.previewError} action={<Button size="small" onClick={e.refreshPreview}>重试预览</Button>}/>}
    </section>
   </div>
+  {(e.exportStatus.active||e.exportStatus.error)&&(
+   <div className="editor-export-bar" role="status" aria-label="导出进度">
+    <span>{e.exportStatus.label}</span>
+    <Progress percent={e.exportStatus.percent} size="small" showInfo={false} strokeColor={ACCENT} trailColor={CONTROL_BG} status={e.exportStatus.error?'exception':undefined}/>
+    {e.exportStatus.error?<Typography.Text type="danger">{e.exportStatus.error}</Typography.Text>:null}
+    <Button type="text" size="small" aria-label="关闭导出进度" onClick={e.dismissExport}>关闭</Button>
+   </div>
+  )}
   <Flex className="editor-panels-bar" align="center" gap={8} wrap>
    <Typography.Text type="secondary">时间线</Typography.Text>
    <Button size="small" type="link" onClick={()=>window.dispatchEvent(new Event('vac:open-script-dock'))}>脚本工作台</Button>

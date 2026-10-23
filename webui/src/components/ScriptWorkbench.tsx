@@ -13,6 +13,7 @@ import { useSequenceEditor } from '../sequenceEditor';
 import { timelineApi } from '../timelineApi';
 import type { ScriptReference } from '../timelineContracts';
 import { candidateLabel, insertReference, rebaseReferences, synchronizeReferenceNames } from '../scriptReferences';
+import { ScriptTimelineMarkers } from './ScriptTimelineMarkers';
 
 export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true, variant = 'page' }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean; /** dock = compact side panel; timeline stays primary */ variant?: 'page' | 'dock' }) {
   const client = useQueryClient();
@@ -162,6 +163,25 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     return () => window.removeEventListener('vac:script-cite', onCite);
   }, [active, client, directory.data, directory.refetch, projectWorkspace.session?.id, sequenceEditor.sequenceId]);
   useEffect(() => {
+    const onReveal = (event: Event) => {
+      if (!active) return;
+      const name = (event as CustomEvent<{ name?: string }>).detail?.name?.trim();
+      if (!name) return;
+      const token = `{@${name}}`;
+      const at = bodyRef.current.indexOf(token);
+      if (at < 0) { setNotice(`脚本里还没有 ${token}`); return; }
+      selection.current = { start: at, end: at + token.length };
+      requestAnimationFrame(() => {
+        const el = editor.current?.resizableTextArea?.textArea;
+        el?.focus();
+        el?.setSelectionRange(at, at + token.length);
+        el?.scrollIntoView({ block: 'nearest' });
+      });
+    };
+    window.addEventListener('vac:script-reveal', onReveal);
+    return () => window.removeEventListener('vac:script-reveal', onReveal);
+  }, [active]);
+  useEffect(() => {
     if (!scriptId || !record.data) return;
     return projectWorkspace.registerEditor(`script:${scriptId}`, { dirty, flush: async () => {
       if (!dirty) return;
@@ -198,6 +218,19 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             <pre aria-hidden="true" ref={overlay} className="script-highlight">{tokens.map((t, i) => t.kind === 'text' ? t.text : <mark key={i} className={`script-token-${t.kind}`}>{t.text}</mark>)}{'\n'}</pre>
             <Input.TextArea ref={editor} id="script-body" aria-label="脚本指令" value={body} rows={dock ? 7 : 9} disabled={!canEdit} spellCheck={false}
               onSelect={e => { const el = e.currentTarget; selection.current = { start: el.selectionStart, end: el.selectionEnd }; }}
+              onMouseUp={event => {
+                if (!active) return;
+                const el = event.currentTarget;
+                if (el.selectionStart !== el.selectionEnd) return;
+                const token = referenceTokens.find(item => el.selectionStart >= item.start && el.selectionStart <= item.end);
+                if (!token) return;
+                const bound = references.find(ref => ref.start === token.start && ref.end === token.end && !ref.unresolved);
+                const hit = (directory.data ?? []).find(candidate => bound
+                  ? candidate.kind === bound.kind && candidate.target_id === bound.target_id && (candidate.sequence_id ?? '') === (bound.sequence_id ?? '')
+                  : candidate.name === token.name && candidate.frame !== undefined);
+                if (hit?.frame === undefined) return;
+                sequenceEditor.setHead(hit.frame);
+              }}
               placeholder={'{@抽卡演示.mp4}介绍抽卡机制\n\n{"重点说明", 字号:32px, 字体:"Microsoft YaHei",}{白屏}展示结果'}
               onScroll={e => { if (overlay.current) overlay.current.scrollTop = e.currentTarget.scrollTop; }}
               onChange={e => {setReferences(rebaseReferences(body,e.target.value,references));setBody(e.target.value); changed(); }} />
@@ -210,6 +243,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
               options={(fonts.data ?? []).map(f => ({ value: f, label: f }))} onChange={f => insert(`{"字幕文字", 字体:${JSON.stringify(f)}}`)} />
             {['黑屏', '白屏', '交叉溶解'].map(effect => <Button key={effect} disabled={!canEdit} onClick={() => insert(`{${effect}}`)}>插入{effect}</Button>)}
           </Space>
+          <ScriptTimelineMarkers canEdit={canEdit} document={doc} segments={drafts} onInsert={insert} />
           {fonts.isError && <Typography.Text type="secondary">暂时无法读取本机字体；可以先编辑脚本，交付前会核验字体。</Typography.Text>}
           {parsed.isError && <Alert type="error" message="语法检查暂不可用，请稍后重试" />}
           {doc && doc.diagnostics.length > 0 && <Alert type="error" role="alert" message="请修正特殊语法" description={doc.diagnostics.map((d, i) => <div key={i}>第 {d.paragraph + 1} 段，第 {d.column} 字：{d.message}</div>)} />}

@@ -785,6 +785,36 @@ func (s *Sequence) Apply(d *AvpDocument, op Operation, origin Origin) error {
 		}
 	}
 	switch op.Type {
+	case "gap.close":
+		if op.At < 0 || op.Duration == nil || *op.Duration <= 0 {
+			return fmt.Errorf("闭合空隙需要合法的起点和时长")
+		}
+		t, e := track(s, op.TrackID)
+		if e != nil {
+			return e
+		}
+		if t.Locked {
+			return fmt.Errorf("目标轨道已锁定")
+		}
+		end := op.At + *op.Duration
+		for _, tr := range s.Tracks {
+			if tr.GroupID != t.GroupID {
+				continue
+			}
+			for _, c := range tr.Clips {
+				if c.At < end && c.At+c.Duration > op.At {
+					return fmt.Errorf("该范围不是空隙")
+				}
+			}
+		}
+		for i := range s.Markers {
+			m := &s.Markers[i]
+			if !m.Locked && m.Frame >= op.At && m.Frame < end {
+				m.Frame = op.At
+			}
+		}
+		// Same shift as ripple-delete: later clips and unlocked markers move left together.
+		return ripple(s, end, -*op.Duration, t.GroupID)
 	case "gap.insert":
 		if op.At < 0 || op.Duration == nil || *op.Duration <= 0 {
 			return fmt.Errorf("插入空隙需要合法的起点和时长")

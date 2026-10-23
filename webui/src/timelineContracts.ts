@@ -20,5 +20,52 @@ export function activeTracks(sequence: TimelineSequence) {const tracks=sequence.
 // Non-drop timecode counts nominal whole frames; elapsed seconds still use
 // the rational rate. Mixing the two produces jumps near minute boundaries.
 export function frameLabel(frame: number, rate: FrameRate) { frame=Math.max(0,Math.round(frame));const fps = Math.round(fpsValue(rate)), total = Math.floor(frame / fps); return `${String(Math.floor(total / 3600)).padStart(2,'0')}:${String(Math.floor(total / 60) % 60).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}:${String(frame % fps).padStart(2,'0')}`; }
+/** Frames for HH:MM:SS:FF (or ;) and whole HH:MM:SS / MM:SS. Fractional or bare numbers are seconds. Invalid input returns null. */
+export function parseTimecode(input: string, rate: FrameRate): number | null {
+  const text = input.trim().replace(/[；;]/g, ':').replace(/s$/i, '').trim();
+  if (!text || !rate?.num || !rate.den) return null;
+  const nominal = Math.max(1, Math.round(fpsValue(rate)));
+  const clock = (hh: number, mm: number, ss: number) => (mm > 59 || ss >= 60 || hh < 0) ? null : ((hh * 60 + mm) * 60 + ss);
+  const tc = /^(\d+):(\d{1,2}):(\d{1,2}):(\d{1,2})$/.exec(text);
+  if (tc) {
+    const seconds = clock(Number(tc[1]), Number(tc[2]), Number(tc[3]));
+    const ff = Number(tc[4]);
+    if (seconds === null || ff >= nominal) return null;
+    return seconds * nominal + ff;
+  }
+  const hms = /^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/.exec(text);
+  if (hms) {
+    const ss = Number(hms[3]);
+    const whole = clock(Number(hms[1]), Number(hms[2]), Math.floor(ss));
+    if (whole === null) return null;
+    const seconds = whole + (ss - Math.floor(ss));
+    return Math.max(0, Math.round(hms[3].includes('.') ? seconds * fpsValue(rate) : seconds * nominal));
+  }
+  const ms = /^(\d+):(\d{1,2}(?:\.\d+)?)$/.exec(text);
+  if (ms) {
+    const mm = Number(ms[1]), ss = Number(ms[2]);
+    if (mm > 59 || ss >= 60) return null;
+    const seconds = mm * 60 + ss;
+    return Math.max(0, Math.round(ms[2].includes('.') ? seconds * fpsValue(rate) : seconds * nominal));
+  }
+  if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
+  const seconds = Number(text);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.max(0, Math.round(seconds * fpsValue(rate)));
+}
+/** Empty spans on one track, including a leading hole. The tail after the last clip is not a gap. */
+export function trackGaps(clips: { at: number; duration: number }[]): { start: number; end: number }[] {
+  const sorted = [...clips].sort((a, b) => a.at - b.at);
+  const gaps: { start: number; end: number }[] = [];
+  let cursor = 0;
+  for (const clip of sorted) {
+    const at = Math.max(0, clip.at);
+    if (at > cursor) gaps.push({ start: cursor, end: at });
+    cursor = Math.max(cursor, at + Math.max(0, clip.duration));
+  }
+  return gaps;
+}
 export function linkedSelection(sequence: TimelineSequence, ids: string[], separate = false) { const set = new Set(ids); if (!separate) { const links = new Set(sequence.tracks.flatMap(t=>t.clips).filter(c=>set.has(c.id) && c.link_id).map(c=>c.link_id)); sequence.tracks.forEach(t=>t.clips.forEach(c=>{if (c.link_id && links.has(c.link_id)) set.add(c.id);})); } return [...set]; }
+/** True when ids leave out a clip that shares a link_id, so an edit must stay unlinked. */
+export function omitsLinkedPartner(sequence: TimelineSequence, ids: string[]) { return linkedSelection(sequence, ids).some(id => !ids.includes(id)); }
 export function snapFrame(frame: number, candidates: number[], pixelsPerFrame: number, enabled: boolean) { frame=Math.max(0,Math.round(frame));if(!enabled)return frame;let closest=frame,distance=8 / pixelsPerFrame;for(const value of candidates){if(Math.abs(frame-value)<distance){closest=value;distance=Math.abs(frame-value);}}return closest; }

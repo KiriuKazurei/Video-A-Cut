@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { scriptTokens, initialScriptSegment } from './src/scriptWorkbench.ts';
 import { handleSSEEvent, REFRESH_DOMAINS, SUPPORTED_SSE_EVENTS } from './src/queryRefresh.ts';
 import { rebaseReferences, insertReference, candidateLabel, synchronizeReferenceNames } from './src/scriptReferences.ts';
-import { linkedSelection, snapFrame, frameLabel, frameSeconds } from './src/timelineContracts.ts';
+import { linkedSelection, omitsLinkedPartner, snapFrame, frameLabel, frameSeconds, parseTimecode, trackGaps } from './src/timelineContracts.ts';
 
 test('script highlighting preserves all text, escaped braces and quoted closing brace', () => {
   const source = '自然语言\\{文本\\} {@片段.mp4}\n\n{"括号 } 与 \\"引号\\"", 字号:32px,}{白屏}';
@@ -39,8 +39,26 @@ test('typed duplicate references preserve UTF16 positions and replace only the c
 test('timeline snapping and linked selection retain independent clip identities',()=>{
  const sequence={tracks:[{clips:[{id:'v',link_id:'link'},{id:'a',link_id:'link'},{id:'another',link_id:'other'}]}]};
  assert.deepEqual(linkedSelection(sequence,['v']),['v','a']);assert.deepEqual(linkedSelection(sequence,['v'],true),['v']);
+ assert.equal(omitsLinkedPartner(sequence,['v']),true);assert.equal(omitsLinkedPartner(sequence,['v','a']),false);assert.equal(omitsLinkedPartner(sequence,['another']),false);
  assert.equal(snapFrame(101,[100],1,true),100);assert.equal(snapFrame(101,[100],1,false),101);assert.equal(snapFrame(-1,[],1,true),0);
  assert.equal(frameLabel(1799,{num:30000,den:1001}),'00:00:59:29');assert.equal(frameLabel(1800,{num:30000,den:1001}),'00:01:00:00');assert.equal(frameSeconds(1800,{num:30000,den:1001}),60.06);
+});
+
+test('timecode entry accepts frames or seconds and gaps are the holes between clips', () => {
+  const rate = { num: 30, den: 1 };
+  const ntsc = { num: 30000, den: 1001 };
+  assert.equal(parseTimecode('00:00:01:15', rate), 45);
+  assert.equal(parseTimecode('00:01:00:00', rate), 1800);
+  assert.equal(parseTimecode('00:00:01;15', rate), 45);
+  assert.equal(parseTimecode('1.5', rate), 45);
+  assert.equal(parseTimecode('1.5s', rate), 45);
+  assert.equal(parseTimecode('00:00:02', rate), 60);
+  assert.equal(parseTimecode('01:02.5', rate), Math.round(62.5 * 30));
+  assert.equal(parseTimecode('00:00:59:29', ntsc), 1799);
+  assert.equal(parseTimecode(frameLabel(1800, ntsc), ntsc), 1800);
+  for (const bad of ['', 'nope', '00:00:00:30', '00:00:60:00', '-1', '01:60']) assert.equal(parseTimecode(bad, rate), null);
+  assert.deepEqual(trackGaps([{ at: 30, duration: 10 }, { at: 50, duration: 5 }, { at: 10, duration: 10 }]), [{ start: 0, end: 10 }, { start: 20, end: 30 }, { start: 40, end: 50 }]);
+  assert.deepEqual(trackGaps([]), []);
 });
 
 test('remote marker rename preserves an unsaved draft and distinct namesake bindings',()=>{
