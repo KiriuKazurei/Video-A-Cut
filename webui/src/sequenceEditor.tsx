@@ -6,7 +6,7 @@ import { timelineApi } from './timelineApi';
 import { projectApi } from './projectApi';
 import { desktopCommand, isDesktop } from './desktop';
 import { errorText } from './components/ui';
-import { activeTracks, frameLabel, fpsValue, linkedSelection, mediaTime, type TimelineOperation, type TimelineClip, type TimelineTrack, type TimelineView, type SequencePreview, type TimelineMarker } from './timelineContracts';
+import { activeTracks, frameLabel, fpsValue, linkedSelection, mediaTime, omitsLinkedPartner, type TimelineOperation, type TimelineClip, type TimelineTrack, type TimelineView, type SequencePreview, type TimelineMarker } from './timelineContracts';
 
 interface EditorContext {
  active:boolean; projectId:string; sequenceId:string; view?:TimelineView; loading:boolean; error:string; pending:boolean;
@@ -14,10 +14,13 @@ interface EditorContext {
  head:number; setHead:(frame:number,seek?:boolean)=>void; zoom:number; setZoom:(value:number)=>void; snap:boolean; setSnap:(value:boolean)=>void; tool:'select'|'razor'; setTool:(tool:'select'|'razor')=>void;
  command:(operations:TimelineOperation[],label:string)=>Promise<void>; switchSequence:(id:string)=>void; manageSequence:(action:string,id?:string)=>Promise<void>;
  marker:(kind?:'point'|'in'|'out',source?:boolean)=>void; addResource:(id:string,track?:string,at?:number,mode?:string)=>Promise<void>;
- copy:(cut?:boolean)=>void; paste:()=>Promise<void>; remove:(ripple?:boolean)=>Promise<void>; split:()=>Promise<void>;
+ copy:(cut?:boolean,ids?:string[])=>void; paste:()=>Promise<void>; remove:(ripple?:boolean)=>Promise<void>; split:()=>Promise<void>;
  program:RefObject<HTMLVideoElement|null>; source:RefObject<HTMLVideoElement|null>; play:()=>void;
  preview?:SequencePreview; previewURL?:string; previewLoading:boolean; previewError:string; refreshPreview:()=>void; exportVideo:()=>Promise<void>;
+ exportStatus:ExportStatus; dismissExport:()=>void;
 }
+export interface ExportStatus { active:boolean; percent:number; label:string; error:string }
+const idleExport:ExportStatus={active:false,percent:0,label:'',error:''};
 const Context=createContext<EditorContext|null>(null);
 type ClipboardTrack={kind:TimelineTrack['kind'];offset:number;clips:TimelineClip[]};
 type SequenceUI={head:number;zoom:number};
@@ -37,7 +40,11 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  const position=states[sequenceId] ?? savedStates?.[sequenceId] ?? {head:0,zoom:60},head=position.head,zoom=position.zoom;
  const updatePosition=(patch:Partial<SequenceUI>)=>setLocalUI(previous=>{const current=previous.session===session?.id?previous.states:{};return {session:session?.id??'',states:{...current,[sequenceId]:{...(current[sequenceId]??savedStates?.[sequenceId]??{head:0,zoom:60}),...patch}}};});
  const setZoom=(value:number)=>updatePosition({zoom:value});
- const [pending,setPending]=useState(false),[error,setError]=useState(''),[settledVersion,setSettledVersion]=useState('');
+ const [pending,setPending]=useState(false),[error,setError]=useState(''),[settledVersion,setSettledVersion]=useState(''),[exportStatus,setExportStatus]=useState<ExportStatus>(idleExport);
+ const exportTimer=useRef<ReturnType<typeof setInterval>|null>(null);
+ const stopExportTimer=()=>{if(exportTimer.current){clearInterval(exportTimer.current);exportTimer.current=null;}};
+ useEffect(()=>()=>stopExportTimer(),[]);
+ const dismissExport=()=>{stopExportTimer();setExportStatus(idleExport);};
  const busy=useRef(false),currentSequence=useRef(sequenceId),clipboard=useRef<ClipboardTrack[]>([]),clipboardRate=useRef(30);
  const program=useRef<HTMLVideoElement>(null),source=useRef<HTMLVideoElement>(null),focused=useRef(false);
  const stopEditorPlayers=()=>{program.current?.pause();source.current?.pause();};
@@ -91,11 +98,12 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
    await command([{type:'marker.add',marker:value,resource_id:resource?.id}],'添加标记');
   }});
  };
- const copy=(cut=false)=>{
-  if(!sequence || !selected.length)return;const chosen=sequence.tracks.flatMap(t=>t.clips).filter(c=>selected.includes(c.id)),start=Math.min(...chosen.map(c=>c.at));
+ const copy=(cut=false,ids?:string[])=>{
+  const chosenIds=ids?.length?ids:selected;
+  if(!sequence || !chosenIds.length)return;const chosen=sequence.tracks.flatMap(t=>t.clips).filter(c=>chosenIds.includes(c.id)),start=Math.min(...chosen.map(c=>c.at));
   const first:Partial<Record<TimelineTrack['kind'],number>>={},counts:Partial<Record<TimelineTrack['kind'],number>>={};clipboard.current=[];clipboardRate.current=fpsValue(sequence.fps);
-  sequence.tracks.forEach(t=>{const i=counts[t.kind]??0;counts[t.kind]=i+1;const clips=t.clips.filter(c=>selected.includes(c.id));if(!clips.length)return;first[t.kind]??=i;clipboard.current.push({kind:t.kind,offset:i-first[t.kind]!,clips:clips.map(c=>({...structuredClone(c),at:c.at-start}))});});
-  if(cut)void command([{type:'clip.delete',clip_ids:selected,mode:'ripple'}],'剪切片段').catch(()=>{});else void message.info('已复制所选片段');
+  sequence.tracks.forEach(t=>{const i=counts[t.kind]??0;counts[t.kind]=i+1;const clips=t.clips.filter(c=>chosenIds.includes(c.id));if(!clips.length)return;first[t.kind]??=i;clipboard.current.push({kind:t.kind,offset:i-first[t.kind]!,clips:clips.map(c=>({...structuredClone(c),at:c.at-start}))});});
+  if(cut)void command([{type:'clip.delete',clip_ids:chosenIds,mode:'ripple'}],'剪切片段').catch(()=>{});else void message.info('已复制所选片段');
  };
  const paste=async()=>{
   if(!sequence || !clipboard.current.length)return;const operations:TimelineOperation[]=[],links=new Map<string,string>();
@@ -103,10 +111,39 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
   for(const row of clipboard.current){const tracks=sequence.tracks.filter(t=>t.kind===row.kind && !t.group_id),target=tracks[row.offset];if(!target)throw Error('请先创建足够的对应轨道，粘贴未执行');operations.push({type:'clip.paste',track_id:target.id,at:head,clips:row.clips.map(c=>{if(c.link_id&&!links.has(c.link_id))links.set(c.link_id,crypto.randomUUID());return {...c,at:frame(c.at),duration:Math.max(1,frame(c.duration)),effects:{...c.effects,fade_in:frame(c.effects.fade_in),fade_out:frame(c.effects.fade_out),transition:frame(c.effects.transition),from_frame:c.effects.from_frame===undefined?undefined:frame(c.effects.from_frame),to_frame:c.effects.to_frame===undefined?undefined:frame(c.effects.to_frame)},link_id:c.link_id?links.get(c.link_id):undefined};})});}
   await command(operations,'粘贴片段');
  };
- const remove=(ripple=true)=>command([{type:'clip.delete',clip_ids:selected,mode:ripple?'ripple':'delete'}],ripple?'波纹删除':'删除留空隙');
- const split=()=>command([{type:'clip.split',clip_ids:selected.length?selected:sequence?.tracks.flatMap(t=>t.clips).filter(c=>c.at<head&&c.at+c.duration>head).map(c=>c.id),at:head}],'分割片段');
+ const remove=(ripple=true)=>command([{type:'clip.delete',clip_ids:selected,mode:ripple?'ripple':'delete',unlinked:!!sequence&&omitsLinkedPartner(sequence,selected)}],ripple?'波纹删除':'删除留空隙');
+ const split=()=>{const ids=selected.length?selected:sequence?.tracks.flatMap(t=>t.clips).filter(c=>c.at<head&&c.at+c.duration>head).map(c=>c.id);return command([{type:'clip.split',clip_ids:ids,at:head,unlinked:!!sequence&&!!ids&&omitsLinkedPartner(sequence,ids)}],'分割片段');};
  const play=()=>{const media=program.current;if(!media || !preview)return;if(media.paused)void media.play().catch(reason=>setError(errorText(reason)));else media.pause();};
- const exportVideo=async()=>{try{if(!view || !session)return;await project.flushEditors();let path:string|undefined;if(isDesktop())path=(await desktopCommand<string[]>('project_dialog',{mode:'save-video',defaultPath:`${sequence?.name ?? '序列'}.mp4` }))[0];else path=window.prompt('导出 MP4 的绝对路径') ?? undefined;if(!path)return;await timelineApi.export(projectId,sequenceId,{session:session.id,expected_revision:view.sequence.revision,content_version:view.content_version,path});void message.success('已导出当前轨道范围');}catch(reason){setError(errorText(reason));throw reason;}};
+ const exportVideo=async()=>{
+  try{
+   if(!view || !session || exportStatus.active)return;
+   await project.flushEditors();
+   let path:string|undefined;
+   if(isDesktop())path=(await desktopCommand<string[]>('project_dialog',{mode:'save-video',defaultPath:`${sequence?.name ?? '序列'}.mp4` }))[0];
+   else path=window.prompt('导出 MP4 的绝对路径') ?? undefined;
+   if(!path)return;
+   // The export API is one blocking call. Creep the bar while it runs; the program monitor stays put.
+   const started=Date.now();
+   stopExportTimer();
+   setExportStatus({active:true,percent:8,label:'正在导出当前范围…',error:''});
+   exportTimer.current=setInterval(()=>{
+    const elapsed=(Date.now()-started)/1000;
+    const percent=Math.min(92,8+Math.round(84*(1-Math.exp(-elapsed/12))));
+    setExportStatus(prev=>prev.active&&!prev.error&&prev.percent<100?{...prev,percent}:prev);
+   },400);
+   await timelineApi.export(projectId,sequenceId,{session:session.id,expected_revision:view.sequence.revision,content_version:view.content_version,path});
+   stopExportTimer();
+   setExportStatus({active:true,percent:100,label:'已导出当前范围',error:''});
+   void message.success('已导出当前范围');
+   window.setTimeout(()=>setExportStatus(current=>current.percent===100?idleExport:current),1600);
+  }catch(reason){
+   stopExportTimer();
+   const text=errorText(reason);
+   setExportStatus({active:true,percent:0,label:'导出失败',error:text});
+   setError(text);
+   throw reason;
+  }
+ };
  useEffect(()=>{
   if(!active)return;
   const dispatch=(commandName:string)=>{const actions:Record<string,()=>unknown>={undo:()=>command([{type:'history.undo'}],'撤销'),redo:()=>command([{type:'history.redo'}],'重做'),copy:()=>copy(),cut:()=>copy(true),paste};const result=actions[commandName]?.();if(result instanceof Promise)void result.catch(()=>{});};
@@ -121,7 +158,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
   };
   window.addEventListener('keydown',onKey);window.addEventListener('vac:edit-command',onMenu);return()=>{window.removeEventListener('keydown',onKey);window.removeEventListener('vac:edit-command',onMenu);};
  });
- const value:EditorContext=useMemo(()=>({active,projectId,sequenceId,view,loading:query.isPending,error:error || (query.error?errorText(query.error):''),pending,selected,select,selectedTrack,setSelectedTrack,head,setHead,zoom,setZoom,snap,setSnap,tool,setTool,command,switchSequence,manageSequence,marker,addResource,copy,paste,remove,split,program,source,play,preview,previewURL:preview?timelineApi.previewURL(projectId,sequenceId,preview.content_version):undefined,previewLoading:nonempty && (!settledVersion || previewQuery.isFetching),previewError:sourceUnavailable?'源素材缺失或发生变化，请在资源管理重新定位或确认后更新预览。':previewQuery.error?errorText(previewQuery.error):'',refreshPreview:()=>{void client.invalidateQueries({queryKey:previewKey});},exportVideo}),[active,projectId,sequenceId,view,query.isPending,query.error,error,pending,selected,selectedTrack,head,zoom,snap,tool,preview,previewQuery.isFetching,previewQuery.error,settledVersion,sourceUnavailable,project]);
+ const value:EditorContext=useMemo(()=>({active,projectId,sequenceId,view,loading:query.isPending,error:error || (query.error?errorText(query.error):''),pending,selected,select,selectedTrack,setSelectedTrack,head,setHead,zoom,setZoom,snap,setSnap,tool,setTool,command,switchSequence,manageSequence,marker,addResource,copy,paste,remove,split,program,source,play,preview,previewURL:preview?timelineApi.previewURL(projectId,sequenceId,preview.content_version):undefined,previewLoading:nonempty && (!settledVersion || previewQuery.isFetching),previewError:sourceUnavailable?'源素材缺失或发生变化，请在资源管理重新定位或确认后更新预览。':previewQuery.error?errorText(previewQuery.error):'',refreshPreview:()=>{void client.invalidateQueries({queryKey:previewKey});},exportVideo,exportStatus,dismissExport}),[active,projectId,sequenceId,view,query.isPending,query.error,error,pending,selected,selectedTrack,head,zoom,snap,tool,preview,previewQuery.isFetching,previewQuery.error,settledVersion,sourceUnavailable,project,exportStatus]);
  return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useSequenceEditor(){const context=useContext(Context);if(!context)throw Error('序列编辑器尚未初始化');return context;}

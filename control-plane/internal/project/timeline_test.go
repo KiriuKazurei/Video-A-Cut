@@ -211,6 +211,41 @@ func TestTimelineInsertPreservesSourceSamplesAndScopedEffects(t *testing.T) {
 	}
 }
 
+func TestGapCloseRipplesEmptySpanAndRefusesOverlap(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.Configured = true
+	s.FPS = Rate{30, 1}
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: s.Tracks[0].ID, ResourceID: "r"}, Origin{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Apply(&d, Operation{Type: "gap.insert", TrackID: s.Tracks[0].ID, At: 90, Duration: ptr(int64(30))}, Origin{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Apply(&d, Operation{Type: "gap.close", TrackID: s.Tracks[0].ID, At: 0, Duration: ptr(int64(10))}, Origin{}); err == nil {
+		t.Fatal("overlap must be refused")
+	}
+	s.Markers = []Marker{
+		{ID: "inside", Notes: "空", Kind: "point", Frame: 100},
+		{ID: "after", Notes: "后", Kind: "point", Frame: 200},
+		{ID: "lock", Notes: "锁", Kind: "point", Frame: 200, Locked: true},
+	}
+	if err := s.Apply(&d, Operation{Type: "gap.close", TrackID: s.Tracks[0].ID, At: 90, Duration: ptr(int64(30))}, Origin{}); err != nil {
+		t.Fatal(err)
+	}
+	clips := s.Tracks[0].Clips
+	if len(clips) != 2 || clips[1].At != 90 {
+		t.Fatalf("gap not closed: %+v", clips)
+	}
+	got := map[string]int64{}
+	for _, m := range s.Markers {
+		got[m.ID] = m.Frame
+	}
+	if got["inside"] != 90 || got["after"] != 170 || got["lock"] != 200 {
+		t.Fatalf("markers %+v", got)
+	}
+}
+
 func TestReferenceLiteralSubtitleAndIndependentInstances(t *testing.T) {
 	d := timelineFixture()
 	s := &d.Sequences[0]
