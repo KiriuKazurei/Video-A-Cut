@@ -4,6 +4,7 @@ export interface ScriptDocument { version: number; paragraphs: ScriptParagraph[]
 export interface ScriptMedia { kind?: 'video' | 'audio'; id: string; asset_id: string; name: string; in: number; out: number }
 import type { TtsSettings } from './ttsContracts';
 import type { ScriptReference } from './timelineContracts';
+import { subtitleWellFormed } from './scriptAuthoring.ts';
 
 export interface ScriptVoice { settings: TtsSettings; offset_seconds: number; accept_external: boolean }
 export interface ScriptSegment { index: number; narration: string; media_id: string; start: number; end: number; source_urls?: string[]; tts_enabled?: boolean; subtitles_enabled?: boolean; voice?: ScriptVoice }
@@ -63,14 +64,16 @@ export function scriptTimelineStarts(w: Pick<ScriptWorkbenchView, 'segments' | '
   });
 }
 
+export interface ScriptToken { text: string; kind: 'text' | 'directive' | 'invalid'; start: number; end: number }
+
 /** Lightweight lexical highlighting; the Go parser remains authoritative. */
-export function scriptTokens(source: string): { text: string; kind: 'text' | 'directive' | 'invalid' }[] {
-  const out: ReturnType<typeof scriptTokens> = [];
+export function scriptTokens(source: string): ScriptToken[] {
+  const out: ScriptToken[] = [];
   let ordinary = 0;
   for (let i = 0; i < source.length; i++) {
     if (source[i] === '\\' && '{}\\'.includes(source[i + 1] ?? ' ')) { i++; continue; }
     if (source[i] !== '{') continue;
-    if (i > ordinary) out.push({ text: source.slice(ordinary, i), kind: 'text' });
+    if (i > ordinary) out.push({ text: source.slice(ordinary, i), kind: 'text', start: ordinary, end: i });
     let end = i + 1, quoted = false, escaped = false, nested = false;
     for (; end < source.length; end++) {
       const c = source[end];
@@ -80,12 +83,12 @@ export function scriptTokens(source: string): { text: string; kind: 'text' | 'di
       else if (c === '}') break;
     }
     const body = source.slice(i + 1, end).trim();
-    const known = body.startsWith('@') || body.startsWith('"') || ['黑屏', '白屏', '交叉溶解'].includes(body);
+    const known = body.startsWith('@') || (body.startsWith('"') && subtitleWellFormed(body)) || ['黑屏', '白屏', '交叉溶解'].includes(body);
     const stop = Math.min(end + 1, source.length);
-    out.push({ text: source.slice(i, stop), kind: end < source.length && !nested && known ? 'directive' : 'invalid' });
+    out.push({ text: source.slice(i, stop), kind: end < source.length && !nested && known ? 'directive' : 'invalid', start: i, end: stop });
     i = stop - 1; ordinary = stop;
   }
-  if (ordinary < source.length) out.push({ text: source.slice(ordinary), kind: 'text' });
+  if (ordinary < source.length) out.push({ text: source.slice(ordinary), kind: 'text', start: ordinary, end: source.length });
   return out;
 }
 

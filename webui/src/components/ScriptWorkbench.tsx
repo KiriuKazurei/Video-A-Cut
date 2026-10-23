@@ -11,8 +11,9 @@ import { ScriptDeliveryPanel } from './ScriptDeliveryPanel';
 import { ScriptCompletion } from './ScriptCompletion';
 import { useSequenceEditor } from '../sequenceEditor';
 import { timelineApi } from '../timelineApi';
-import type { ScriptReference } from '../timelineContracts';
+import type { ReferenceCandidate, ScriptReference } from '../timelineContracts';
 import { candidateLabel, insertReference, rebaseReferences, synchronizeReferenceNames } from '../scriptReferences';
+import { applyAuthoringInsert, CHEATSHEET, EFFECT_INSERTS, invalidReplacements, PARAGRAPH_BREAK, paragraphTemplate, SUBTITLE_INSERT, type AuthoringInsert } from '../scriptAuthoring.ts';
 import { ScriptTimelineMarkers } from './ScriptTimelineMarkers';
 
 export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true, variant = 'page' }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean; /** dock = compact side panel; timeline stays primary */ variant?: 'page' | 'dock' }) {
@@ -101,18 +102,21 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   const canEdit = Boolean(scriptId && record.data && visible.data?.confirmed && !mutate.isPending);
   const busy = mutate.isPending;
   const tokens = useMemo(() => scriptTokens(body), [body]);
-  const referenceTokens=useMemo(()=>{let start=0;return tokens.flatMap(token=>{const offset=start;start+=token.text.length;const match=token.kind==='directive'?/^\{@([^{}]+)\}$/.exec(token.text):null;return match?[{start:offset,end:start,name:match[1]}]:[];});},[tokens]);
+  const invalidTokens = useMemo(() => tokens.filter(token => token.kind === 'invalid'), [tokens]);
+  const referenceTokens=useMemo(()=>tokens.flatMap(token=>{const match=token.kind==='directive'?/^\{@([^{}]+)\}$/.exec(token.text):null;return match?[{start:token.start,end:token.end,name:match[1]}]:[];}),[tokens]);
   const pendingReferences=referenceTokens.filter(token=>!references.some(ref=>ref.start===token.start&&ref.end===token.end&&!ref.unresolved&&(directory.data ?? []).some(c=>c.kind===ref.kind&&c.target_id===ref.target_id&&c.resource_id===ref.resource_id&&c.sequence_id===ref.sequence_id&&c.clip_id===ref.clip_id)));
   const editSegment = (i: number, value: Partial<ScriptSegment>) => { const next = [...drafts]; next[i] = { ...next[i], ...value }; setSegments(next); changed(); };
-  const insert = (text: string) => {
+  const place = (snippet: AuthoringInsert, candidate?: ReferenceCandidate) => {
     const { start, end } = selection.current;
-    const next=body.slice(0,start)+text+body.slice(end);setReferences(rebaseReferences(body,next,references));setBody(next);changed();
-    selection.current = { start: start + text.length, end: start + text.length };
+    const next = applyAuthoringInsert(body, references, start, end, snippet, candidate);
+    setBody(next.body); setReferences(next.references); changed();
+    selection.current = { start: next.selectStart, end: next.selectEnd };
     requestAnimationFrame(() => {
       const el = editor.current?.resizableTextArea?.textArea;
-      el?.focus(); el?.setSelectionRange(start + text.length, start + text.length);
+      el?.focus(); el?.setSelectionRange(next.selectStart, next.selectEnd);
     });
   };
+  const insert = (text: string) => place({ text, selectStart: text.length, selectEnd: text.length });
   const bodyRef = useRef(body);
   const referencesRef = useRef(references);
   bodyRef.current = body;
@@ -233,16 +237,31 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
               }}
               placeholder={'{@抽卡演示.mp4}介绍抽卡机制\n\n{"重点说明", 字号:32px, 字体:"Microsoft YaHei",}{白屏}展示结果'}
               onScroll={e => { if (overlay.current) overlay.current.scrollTop = e.currentTarget.scrollTop; }}
-              onChange={e => {setReferences(rebaseReferences(body,e.target.value,references));setBody(e.target.value); changed(); }} />
-            <ScriptCompletion editor={editor} body={body} references={references} directory={directory.data ?? []} onEdit={(next,refs)=>{setBody(next);setReferences(refs);changed();}}/>
+              onChange={e => { const el = e.target; selection.current = { start: el.selectionStart, end: el.selectionEnd }; setReferences(rebaseReferences(body,e.target.value,references));setBody(e.target.value); changed(); }} />
+            <ScriptCompletion editor={editor} body={body} references={references} directory={directory.data ?? []} fonts={fonts.data ?? []} onEdit={(next,refs)=>{setBody(next);setReferences(refs);changed();}}/>
           </div>
           {pendingReferences.length>0&&<Alert type="warning" message="引用需要选择具体对象；失效引用会保留，生成或渲染前请重新关联。" description={<Flex vertical gap={6}>{pendingReferences.map(token=><Select<number> key={token.start} aria-label={`关联引用 ${token.name} ${token.start}`} placeholder={`{@${token.name}} · 选择类型、所属素材及位置`} value={undefined} options={(directory.data ?? []).map((candidate,index)=>({value:index,label:candidateLabel(candidate)}))} showSearch optionFilterProp="label" onChange={index=>{const next=insertReference(body,references,token.start,token.end,directory.data![index]);setBody(next.body);setReferences(next.references);changed();}}/>)}</Flex>}/>}
-          <Space wrap>
-            <Select<number> aria-label="插入素材或标记引用" placeholder="插入素材或标记引用" showSearch optionFilterProp="label" disabled={!canEdit} value={undefined} style={{minWidth:240,maxWidth:'100%'}} options={(directory.data ?? []).map((item,index)=>({value:index,label:candidateLabel(item)}))} onChange={index=>{const item=directory.data![index],{start,end}=selection.current;const next=insertReference(body,references,start,end,item);setBody(next.body);setReferences(next.references);changed();requestAnimationFrame(()=>{const el=editor.current?.resizableTextArea?.textArea;el?.focus();el?.setSelectionRange(next.caret,next.caret);});}}/>
-            <Select aria-label="插入系统字体字幕" placeholder="插入字体字幕" disabled={!canEdit || !fonts.data?.length} value={undefined} showSearch style={{ minWidth: 180 }}
-              options={(fonts.data ?? []).map(f => ({ value: f, label: f }))} onChange={f => insert(`{"字幕文字", 字体:${JSON.stringify(f)}}`)} />
-            {['黑屏', '白屏', '交叉溶解'].map(effect => <Button key={effect} disabled={!canEdit} onClick={() => insert(`{${effect}}`)}>插入{effect}</Button>)}
-          </Space>
+          {invalidTokens.length > 0 && <div className="script-invalid-list" aria-label="可修正的语法">{invalidTokens.slice(0, 6).map(token => <div key={`${token.start}:${token.end}`} className="script-chip-bar"><button type="button" className="script-chip script-chip-invalid" onClick={() => { selection.current = { start: token.start, end: token.end }; const el = editor.current?.resizableTextArea?.textArea; el?.focus(); el?.setSelectionRange(token.start, token.end); }}>{token.text}</button>{invalidReplacements(token.text).map(fix => <button key={fix.label} type="button" className="script-chip" disabled={!canEdit} onClick={() => { selection.current = { start: token.start, end: token.end }; place(fix); }}>{fix.label}</button>)}</div>)}{invalidTokens.length > 6 && <Typography.Text type="secondary">还有 {invalidTokens.length - 6} 处无效语法。</Typography.Text>}</div>}
+          <div className="script-chip-bar" role="toolbar" aria-label="脚本插入">
+            <Select<number> className="script-chip-select" size="small" aria-label="插入素材或标记引用" placeholder="引用" showSearch optionFilterProp="label" disabled={!canEdit} value={undefined} popupMatchSelectWidth={280} options={(directory.data ?? []).map((item,index)=>({value:index,label:candidateLabel(item)}))} onChange={index=>{const item=directory.data![index],{start,end}=selection.current;const next=insertReference(body,references,start,end,item);setBody(next.body);setReferences(next.references);changed();selection.current={start:next.caret,end:next.caret};requestAnimationFrame(()=>{const el=editor.current?.resizableTextArea?.textArea;el?.focus();el?.setSelectionRange(next.caret,next.caret);});}}/>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(SUBTITLE_INSERT)}>字幕</button>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.黑屏)}>黑屏</button>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.白屏)}>白屏</button>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.溶解)}>溶解</button>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(PARAGRAPH_BREAK)}>空行分段</button>
+          </div>
+          <div className="script-chip-bar" role="toolbar" aria-label="段落模板">
+            <span className="script-chip-label">模板</span>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(paragraphTemplate('open'))}>开场</button>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(paragraphTemplate('result'))}>结果</button>
+            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(paragraphTemplate('transition'))}>转场</button>
+          </div>
+          <Collapse size="small" items={[{ key: 'syntax', label: '语法速查', children: (
+            <div className="script-cheat-list">
+              <Typography.Text type="secondary" className="script-cheat-note">只有这五种写法。点击一行，插入到光标处。</Typography.Text>
+              {CHEATSHEET.map(row => <button key={row.label} type="button" className="script-cheat-row" disabled={!canEdit} onClick={() => place(row.insert)}><code>{row.label}</code><span>{row.hint}</span></button>)}
+            </div>
+          ) }]} />
           <ScriptTimelineMarkers canEdit={canEdit} document={doc} segments={drafts} onInsert={insert} />
           {fonts.isError && <Typography.Text type="secondary">暂时无法读取本机字体；可以先编辑脚本，交付前会核验字体。</Typography.Text>}
           {parsed.isError && <Alert type="error" message="语法检查暂不可用，请稍后重试" />}

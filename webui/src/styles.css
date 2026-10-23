@@ -866,4 +866,45 @@ body code, body .ant-typography code { font-size: 12px; }
 .script-code-field textarea::selection { color: var(--vac-text); background: var(--vac-accent); }
 .script-highlight mark { color: var(--vac-text); background: color-mix(in srgb, var(--vac-accent) 20%, transparent); }
 .script-highlight .script-token-invalid { color: var(--vac-danger); text-decoration: underline wavy; }
+.script-chip-bar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.script-chip-label { color: var(--vac-text-2); font-size: 12px; }
+.script-chip {
+  margin: 0;
+  border: 1px solid var(--vac-border);
+  border-radius: 2px;
+  background: var(--vac-control);
+  color: var(--vac-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 8px;
+  min-height: 22px;
+  cursor: pointer;
+}
+.script-chip:hover:not(:disabled) { border-color: var(--vac-accent); }
+.script-chip:disabled { color: var(--vac-text-2); cursor: default; }
+.script-chip-select { width: 72px; }
+.script-chip-invalid { color: var(--vac-danger); max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.script-invalid-list { display: flex; flex-direction: column; gap: 4px; }
+.script-cheat-list { display: flex; flex-direction: column; }
+.script-cheat-note { display: block; margin-bottom: 4px; }
+.script-cheat-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--vac-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.script-cheat-row code { font: inherit; }
+.script-cheat-row span { color: var(--vac-text-2); }
+.script-cheat-row:disabled { cursor: default; }
 .script-history { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto; }
