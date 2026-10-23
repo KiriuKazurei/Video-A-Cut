@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import type { RouteState, WorkspaceId, EditingSection, ExportSection, SettingsCategory } from '../navigation';
-import { EDITING_SECTIONS, EXPORT_SECTIONS, SETTINGS_CATEGORIES } from '../navigation';
+import { EDITING_SECTIONS, EXPORT_SECTIONS, SETTINGS_CATEGORIES, WORKSPACE_KEYS } from '../navigation';
 
 /** 审查快捷键：由 WorkflowPanel（仅当前可见的那个）监听并执行，键盘层只负责守卫与分发。 */
 export const REVIEW_SHORTCUT_EVENT = 'vac:review-shortcut';
@@ -182,28 +182,11 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // 1 ~ 4 切换主工作区
-      if (e.key === '5' && !isInteractiveControl(e.target)) {
-        e.preventDefault(); navigate({ workspace: 'tts' }); return;
-      }
-      if (e.key === '1') {
+      // 1–5 保持原工作区；6 打开「绘制」。绘制没有二级顶栏，[ ] 不在该页循环分区。
+      const workspaceKey = WORKSPACE_KEYS[e.key];
+      if (workspaceKey && (e.key !== '5' || !isInteractiveControl(e.target))) {
         e.preventDefault();
-        navigate({ workspace: 'resources' });
-        return;
-      }
-      if (e.key === '2') {
-        e.preventDefault();
-        navigate({ workspace: 'editing' });
-        return;
-      }
-      if (e.key === '3') {
-        e.preventDefault();
-        navigate({ workspace: 'export' });
-        return;
-      }
-      if (e.key === '4') {
-        e.preventDefault();
-        navigate({ workspace: 'settings' });
+        navigate({ workspace: workspaceKey });
         return;
       }
 

@@ -53,7 +53,7 @@ function effectLabel(clip:TimelineClip) {
  const fx=clip.effects;
  return [clip.speed!==1?`${clip.speed}×`:'',fx.gain_keyframes?.length?`音量 ${fx.gain_keyframes.length}点`:(fx.gain_db?`${fx.gain_db}dB`:''),fx.scale!==1||fx.x||fx.y?'变换':'',fx.crop_left||fx.crop_right||fx.crop_top||fx.crop_bottom?'裁切':'',fx.fade_in||fx.fade_out?'淡变':'',fx.transition?'溶解':'',clip.text?'字幕':''].filter(Boolean).join(' · ');
 }
-export function SequenceTimeline() {
+export function SequenceTimeline({ onOpenDraw }: { onOpenDraw?: () => void }) {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
  const scroller=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null),boxStart=useRef<{x:number;y:number}|null>(null);
  const [ghost,setGhost]=useState<Drag|null>(null),[box,setBox]=useState<{x:number;y:number;w:number;h:number}|null>(null),[drop,setDrop]=useState<{track:string;at:number;duration:number;insert:boolean}|null>(null),[insert,setInsert]=useState(false),[notice,setNotice]=useState(''),[headSnap,setHeadSnap]=useState(false);
@@ -166,6 +166,7 @@ export function SequenceTimeline() {
    <Tooltip title="在播放头分割 Ctrl+K"><Button size="small" aria-label="分割" icon={<ColumnWidthOutlined/>} onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}/></Tooltip>
    <Tooltip title="添加标记 M"><Button size="small" aria-label="标记 M" icon={<PushpinOutlined/>} onClick={()=>e.marker()}/></Tooltip>
    <Tooltip title="引用到脚本：在播放头落点并插入工作台"><Button size="small" aria-label="引用到脚本" icon={<FormOutlined/>} onClick={citeToScript}/></Tooltip>
+   {onOpenDraw && <Tooltip title="打开绘制页。构图时间与这条多轨分开；未渲拼合和一并渲染在绘制页发起。"><Button size="small" aria-label="打开绘制" onClick={onOpenDraw}>绘制</Button></Tooltip>}
    <Tooltip title="吸附（Alt 临时关闭）"><Button size="small" aria-label="吸附" aria-pressed={e.snap} type={e.snap?'primary':'default'} icon={<AimOutlined/>} onClick={()=>e.setSnap(!e.snap)}/></Tooltip>
    <Tooltip title="插入模式"><Button size="small" aria-label="插入模式" aria-pressed={insert} type={insert?'primary':'default'} icon={<VerticalAlignMiddleOutlined/>} onClick={()=>setInsert(!insert)}/></Tooltip>
    <Tooltip title="闭合播放头所在空隙（与波纹删除同一套位移）"><Button size="small" aria-label="闭合空隙" disabled={e.pending} onClick={closeGapAtHead}>闭合空隙</Button></Tooltip>

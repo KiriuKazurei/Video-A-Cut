@@ -14,6 +14,7 @@ import { fpsValue, frameLabel } from '../timelineContracts';
 import { TimecodeField } from '../components/TimecodeField';
 import { ACCENT, CONTROL_BG } from '../theme';
 import '../timeline.css';
+import { drawRoute } from '../drawContracts';
 
 interface EditingWorkspaceProps { route:RouteState;navigate:(state:Partial<RouteState>)=>void;asset?:Asset;selection:RunSelection;onSelect:(id:string)=>void;onPreparedStarted:(run:WorkflowRun)=>void }
 
@@ -109,8 +110,9 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
   <Flex className="editor-panels-bar" align="center" gap={8} wrap>
    <Typography.Text type="secondary">时间线</Typography.Text>
    <Button size="small" type="link" onClick={()=>window.dispatchEvent(new Event('vac:open-script-dock'))}>脚本工作台</Button>
+   <Button size="small" type="link" onClick={()=>navigate(drawRoute({ project: p.session?.document?.project.id, engine: 'hyperframes', focus: 'inspector' }))}>绘制</Button>
    <Space><Button size="small" icon={<PlusOutlined/>} onClick={()=>void e.manageSequence('duplicate',e.sequenceId).catch(()=>{})}>复制序列</Button>{e.pending&&<Typography.Text type="secondary">正在提交编辑…</Typography.Text>}</Space>
   </Flex>
-  {e.loading?<Spin/>:<SequenceTimeline/>}
+  {e.loading?<Spin/>:<SequenceTimeline onOpenDraw={()=>navigate(drawRoute({ project: p.session?.document?.project.id, engine: 'hyperframes', focus: 'timeline' }))}/>}
  </div>;
 }

@@ -1,8 +1,8 @@
 {
   "id": "video-use",
   "name": "Video Use",
-  "description": "VAC adapted conversation-driven editor",
-  "version": "0.1.0-vac.4",
+  "description": "VAC route-2 draw entry and lightweight edit adapter. Draw tools are not wired.",
+  "version": "0.1.0-vac.5",
   "source": "builtin",
   "runtime": "harness",
   "compatible_flows": [

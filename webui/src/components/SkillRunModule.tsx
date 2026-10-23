@@ -10,6 +10,7 @@ import { createSkillEdit, skillPreviewSource } from '../skillEditing';
 import { skillQueryKeys, type SkillFlow, type SkillExecutionMode, type SkillPlan, type SkillToolName } from '../skillContracts';
 import { useSkillWorkspace } from '../skillWorkspace';
 import type { RouteState } from '../navigation';
+import { drawRoute, engineForSkill, isDrawEntrySkill } from '../drawContracts';
 import { Monitor, formatSeconds, type PreviewSource } from './Monitor';
 import { ProtectedError } from './HumanSessionControl';
 import { ValueSelect, errorText } from './ui';
@@ -256,7 +257,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
         <Typography.Text type="secondary">流程 A 以口播为主，流程 B 以画面摘要为主，不强制转录。内置模式调用 execute；外部模式由 Agent 领取。</Typography.Text>
         <Flex gap={8} wrap align="flex-end">
           <Form.Item label="素材流程" layout="vertical" style={{ marginBottom: 0, minWidth: 220 }}>
-            <ValueSelect<SkillFlow> aria-label="素材流程" value={flow} onChange={setFlow} options={(['lightweight', 'visual_heavy'] as const).map((item) => ({ value: item, label: FLOW_LABEL[item] }))} />
+            <ValueSelect<SkillFlow> aria-label="素材流程" value={flow} onChange={setFlow} options={(['lightweight', 'visual_heavy', 'custom'] as const).map((item) => ({ value: item, label: FLOW_LABEL[item] }))} />
           </Form.Item>
         </Flex>
         <Flex gap={8} wrap align="flex-end">
@@ -277,7 +278,10 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
         </Space>
         <Form.Item label="处理预设" style={{ marginBottom: 0 }}><ValueSelect<string> aria-label="运行处理预设" value={profileId} onChange={setProfileId} options={[{ value: '', label: '未指定' }, ...(profiles.data ?? []).map(item => ({ value: item.profile_id, label: `${item.name} · v${item.revision}` }))]} /></Form.Item>
         <Typography.Text type="secondary">资源来自当前工程，服务商调用使用设置中的统一配置。</Typography.Text>
-        <Button type="primary" disabled={!skillId || !goal.trim() || !visible.data?.confirmed} loading={action.isPending} onClick={create}>创建运行</Button>
+        <Space wrap>
+          <Button type="primary" disabled={!skillId || !goal.trim() || !visible.data?.confirmed} loading={action.isPending} onClick={create}>创建运行</Button>
+          {isDrawEntrySkill(skillId) && <Button onClick={() => navigate(drawRoute({ project: projectId, engine: engineForSkill(skillId), focus: 'canvas', slot: 'slot-title' }))}>打开绘制</Button>}
+        </Space>
       </Flex>
     </Card>}
     <Card size="small" title="运行列表" extra={<Checkbox checked={allSequences} onChange={event=>setAllSequences(event.target.checked)}>查看工程全部序列</Checkbox>}>
@@ -310,6 +314,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
             }}>执行内置 Agent</Button>
             : <Typography.Text type="secondary">外部 Agent 自行领取并调用工具，不需要在这里填写 VAC 推理 Key。</Typography.Text>}
           <Button onClick={() => navigate({ workspace: 'tts', scriptId: '' })}>到 TTS 回写声音</Button>
+          {isDrawEntrySkill(run.data.skill_id) && <Button onClick={() => navigate(drawRoute({ project: projectId, run: runId, slot: run.data.skill_id === 'vac-draw-remotion' ? 'slot-lower-third' : 'slot-title', engine: engineForSkill(run.data.skill_id), focus: 'canvas' }))}>打开绘制</Button>}
         </Space>
         {run.data.plan && <Typography.Text type="secondary">{run.data.plan.finalized_by ? `计划 v${run.data.plan.version} 已由 ${run.data.plan.finalized_by} 定稿` : `计划 v${run.data.plan.version} 尚未定稿`}</Typography.Text>}
         <Typography.Text strong>人工步骤</Typography.Text>

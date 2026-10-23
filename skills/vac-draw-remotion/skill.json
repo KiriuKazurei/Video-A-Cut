@@ -1,0 +1,14 @@
+{
+  "id": "vac-draw-remotion",
+  "name": "Remotion 绘制",
+  "description": "Instruction-only Remotion composition stub. No shell and no render worker.",
+  "version": "0.1.0",
+  "source": "builtin",
+  "runtime": "instructions_only",
+  "compatible_flows": ["custom"],
+  "execution_modes": ["external_mcp", "builtin_api"],
+  "tools": [],
+  "permissions": [],
+  "inputs": ["goal", "composition_spec"],
+  "outputs": ["composition_source"]
+}

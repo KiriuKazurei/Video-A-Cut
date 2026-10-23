@@ -1,0 +1,14 @@
+{
+  "id": "vac-draw-pipeline",
+  "name": "绘制管线",
+  "description": "Instruction-only shared draw pipeline. No shell and no render worker.",
+  "version": "0.1.0",
+  "source": "builtin",
+  "runtime": "instructions_only",
+  "compatible_flows": ["custom"],
+  "execution_modes": ["external_mcp", "builtin_api"],
+  "tools": [],
+  "permissions": [],
+  "inputs": ["goal", "composition_spec"],
+  "outputs": ["composition_source"]
+}

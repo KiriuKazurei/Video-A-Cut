@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
   ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
-  CompassOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, SoundOutlined
+  CompassOutlined, HighlightOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api, ingestApi } from './api';
 import type { CreateTask, WorkflowRun } from './types';
@@ -34,20 +34,23 @@ import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
 import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 import { TtsWorkspace } from './workspaces/TtsWorkspace';
+import { DrawWorkspace } from './workspaces/DrawWorkspace';
 import { SkillWorkspaceProvider } from './skillWorkspace';
 import { protectedQueryRetry } from './skillView';
 
 const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
   resources: <FolderOpenOutlined />,
   editing: <PlaySquareOutlined />,
+  draw: <HighlightOutlined />,
   export: <ExportOutlined />,
   settings: <SettingOutlined />,
   tts: <SoundOutlined />
 };
 
 /**
- * 四工作区外壳：顶部导航切换主工作区，左右侧栏响应式折叠。
- * 资源管理、编辑、导出为主流程；设置页独立，从右上角齿轮进入。
+ * 工作区外壳：顶部导航切换主工作区，左右侧栏响应式折叠。
+ * 资源、编辑、绘制、导出、TTS 在顶栏；绘制是少开顶栏的显式例外，页内不再拆子页。
+ * 设置从菜单进入，不占顶栏。
  */
 export default function App() {
   const projectWorkspace = useProjectWorkspace();
@@ -115,7 +118,10 @@ export default function App() {
   useEffect(() => {
     if (restored.current) return; restored.current = true;
     const next = workspaceState?.workspace;
-    navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
+    const hashWorkspace = window.location.hash.replace(/^#\/?/, '').split('?')[0]?.split('/')[0];
+    if (hashWorkspace !== 'draw') {
+      navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
+    }
     if (typeof workspaceState?.left_width === 'number') setLeftWidth(Math.min(420, Math.max(200, workspaceState.left_width)));
     if (typeof workspaceState?.right_width === 'number') setRightWidth(Math.min(480, Math.max(240, workspaceState.right_width)));
     setLeftCollapsed(workspaceState?.left_collapsed === true); setRightCollapsed(workspaceState?.right_collapsed === true);
@@ -279,7 +285,7 @@ export default function App() {
 
   // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
   const useSidebar = screens.xl;
-  const independentWorkspace = workspace === 'settings' || workspace === 'tts';
+  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw';
   const showLeftSider = useSidebar && !independentWorkspace;
   const showRightSider = useSidebar && !independentWorkspace;
 
@@ -380,7 +386,7 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {workspace !== 'resources' && workspace!=='editing' && <ContextBar
+          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'draw' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}
@@ -397,6 +403,9 @@ export default function App() {
             ) : undefined}
           />}
 
+          <WorkspacePage pageId="draw" active={workspace === 'draw'}>
+            <DrawWorkspace route={route} navigate={navigate} />
+          </WorkspacePage>
           <WorkspacePage pageId="tts" active={workspace === 'tts'}>
             <TtsWorkspace active={workspace === 'tts'} route={route} navigate={navigate} onReturnToScript={(assetId, scriptId) => { setSelectedId(assetId); navigate({ workspace: 'editing', editingSection: 'content', scriptId }); }} />
           </WorkspacePage>
