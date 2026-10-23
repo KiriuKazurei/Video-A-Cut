@@ -73,7 +73,7 @@ export function ProjectMenuBar(props: Props) {
     ] },
     { key: 'edit', label: '编辑', children: [{ key: 'undo', label: '撤销', disabled: !active }, { key: 'redo', label: '重做', disabled: !active }, { type: 'divider' }, { key: 'cut', label: '剪切' }, { key: 'copy', label: '复制' }, { key: 'paste', label: '粘贴' }, { key: 'remove', label: '移除所选资源', disabled: !project.resource || project.resource.removed }, { type: 'divider' }, { key: 'preferences', label: '首选项' }] },
     { key: 'view', label: '视图', children: [
-      ...([['resources', '资源管理'], ['editing', '编辑'], ['export', '导出'], ['tts', '配音']] as const).map(([id, label]) => ({ key: `workspace:${id}`, label, disabled: !active })),
+      ...([['resources', '资源管理'], ['editing', '编辑'], ['draw', '绘制'], ['export', '导出'], ['tts', '配音']] as const).map(([id, label]) => ({ key: `workspace:${id}`, label, disabled: !active })),
       { type: 'divider' }, { key: 'left', label: '显示／隐藏资源栏' }, { key: 'right', label: '显示／隐藏元信息栏' }, { key: 'reset', label: '重置布局' }, { key: 'refresh', label: '刷新' }, { key: 'data', label: '打开数据目录', disabled: !isDesktop() }
     ] },
     { key: 'about-menu', label: '关于', children: [{ key: 'about', label: '版本信息' }, { key: 'updates', label: '检查更新', disabled: !isDesktop() }, { key: 'shortcuts', label: '快捷键说明' }, { key: 'tour', label: '新手引导', disabled: !active }] }

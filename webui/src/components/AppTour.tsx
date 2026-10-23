@@ -24,7 +24,7 @@ export function AppTour({ open, onClose }: { open: boolean; onClose: () => void 
       },
       {
         title: '顶部：工作区',
-        description: '「资源管理」放素材；「编辑」里导入与多轨剪辑；「导出」下载成片并验收；「TTS」试听配音；「设置」放高级选项。按键盘 1~5 也能直接切换。',
+        description: '「资源管理」放素材；「编辑」里导入与多轨剪辑；「绘制」做程序化构图；「导出」下载成片并验收；「TTS」试听配音；「设置」放高级选项。按键盘 1~6 也能直接切换。绘制是少开顶栏分页的显式例外，页内不再拆子页。',
         target: find('.app-nav-wrap')
       },
       {

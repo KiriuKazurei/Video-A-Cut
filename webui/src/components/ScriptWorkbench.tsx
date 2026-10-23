@@ -7,6 +7,7 @@ import { useProjectWorkspace } from '../projectWorkspace';
 import { errorText } from './ui';
 import { initialScriptSegment, reconcileScriptSegments, scriptTokens, type ScriptDocument, type ScriptRevision, type ScriptSegment, type ScriptWorkbenchView } from '../scriptWorkbench';
 import type { RouteState } from '../navigation';
+import { drawRoute } from '../drawContracts';
 import { ScriptDeliveryPanel } from './ScriptDeliveryPanel';
 import { ScriptCompletion } from './ScriptCompletion';
 import { useSequenceEditor } from '../sequenceEditor';
@@ -278,6 +279,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
                 tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research }));
             })}>保存草稿</Button>
             <Button onClick={() => void projectWorkspace.exportScript(scriptId).catch(e => setFailure(errorText(e)))}>导出 .avs</Button>
+            {navigate && <Button onClick={() => navigate(drawRoute({ project: projectId, slot: scriptId, engine: 'hyperframes', focus: 'source' }))}>在绘制页打开</Button>}
             <Tag>{dirty ? '尚未保存' : `已保存 · 修订 ${latest?.version ?? 0}`}</Tag>
           </Space>
           {dock ? (

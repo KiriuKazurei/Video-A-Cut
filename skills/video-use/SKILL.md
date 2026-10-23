@@ -10,6 +10,16 @@ summary, script and render tool through skill_runs.tool using {run_id,request:
 the version. There is no MCP human approval tool.
 Read upstream/SKILL.md when available using skills.read_resource. The upstream
 workflow is guidance; the following VAC boundary applies to every action.
+Route 2, 绘制, is a first-class strategy of this package, not an overlay accessory.
+When the goal asks for programmatic picture, a title, UI motion, kinetic type,
+or a film without source footage, follow this draw strategy and read
+vac-draw-hyperframes, vac-draw-remotion, or vac-draw-pipeline.
+Adapter version 0.1.0-vac.5 records that promotion. Draw tools, the sandbox,
+and the render worker are not wired; the product phrase is 方案接线中.
+Do not invoke a shell or install dependencies, and do not claim a draw render
+succeeded. The draw page encodes three later handoffs: import into Editing after
+render, composite-preview with edit tracks before an MP4 exists, and merge-render
+of several draw slots together with edit tracks at the end.
 Work only within the run's visible media. Never scan directories, invoke shell,
 install dependencies or ask for secrets. Use media.list, media.transcribe,
 media.get_frames, scripts.propose and renders.create. Return a readable dependency
