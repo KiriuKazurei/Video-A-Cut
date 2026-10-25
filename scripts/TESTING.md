@@ -248,3 +248,6 @@ $env:VAC_DIST=(Resolve-Path './webui/dist').Path
 0.3.1实际结果：版本/锁文件一致；Cargo元数据offline/locked通过；前端124（64+60）及样式/类型/构建通过；Go project/skill/MCP三包通过（MCP 68.443秒）及控制面构建通过；真实绘制7项通过（135.09秒，包含两引擎图像像素和正常/源码异常的Chrome退出）；Chrome设置7、编辑14、绘制12组通过；接口178 HTTP /17 IPC /150模型 /27 SSE，13文档/533链接检查无错误。
 
 真实0.3.1 Go预览已恢复6102，示例AVP和资源均恢复；MCP initialize返回serverInfo.version=0.3.1。30帧640×360 Remotion预览SHA256仍为aee79887debb5f33a1cdb761f446d05c1eb6c3cb9363f50f469ed3ef3b637ec0，与轮换前一致。Chrome实际呈帧、关于窗口0.3.1和页面异常0通过。恢复首轮缺delivery目录、MCP未启用的预览配置问题已分别补齐，不作为源代码缺陷；最小失败日志与当前验证文件留在新版本目录。预览服务按用户查看用途保留，不将其记为残留渲染进程。原生Tauri、外部模型质量及人工观感未重验。
+
+
+REL031代码已发布：`5d407409c16aa257e9aa539791ec64ba3074880b` → origin/agent/timeline-audio-viz，已用ls-remote核对。所有本轮源码检查对应此代码提交；后续发布状态文档提交不改变运行代码。当前工作树及原根summary中REL031项更新为passed，其余未在0.3.1重跑的历史项目继续保持pending，不将历史全量结果批量转绿。
