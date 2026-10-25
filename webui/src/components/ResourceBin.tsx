@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, Empty, Flex, Input, List, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { Button, Card, Empty, Flex, Input, List, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { CheckOutlined, EyeOutlined, EyeInvisibleOutlined, FileImageOutlined, FileTextOutlined, SoundOutlined, VideoCameraOutlined, ImportOutlined } from '@ant-design/icons';
 import { RESOURCE_LABELS, type ResourceKind } from '../projectContracts';
 import { useProjectWorkspace } from '../projectWorkspace';
@@ -23,7 +23,7 @@ export function ResourceBin({ onOpenScript }: { onOpenScript: (asset: string, sc
   const all = (project.session?.document?.resources ?? []).filter(r => !r.removed || r.referenced);
   const filtered = useMemo(() => all.filter(r => (!kind || r.kind === kind) && r.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [all, kind, search]);
   const projectId = project.session?.document?.project.id ?? '';
-  return <Card variant="borderless" size="small" className="resource-bin" title="资源管理" extra={<Badge count={all.length} showZero />}
+  return <Card variant="borderless" size="small" className="resource-bin" title="资源管理" extra={<Typography.Text type="secondary" aria-label={`当前工程 ${all.length} 项资源`}>{all.length} 项</Typography.Text>}
     styles={{ body: { padding: '8px 12px 16px' } }}>
     <Flex vertical gap={8}>
       <Input.Search aria-label="搜索当前工程资源" allowClear placeholder="搜索资源名称" value={search} onChange={e => setSearch(e.target.value)} />
@@ -36,7 +36,7 @@ export function ResourceBin({ onOpenScript }: { onOpenScript: (asset: string, sc
           const inLibrary = Boolean(item.asset_id) && !item.removed;
           const agentVisible = Boolean(linked?.agent_visible);
           const thumb = projectId && (item.kind === 'video' || item.kind === 'image') && !item.missing && !item.removed
-            ? timelineApi.thumbnailURL(projectId, item.id, item.in ?? 0)
+            ? timelineApi.thumbnailURL(projectId, item.id, item.in ?? 0)+(item.raw_develop?"&recipe="+encodeURIComponent(JSON.stringify(item.raw_develop)):"")
             : undefined;
           return <List.Item key={item.id} role="button" tabIndex={0} aria-pressed={project.selectedId === item.id}
             data-resource-id={item.id} className={project.selectedId === item.id ? 'is-selected' : ''}

@@ -54,6 +54,7 @@ export function ContextBar({ route, assetId, next, onGo, onRetryWorkflow, onNavi
       </nav>
       <div className="context-actions" data-tour="next-step">
         {stepper}
+        {route.workspace !== 'settings' && route.workspace !== 'tts' && <>
         <span className="next-step-prefix">下一步</span>
         <Tooltip title={next.disabledReason ?? next.hint} placement="bottomRight">
           <span className={`next-step-wrap${blocked ? ' is-blocked' : ''}`} tabIndex={blocked ? 0 : undefined}
@@ -68,6 +69,7 @@ export function ContextBar({ route, assetId, next, onGo, onRetryWorkflow, onNavi
             </Button>
           </span>
         </Tooltip>
+        </>}
         {extra}
       </div>
     </div>

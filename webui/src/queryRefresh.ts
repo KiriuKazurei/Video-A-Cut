@@ -6,7 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
  * prepared、workflows、workflow、review、acceptance、ingest。
  */
 export const REFRESH_DOMAINS = [
- 'project-workspace', 'resource-text', 'timeline','sequence-preview','reference-directory','source-text','resource-waveform','resource-loudness',
+ 'project-workspace', 'draw-compositions', 'resource-text', 'timeline','sequence-preview','reference-directory','source-text','resource-waveform','resource-loudness',
  'vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context',
   'assets',
   'deliveryFiles',

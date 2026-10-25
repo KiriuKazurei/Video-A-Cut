@@ -1,0 +1,113 @@
+// Settings UX: use the shared isolated server and local Chrome. No provider calls.
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+const [base,output]=process.argv.slice(2);
+assert(process.env.VAC_TEST_OUTPUT&&base&&output,'Use run-local-smokes via TestWorkspace');
+assert(process.env.CHROME&&/chrome(?:\.exe)?$/i.test(process.env.CHROME)&&!/msedge/i.test(process.env.CHROME),'Chrome only');
+await fs.mkdir(output,{recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROME,headless:true});
+const checks=[],errors=[],saved=[];
+let completed=false,failSave=true;
+const profile={schema_version:1,profile_id:'ux_profile',revision:1,name:'本地剪辑',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'本机声音',export_target:'premiere'};
+const context=await browser.newContext({viewport:{width:1440,height:900}});
+await context.addInitScript(()=>localStorage.setItem('vac_tour_seen_v1','1'));
+const page=await context.newPage();
+page.on('pageerror',e=>errors.push(e.message));
+await page.route('**/api/processing-profiles**',async route=>{
+ const req=route.request();
+ if(req.method()==='GET')return route.fulfill({json:new URL(req.url()).pathname==='/api/processing-profiles'?[profile]:{profile}});
+ const body=req.postDataJSON();saved.push(body);
+ await new Promise(resolve=>setTimeout(resolve,250));
+ if(failSave)return route.fulfill({status:500,json:{error:{code:'save_failed',message:'测试保存失败，请重试'}}});
+ Object.assign(profile,body.profile??body);
+ return route.fulfill({json:profile});
+});
+await page.route('**/api/workspace/providers',route=>route.fulfill({json:{external_tts:false}}));
+const check=name=>{checks.push(name);console.log('PASS '+name);};
+const button=name=>page.getByRole('button',{name,exact:true});
+const category=name=>page.getByRole('menuitem',{name,exact:true});
+const selectCategory=async value=>{
+ const input=page.getByRole('combobox',{name:'设置分类',exact:true});
+ if(await input.getAttribute('aria-expanded')!=='true')await page.locator('.settings-category-picker .ant-select-selector').click();
+ await page.locator('.ant-select-dropdown:visible [data-value="'+value+'"]').click();
+ await page.locator('.ant-select-dropdown:visible').waitFor({state:'hidden'});
+};
+try {
+ await page.goto(base+'/#/settings/profiles');
+ await page.getByRole('textbox',{name:'预设名称',exact:true}).waitFor();
+ assert.equal(await page.locator('.next-step-btn:visible').count(),0,'settings must not push an unrelated recording workflow');
+ assert.equal(await page.getByRole('switch',{name:'允许云端配音'}).count(),0,'global provider policy belongs in providers');
+ await category('Agent 与 Skill').click();
+ await page.getByText('Agent MCP 连接',{exact:true}).waitFor();
+ await category('处理预设').click();
+ check('settings navigation separates configuration and diagnostics without unrelated next step');
+ await page.getByRole('textbox',{name:'预设名称',exact:true}).fill('保留中的草稿');
+ await category('服务商接入').click();
+ await page.getByRole('switch',{name:'允许云端配音'}).waitFor();
+ await category('处理预设').click();
+ assert.equal(await page.getByRole('textbox',{name:'预设名称',exact:true}).inputValue(),'保留中的草稿');
+ await button('新建预设').click();
+ await page.getByText('新建会替换未保存的预设草稿。',{exact:true}).waitFor();
+ await button('保留草稿').click();
+ assert.equal(await page.getByRole('textbox',{name:'预设名称',exact:true}).inputValue(),'保留中的草稿');
+ check('category changes preserve drafts and replacement can be cancelled');
+ await page.getByRole('textbox',{name:'SAPI 声音名称',exact:true}).fill('本机声音');
+ await button('保存新版本').click();
+ await page.getByText('测试保存失败，请重试',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('textbox',{name:'预设名称',exact:true}).inputValue(),'保留中的草稿');
+ failSave=false;
+ await button('保存新版本').click();
+ await page.getByText('已保存 v1',{exact:true}).waitFor();
+ assert.equal(saved.length,2);
+ assert.equal((saved[1].profile??saved[1]).name,'保留中的草稿');
+ check('failed save keeps editable data and retry persists the same draft');
+ await page.screenshot({path:path.join(output,'settings-profiles-1440.png')});
+ await button('新建预设').click();
+ await page.getByRole('textbox',{name:'预设名称',exact:true}).fill('窄屏草稿');
+ await category('服务商接入').click();
+ await button('切换为已配置模型以接入服务商').click();
+ await page.getByRole('textbox',{name:'画面识别 模型 ID',exact:true}).fill('test-vision');
+ await page.getByRole('checkbox',{name:'启用转录',exact:true}).check();
+ await page.getByRole('textbox',{name:'本地模型目录',exact:true}).fill('C:/LocalModels/whisper');
+ await page.screenshot({path:path.join(output,'settings-providers-configured-1440.png')});
+ await category('处理预设').click();
+ check('provider and local transcription fields remain explicit and preserve the shared profile draft');
+ for(const width of [1280,1024,900,800,640]){
+  await page.setViewportSize({width,height:800});
+  if(width<992){
+   const selector=page.getByRole('combobox',{name:'设置分类',exact:true});
+   await selectCategory('providers');
+   await page.getByRole('switch',{name:'允许云端配音'}).waitFor();
+   await selectCategory('profiles');
+  }
+  assert.equal(await page.getByRole('textbox',{name:'预设名称',exact:true}).inputValue(),'窄屏草稿');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`no horizontal overflow at ${width}`);
+  assert.equal(Math.round(await page.locator('.app-nav').evaluate(n=>n.getBoundingClientRect().width)),600);
+  await page.screenshot({path:path.join(output,`settings-${width}.png`)});
+ }
+ check('responsive navigation and forms work from 1440 to 640 while retaining the fixed workspace rail');
+ const selector=page.getByRole('combobox',{name:'设置分类',exact:true});
+ await selector.focus();await page.keyboard.press('ArrowDown');
+ await page.waitForFunction(()=>document.querySelector('.settings-category-picker [role="combobox"]')?.getAttribute('aria-expanded')==='true');
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>document.querySelector('.settings-category-picker [role="combobox"]')?.getAttribute('aria-expanded')==='false');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ assert.equal(await page.locator('.settings-category-picker .ant-select-selector').evaluate(node=>getComputedStyle(node).transitionDuration),'0s');
+ await selectCategory('status');await page.getByText('控制面连接',{exact:true}).waitFor();
+ await selectCategory('profiles');
+ await page.getByRole('textbox',{name:'预设名称',exact:true}).focus();
+ await page.keyboard.press('6');
+ assert.match(page.url(),/settings\/profiles/);
+ check('keyboard navigation and reduced motion do not trigger workspace shortcuts inside a field');
+ await page.goto(base+'/#/tts');await page.getByRole('textbox',{name:'TTS 朗读文本'}).waitFor();
+ assert.equal(await page.locator('.next-step-btn:visible').count(),0);
+ check('standalone TTS does not show recording next-step prompts');
+ assert.deepEqual(errors,[]);completed=true;
+} finally {
+ await page.screenshot({path:path.join(output,'last-state.png')});
+ await fs.writeFile(path.join(output,'dropdown-state.json'),JSON.stringify(await page.locator('.ant-select-dropdown').evaluateAll(nodes=>nodes.map(n=>({class:n.className,rect:n.getBoundingClientRect().toJSON(),display:getComputedStyle(n).display,text:n.textContent}))),null,2));
+ await fs.writeFile(path.join(output,'results.json'),JSON.stringify({completed,checks,errors,mode:'browser_fixture_ui',human_acceptance:'not_checked'},null,2));
+ await browser.close();
+}

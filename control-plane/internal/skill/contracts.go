@@ -89,6 +89,7 @@ type Budget struct {
 	MaxFrames  int `json:"max_frames,omitempty"`
 }
 type Run struct {
+	Strategy                string          `json:"strategy,omitempty"`
 	StructuredEdit          bool            `json:"structured_edit,omitempty"`
 	SequenceContentVersion  string          `json:"sequence_content_version,omitempty"`
 	SequenceID              string          `json:"sequence_id,omitempty"`
@@ -170,6 +171,7 @@ type Artifact struct {
 	PlanVersion int    `json:"plan_version,omitempty"`
 }
 type RunRequest struct {
+	Strategy            string `json:"strategy,omitempty"`
 	SequenceID          string `json:"sequence_id,omitempty"`
 	Flow                string `json:"flow,omitempty"`
 	AgentRole           string `json:"-"`

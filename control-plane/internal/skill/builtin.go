@@ -18,10 +18,10 @@ var ToolContracts string
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
-	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve"}
+	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import"}
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
-		{ID: "video-use", Name: "Video Use", Description: "VAC route-2 draw entry and lightweight edit adapter. Draw tools are not wired.", Version: "0.1.0-vac.5", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
+		{ID: "video-use", Name: "Video Use", Description: "Executable source-free drawing and lightweight video editing.", Version: "0.1.0-vac.7", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
 		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.2.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
 		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "2.0.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
 	}
@@ -41,28 +41,20 @@ func Builtins() []Package {
 	})
 	packages[0].Upstream = "https://github.com/browser-use/video-use/tree/43cfc566833548093455c9d4a46bd69913b7e552"
 	packages[2].Content = syntaxContent + "\n" + SyntaxAdapter
+	packages = append(packages, drawSkills()...)
 	for i := range packages {
 		packages[i].Resources["vac/tool-contracts.md"] = ToolContracts
 		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.\n"
 	}
-	// Draw stubs stay instruction-only. They are not given the harness tool footer.
-	return append(packages, drawStubs()...)
+	return packages
 }
 
-func drawStubs() []Package {
-	modes := []string{"external_mcp", "builtin_api"}
-	stub := func(id, name, description, content string) Package {
-		return Package{
-			ID: id, Name: name, Description: description, Version: "0.1.0", Source: "builtin", Builtin: true, Enabled: true,
-			Runtime: "instructions_only", Flows: []string{"custom"}, Modes: modes, Tools: []string{}, Permissions: []string{},
-			Inputs: []string{"goal", "composition_spec"}, Outputs: []string{"composition_source"}, Content: content, Resources: map[string]string{},
-		}
+func drawSkills() []Package {
+	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish"}
+	makePackage := func(id, name, content string) Package {
+		return Package{ID: id, Name: name, Description: "Executable local code-to-video and editing handoff", Version: "0.3.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: []string{"external_mcp", "builtin_api"}, Tools: tools, Permissions: []string{"project_media", "ffmpeg", "browser_render"}, Inputs: []string{"goal", "composition_spec", "project_images"}, Outputs: []string{"composition_source", "mp4", "timeline"}, Content: content, Resources: map[string]string{}}
 	}
-	return []Package{
-		stub("vac-draw-hyperframes", "HyperFrames 绘制", "Instruction-only HyperFrames composition stub. No shell and no render worker.", hyperframesDraw),
-		stub("vac-draw-remotion", "Remotion 绘制", "Instruction-only Remotion composition stub. No shell and no render worker.", remotionDraw),
-		stub("vac-draw-pipeline", "绘制管线", "Instruction-only shared draw pipeline. No shell and no render worker.", pipelineDraw),
-	}
+	return []Package{makePackage("vac-draw-hyperframes", "HyperFrames 绘制", hyperframesDraw), makePackage("vac-draw-remotion", "Remotion 绘制", remotionDraw), makePackage("vac-draw-pipeline", "绘制管线", pipelineDraw)}
 }
 
 const VideoUseAdapter = `# Video Use — VAC adapter
@@ -81,12 +73,12 @@ Route 2, 绘制, is a first-class strategy of this package, not an overlay acces
 When the goal asks for programmatic picture, a title, UI motion, kinetic type,
 or a film without source footage, follow this draw strategy and read
 vac-draw-hyperframes, vac-draw-remotion, or vac-draw-pipeline.
-Adapter version 0.1.0-vac.5 records that promotion. Draw tools, the sandbox,
-and the render worker are not wired; the product phrase is 方案接线中.
-Do not invoke a shell or install dependencies, and do not claim a draw render
-succeeded. The draw page encodes three later handoffs: import into Editing after
-render, composite-preview with edit tracks before an MP4 exists, and merge-render
-of several draw slots together with edit tracks at the end.
+For drawing, create the run with strategy=draw (empty media is valid), then use draw.list/save/check/render/get_frame/import.
+Imported project images are available through composition.images and image_resources; read the image contract before use.
+Read the dedicated engine Skill and the common tool contracts. Author self-contained HTML with local GSAP or a default React component importing react/remotion.
+Inspect real frames with draw.get_frame and artifacts.get. Import the verified render into the launch sequence, edit via timeline.read/edit and finish with the version-checked structured-sequence flow.
+The installed official runtimes render locally with an existing Chromium. No shell, remote source imports, automatic dependency/browser/model installation or cloud fallback.
+Unrendered source-level composite_preview/merge_render remain unavailable; use verified rendered resources in the editing preview/export pipeline.
 Work only within the run's visible media. Never scan directories, invoke shell,
 install dependencies or ask for secrets. Use media.list, media.transcribe,
 media.get_frames, scripts.propose and renders.create. Return a readable dependency
@@ -124,40 +116,76 @@ renders.create, then inspect and finish. Never approve your own plan.
 `
 const hyperframesDraw = `# vac-draw-hyperframes
 
-Instruction-only HyperFrames composition skill for VAC route 2 (绘制).
-Phase 1 does not render. Lint, validate, render, sandbox install, and import are 方案接线中.
-Do not invoke a shell or install dependencies. Do not expose a shell to the frontend.
-HTML and CSS addressable animation is the composition model. A future worker may require Node.js 22 or newer; this package does not start that worker.
-Keep composition source until a DRAW01 worker exists. An MP4 is not a reversible composition source.
-Handoffs, typed by the draw page and not executed here:
-- import_into_editing: after render, register the product as a project resource and place it on the editing timeline.
-- composite_preview: an unrendered composition may preview together with edit tracks. No MP4 is required.
-- merge_render: multiple draw slots and edit tracks render together at the end. Do not force a per-slot export first.
-video-use may delegate here. This package does not replace that route-2 entry.
+Executable HyperFrames drawing Skill for VAC. Use strategy=draw; the current project may have no source media.
+Read vac/tool-contracts.md before calling tools. Use only the declared draw/timeline/artifact tools; no shell, filesystem scans, dependency installation or remote assets.
+Author one complete HTML document with a data-composition-id root and matching data-width, data-height and data-duration (seconds). Use inline CSS/SVG and paused GSAP timelines registered in window.__timelines[rootId]. GSAP is supplied locally; do not add a script src.
+draw.save commits source and dimensions to the AVP with project session, project revision and an idempotency key.
+Then draw.check, draw.render, draw.get_frame and artifacts.get inspect actual rendered frames. Runtime dependencies and an installed Chromium must exist; missing dependencies fail explicitly without downloads or cloud fallback.
+draw.import adds the verified video to the run's launch sequence as a separate Agent track group. Use timeline.read/edit to trim, split, apply effects or combine with source media. Finish using run.finish {sequence_revision,content_version} after the final timeline edit.
+import_into_editing is executable. composite_preview and merge_render currently use rendered resources in Editing; unrendered source-level composition is not implemented. Never claim otherwise.
+Human acceptance is not_checked, not automatic approval. Preserve source for subsequent code edits; MP4 is not reversible source.
+
+
+Imported project images are first-class drawing assets. Read image_resources from
+skill_runs.get (builtin model input includes the same catalog), or resources.list,
+then add composition.images entries using stable image resource_id values.
+Each instance has its own id,x,y,width,height,dx,dy,from_frame,to_frame,fit,
+opacity and mode. Go supplies resource_sha256; never submit a filesystem path.
+mode="layer" automatically places the image above the scene, with linear dx/dy
+movement over the frame interval. mode="source" supplies the same image and
+parameters for custom source placement, without an automatic duplicate overlay.
+HyperFrames source uses <img src="vac-image:INSTANCE_ID"> and window.vacImages;
+Remotion's default component receives {images}, with images[INSTANCE_ID].src.
+Missing/removed/changed images fail explicitly; relink the resource and save the
+composition to refresh its dependency fingerprint. Preserve all instance IDs.
 `
 const remotionDraw = `# vac-draw-remotion
 
-Instruction-only Remotion composition skill for VAC route 2 (绘制).
-Phase 1 does not render. Scaffold, render, sandbox install, and import are 方案接线中.
-Do not invoke a shell or install dependencies. Do not expose a shell to the frontend.
-A React component tree is the composition model. This package does not start a renderer.
-Keep composition source until a DRAW01 worker exists. An MP4 is not a reversible composition source.
-Handoffs, typed by the draw page and not executed here:
-- import_into_editing: after render, register the product as a project resource and place it on the editing timeline.
-- composite_preview: an unrendered composition may preview together with edit tracks. No MP4 is required.
-- merge_render: multiple draw slots and edit tracks render together at the end. Do not force a per-slot export first.
-video-use may delegate here. This package does not replace that route-2 entry.
+Executable Remotion drawing Skill for VAC. Use strategy=draw; an empty current project is valid.
+Read vac/tool-contracts.md. Author one TSX module exporting a default React component. Imports are limited to react and remotion; use AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig, interpolate and spring for frame-addressed motion.
+Use inline graphics and bound current-project image resources. Add external audio/video through the editing timeline. No remote imports, Node APIs, arbitrary paths, shell or installation commands.
+draw.save stores source/specification with the current project session/revision and an idempotency key; draw.check checks syntax/imports/specification; draw.render uses the installed official renderer and Chromium without downloading a browser or using a cloud fallback.
+Use draw.get_frame plus artifacts.get to inspect real pixels, then draw.import into the run's launch sequence. timeline.read/edit can change the resulting clips; run.finish takes the current sequence_revision and content_version.
+import_into_editing is executable. composite_preview and merge_render operate on rendered resources in Editing; unrendered source-level composition remains unavailable.
+Retain editable source in the AVP. Do not invent human acceptance; machine completion reports not_checked.
+
+
+Imported project images are first-class drawing assets. Read image_resources from
+skill_runs.get (builtin model input includes the same catalog), or resources.list,
+then add composition.images entries using stable image resource_id values.
+Each instance has its own id,x,y,width,height,dx,dy,from_frame,to_frame,fit,
+opacity and mode. Go supplies resource_sha256; never submit a filesystem path.
+mode="layer" automatically places the image above the scene, with linear dx/dy
+movement over the frame interval. mode="source" supplies the same image and
+parameters for custom source placement, without an automatic duplicate overlay.
+HyperFrames source uses <img src="vac-image:INSTANCE_ID"> and window.vacImages;
+Remotion's default component receives {images}, with images[INSTANCE_ID].src.
+Missing/removed/changed images fail explicitly; relink the resource and save the
+composition to refresh its dependency fingerprint. Preserve all instance IDs.
 `
 const pipelineDraw = `# vac-draw-pipeline
 
-Instruction-only shared draw pipeline for VAC route 2 (绘制).
-It describes how vac-draw-hyperframes and vac-draw-remotion meet the editing timeline.
-Phase 1 does not call a worker. Lint, render, sandbox, and the three handoffs are 方案接线中.
-Do not invoke a shell or install dependencies. Do not expose a shell to the frontend.
-import_into_editing registers a finished render as a project resource and an editing clip.
-composite_preview composites unrendered slots with edit tracks and does not require an MP4.
-merge_render combines every selected draw slot with the edit tracks in one final render.
-Choose the engine from the composition model. HyperFrames is the default page structure; Remotion is for a React component tree. Mixing a draw layer with an edit track does not create a third product route.
+Executable drawing pipeline alongside video editing. Select HyperFrames HTML/GSAP or Remotion React from the composition model; set strategy=draw for source-free generation.
+Read vac/tool-contracts.md before invoking tools. draw.list/save/check/render/get_frame/import share project isolation, CAS, content versions and idempotency with Editing.
+A composition stores stable id, name, engine, source, even width/height, rational fps and duration_frames. Use the actual response's revision/content_version; do not substitute a stale version or a same-name object.
+A full round trip is draw.save -> draw.check -> draw.render -> draw.get_frame -> artifacts.get -> draw.import -> timeline.read/edit -> run.finish. draw.import is restricted to the run's launch sequence; no human undo/redo or approvals are Agent tools.
+import_into_editing is executable. composite_preview and merge_render currently use verified rendered resources through the existing multitrack preview/export path. Source-level unrendered mixing is not implemented and must not be presented as completed.
+The worker uses fixed local dependencies and an installed browser, browser network isolation, and the existing FFmpeg verifier. It does not accept shell commands or silently install dependencies/download browsers/models. Missing capability returns an actionable failure.
+Generated frames can be inspected through native artifact images. Machine verification and human acceptance stay separate.
+
+
+Imported project images are first-class drawing assets. Read image_resources from
+skill_runs.get (builtin model input includes the same catalog), or resources.list,
+then add composition.images entries using stable image resource_id values.
+Each instance has its own id,x,y,width,height,dx,dy,from_frame,to_frame,fit,
+opacity and mode. Go supplies resource_sha256; never submit a filesystem path.
+mode="layer" automatically places the image above the scene, with linear dx/dy
+movement over the frame interval. mode="source" supplies the same image and
+parameters for custom source placement, without an automatic duplicate overlay.
+HyperFrames source uses <img src="vac-image:INSTANCE_ID"> and window.vacImages;
+Remotion's default component receives {images}, with images[INSTANCE_ID].src.
+Missing/removed/changed images fail explicitly; relink the resource and save the
+composition to refresh its dependency fingerprint. Preserve all instance IDs.
 `
 const SyntaxAdapter = `# VAC script syntax
 Blank lines separate paragraphs. Ordinary text is the user's instruction, not

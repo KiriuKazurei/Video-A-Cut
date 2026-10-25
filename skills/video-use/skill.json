@@ -2,7 +2,7 @@
   "id": "video-use",
   "name": "Video Use",
   "description": "VAC route-2 draw entry and lightweight edit adapter. Draw tools are not wired.",
-  "version": "0.1.0-vac.5",
+  "version": "0.1.0-vac.7",
   "source": "builtin",
   "runtime": "harness",
   "compatible_flows": [
@@ -27,7 +27,13 @@
     "run.finish",
     "timeline.read",
     "timeline.edit",
-    "references.resolve"
+    "references.resolve",
+    "draw.list",
+    "draw.save",
+    "draw.check",
+    "draw.render",
+    "draw.get_frame",
+    "draw.import"
   ],
   "permissions": [
     "project_media",

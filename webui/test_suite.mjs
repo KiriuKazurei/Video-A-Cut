@@ -195,7 +195,7 @@ function createMockQueryClient() {
 
 test('queryRefresh: domains and scopes contain all required domains including auto notices', () => {
   const expectedDomains = [
-'project-workspace','resource-text',
+'project-workspace','draw-compositions','resource-text',
 'timeline','sequence-preview','reference-directory','source-text','resource-waveform','resource-loudness',
 'vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context',
     'assets',
@@ -215,19 +215,19 @@ test('queryRefresh: domains and scopes contain all required domains including au
     'auto', 'auto-notice', 'visible-set', 'scripts', 'script-workbench', 'script-media', 'script-revisions', 'script-delivery'
   ];
   assert.deepEqual([...REFRESH_DOMAINS], expectedDomains);
-  assert.equal(REFRESH_SCOPES.length, 40);
+  assert.equal(REFRESH_SCOPES.length, 41);
   assert.deepEqual(REFRESH_SCOPES.map((s) => s[0]), expectedDomains);
 });
 
 test('queryRefresh: refreshSnapshot invalidates all domains and watchedTaskId if present', async () => {
   const client1 = createMockQueryClient();
   await refreshSnapshot(client1, null);
-  assert.equal(client1.invalidated.length, 40);
+  assert.equal(client1.invalidated.length, 41);
   assert.deepEqual(client1.invalidated.map((k) => k[0]), [...REFRESH_DOMAINS]);
 
   const client2 = createMockQueryClient();
   await refreshSnapshot(client2, 'task-999');
-  assert.equal(client2.invalidated.length, 41);
+  assert.equal(client2.invalidated.length, 42);
   assert.deepEqual(client2.invalidated.at(-1), ['task', 'task-999']);
 });
 

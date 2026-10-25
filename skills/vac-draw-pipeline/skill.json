@@ -2,13 +2,46 @@
   "id": "vac-draw-pipeline",
   "name": "绘制管线",
   "description": "Instruction-only shared draw pipeline. No shell and no render worker.",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "source": "builtin",
-  "runtime": "instructions_only",
-  "compatible_flows": ["custom"],
-  "execution_modes": ["external_mcp", "builtin_api"],
-  "tools": [],
-  "permissions": [],
-  "inputs": ["goal", "composition_spec"],
-  "outputs": ["composition_source"]
+  "runtime": "harness",
+  "compatible_flows": [
+    "custom"
+  ],
+  "execution_modes": [
+    "external_mcp",
+    "builtin_api"
+  ],
+  "tools": [
+    "draw.list",
+    "draw.save",
+    "draw.check",
+    "draw.render",
+    "draw.get_frame",
+    "draw.import",
+    "timeline.read",
+    "timeline.edit",
+    "references.resolve",
+    "artifacts.list",
+    "artifacts.get",
+    "run.finish"
+  ],
+  "permissions": [
+    "project_media",
+    "ffmpeg",
+    "browser_render"
+  ],
+  "inputs": [
+    "goal",
+    "composition_spec",
+    "project_images"
+  ],
+  "outputs": [
+    "composition_source"
+  ],
+  "flows": [
+    "lightweight",
+    "visual_heavy",
+    "custom"
+  ]
 }

@@ -1,11 +1,10 @@
-import { Button, Card, Grid, Layout, Menu, Segmented, Typography } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { useRef } from 'react';
+import { Button, Card, Grid, Menu, Tabs, Tag, Typography } from 'antd';
+import { ArrowLeftOutlined, ApiOutlined, AppstoreOutlined, CheckCircleOutlined, FileSearchOutlined, HeartOutlined, RobotOutlined } from '@ant-design/icons';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, WorkflowRun } from '../types';
-import type { RouteState } from '../navigation';
-import { SETTINGS_CATEGORIES } from '../navigation';
-import { SECTION_STAGE } from '../pipeline';
-import { StageDot } from '../components/PipelineContext';
+import type { RouteState, SettingsCategory } from '../navigation';
+import { SETTINGS_CATEGORIES, WORKSPACES } from '../navigation';
 import { PreparationPanel } from '../components/PreparationPanel';
 import AuditLogViewer from '../components/AuditLogViewer';
 import { StatusMonitor } from '../components/StatusMonitor';
@@ -13,6 +12,7 @@ import { SkillManagerModule } from '../components/SkillManagerModule';
 import { AgentOperationPanel } from '../components/AgentOperationPanel';
 import { ProjectProviderPolicy } from '../components/ProjectProviderPolicy';
 import { McpConnectionPanel } from '../components/McpConnectionPanel';
+import { ValueSelect } from '../components/ui';
 
 interface SettingsWorkspaceProps {
   route: RouteState;
@@ -32,88 +32,47 @@ interface SettingsWorkspaceProps {
   controlPlane: UseQueryResult<Asset[], Error>;
 }
 
-/**
- * 设置工作区：处理预设 / 服务商接入 / 运行准备 / 日志与诊断
- * P2-01 修复：提供真实处理预设与服务商接入功能，移除死占位符
- * P2-02 修复：单实例常驻保活，分类切换草稿不丢失
- * P1-04 修复：响应式自适应，小屏下转为顶部分类切换，消除宽度坍缩
- */
+const groups = [
+  {label:'工作流配置',ids:['profiles','providers','preparation']},
+  {label:'Agent 扩展',ids:['skills']},
+  {label:'诊断与维护',ids:['logs','status']}
+] as const;
+const icons = { profiles:<AppstoreOutlined aria-hidden />, providers:<ApiOutlined aria-hidden />, preparation:<CheckCircleOutlined aria-hidden />, skills:<RobotOutlined aria-hidden />, logs:<FileSearchOutlined aria-hidden />, status:<HeartOutlined aria-hidden /> };
+
+/** Global settings keep one preparation draft mounted across category changes. */
 export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, connection, events, controlPlane }: SettingsWorkspaceProps) {
-  const { settingsCategory = 'profiles' } = route;
+  const {settingsCategory = 'profiles'} = route;
   const screens = Grid.useBreakpoint();
-  const isMobile = !screens.md; // < 768px
-
-  const isProfileCategory = settingsCategory === 'profiles' || settingsCategory === 'providers' || settingsCategory === 'preparation';
-
-  return (
-    <div className="page-body settings-workspace">
-      {isProfileCategory && <ProjectProviderPolicy />}
-      {/* 移动端/窄屏下的顶部分类切换 */}
-      {isMobile && (
-        <Segmented
-          block
-          value={settingsCategory}
-          onChange={(key) => navigate({ settingsCategory: key as typeof settingsCategory })}
-          options={SETTINGS_CATEGORIES.map((cat) => ({
-            value: cat.id,
-            label: <span className="section-tab-label">{cat.label}<StageDot stage={cat.id === 'preparation' ? SECTION_STAGE.settings.preparation : undefined} /></span>
-          }))}
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
-      <Layout hasSider={!isMobile} style={{ background: 'transparent', minHeight: 500, width: '100%' }}>
-        {!isMobile && (
-          <Layout.Sider 
-            theme="light" 
-            width={200} 
-            style={{ 
-              background: 'transparent',
-              borderInlineEnd: '1px solid var(--vac-hairline)'
-            }}
-          >
-            <Menu
-              mode="inline"
-              selectedKeys={[settingsCategory]}
-              onClick={({ key }) => navigate({ settingsCategory: key as typeof settingsCategory })}
-              items={SETTINGS_CATEGORIES.map((cat) => ({
-                key: cat.id,
-                label: <span className="section-tab-label">{cat.label}<StageDot stage={cat.id === 'preparation' ? SECTION_STAGE.settings.preparation : undefined} /></span>,
-                title: cat.description
-              }))}
-              style={{ background: 'transparent', border: 'none' }}
-            />
-          </Layout.Sider>
-        )}
-
-        <Layout.Content style={{ paddingLeft: isMobile ? 0 : 28, minHeight: 500, width: '100%', minWidth: 0 }}>
-          {/* P2-02: 保持 PreparationPanel 实例常驻挂载，切换分类不卸载草稿 */}
-          <div style={{ display: isProfileCategory ? 'block' : 'none', width: '100%' }}>
-            <PreparationPanel 
-              assetId={asset?.asset_id ?? ''} 
-              onStarted={onStarted} 
-              activeSection={isProfileCategory ? settingsCategory : 'profiles'}
-              onNavigate={navigate}
-            />
-          </div>
-
-          {settingsCategory === 'skills' && <div style={{ display: 'grid', gap: 16 }}><McpConnectionPanel /><SkillManagerModule /></div>}
-
-          {settingsCategory === 'logs' && (
-            <Card 
-              title="日志与诊断" 
-              bordered={false}
-            >
-              <AuditLogViewer />
-              <AgentOperationPanel />
-            </Card>
-          )}
-
-          {settingsCategory === 'status' && (
-            <StatusMonitor connection={connection} events={events} controlPlane={controlPlane} audit={audit} />
-          )}
-        </Layout.Content>
-      </Layout>
+  const compact = !screens.lg;
+  const returnRoute = useRef<Partial<RouteState>>({workspace:'resources'});
+  if(route.workspace !== 'settings') returnRoute.current = {...route};
+  const category = SETTINGS_CATEGORIES.find(item=>item.id===settingsCategory)!;
+  const isProfileCategory = ['profiles','providers','preparation'].includes(settingsCategory);
+  const changeCategory = (key:SettingsCategory) => navigate({settingsCategory:key});
+  return <div className="page-body settings-workspace" data-testid="settings-workspace">
+    <header className="settings-page-heading">
+      <div><Typography.Title level={1}>设置</Typography.Title><Typography.Text type="secondary">管理处理流程、Agent 接入与运行环境。</Typography.Text></div>
+      <Button icon={<ArrowLeftOutlined />} title={`返回${WORKSPACES.find(item=>item.id===returnRoute.current.workspace)?.label ?? '工作区'}`} onClick={()=>navigate(returnRoute.current)}>返回工作区</Button>
+    </header>
+    <div className="settings-grid">
+      <aside className="settings-sidebar" aria-label="设置导航">
+        {compact ? <div className="settings-category-picker"><Typography.Text type="secondary">设置分类</Typography.Text>
+          <ValueSelect<SettingsCategory> aria-label="设置分类" value={settingsCategory} onChange={changeCategory} options={SETTINGS_CATEGORIES.map(item=>({value:item.id,label:item.label}))}/>
+        </div> : <Menu mode="inline" aria-label="设置分类" selectedKeys={[settingsCategory]} onClick={({key})=>changeCategory(key as SettingsCategory)} items={groups.map(group=>({type:'group' as const,label:group.label,children:group.ids.map(id=>({key:id,icon:icons[id],label:SETTINGS_CATEGORIES.find(item=>item.id===id)!.label}))}))}/>}
+      </aside>
+      <section className="settings-content" aria-labelledby="settings-category-title">
+        <header className="settings-section-heading"><div><Typography.Title level={2} id="settings-category-title">{category.label}</Typography.Title><Typography.Paragraph type="secondary">{category.description}</Typography.Paragraph></div><Tag>全局设置</Tag></header>
+        {settingsCategory==='providers' && <ProjectProviderPolicy />}
+        <div hidden={!isProfileCategory}>
+          <PreparationPanel assetId={asset?.asset_id ?? ''} onStarted={onStarted} activeSection={isProfileCategory ? settingsCategory as 'profiles'|'providers'|'preparation' : 'profiles'} onNavigate={navigate}/>
+        </div>
+        {settingsCategory==='skills' && <div className="settings-stack"><McpConnectionPanel /><SkillManagerModule /></div>}
+        {settingsCategory==='logs' && <Tabs className="settings-log-tabs" items={[
+          {key:'audit',label:'审计日志',children:<AuditLogViewer />},
+          {key:'operations',label:'Agent 操作记录',children:<Card size="small" title="Agent 操作记录"><AgentOperationPanel /></Card>}
+        ]}/>}
+        {settingsCategory==='status' && <StatusMonitor connection={connection} events={events} controlPlane={controlPlane} audit={audit}/>}
+      </section>
     </div>
-  );
+  </div>;
 }

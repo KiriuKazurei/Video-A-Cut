@@ -11,6 +11,7 @@ import (
 
 func (s *Server) projectRoutes() {
 	s.timelineRoutes()
+	s.drawRoutes()
 	s.mux.HandleFunc("POST /api/workspace/inspect-project", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Path string `json:"path"`

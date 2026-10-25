@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -214,6 +215,9 @@ func decodeSkillArgs(raw json.RawMessage, out any) error {
 }
 func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harnessSnapshot, name string, args json.RawMessage) (json.RawMessage, error) {
 	respond := func(v any) (json.RawMessage, error) { return json.Marshal(v) }
+	if strings.HasPrefix(name, "draw.") {
+		return s.executeDrawTool(ctx, r, name, args)
+	}
 	switch name {
 	case "timeline.read":
 		var req struct {
@@ -281,7 +285,9 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		if err != nil {
 			return nil, err
 		}
-		input := map[string]any{"run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools, "history": req.History, "provider": profile.Narration, "vision_provider": profile.Vision}
+		drawings, _ := s.DrawCompositions(r.ProjectID)
+		imageResources, _ := s.DrawImageResources(r.ProjectID)
+		input := map[string]any{"image_resources": imageResources, "draw_compositions": drawings, "run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools, "history": req.History, "provider": profile.Narration, "vision_provider": profile.Vision}
 		if s.WorkspaceEnabled() && r.SequenceID != "" {
 			view, e := s.Timeline(ctx, r.ProjectID, r.SequenceID)
 			if e != nil {

@@ -67,7 +67,7 @@ func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) stri
 			c.Origin = project.Origin{}
 			for _, r := range doc.Resources {
 				if r.ID == c.ResourceID {
-					sources[r.ID] = r.Source.SHA256
+					sources[r.ID] = project.ResourceContentVersion(r)
 				}
 			}
 		}

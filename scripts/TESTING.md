@@ -1,6 +1,6 @@
 # 测试维护说明
 
-更新：2026-10-22。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
+更新：2026-10-26。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
 ## 1. 统一规则与源码身份
 
@@ -8,7 +8,7 @@
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
 
-当前源码工作树为 `E:/AI/Video Auto Cut/.run-data/worktrees/codex-skill-harness`，分支 agent/vu-skill。原根和其他旧工作树保留不同源码与未提交内容，不能用旧根 HEAD 或端口健康证明当前代码。custom 的 WorkingDirectory 必须明确；摘要中 runner 所在仓库的 HEAD 与实际被测源码不同时，单独记录源码提交/改动和证据。
+当前源码工作树为 `E:/AI/Video Auto Cut/.run-data/worktrees/timeline-audio-viz`，分支 agent/timeline-audio-viz，基线 a23d138；当前增量尚未提交。原根和其他旧工作树保留不同源码与未提交内容，不能用旧根 HEAD 或端口健康证明当前代码。custom 的 WorkingDirectory 必须明确；摘要中 runner 所在仓库的 HEAD 与实际被测源码不同时，单独记录源码提交/改动和证据。
 
 不设固定容量上限，不按容量自动终止或清空 artifacts/cache；Measure 仅报告占用。版本变化后 Prepare 按规则提炼旧版本简档并轮换；同版本需要清空时显式 Clear，CacheOnly 保留 artifacts。每版本一份极简 Markdown，最多最近 3 版，未知修复版本/提交写未记录。
 
@@ -35,7 +35,7 @@ $npmCLI = Join-Path (Split-Path (Get-Command node).Source) 'node_modules/npm/bin
 
 ```powershell
 $managerRoot = 'E:/AI/Video Auto Cut'
-$sourceRoot = "$managerRoot/.run-data/worktrees/codex-skill-harness"
+$sourceRoot = "$managerRoot/.run-data/worktrees/timeline-audio-viz"
 & "$managerRoot/scripts/TestWorkspace.ps1" -Action Run -Suite custom -Version '0.2.4' -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-vet=off','-count=1','-timeout=600s')
 ```
 
@@ -91,6 +91,29 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 ## 5. 最近适用结果
 
+### 2026-10-25 DRAW02 图片素材（自动验收完成）
+
+工程图片以稳定资源 ID 加入 DrawComposition.images；多个实例独立保存位置/尺寸、线性位移及帧区间、适配、透明度和自动/源码模式。当前通过：两引擎各自的自动层及源码引用共 4 段真实图片视频、位移像素检查；MCP 实际图片引用→绘制→入轨→分割/移动→35 帧导出；工程图片归属、移除占位、原件变化拒绝旧渲染、重新关联及 AVP 往返。完整 project/skill/api/mcpserver 包和 service 工程/绘制测试均通过；前端、类型/构建和图片浏览器操作已通过。最终完整 Timeline 74/74、Python 165/165、前端 124、类型/构建、原编辑器浏览器 14 组及图片绘制浏览器 8 组通过。补充同图多个实例和尺寸边界检查：移动实例改变位置，静态实例保持原处，图片以外像素保持背景；两引擎均通过。原生窗口与人工观感未验。
+
+HyperFrames 自动层首轮只有图片、没有按帧移动，像素断言失败；原因是 DOMContentLoaded 后才追加动画，晚于引擎时间轴捕获。改为源脚本之后同步注册后，两引擎的 4 条图片路径全部通过，没有降低位移断言。Image adapter 缓存标记更新为 2，拒绝复用首轮旧像素结果。Skill 包更新为 draw 0.3.0 / video-use 0.1.0-vac.7；应用仍 0.2.4。
+
+证据复用既有版本目录：源码工作树 custom/draw/images-{hyperframes,remotion}/{layer,source}/verification.json 及 first/later.png；原根短路径 custom/draw-images-packages.log、draw-images-service.log 和 draw-mcp-verification.json；浏览器沿用 run-local-smokes，记录图片点击/真实 HTML 拖入、同原件多实例与项目归属、参数保存、移除及底栏边界。图片原件保持不变。
+
+
+### 2026-10-25 绘制执行增量（基础链路自动回归完成）
+
+以远程 a23d138 的独立工作树为实际源码，版本沿用 0.2.4。当前通过：前端完整单元 64+59=123、类型/样式/生产构建；Timeline 全套 72/72（含两引擎真实渲染和实际像素运动、网络请求/弹窗拦截）；Exporter 53/53；浏览器绘制 7 项、原编辑器快捷键 14 组，合计 21 组且 errors=[]；文档校验通过（178 HTTP、17 IPC、147 类型、27 SSE）。Python 全包 165/165 通过。Go 共 18 个有测试包完成验证：17 包首轮通过；service 首轮 TestAutoConfirmSceneRequiresStageAndAwaitingReviewStatus/stage_is_scene_review_but_status_is_failed 在 snapshot rename 时返回 Access is denied，随后单项连续 3 次通过（13.292s）及 service 整包复验通过（508.170s）。组合回归已通过，首轮失败仍保留，不改生产快照发布逻辑，不推断根因已修复。原根短版本目录保留 go-full-first.log、go-snapshot-repeat.log、go-service-final.log。
+
+真实 MCP 测试不是渲染桩：走 HTTP tools/call、空工程创建、读取 Skill 合同、源码保存、真实 Remotion 渲染、原生图片、独立 Agent 轨组入轨、15 帧分割、后半段移到第 20 帧、共享导出和 AVP 保存重开。测试断言导出为 320×180、35 帧，并读取像素确认移动留下的 5 帧黑场。证据在原根短路径 .run-data/tests/0.2.4/artifacts/custom/draw-mcp-verification.json 和 draw-edited.mp4；源码工作树同版本目录保留两引擎样例、browser fixture 结果、前端及 Timeline/Exporter 日志。浏览器 UI 使用媒体 Range 夹具，真实渲染与剪辑由 Node/MCP 层单独证明。原生 Tauri、安装包、外部模型质量和人工观感本轮未验，不继承旧候选的 39 项结论。
+
+失败及修正（包含夹具和产品问题，分别保留证据）：最初 Remotion 检查遗漏未使用的禁止模块，已保留 imports 后审计；Windows preload 使用 file URL；空工程初始化同步资源指纹；HyperFrames 的 GUI Edge --version 超时改为本机已有 chrome-headless-shell；旧刷新领域断言补齐绘制缓存；浏览器夹具补齐视频 Range 和音量谱响应。未放宽帧数/像素/隔离断言，未用自动浏览器下载或云回退规避。截图复核另发现 1280×720 绘制时间轴受父容器高度影响被底栏裁切，已约束活动页面的 flex 高度并收缩预览；浏览器现断言帧控件完整位于底栏之上。源码区保留水平滚动，不把代码强行折成窄列。
+
+本机系统 npm 11.19.1 内部 minipass-flush 继承类错误，使用官方 npm 11.6.2 的隔离 CLI（注册表 tarball SHA512 已核验），仅为本轮安装已锁定依赖及运行既有脚本，不改全局 npm 配置。固定 HyperFrames 0.8.193、Remotion 4.0.538、React 19.2.0、GSAP 3.13.0；直接使用的 esbuild/acorn/puppeteer-core 同样锁定。缺少浏览器时明确失败，不静默下载。
+
+为避免 Windows 嵌套临时路径，Go 全包输出用原根的短版本目录。已核验旧 0.2.2 标记、Git 跟踪、进程及父链/子项重解析边界，按既有入口 Prepare 轮换。原根测试目录同口径在轮换前 207,527,606 字节、轮换后 14,797 字节，释放 207,512,809 字节（随后新测试会新增缓存）。原始录像、用户 AVP、业务库、旧恢复运行目录、固定样本、未提交源码及正常依赖保留；原 AVP SHA256 仍为 981E72F51760EC5B0D28C722C32DC9FA722D2040F821C3D24B9CD2B544F38822。
+
+
+
 轮换同口径仅统计两个已删除的 0.2.1 目录：原根 7,214,871,405 → 0 字节，当前工作树 143,934,676 → 0 字节；合计旧目录逻辑占用减少 7,358,806,081 字节（约 6.85 GiB），不包含新 0.2.2 输出、简档和业务数据，不当作整个磁盘的净释放。
 
 0.2.2 升版检查已通过：Tauri、Cargo/npm 锁文件及 MCP 版本一致；前端 96、类型/样式/生产构建、MCP 整包 34.330s、Cargo 离线锁定元数据、171 HTTP/17 IPC/135 类型/27 SSE 和本地文档链接检查通过。首轮 npm 启动器在执行用例前退出 1，保留 version-npm-launch-first.log；直接执行 package.json 同一组 Node 入口后通过，不修改全局 npm 配置。0.2.2 未重跑原生桌面和外部模型，以下 0.2.1 完整回归为历史基线。2026-10-22 已按管理器 Prepare 轮换两处 0.2.1 生成物，只保留各测试根 archives/0.2.1.md 的简档；以下旧日志和截图路径仅作历史溯源，已随轮换退出，不保证仍存在。原工程、录像、开发数据库及 live-dev/timeline-runtime-0.2.1 不在清理范围。
@@ -110,7 +133,7 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 | 当前多轨用户窗口恢复 | 原「新项目」在真实可见窗口恢复，资源 1 项、默认主序列 3V/3A、dirty=false，选择及源预览恢复；磁盘 AVP v1 哈希不变，工作副本按 v2 读取 | 原根 custom/timeline-editor/user-workspace-restored.json / user-window.png / user-window-native.png；原生标题 Video Auto Cut — 新项目，屏幕取色 #1E1E1E、底栏就绪、3 个 Worker 在线。启动前一致性备份 live-dev/control.before-timeline-0.2.1.db 保留；同版桌面/Go/清单复制至 live-dev/timeline-runtime-0.2.1 并校验哈希，常驻用户窗口不计作一个已结束的管理器测试 |
 | 0.2.1 CHROME01 工作副本（2026-10-21） | 前端 93 项、样式/类型/生产构建、Rust 格式/5 项测试/桌面构建、文档契约及真实 Windows 桌面 31/31 通过；人工观感待验 | custom/window-chrome/*.log、window-chrome-native/ui/results.json 与 native-title-{home,project-dirty}.png；实际屏幕像素确认标题栏 #1E1E1E，覆盖清洁/未保存/关闭后的标题和底栏就绪/停止/重启。独立测试数据，未开启可选 ASR 推理；不重报 Go/Worker 全套或声音/模型质量 |
 | CHROME01 时用户窗口恢复（历史） | 当时原「新项目」恢复，资源 1 项、dirty=false、工程文件 SHA256 未变；原生标题为 Video Auto Cut — 新项目，底栏就绪 | custom/window-chrome/user-workspace-restored.json / user-window-native.png；沿用原开发业务目录。当前多轨窗口恢复另见上行，不沿用当时截图验收新界面 |
-| 0.2.1 cadd51a 完整 Go | 16 个有测试包通过，2 包无测试；显式启用已预装本地 ASR 实测 | root 14.824s、API 23.230s、MCP 37.350s、service 456.160s、store 7.103s；原根 0.2.1 custom/go-full.log，明确以当前工作树 control-plane 为源码 |
+| 0.2.1 cadd51a 完整 Go | 17 个有测试包通过，2 包无测试；显式启用已预装本地 ASR 实测 | root 14.824s、API 23.230s、MCP 37.350s、service 456.160s、store 7.103s；原根 0.2.1 custom/go-full.log，明确以当前工作树 control-plane 为源码 |
 | 0.2.1 cadd51a 前端/Worker/契约 | 前端 93、Python 164、Timeline 54、Exporter 53、TS/构建/样式与接口检查全部通过 | 当前 0.2.1 custom/*-unit.log、typescript.log、documentation.log、script-docs.log 及 python/timeline/exporter/output.log；158 HTTP、122 类型、16 IPC、25 SSE。真实桌面另记 |
 | 0.2.1 本地 ASR | Go→本机 faster-whisper 1.2.1 base CPU/int8 →22 个源词时标；诊断/取消/幂等重放/跨工程拒绝通过 | 真实测试已显式启用，非跳过；现有本地模型指纹参与缓存，未下载、修改模型或外发；Python 单元另覆盖 5 秒偏移、依赖/模型缺失、静音和失败不发布 |
 | 0.2.1 Rust/Windows 桌面 | Rust 5/5、build/fmt 通过；真实可见桌面 26/26 通过 | custom/rust-unit.log、desktop-build.log、desktop-native.log、desktop-native-ui/results.json 及截图；关于页 0.2.1、ASR 原生选择/环境检查/保存重载、MCP 三种复制与重启新会话刷新，加既有六类预览/工程往返/隔离/排空/单实例。原剪贴板文本仅内存保留并在 finally 恢复 |
@@ -145,3 +168,83 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 | 2026-10-19 旧 500 MiB 规则中止组合测试 | 当时中止及拆分通过分别记录；随后已取消固定容量限制，两处 workspace 守卫各 36 项通过 | 不把旧中止记为全套通过，也不把旧容量门当现行政策；原临时 JSON/数据库/截图有部分已清除 |
 
 当前外部 LLM/转录/云声音质量、人工观感、目标剪辑软件、声明规模长素材及最新安装包/系统关联/公开更新仍按计划另验。2026-10-02～03 的真实 OpenAI、原交付 Premiere 导入/播放/编辑、迁移重链接与视听效果已有用户确认；Anthropic/Gemini 真实调用按用户要求排除。2026-10-09 的 ASS/StepAudio 样本人工确认和本地签名升级同样保留，以上均为旧候选的有限证据，不扩大到当前 AVP 全面验收。
+
+追加旧编辑器浏览器回归时曾遇自动审批服务额度不足；后续审批恢复，已补验通过。旧测试仍查询改名前的“剃刀 C”和帮助文案，改为当前可访问名称及剃刀/波纹行为断言后，14 组全部通过。未删快捷键、复制/粘贴、撤销/重做、弹窗与隐藏工作区保护断言。
+
+本轮最终增量以本地 a23d138+工作副本为准，未提交/推送；应用版本不变。验收索引在源码工作树 .run-data/tests/0.2.4/artifacts/custom/verification-summary.json。
+
+
+## 2026-10-25 媒体导入与 Remotion 后台窗口增量
+
+当前源码仍为 timeline-audio-viz / a23d138 + 未提交工作副本，应用 0.2.4，不执行提交/推送。MEDIA01 和 DRAW03 已实现并通过下列自动检查；不把早期 Go 18 包或 Python 165 项全量结果当作本次重新执行。
+
+| 层 | 本轮实际结果与证据 |
+|---|---|
+| Go 工程/时间线/绘制/API/MCP | 四包受影响 TestProject/TestTimeline/TestSequence/TestDraw 回归通过；最新 RAW 历史/关联和依赖修改后 project/service 再验通过，project 模型整包通过。原根短输出 custom/media-go-regression.log、media-go-raw-history.log、media-project-model.log |
+| 实际媒体 | 确定性 DNG 导入/并发缩略图及预览、曝光和灰度结果、150 帧共享序列合成、实际 Remotion 图片绘制、拒绝旧 recipe 渲染、AVP 往返、撤销/重做、RAW→PNG 关联均通过。MKV 1 路视频 + 2 路音频实际入轨索引 0/1/2、同一链接组；MP4/MOV/AVI/FLV、MP3/WAV、JPG/JPEG/JEPG/PNG/GIF/BMP/TIFF/WebP 实际导入和代理通过 |
+| Python RAW | 新增独立长期职责 tests/test_raw_image.py，包含可复用的微型 Bayer DNG 构造器，不添加私有相机样本到 Git。配置 requirements-media.txt 后 3 项通过，含 Sony a7 III ARW 实际显影/曝光变化、源哈希不变。custom/media-raw-python.log、sony-arw-verification.json |
+| 前端 | 既有完整单元 64+60=124、样式21色、类型与生产构建通过。custom/media-web-unit.log、media-web-build.log |
+| 浏览器夹具 | 原编辑14组及绘制/资源9组通过；新 RAW 组实际操作曝光、应用、刷新重开和重置，图片 URL 跟随 recipe 变化；1280控件截图保留。custom/review-smokes/draw_smoke.mjs/results.json completed=true、raw-controls-1280.png。浏览器返回为夹具，不冒充实际 RAW 显影，真实像素由 Go/Python 检查承担 |
+| 绘制/后台窗口 | 既有 draw.test.mjs 共7项通过；使用真实 Edge 的成功及源码故意失败都执行完成。Windows 观察实际子进程带 --headless=new，可见窗口0，捕获浏览器结束后无存活。custom/media-draw-final.log、draw/lifecycle/verification.json。部分既有像素用例命中已验证缓存，新的 RAW 实际绘制另由 Go 证明 |
+| 契约 | 178 HTTP / 17 IPC / 150前端契约模型 / 27 SSE。更新自动清单后使用既有文档检查，不增加接口旁路 |
+
+RAW 环境显式安装 workers/python/requirements-media.txt。当前专用 .venv 使用 Python 3.12.14、rawpy 0.27.0 / LibRaw 0.22.1、Pillow 12.0.0；运行期间不下载内容。官方 PyPI HTTPS 发生 EOF，系统代理仍失败；依赖通过清华 PyPI HTTPS 镜像安装，未关闭证书验证，原工作树/系统环境未改。公开 Sony 样本下载至当前版本 cache/media-fixtures，未放入用户工程或 Git；来源 [raw.pixls.us Sony ILCE-7M3](https://raw.pixls.us/data/Sony/ILCE-7M3/)，_DSC0009.ARW，SHA256 250784580ea527442c09004417bb0eead484f2bf3ee8f9121a776ac65bb50d0f，与库发布 filelist.sha256 一致。LibRaw 的具体机型/压缩模式覆盖仍以实片解码为准，未声称验证全部 Sony 相机。参数语义依据 [rawpy Params](https://letmaik.github.io/rawpy/api/rawpy.Params.html)。可通过 VAC_ARW_FIXTURE 显式指定已准备样本，不在测试或运行时隐式下载。
+
+首轮定位证据：新 Go 夹具起初使用错误的 resource.insert 名称，随后缺失 clip.insert 的必填 track_id，修正夹具后通过，产品校验不放宽；前端 Alert 首次使用不存在的 title 属性，改为现有 message；浏览器 RAW 初次被工作区状态夹具恢复成旧列表，补同一夹具 state 接口；1.0 与 1 的显示格式改为数值断言，真实刷新/重置断言保留。首次文档检查因 rustfmt 后命令位置改变报过期，重新生成清单后复验。相关 first/failure/number-format 日志保留在同版本 custom 内。
+
+用户截图中的旧 Remotion Bundle 窗口，当前两次枚举都未找到同名窗口或浏览器，因此没有终止未知用户进程，也不宣称关闭了未发现的旧窗口。修复的是已确认的旧 headless 模式缺陷及 finally 清理。最新原生 Tauri 文件框、安装包、用户原片和人工任务切换器/调色观感本轮未验。
+
+
+## DRAW04 绘制布局与控件动效（2026-10-25，Chrome 自动验收完成）
+
+使用 Product Design（插件0.1.56）的当前产品检查流程，无已保存设计上下文。源码仍为 timeline-audio-viz / a23d138+未提交工作副本，版本0.2.4；没有发布或推送，没有修改原工程和业务数据。
+
+| 层 | 实际结果与证据 |
+|---|---|
+| 前端 | 首轮完整单元124及样式21色通过；最终类型/生产构建及样式检查通过。custom/draw-layout-unit.log、draw-layout-build-final.log、draw-layout-style-final.log |
+| Chrome 夹具 | 本地 C:/Program Files/Google/Chrome/Application/chrome.exe。绘制11组、原编辑14组通过；包含专注预览往返、1024及1280窗口、固定导入位置、真实图片拖入、选中图层对比度≥4.5、键盘菜单、减少动态效果、保存/渲染版本及RAW控件。custom/draw-layout-chrome-final.log、review-smokes/review_shortcuts_smoke.mjs.log、draw_smoke.mjs/results.json（completed=true，记录浏览器路径） |
+| 真实Go界面 | 当前Go二进制+最终WebUI，独立示例AVP引入前轮已校验的公开Sony a7 III ARW，实际输出30帧640×360视频；Chrome实际播放呈帧、缩略图解码、图片属性和专注预览往返通过，页面错误0。custom/draw-design-live-verification.json、draw-design-live-1440.png、draw-design-live-1280.png、draw-design-live-focus.png |
+| 渲染生命周期 | Remotion Chrome 用例通过。观察器必须实际捕获正常与源码故意报错两个 Chrome，均带 --headless=new；可见窗口0，所有捕获PID结束后无存活。custom/draw-layout-chrome-lifecycle.log、draw/lifecycle/verification.json；不沿用旧Edge结果验收Chrome |
+| 文档契约 | 沿用机器清单和既有检查，178 HTTP/17 IPC/150模型/27 SSE；布局未新建API。最终检查见 custom/draw-layout-documentation.log |
+
+视觉复核以本任务捕获的1280×720源代码/预览/输出状态比较，源码栏由约240px增至约320px，时间区168px压到104px，右栏导入入口固定在可见底部；深色主题/既有颜色和时间token保留。初次1440截图预览未加载，不作视觉验收；真实Go初次抓拍仍显示原生媒体加载提示，也未采纳。最终实际播放呈帧、缩略图完成解码并等待控件稳定后重新截图，已逐张打开核对。截图不构成全面辅助技术合规或人工动效手感验收。
+
+初次 reduced-motion 断言发现拖入态更高优先级 transform 覆盖 none；改为 .draw-studio .draw-drop-feedback 后原断言通过，未降低要求。续验曾因审批额度不足而未执行构建/浏览器与预览构建，服务恢复后已补齐。Chrome生命周期探针先把退出时空命令行覆盖有效值，继而标准输入完成信号过早结束采样；现保留有效命令行，并使用版本化文件显式结束全程观察。尝试的模块spawn拦截不能观察已导入的浏览器启动，已移除，最终直接用真实Windows/CIM观察证明，不能以空快照通过。首轮失败日志保留 custom/draw-layout-*-failure.log / reduced-motion-first.log。
+
+用户明确只使用本地Chrome、禁止Edge。run-local-smokes.mjs选择已安装Chrome或显式CHROME并拒绝Edge，两个浏览器子入口也校验实际可执行文件。未安装或使用新的浏览器，不依赖内置Browser。
+
+独立预览有意保留：原根 .run-data/tests/0.2.4/artifacts/custom/draw-design-preview/preview.json 记录进程、地址和数据根，Go服务与WebUI均为本轮源码。示例工程及原件只读引用不涉及原用户AVP；后续临时文件也限定 preview/temp。该Go服务是供用户查看的交互预览，不计作意外残留；测试创建的Chrome/Remotion浏览器必须退出。预览不使用业务服务商凭据。若之后清理/轮换测试目录，先核验并关闭这个明确归属的预览服务。原生Tauri、安装包、用户原片及人工手感未在本轮重新验收。
+
+
+2026-10-25 NAV01：沿用 draw_smoke.mjs 增加实际五个导航标签可见及位于容器内的断言，覆盖1440/1280/1024px；既有绘制12组通过。真实Go预览在960×720、deviceScaleFactor=1.5时核验滑轨600px、五项均展示，截图 nav-width-live-150pct.png、记录 nav-width-live-verification.json；生产构建通过。未新增独立套件，无后端/接口行为变化；原生桌面未重验。证据为 custom/nav-width-build.log、nav-width-browser.log、nav-width-live.log。
+
+
+NAV01 窄屏补充：前次仅验证至960px，未覆盖旧959px以下的100%增长规则。现去掉该规则、统一固定600px；复用 draw_smoke.mjs 增加实际宽度断言及900/800/640px检查，所有五项可见。构建/类型与绘制12组通过；真实Go预览800×720@1.5x确认600px，截图/记录见 custom/nav-fixed-live-800.png、nav-fixed-live-verification.json。复验日志 nav-fixed-build.log、nav-fixed-browser.log、nav-fixed-live.log。
+
+
+## UX05 整体界面与设置页（2026-10-25）
+
+沿用共享 `webui/run-local-smokes.mjs` 启动器，新纳入长期设置职责的 `settings_smoke.mjs`（没有并行新建测试服务器/样本套件）：设置导航、草稿替换取消、保存失败重试、Provider/本地转录表单、1440/1280/1024/900/800/640布局、键盘与减弱动态效果、TTS独立流程。既有编辑14组与绘制12组继续保留。使用安装的本地Chrome，禁止Edge，不下载浏览器，不调用外部模型/转录/配音。
+
+```powershell
+$env:VAC_DIST=(Resolve-Path './webui/dist').Path
+& './scripts/TestWorkspace.ps1' -Action Run -Suite custom -Executable 'D:/Applications/NodeJs/node.exe' -Arguments @('webui/run-local-smokes.mjs','settings_smoke.mjs','review_shortcuts_smoke.mjs','draw_smoke.mjs')
+```
+
+最终设置7组、编辑14组、绘制12组行为复验通过；前端124项、样式/类型和最终构建通过。最终日志文案调整后设置7组再次通过，减弱动态效果下的鼠标分类往返也通过；分类选择须等待上次菜单实际收起再发下一次操作。真实Go服务6102使用独立示例AVP，捕获六个设置分类及资源/编辑/绘制/导出/TTS，页面错误0；当前未保存真实服务商配置或调用服务商。实际源码是timeline-audio-viz工作树的a23d138+未提交工作副本；应用版本0.2.4。原根测试入口仅用于独立输出/缓存，不能以其HEAD替代源码工作树。
+
+证据：当前源码 `custom/ui-ux-browser.log`、`review-smokes/settings_smoke.mjs/results.json`；真实Go截图与记录在原根 `.run-data/tests/0.2.4/artifacts/custom/ui-ux/`、`ui-ux-live.log`。现状捕获中首次设置/绘制截图及后续含播放器加载圆弧的截图已拒收；最终绘制截图实际播放呈帧后暂停再捕获，无加载圆弧；测试曾发现并修复“设置深链被AVP旧工作区覆盖”，测试夹具limit参数及选择器自动化定位也已调整，不把夹具故障记作后端故障。界面截图不等于原生Tauri或人工观感验收；本轮不重跑Go/Python/渲染全链，沿用其历史证据并标明未重跑。
+
+
+## REL031 版本发布检查（2026-10-26，自动验证通过）
+
+当前应用版本0.3.1，实际源码为timeline-audio-viz工作树的a23d138+工作副本。0.2.4证据按仓库规则轮换，原根和当前工作树的测试根只保留新版本及最简Markdown简档；正文中的0.2.4报告路径仅为历史证据定位，不代表文件仍保留。旧版本完整报告、缓存、数据库和渲染输出没有迁存，当前示例只保留工作文件和共享Sony ARW原片以重新生成预览。两测试根同口径占用在轮换时从1,337,966,250字节降至25,676,023字节，释放1,312,290,227字节；该数字不含后续0.3.1检查产生的新缓存与输出。原业务库、录像、用户原AVP、其他工作树保留。
+
+本轮复用前端124项/样式/类型/生产构建、Go project/skill/MCP、真实两引擎绘制及Chrome设置/编辑/绘制回归，新增版本一致性检查仅放当前版本临时输出，不增加永久平行测试套件。版本检查区分Cargo自有包与第三方依赖，不全局替换版本号。前端等价执行package.json里的两组Node命令、style、tsc及Vite，避开此前已记录的npm启动器问题。Windows命令使用系统PowerShell7并加载profile。
+
+检查状态与日志保存在当前源码 `.run-data/tests/0.3.1/artifacts/custom/release-*`；Go使用原根同版本短输出/缓存，记录的实际源码仍是当前工作树。恢复的独立预览为0.3.1 Go/前端，不以预览和MCP初始化替代原生安装器或人工质量验收。完整Go/Python/原生桌面、真实外部模型、安装更新不在本次升版中重跑。
+
+
+0.3.1实际结果：版本/锁文件一致；Cargo元数据offline/locked通过；前端124（64+60）及样式/类型/构建通过；Go project/skill/MCP三包通过（MCP 68.443秒）及控制面构建通过；真实绘制7项通过（135.09秒，包含两引擎图像像素和正常/源码异常的Chrome退出）；Chrome设置7、编辑14、绘制12组通过；接口178 HTTP /17 IPC /150模型 /27 SSE，13文档/533链接检查无错误。
+
+真实0.3.1 Go预览已恢复6102，示例AVP和资源均恢复；MCP initialize返回serverInfo.version=0.3.1。30帧640×360 Remotion预览SHA256仍为aee79887debb5f33a1cdb761f446d05c1eb6c3cb9363f50f469ed3ef3b637ec0，与轮换前一致。Chrome实际呈帧、关于窗口0.3.1和页面异常0通过。恢复首轮缺delivery目录、MCP未启用的预览配置问题已分别补齐，不作为源代码缺陷；最小失败日志与当前验证文件留在新版本目录。预览服务按用户查看用途保留，不将其记为残留渲染进程。原生Tauri、外部模型质量及人工观感未重验。

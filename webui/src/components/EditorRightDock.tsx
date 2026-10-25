@@ -6,6 +6,7 @@ import { SkillRunModule } from './SkillRunModule';
 import { ScriptWorkbench } from './ScriptWorkbench';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
+import { useSkillWorkspace } from '../skillWorkspace';
 import { skillApi } from '../skillApi';
 import { skillQueryKeys } from '../skillContracts';
 import { protectedQueryRetry } from '../skillView';
@@ -51,11 +52,13 @@ export function EditorRightDock({
 }) {
   const e = useSequenceEditor();
   const project = useProjectWorkspace();
+  const selectedRun = useSkillWorkspace().runId;
+  const wantSkill = Boolean(selectedRun);
   const wantScript = route?.editingSection === 'content' || Boolean(route?.scriptId);
   const [open, setOpen] = useState<Record<DockModuleId, boolean>>({
-    properties: !wantScript,
+    properties: !wantScript && !wantSkill,
     script: wantScript,
-    skill: false,
+    skill: !wantScript && wantSkill,
     history: false,
   });
   const runs = useQuery({
@@ -88,6 +91,14 @@ export function EditorRightDock({
       onModuleOpen?.('script');
     }
   }, [active, route?.editingSection, route?.scriptId]);
+
+  useEffect(() => {
+    if(active && selectedRun && !wantScript) {
+      setOpen({properties:false,script:false,skill:true,history:false});
+      onModuleOpen?.('skill');
+      if(stripOnly)onExpand?.();
+    }
+  }, [active, selectedRun, wantScript]);
 
   useEffect(() => {
     const onOpen = () => {

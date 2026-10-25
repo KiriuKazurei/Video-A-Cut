@@ -162,7 +162,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       for await (const chunk of process.stdin) { bytes += chunk.length; if (bytes > 4 * 1024 * 1024) throw new Error('request too large'); chunks.push(chunk); }
       const raw = Buffer.concat(chunks).toString('utf8');
       const operation=process.argv[2],input=JSON.parse(raw);
-      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='sequence' ? renderSequence(input) : operation==='waveform' ? waveform(input) : operation==='loudness' ? loudness(input) : renderScript(input)) }));
+      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='draw-check' ? (await import('./draw-runtime.mjs')).checkDraw(input) : operation==='draw-render' ? (await import('./draw-runtime.mjs')).renderDraw(input) : operation==='sequence' ? renderSequence(input) : operation==='waveform' ? waveform(input) : operation==='loudness' ? loudness(input) : renderScript(input)) }));
     }
   } catch (e) { process.stdout.write(JSON.stringify({ ok: false, message: e.message })); process.exitCode = 1; }
 }

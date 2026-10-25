@@ -56,7 +56,7 @@ func sequenceTracks(seq project.Sequence) []project.Track {
 		return t.Hidden || (t.Kind == "audio" && t.Muted) || (solo[t.Kind] && !t.Solo)
 	})
 }
-func (s *Service) sequenceSources(projectID string, seq project.Sequence) ([]sequenceSource, error) {
+func (s *Service) sequenceSources(ctx context.Context, projectID string, seq project.Sequence) ([]sequenceSource, error) {
 	ids := map[string]bool{}
 	for _, t := range sequenceTracks(seq) {
 		for _, c := range t.Clips {
@@ -72,7 +72,19 @@ func (s *Service) sequenceSources(projectID string, seq project.Sequence) ([]seq
 		if r.Missing || r.Removed || r.Changed {
 			return nil, fmt.Errorf("资源缺失或已改变，请重新定位：%s: %w", r.Name, model.ErrConflict)
 		}
-		out = append(out, sequenceSource{r.ID, r.Name, r.Kind, r.Source.OriginalPath, r.Source.SHA256, r.Metadata})
+		path := r.Source.OriginalPath
+		sha := r.Source.SHA256
+		if project.IsCameraRaw(path) {
+			path, e = s.imageRenderPath(ctx, projectID, r)
+			if e != nil {
+				return nil, e
+			}
+			sha, e = sequenceFileDigest(path)
+			if e != nil {
+				return nil, e
+			}
+		}
+		out = append(out, sequenceSource{r.ID, r.Name, r.Kind, path, sha, r.Metadata})
 	}
 	slices.SortFunc(out, func(a, b sequenceSource) int {
 		if a.ID < b.ID {
@@ -110,7 +122,7 @@ func (s *Service) CreateSequencePreview(ctx context.Context, projectID, sequence
 	if req.Session != view.Session || req.ExpectedRevision != view.Sequence.Revision || req.ContentVersion != view.ContentVersion {
 		return report, model.ErrConflict
 	}
-	sources, err := s.sequenceSources(projectID, view.Sequence)
+	sources, err := s.sequenceSources(ctx, projectID, view.Sequence)
 	if err != nil {
 		return report, err
 	}
@@ -145,7 +157,7 @@ func (s *Service) CreateSequencePreview(ctx context.Context, projectID, sequence
 	if current.Session != view.Session || current.ContentVersion != report.ContentVersion {
 		return report, fmt.Errorf("序列已改变，旧节目结果已丢弃: %w", model.ErrConflict)
 	}
-	if _, err = s.sequenceSources(projectID, current.Sequence); err != nil {
+	if _, err = s.sequenceSources(ctx, projectID, current.Sequence); err != nil {
 		return report, err
 	}
 	if _, err = os.Stat(filepath.Join(output, "program.mp4")); err != nil {
@@ -162,7 +174,7 @@ func (s *Service) SequencePreviewPath(ctx context.Context, projectID, sequenceID
 	if version != view.ContentVersion {
 		return "", model.ErrConflict
 	}
-	if _, err = s.sequenceSources(projectID, view.Sequence); err != nil {
+	if _, err = s.sequenceSources(ctx, projectID, view.Sequence); err != nil {
 		return "", err
 	}
 	path := filepath.Join(s.sequencePreviewDir(projectID, sequenceID, version), "program.mp4")
@@ -286,7 +298,7 @@ func (s *Service) ResourceThumbnail(ctx context.Context, projectID, id string, a
 	if r.Missing || r.Removed || r.Changed || (r.Kind != "video" && r.Kind != "image") || !finiteScriptTime(at) || at < 0 || (r.Kind == "video" && at >= r.Out) {
 		return "", model.ErrArgument
 	}
-	output := filepath.Join(s.workspace.root, "previews", r.Source.SHA256+"-"+skillHash(at)+".png")
+	output := filepath.Join(s.workspace.root, "previews", project.ResourceContentVersion(r)+"-"+skillHash(at)+".png")
 	if _, err = os.Stat(output); err == nil {
 		return output, nil
 	}
@@ -302,8 +314,13 @@ func (s *Service) ResourceThumbnail(ctx context.Context, projectID, id string, a
 	if indexes := project.Streams(r, "video"); len(indexes) > 0 {
 		stream = indexes[0]
 	}
+	source, err := s.imageRenderPath(ctx, projectID, r)
+	if err != nil {
+		return "", err
+	}
 	temporary := output + ".tmp.png"
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(at, 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", r.Source.OriginalPath, "-map", fmt.Sprintf("0:%d", stream), "-frames:v", "1", "-vf", "scale=160:-2", "-threads", "1", temporary)
+	defer os.Remove(temporary)
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(at, 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", source, "-map", fmt.Sprintf("0:%d", stream), "-frames:v", "1", "-vf", "scale=160:-2", "-threads", "1", temporary)
 	configureMediaCommand(cmd)
 	cmd.Env = toolEnvironment()
 	if err = cmd.Run(); err != nil {

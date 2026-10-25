@@ -4,7 +4,7 @@ import {api} from '../api';
 import type {ProcessingProfile} from '../preparation';
 import {ProviderEditor} from './ProviderEditor';
 import {TtsTemplateBindingEditor} from './TtsTemplateBindingEditor';
-import {Alert,Button,Card,Col,Collapse,Flex,Form,Input,InputNumber,List,Row,Space,Tag,Tooltip,Typography,theme} from 'antd';
+import {Alert,Button,Card,Col,Collapse,Flex,Form,Input,InputNumber,List,Popconfirm,Row,Space,Tag,Tooltip,Typography,theme} from 'antd';
 import {CheckCircleOutlined,ExclamationCircleOutlined,LockOutlined,QuestionCircleOutlined} from '@ant-design/icons';
 import type {WorkflowRun} from '../types';
 import type {RouteState} from '../navigation';
@@ -42,7 +42,7 @@ export function PreparationPanel({
     const voice=voices.data?.sapi_voices?.[0];
     if(voice)setDraft(current=>current.revision===0&&!current.tts_voice&&!current.tts_template?{...current,tts_voice:voice}:current);
   },[voices.data]);
-  const unsaved=notice.startsWith('有未保存');
+  const unsaved=notice.startsWith('有未保存')||notice==='新预设尚未保存';
   const autoCheck=Boolean(assetId)&&draft.revision>0&&!unsaved;
   const report=useQuery({
     queryKey:['prepared',assetId,draft.profile_id,draft.revision],
@@ -101,6 +101,14 @@ export function PreparationPanel({
   const edit=(next:ProcessingProfile)=>{setDraft(next);setNotice('有未保存修改，请先保存新版本')};
   const changeMode=(mode:'builtin'|'configured')=>edit({...draft,content_mode:mode,vision:mode==='builtin'?{adapter:'builtin'}:{adapter:'vision',api_format:'openai',endpoint:'https://api.openai.com/v1',model:'',token_env:'VAC_VISION_TOKEN'},narration:mode==='builtin'?{adapter:'builtin'}:{adapter:'narration',api_format:'openai',endpoint:'https://api.openai.com/v1',model:'',token_env:'VAC_NARRATION_TOKEN'}});
   const sampling=(patch:Partial<ProcessingProfile['sampling']>)=>edit({...draft,sampling:{...draft.sampling,...patch}});
+  const loadProfile=()=>action.mutate(async()=>{
+    const loaded=await api.getProfile(selected,version);
+    setDraft(loaded.profile);setNotice(`已加载 ${loaded.profile.profile_id} / v${loaded.profile.revision}`);
+  });
+  const createProfile=()=>{
+    setDraft({...initial,profile_id:'profile_'+Date.now(),tts_voice:voices.data?.sapi_voices?.[0]??''});
+    setSelected('');setVersion(0);setError('');setNotice('新预设尚未保存');
+  };
   const save=()=>action.mutate(async()=>{const saved=await api.saveProfile({...draft,revision:draft.revision+1},draft.revision);setDraft(saved);setSelected(saved.profile_id);setNotice(`已保存 v${saved.revision}`)});
   const fetchError=error||(profiles.error instanceof Error?profiles.error.message:report.error instanceof Error?report.error.message:profiles.error||report.error?'读取失败':'');
   const starting=useRef(false);  // 同步锁：同一拍内的双击只发一次启动请求（busy 状态要等下一次渲染才生效）
@@ -155,19 +163,23 @@ export function PreparationPanel({
         <ValueSelect<string> className="select-saved-profile" aria-label="已保存预设" value={selected} onChange={v=>{setSelected(v);setVersion(0)}}
           options={[{value:'',label:'选择预设'},...(profiles.data??[]).map(p=>({value:p.profile_id,label:`${p.name} · v${p.revision}`}))]}/>
       </Form.Item>
-      <Form.Item label="历史版本（0 为当前）" layout="vertical" style={{marginBottom:0,width:150}}>
+      <Form.Item label="历史版本 · 0 为最新" layout="vertical" style={{marginBottom:0,width:150}}>
         <InputNumber aria-label="历史版本" style={{width:'100%'}} min={0} step={1} precision={0} value={version} onChange={v=>setVersion(Number(v??0))}/>
       </Form.Item>
-      <Button disabled={busy||!selected} onClick={()=>action.mutate(async()=>{const p=await api.getProfile(selected,version);setDraft(p.profile);setNotice(`已加载 ${p.profile.profile_id} / v${p.profile.revision}`)})}>加载版本</Button>
-      <Button disabled={busy} onClick={()=>{setDraft({...initial,profile_id:'profile_'+Date.now(),tts_voice:voices.data?.sapi_voices?.[0]??''});setNotice('新预设尚未保存')}}>新建预设</Button>
+      <Popconfirm title="加载会替换未保存的预设草稿。" okText="替换草稿" cancelText="保留草稿" disabled={!unsaved} onConfirm={loadProfile}>
+        <Button disabled={busy||!selected} onClick={()=>{if(!unsaved)loadProfile()}}>加载版本</Button>
+      </Popconfirm>
+      <Popconfirm title="新建会替换未保存的预设草稿。" okText="替换草稿" cancelText="保留草稿" disabled={!unsaved} onConfirm={createProfile}>
+        <Button disabled={busy} onClick={()=>{if(!unsaved)createProfile()}}>新建预设</Button>
+      </Popconfirm>
     </Flex>
   );
 
   const saveButtons=(
-    <Space wrap>
-      <Button type="primary" className="vac-cta" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button>
-      <Typography.Text type="secondary">已保存版本不可覆盖，每次保存生成 v{draft.revision+1}。</Typography.Text>
-    </Space>
+    <div className="settings-save-bar">
+      <Button type="primary" loading={busy} className="vac-cta" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button>
+      <Typography.Text type="secondary">每次保存生成 v{draft.revision+1}，已保存版本保留。</Typography.Text>
+    </div>
   );
 
   // 一步式运行准备：自动预检 + 单一就绪卡片 + 主 CTA
@@ -176,7 +188,7 @@ export function PreparationPanel({
       extra={autoCheck?<Button size="small" disabled={busy||report.isFetching} onClick={()=>void report.refetch()} loading={report.isFetching&&!!report.data}>重新检查</Button>:null}>
       <Flex vertical gap={12} className="prep-readiness-body">
         <Typography.Text type="secondary">选好预设后会自动检查能否开始。条件满足时，点下方按钮即可启动。</Typography.Text>
-        {!assetId&&<Alert type="info" showIcon message="请先在左侧项目面板选择资产，再核对运行条件。"/>}
+        {!assetId&&<Alert type="info" showIcon message="请先在资源管理选择要处理的视频或音频，再核对运行条件。"/>}
         {assetId&&draft.revision<1&&!unsaved&&<Alert type="info" showIcon message="请先加载或保存一个预设版本，将自动检查运行条件。"/>}
         {unsaved&&(
           <Alert type="warning" showIcon message="有未保存修改"
@@ -231,20 +243,20 @@ export function PreparationPanel({
     {readinessCard}
   </Flex>;
 
-  const titleText = activeSection === 'profiles' ? '处理预设' : activeSection === 'providers' ? '服务商接入' : activeSection === 'preparation' ? '运行准备' : '处理预设与运行准备';
+  const titleText = activeSection === 'profiles' ? '预设配置' : activeSection === 'providers' ? '模型与转录' : activeSection === 'preparation' ? '运行检查' : '处理预设与运行准备';
 
   return <Card className="preparation-panel" aria-labelledby="preparation-title" title={<span id="preparation-title">{titleText}</span>}
-    extra={<Tag color={draft.revision>0?'blue':'default'}>{draft.profile_id} · {draft.revision>0?`v${draft.revision}`:'未保存'}</Tag>}>
+    extra={<Tag color={draft.revision>0?'blue':'default'}>{draft.name} · {unsaved?'未保存':draft.revision>0?`v${draft.revision}`:'新预设'}</Tag>}>
     <Flex vertical gap={12}>
       <Typography.Text type="secondary">
         {activeSection === 'profiles' && '配置预设基础参数、取样与声音，保存为不可变版本。'}
         {activeSection === 'providers' && '为当前预设配置画面识别、解说和本地或云转录。'}
-        {activeSection === 'preparation' && (assetId ? '确认条件后即可开始生成。' : '请先在左侧选择要处理的素材。')}
+        {activeSection === 'preparation' && (assetId ? '确认条件后即可开始生成。' : '请先在资源管理选择要处理的素材。')}
         {activeSection === 'all' && '保存预设后会自动检查能否运行；开始生成后请在编辑页确认内容。'}
       </Typography.Text>
       
       {profilePicker}
-      {(activeSection === 'profiles' || activeSection === 'all') && <TtsTemplateBindingEditor binding={draft.tts_template} onChange={binding=>edit({...draft,tts_template:binding})}/>}
+      {activeSection === 'all' && <TtsTemplateBindingEditor binding={draft.tts_template} onChange={binding=>edit({...draft,tts_template:binding})}/>}
       {fetchError&&<Alert type="error" showIcon role="alert" message={fetchError}/>}
       {busy&&<Typography.Text type="secondary" role="status">正在处理…</Typography.Text>}
       {notice&&!unsaved&&<Alert type="info" showIcon role="status" message={notice}/>}
@@ -255,19 +267,20 @@ export function PreparationPanel({
         <Form layout="vertical" className="prep-main" onFinish={save} disabled={busy}>
           <Typography.Title level={5}>基本信息</Typography.Title>
           <Row gutter={12}>
-            <Col xs={24} md={8}><Form.Item label="预设 ID"><Input required maxLength={64} pattern="[A-Za-z0-9_-]+" disabled={draft.revision>0||busy} value={draft.profile_id} onChange={e=>edit({...draft,profile_id:e.target.value})}/></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item label="名称"><Input required maxLength={100} value={draft.name} onChange={e=>edit({...draft,name:e.target.value})}/></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item label="内容模式"><ValueSelect<'builtin'|'configured'> className="select-content-mode" value={draft.content_mode} onChange={changeMode}
+            <Col xs={24} md={8}><Form.Item label="预设 ID"><Input aria-label="预设 ID" required maxLength={64} pattern="[A-Za-z0-9_-]+" disabled={draft.revision>0||busy} value={draft.profile_id} onChange={e=>edit({...draft,profile_id:e.target.value})}/></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item label="名称"><Input aria-label="预设名称" required maxLength={100} value={draft.name} onChange={e=>edit({...draft,name:e.target.value})}/></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item label="内容模式"><ValueSelect<'builtin'|'configured'> aria-label="内容模式" className="select-content-mode" value={draft.content_mode} onChange={changeMode}
               options={[{value:'builtin',label:'builtin 工程回归'},{value:'configured',label:'已配置模型'}]}/></Form.Item></Col>
           </Row>
-          <Typography.Title level={5}>取样与语音</Typography.Title>
+          <Typography.Title level={5}>取样与配音</Typography.Title>
           <Row gutter={12}>
-            <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>
-            <Col xs={12} md={6}><Form.Item label="取样预算（MiB）"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_bytes/1048576} onChange={v=>sampling({max_bytes:Number(v??0)*1048576})}/></Form.Item></Col>
-            <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
-            <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber aria-label="单任务帧数" required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="取样预算（MiB）"><InputNumber aria-label="取样预算 MiB" required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_bytes/1048576} onChange={v=>sampling({max_bytes:Number(v??0)*1048576})}/></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber aria-label="取样总期限 秒" required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
+            <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input aria-label="SAPI 声音名称" required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
           </Row>
-          <TranscriptionFields draft={draft} disabled={busy} onChange={edit}/>
+          <TtsTemplateBindingEditor binding={draft.tts_template} onChange={binding=>edit({...draft,tts_template:binding})}/>
+          <Typography.Paragraph type="secondary">模型与转录在<Button type="link" onClick={()=>onNavigate?.({workspace:'settings',settingsCategory:'providers'})}>服务商接入</Button>中配置，切换分类保留当前草稿。</Typography.Paragraph>
           {saveButtons}
         </Form>
       )}
@@ -286,7 +299,7 @@ export function PreparationPanel({
           {draft.content_mode==='configured'?<Flex vertical gap={12} style={{marginBottom:16}}>{(['vision','narration'] as const).map(key=><ProviderEditor key={key} role={key} provider={draft[key]} disabled={busy} onChange={provider=>edit({...draft,[key]:provider})}/>)}</Flex>
             :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用画面和解说模型；转录按下方配置独立执行。切换为“已配置模型”后可配置画面识别与中文解说服务。"/>}
           <TranscriptionFields draft={draft} disabled={busy} onChange={edit}/>
-          <Space wrap><Button type="primary" className="vac-cta" htmlType="submit" data-nav-anchor="profile-save">保存新版本</Button><Typography.Text type="secondary">服务商修改从属于当前预设，保存生成 v{draft.revision+1}。</Typography.Text></Space>
+          {saveButtons}
         </Form>
       )}
 
@@ -309,19 +322,19 @@ export function PreparationPanel({
             <Form layout="vertical" className="prep-main" onFinish={save} disabled={busy}>
               <Typography.Title level={5}>基本信息</Typography.Title>
               <Row gutter={12}>
-                <Col xs={24} md={8}><Form.Item label="预设 ID"><Input required maxLength={64} pattern="[A-Za-z0-9_-]+" disabled={draft.revision>0||busy} value={draft.profile_id} onChange={e=>edit({...draft,profile_id:e.target.value})}/></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item label="名称"><Input required maxLength={100} value={draft.name} onChange={e=>edit({...draft,name:e.target.value})}/></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item label="内容模式"><ValueSelect<'builtin'|'configured'> className="select-content-mode" value={draft.content_mode} onChange={changeMode}
+                <Col xs={24} md={8}><Form.Item label="预设 ID"><Input aria-label="预设 ID" required maxLength={64} pattern="[A-Za-z0-9_-]+" disabled={draft.revision>0||busy} value={draft.profile_id} onChange={e=>edit({...draft,profile_id:e.target.value})}/></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item label="名称"><Input aria-label="预设名称" required maxLength={100} value={draft.name} onChange={e=>edit({...draft,name:e.target.value})}/></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item label="内容模式"><ValueSelect<'builtin'|'configured'> aria-label="内容模式" className="select-content-mode" value={draft.content_mode} onChange={changeMode}
                   options={[{value:'builtin',label:'builtin 工程回归'},{value:'configured',label:'已配置模型'}]}/></Form.Item></Col>
               </Row>
               {draft.content_mode==='configured'?<Flex vertical gap={12} style={{marginBottom:16}}>{(['vision','narration'] as const).map(key=><ProviderEditor key={key} role={key} provider={draft[key]} disabled={busy} onChange={provider=>edit({...draft,[key]:provider})}/>)}</Flex>
                 :<Alert type="info" style={{marginBottom:16}} message="builtin 模式不调用画面和解说模型；转录按配置独立执行。切换为“已配置模型”后可设置画面识别与中文解说服务。"/>}
-              <Typography.Title level={5}>取样与语音</Typography.Title>
+              <Typography.Title level={5}>取样与配音</Typography.Title>
               <Row gutter={12}>
-                <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>
-                <Col xs={12} md={6}><Form.Item label="取样预算（MiB）"><InputNumber required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_bytes/1048576} onChange={v=>sampling({max_bytes:Number(v??0)*1048576})}/></Form.Item></Col>
-                <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
-                <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
+                <Col xs={12} md={6}><Form.Item label="单任务帧数"><InputNumber aria-label="单任务帧数" required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_frames} onChange={v=>sampling({max_frames:Number(v??0)})}/></Form.Item></Col>
+                <Col xs={12} md={6}><Form.Item label="取样预算（MiB）"><InputNumber aria-label="取样预算 MiB" required style={{width:'100%'}} min={1} max={48} value={draft.sampling.max_bytes/1048576} onChange={v=>sampling({max_bytes:Number(v??0)*1048576})}/></Form.Item></Col>
+                <Col xs={12} md={6}><Form.Item label="取样总期限（秒）"><InputNumber aria-label="取样总期限 秒" required style={{width:'100%'}} min={1} max={120} value={draft.sampling.timeout_seconds} onChange={v=>sampling({timeout_seconds:Number(v??0)})}/></Form.Item></Col>
+                <Col xs={12} md={6}><Form.Item label="SAPI 声音名称"><Input aria-label="SAPI 声音名称" required={!draft.tts_template} placeholder="本机声音名称，或在上方绑定 TTS 模板" value={draft.tts_voice} onChange={e=>edit({...draft,tts_voice:e.target.value})}/></Form.Item></Col>
               </Row>
               <TranscriptionFields draft={draft} disabled={busy} onChange={edit}/>
               {saveButtons}

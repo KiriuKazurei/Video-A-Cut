@@ -63,7 +63,7 @@ export interface SettingsCategoryDef {
 export const WORKSPACES: readonly WorkspaceDef[] = [
   { id: 'resources', label: '资源管理', english: 'Resources', description: '资产库、素材预览、属性治理、本地草稿', apis: 'API-01 · 03 · 43~45' },
   { id: 'editing', label: '编辑', english: 'Editing', description: '多序列轨道编辑、脚本标记引用、Skill 与历史', apis: 'TL API · Script API · Skill API' },
-  { id: 'draw', label: '绘制', english: 'Draw', description: '构图预览、构图时间轴、源码与 Inspector。不是工程多轨时间线', apis: 'DRAW01 · 方案接线中' },
+  { id: 'draw', label: '绘制', english: 'Draw', description: '构图预览、构图时间轴、源码与 Inspector。不是工程多轨时间线', apis: 'Draw API · Skill API' },
   { id: 'export', label: '导出', english: 'Export', description: '交付文件、人工验收、任务监控', apis: 'API-28 · 30 · 39~41 · 43~49' },
   { id: 'tts', label: 'TTS', english: 'TTS', description: '文本试听、声音调控、模板版本与正式配音配置', apis: 'TTS API' },
   { id: 'settings', label: '设置', english: 'Settings', description: '处理预设、服务商、运行准备、日志诊断', apis: 'API-17~21 · 23~26 · 49~50' }
@@ -81,12 +81,12 @@ export const EXPORT_SECTIONS: readonly ExportSectionDef[] = [
 ];
 
 export const SETTINGS_CATEGORIES: readonly SettingsCategoryDef[] = [
-  { id: 'profiles', label: '处理预设', description: '预设版本、模型配置、历史版本加载' },
-  { id: 'providers', label: '服务商接入', description: '识别/解说服务、模型发现、连接测试' },
-  { id: 'preparation', label: '运行准备', description: '资产/预设选择、条件预检、外发授权、启动流程' },
-  { id: 'skills', label: 'Agent 与 Skill', description: 'MCP 连接配置、Skill 包管理与运行能力' },
-  { id: 'logs', label: '日志与诊断', description: '审计记录、人工操作日志、刷新快照' },
-  { id: 'status', label: '状态监控', description: '系统连接与本机服务状态（技术人员）' }
+  { id: 'profiles', label: '处理预设', description: '配置处理参数、取样和配音模板，保存并管理预设版本。' },
+  { id: 'providers', label: '服务商接入', description: '配置画面识别、解说与转录，管理云端配音调用。' },
+  { id: 'preparation', label: '运行准备', description: '选择已保存预设，检查素材与运行环境并开始生成。' },
+  { id: 'skills', label: 'Agent 与 Skill', description: '连接外部 Agent，管理本地 Skill 包与依赖。' },
+  { id: 'logs', label: '日志与诊断', description: '查询审计日志、Agent 操作与人工注释。' },
+  { id: 'status', label: '状态监控', description: '查看后台连接、本机导入与语音服务的运行状态。' }
 ];
 
 const DEFAULT_WORKSPACE: WorkspaceId = 'resources';

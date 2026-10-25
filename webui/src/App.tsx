@@ -119,7 +119,8 @@ export default function App() {
     if (restored.current) return; restored.current = true;
     const next = workspaceState?.workspace;
     const hashWorkspace = window.location.hash.replace(/^#\/?/, '').split('?')[0]?.split('/')[0];
-    if (hashWorkspace !== 'draw') {
+    // An explicit workspace link wins over the AVP's last active workspace.
+    if (!hashWorkspace) {
       navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
     }
     if (typeof workspaceState?.left_width === 'number') setLeftWidth(Math.min(420, Math.max(200, workspaceState.left_width)));
@@ -386,7 +387,7 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'draw' && <ContextBar
+          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'draw' && workspace !== 'settings' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}

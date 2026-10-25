@@ -107,7 +107,7 @@ async fn project_dialog(
                     "mp4", "mkv", "mov", "avi", "webm", "m4v", "mpeg", "mpg", "ts", "wav", "mp3",
                     "m4a", "aac", "flac", "ogg", "opus", "wma", "png", "jpg", "jpeg", "webp",
                     "gif", "bmp", "tif", "tiff", "srt", "ass", "vtt", "txt", "md", "markdown",
-                    "avs",
+                    "avs", "flv", "jpe", "jepg", "dng", "arw",
                 ],
             ),
             _ => return Err("未知文件操作".into()),

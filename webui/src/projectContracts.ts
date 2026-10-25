@@ -1,8 +1,11 @@
+import type { DrawComposition } from './drawContracts';
 import type { ScriptSegment } from './scriptWorkbench';
 import type { TimelineSequence, TimelineMarker, ScriptReference } from './timelineContracts';
 
 export type ResourceKind = 'video' | 'audio' | 'image' | 'subtitle' | 'document' | 'script';
+export interface RawDevelop { exposure: number; white_balance: 'camera' | 'auto' | 'daylight'; contrast: number; saturation: number }
 export interface ProjectResource {
+ raw_develop?: RawDevelop;
   id: string; kind: ResourceKind; name: string;
   source: { relative_path?: string; original_path?: string; sha256?: string; size_bytes: number; modified_ns?: number };
   metadata: Record<string, unknown>; notes: string; in: number; out: number;
@@ -16,7 +19,7 @@ export interface AvsDocument {
   tts_enabled: boolean; subtitles_enabled: boolean; allow_web_research: boolean;
 }
 export interface AvpDocument {
-  format: 'avp'; schema_version: 1 | 2;
+  format: 'avp'; schema_version: 1 | 2; draw_compositions?: DrawComposition[];
   project: { id: string; name: string; created_at: string; updated_at: string };
   resources: ProjectResource[]; scripts: AvsDocument[];
   sequences: TimelineSequence[];
@@ -27,6 +30,6 @@ export interface ProjectSession {
   recent: { path: string; name: string; opened_at: string }[];
   recoveries: { path: string; name: string; recovery_path: string; updated_at: string }[];
 }
-export interface ResourcePatch { name?: string; notes?: string; in?: number; out?: number; path?: string; removed?: boolean }
+export interface ResourcePatch { raw_develop?: RawDevelop; name?: string; notes?: string; in?: number; out?: number; path?: string; removed?: boolean }
 export interface AvsImport { path: string; script_only?: boolean; bindings?: Record<string, string>; files?: Record<string, string> }
 export const RESOURCE_LABELS: Record<ResourceKind, string> = { video: '视频', audio: '音频', image: '图片', subtitle: '字幕', document: '文稿', script: '脚本' };

@@ -14,12 +14,15 @@ Route 2, 绘制, is a first-class strategy of this package, not an overlay acces
 When the goal asks for programmatic picture, a title, UI motion, kinetic type,
 or a film without source footage, follow this draw strategy and read
 vac-draw-hyperframes, vac-draw-remotion, or vac-draw-pipeline.
-Adapter version 0.1.0-vac.5 records that promotion. Draw tools, the sandbox,
-and the render worker are not wired; the product phrase is 方案接线中.
-Do not invoke a shell or install dependencies, and do not claim a draw render
-succeeded. The draw page encodes three later handoffs: import into Editing after
-render, composite-preview with edit tracks before an MP4 exists, and merge-render
-of several draw slots together with edit tracks at the end.
+Adapter version 0.1.0-vac.7 enables the executable local drawing route.
+Create a run with strategy=draw (empty media is valid), then use
+draw.list/save/check/render/get_frame/import. Read vac/tool-contracts.md for
+exact CAS/idempotency/session and source-format contracts. The browser render
+worker returns actual verified MP4s; inspect frames via artifacts.get, import the
+render into the launch sequence, and use timeline.edit / structured run.finish.
+Do not invoke a shell or install dependencies. Unrendered source-level composite
+preview and merge render remain unavailable; mix rendered resources in Editing.
+The following flattened-plan rules apply to source editing, not drawing.
 Work only within the run's visible media. Never scan directories, invoke shell,
 install dependencies or ask for secrets. Use media.list, media.transcribe,
 media.get_frames, scripts.propose and renders.create. Return a readable dependency
@@ -38,3 +41,19 @@ run.finish only when deliverables exist. No success claim from an unrendered pla
 Use at most the run budget. Do not fabricate visual evidence or human acceptance.
 
 Read vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.
+
+Executable drawing: create a run with strategy=draw; use draw.save/check/render/get_frame/import through skill_runs.tool. Empty current projects are valid for this strategy. Preserve the existing editing flow for strategy=edit. Read the engine Skill and vac/tool-contracts.md; no shell or implicit installation. Inspect real frames and import to the launch sequence, then use timeline editing and version-checked run.finish. Source-level unrendered composites remain unavailable.
+
+
+Imported project images are first-class drawing assets. Read image_resources from
+skill_runs.get (builtin model input includes the same catalog), or resources.list,
+then add composition.images entries using stable image resource_id values.
+Each instance has its own id,x,y,width,height,dx,dy,from_frame,to_frame,fit,
+opacity and mode. Go supplies resource_sha256; never submit a filesystem path.
+mode="layer" automatically places the image above the scene, with linear dx/dy
+movement over the frame interval. mode="source" supplies the same image and
+parameters for custom source placement, without an automatic duplicate overlay.
+HyperFrames source uses <img src="vac-image:INSTANCE_ID"> and window.vacImages;
+Remotion's default component receives {images}, with images[INSTANCE_ID].src.
+Missing/removed/changed images fail explicitly; relink the resource and save the
+composition to refresh its dependency fingerprint. Preserve all instance IDs.

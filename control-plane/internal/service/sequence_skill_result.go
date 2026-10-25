@@ -106,7 +106,7 @@ func (s *Service) importSequenceSkillResult(ctx context.Context, projectID, sequ
 	}
 	seq := &draft.Sequences[index]
 	before := seq.Snapshot(draft)
-	resource, err := inspectResource(ctx, path)
+	resource, err := s.inspectResource(ctx, path)
 	if err != nil {
 		return TimelineView{}, err
 	}

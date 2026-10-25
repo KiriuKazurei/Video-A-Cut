@@ -24,13 +24,16 @@ import (
 )
 
 func resourceKind(path string) string {
+	if project.IsCameraRaw(path) {
+		return "image"
+	}
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
-	case ".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".mpeg", ".mpg", ".ts":
+	case ".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".mpeg", ".mpg", ".ts", ".flv":
 		return "video"
 	case ".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma":
 		return "audio"
-	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff":
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".jpe", ".jepg":
 		return "image"
 	case ".srt", ".ass", ".vtt":
 		return "subtitle"
@@ -121,7 +124,7 @@ func (s *Service) sourceReference(ref string) (string, os.FileInfo, error) {
 	return r.Source.OriginalPath, info, nil
 }
 
-func inspectResource(ctx context.Context, path string) (project.Resource, error) {
+func (s *Service) inspectResource(ctx context.Context, path string) (project.Resource, error) {
 	var r project.Resource
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -163,7 +166,17 @@ func inspectResource(ctx context.Context, path string) (project.Resource, error)
 		r.Metadata["characters"] = utf8.RuneCount(raw)
 		r.Metadata["lines"] = strings.Count(string(raw), "\n") + 1
 	}
-	if r.Kind == "video" || r.Kind == "audio" || r.Kind == "image" {
+	if project.IsCameraRaw(abs) {
+		metadata, err := s.rawImageProcess(ctx, "inspect", abs, "", nil)
+		if err != nil {
+			return r, err
+		}
+		for k, v := range metadata {
+			r.Metadata[k] = v
+		}
+		recipe := project.DefaultRawDevelop()
+		r.RawDevelop = &recipe
+	} else if r.Kind == "video" || r.Kind == "audio" || r.Kind == "image" {
 		probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(probeCtx, "ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", abs)
@@ -221,7 +234,7 @@ func (s *Service) ImportProjectResource(ctx context.Context, projectID, path str
 	if resourceKind(path) == "script" {
 		return project.Session{}, fmt.Errorf("请使用脚本关联导入接口: %w", model.ErrArgument)
 	}
-	r, err := inspectResource(ctx, path)
+	r, err := s.inspectResource(ctx, path)
 	if err != nil {
 		return project.Session{}, err
 	}
@@ -249,12 +262,13 @@ func (s *Service) ImportProjectResource(ctx context.Context, projectID, path str
 }
 
 type ResourcePatch struct {
-	Name    *string  `json:"name,omitempty"`
-	Notes   *string  `json:"notes,omitempty"`
-	In      *float64 `json:"in,omitempty"`
-	Out     *float64 `json:"out,omitempty"`
-	Path    string   `json:"path,omitempty"`
-	Removed *bool    `json:"removed,omitempty"`
+	RawDevelop *project.RawDevelop `json:"raw_develop,omitempty"`
+	Name       *string             `json:"name,omitempty"`
+	Notes      *string             `json:"notes,omitempty"`
+	In         *float64            `json:"in,omitempty"`
+	Out        *float64            `json:"out,omitempty"`
+	Path       string              `json:"path,omitempty"`
+	Removed    *bool               `json:"removed,omitempty"`
 }
 
 func (s *Service) UpdateProjectResource(ctx context.Context, projectID, id string, patch ResourcePatch) (project.Session, error) {
@@ -271,14 +285,19 @@ func (s *Service) UpdateProjectResource(ctx context.Context, projectID, id strin
 		return project.Session{}, err
 	}
 	previous := r
-	contentChanged := patch.Path != "" || patch.Removed != nil
+	contentChanged := patch.Path != "" || patch.Removed != nil || patch.RawDevelop != nil
 	if patch.Path != "" {
-		next, err := inspectResource(ctx, patch.Path)
+		next, err := s.inspectResource(ctx, patch.Path)
 		if err != nil {
 			return project.Session{}, err
 		}
 		if next.Kind != r.Kind {
 			return project.Session{}, model.ErrArgument
+		}
+		if !project.IsCameraRaw(next.Source.OriginalPath) {
+			r.RawDevelop = nil
+		} else if r.RawDevelop == nil {
+			r.RawDevelop = next.RawDevelop
 		}
 		r.Source, r.Metadata, r.Missing, r.Changed = next.Source, next.Metadata, false, false
 		if r.Out > next.Out {
@@ -287,6 +306,16 @@ func (s *Service) UpdateProjectResource(ctx context.Context, projectID, id strin
 		if r.In >= r.Out {
 			r.In = 0
 		}
+	}
+	if patch.RawDevelop != nil {
+		if !project.IsCameraRaw(r.Source.OriginalPath) {
+			return project.Session{}, model.ErrArgument
+		}
+		if err := patch.RawDevelop.Validate(); err != nil {
+			return project.Session{}, fmt.Errorf("%v: %w", err, model.ErrArgument)
+		}
+		recipe := *patch.RawDevelop
+		r.RawDevelop = &recipe
 	}
 	if patch.Name != nil {
 		if strings.TrimSpace(*patch.Name) == "" {
@@ -330,7 +359,7 @@ func (s *Service) UpdateProjectResource(ctx context.Context, projectID, id strin
 		if err = s.refreshProjectMedia(ctx); err != nil {
 			return project.Session{}, err
 		}
-		if previous.Source.SHA256 != r.Source.SHA256 || previous.Removed != r.Removed {
+		if project.ResourceContentVersion(previous) != project.ResourceContentVersion(r) || previous.Removed != r.Removed {
 			s.cancelSkillExecutions(ctx, func(run skill.Run) bool { return run.ProjectID == projectID && s.skillRunUsesResource(ctx, run, id) })
 		}
 	}
@@ -454,6 +483,11 @@ func (s *Service) hydrateProject(ctx context.Context, doc *project.AvpDocument, 
 	}
 	slices.Sort(p.Assets)
 	slices.Sort(p.Visible)
+	media, _, err := s.projectMedia(ctx, p)
+	if err != nil {
+		return err
+	}
+	p.ConfirmedSHA = projectSHA(p, media)
 	raw, _ := json.Marshal(p)
 	if _, err = s.st.DB().ExecContext(ctx, "INSERT INTO vac_projects(id,version,body) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,body=excluded.body", p.ID, p.Version, string(raw)); err != nil {
 		return err
@@ -508,7 +542,7 @@ func (s *Service) ProjectResourcePath(projectID, id string, proxy bool) (string,
 	if r.Removed {
 		return "", model.ErrNotFound
 	}
-	if proxy {
+	if proxy || project.IsCameraRaw(r.Source.OriginalPath) {
 		if r.Changed {
 			return "", model.ErrConflict
 		}
@@ -518,7 +552,7 @@ func (s *Service) ProjectResourcePath(projectID, id string, proxy bool) (string,
 		} else if r.Kind == "image" {
 			ext = ".png"
 		}
-		path := filepath.Join(s.workspace.root, "previews", r.Source.SHA256+ext)
+		path := filepath.Join(s.workspace.root, "previews", project.ResourceContentVersion(r)+ext)
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() {
 			return "", model.ErrNotFound
@@ -537,6 +571,9 @@ func (s *Service) CreateResourcePreview(ctx context.Context, projectID, id strin
 	if err != nil {
 		return "", err
 	}
+	if r.Missing || r.Removed {
+		return "", model.ErrNotFound
+	}
 	if r.Kind != "video" && r.Kind != "audio" && r.Kind != "image" {
 		return "", model.ErrArgument
 	}
@@ -546,15 +583,30 @@ func (s *Service) CreateResourcePreview(ctx context.Context, projectID, id strin
 	if path, err := s.ProjectResourcePath(projectID, id, true); err == nil {
 		return path, nil
 	}
-	source, err := s.ProjectResourcePath(projectID, id, false)
+	source := r.Source.OriginalPath
+	_, err = os.Stat(source)
 	if err != nil {
 		return "", err
 	}
-	release, err := s.acquireScript("proxy:" + id)
-	if err != nil {
-		return "", err
+	// Resource-bin thumbnails and the source monitor may request the same
+	// RAW derivative together. Join the owned conversion instead of reporting
+	// a transient busy error or decoding the same sensor image twice.
+	var release func()
+	for {
+		release, err = s.acquireScript("proxy:" + id)
+		if err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	defer release()
+	if path, err := s.ProjectResourcePath(projectID, id, true); err == nil {
+		return path, nil
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s.harnessMu.Lock()
@@ -579,7 +631,7 @@ func (s *Service) CreateResourcePreview(ctx context.Context, projectID, id strin
 	} else {
 		args = append(args, "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale='min(1280,iw)':-2", "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart")
 	}
-	path := filepath.Join(dir, r.Source.SHA256+ext)
+	path := filepath.Join(dir, project.ResourceContentVersion(r)+ext)
 	temporary, err := os.CreateTemp(dir, r.Source.SHA256+".partial-*"+ext)
 	if err != nil {
 		return "", err
@@ -594,8 +646,16 @@ func (s *Service) CreateResourcePreview(ctx context.Context, projectID, id strin
 	configureMediaCommand(cmd)
 	var out scriptOutput
 	cmd.Stderr = &out
-	if err = cmd.Run(); err != nil {
+	if project.IsCameraRaw(source) {
+		if _, err = s.rawImageProcess(ctx, "develop", source, temp, r.RawDevelop); err != nil {
+			return "", err
+		}
+	} else if err = cmd.Run(); err != nil {
 		return "", fmt.Errorf("生成预览代理: %v %s", err, out.String())
+	}
+	current, err := s.ProjectResource(projectID, id)
+	if err != nil || current.Missing || current.Changed || project.ResourceContentVersion(current) != project.ResourceContentVersion(r) {
+		return "", model.ErrConflict
 	}
 	if err = os.Rename(temp, path); err != nil {
 		if info, statErr := os.Stat(path); statErr == nil && info.Mode().IsRegular() && info.Size() > 0 {

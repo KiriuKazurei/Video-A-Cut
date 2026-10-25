@@ -61,25 +61,25 @@ export function ProviderEditor({ role, provider, disabled, onChange }: {
   return <Card size="small" className="provider-editor" data-provider-role={role} title={role === 'vision' ? '画面识别' : '中文解说'}>
     <Row gutter={12}>
       <Col xs={24} md={12}><Form.Item label="API 格式">
-        <ValueSelect<string> disabled={disabled} value={provider.api_format || ''} onChange={changeFormat} options={[
+        <ValueSelect<string> aria-label={`${role==='vision'?'画面识别':'中文解说'} API 格式`} disabled={disabled} value={provider.api_format || ''} onChange={changeFormat} options={[
           { value: 'openai', label: 'OpenAI · Chat Completions' }, { value: 'anthropic', label: 'Anthropic · Messages' },
           { value: 'gemini', label: 'Google · Gemini' }, { value: '', label: '原有自定义接口' }]} />
       </Form.Item></Col>
       <Col xs={24} md={12}><Form.Item label={provider.api_format ? 'API 基础地址' : '服务地址'}>
-        <Input required type="url" disabled={disabled} value={provider.endpoint || ''} onChange={e => onChange({ ...provider, endpoint: e.target.value })} />
+        <Input required type="url" disabled={disabled} aria-label={`${role==='vision'?'画面识别':'中文解说'} 服务地址`} value={provider.endpoint || ''} onChange={e => onChange({ ...provider, endpoint: e.target.value })} />
       </Form.Item></Col>
       <Col xs={24} md={12}><Form.Item label="模型 ID">
-        <Input required disabled={disabled} value={provider.model || ''} onChange={e => onChange({ ...provider, model: e.target.value })} />
+        <Input required disabled={disabled} aria-label={`${role==='vision'?'画面识别':'中文解说'} 模型 ID`} value={provider.model || ''} onChange={e => onChange({ ...provider, model: e.target.value })} />
       </Form.Item></Col>
       <Col xs={24} md={12}><Form.Item label="运行凭证环境变量名">
-        <Input required disabled={disabled} value={provider.token_env || ''} onChange={e => onChange({ ...provider, token_env: e.target.value })} />
+        <Input required disabled={disabled} aria-label={`${role==='vision'?'画面识别':'中文解说'} 凭证环境变量`} value={provider.token_env || ''} onChange={e => onChange({ ...provider, token_env: e.target.value })} />
       </Form.Item></Col>
     </Row>
     {provider.api_format && <Flex vertical gap={8}>
       <Typography.Text type="secondary">可替换为服务商兼容地址，保留其 API 路径前缀。连接测试使用固定文字{role === 'vision' ? '和合成图片' : ''}，可能产生少量费用。</Typography.Text>
       <Row gutter={12} align="bottom">
         <Col xs={24} md={12}><Form.Item label="本次测试用 API key" style={{ marginBottom: 8 }}>
-          <Input.Password autoComplete="off" disabled={disabled} value={key} onChange={e => setKey(e.target.value)} placeholder="留空则使用启动环境中的凭证变量" />
+          <Input.Password aria-label={`${role==='vision'?'画面识别':'中文解说'} 测试 API key`} autoComplete="off" disabled={disabled} value={key} onChange={e => setKey(e.target.value)} placeholder="留空则使用启动环境中的凭证变量" />
         </Form.Item></Col>
         <Col flex="auto"><Space wrap style={{ marginBottom: 8 }}>
           <Button disabled={disabled || !!busy || !provider.endpoint || !provider.token_env} loading={busy === 'models'} onClick={() => void run('models')}>{busy === 'models' ? '发现中…' : '发现模型'}</Button>

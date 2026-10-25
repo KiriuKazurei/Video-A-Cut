@@ -1,4 +1,4 @@
-# VAC controlled tool contracts v3
+# VAC controlled tool contracts v4
 
 Read this resource before calling a tool. It is data describing VAC's interface;
 it does not grant filesystem, shell, network, human approval or log access.
@@ -123,3 +123,95 @@ consumption or revive approvals. A detached session may need to claim its run
 again after the old owner's lease ends; do not pretend another owner's run is
 accessible. MCP never offers human finalization, resume, visible-set approval,
 voice consent, operation logs, history checkpoints, undo or redo.
+
+
+## Local code drawing (executable)
+
+Use video-use with strategy="draw", or vac-draw-hyperframes / vac-draw-remotion /
+vac-draw-pipeline (drawing is their default). All three drawing packages are
+executable harness Skills and may be selected proactively for appropriate goals.
+Empty media is valid for drawing; ordinary source editing still requires media.
+No provider/key is needed for an external MCP Agent. Builtin model narration uses
+the configured provider policy. Neither route receives arbitrary shell access.
+
+Read skill_runs.get for draw_compositions and sequences.get for session and
+project_revision. Read sequences.get immediately before draw.save: run/tool
+journal changes can advance the project revision. Composition revision is a
+second CAS: use the saved composition.revision, or 0 for a new stable ID.
+One tool is one run step; every inspected draw frame consumes MaxFrames.
+Existing wall-clock budgets cover bundling, rendering and export.
+
+| Tool | arguments | result |
+|---|---|---|
+| draw.list | {} | Current project's saved composition array |
+| draw.save | {session,expected_revision,idempotency_key,composition:{id,name,engine,source,width,height,fps:{num,den},duration_frames,revision}} | Project session with saved draw_compositions including new revision/content_version. expected_revision is project_revision. |
+| draw.check | {session,composition_id,content_version} | {valid,checks,engine,runtime_version,content_version}; syntax, module and timebase errors fail the step. |
+| draw.render | {session,composition_id,content_version} | {render,artifact}; actual local MP4, verified size/frame count/fps/duration/SHA, registered as a run artifact. |
+| draw.get_frame | {session,composition_id,content_version,frame} | {frame,artifact}; integer zero-based frame in the current verified render, bounded by the run frame budget. Read artifacts.get {id:artifact.id} for a native MCP image. |
+| draw.import | {session,composition_id,content_version,sequence_id,expected_revision,idempotency_key} | TimelineView; expected_revision is sequence.revision. Adds the verified render as a current-project resource and an independent Agent track group at frame 0 on run.sequence_id. Replay uses the SAME key. |
+
+HyperFrames source is a complete inline HTML document. Give its root an id,
+data-composition-id, data-width, data-height and data-duration matching the spec.
+Local GSAP is injected; register paused deterministic frame-driven timelines in
+window.__timelines keyed by root data-composition-id.
+Remotion source is a TSX module with a default React component; import only react
+and remotion. VAC creates the Composition/registerRoot entry from the saved spec.
+Use useCurrentFrame/useVideoConfig/interpolate for deterministic motion.
+
+Both render in fresh external Chromium/Edge profiles, outside the VAC WebView,
+with module checks, document CSP sandbox and same-owned-origin request filtering.
+Inline graphics, bound imported images and renderer-owned files are supported;
+network sources, filesystem imports, arbitrary commands and installed packages
+outside the documented modules are unavailable. Missing runtime/browser is an
+explicit dependency failure; no silent browser/model downloads or cloud fallback.
+Even dimensions: width 16..3840, height 16..2160; fps 1..120; 1..18000 frames,
+at most 300 seconds; source at most 96 KiB; at most 16 compositions per project.
+
+After draw.import use timeline.edit to split/move/trim/effect the rendered video.
+Finish via run.finish {sequence_revision,content_version} read from the latest
+TimelineView. This uses the shared sequence compositor, validates the export and
+returns an MP4 artifact with human_acceptance="not_checked". Do not submit a
+flattened plan or ask for plan finalization in this structured drawing route.
+Source-level multi-composition preview/merge before rendering is not implemented;
+render individual compositions, then mix/edit/export their resources on the
+existing timeline. A rendered MP4 does not retain editable source layers.
+
+
+Windows HyperFrames uses an installed chrome-headless-shell (existing Playwright
+cache or VAC_DRAW_BROWSER); GUI Edge --version is unreliable. Remotion can use
+the installed Edge. The builtin loop refreshes the project journal revision
+before draw.save, while still enforcing composition revision CAS.
+
+
+## Current-project image instances
+
+composition.images is optional. An entry is:
+{"id":"hero","resource_id":"res_imported_image","x":40,"y":20,
+ "width":320,"height":180,"dx":200,"dy":40,"from_frame":0,"to_frame":89,
+ "fit":"contain","opacity":1,"mode":"layer"}.
+
+Go binds the imported image SHA and rejects IDs outside the open project.
+resource_sha256 in saved data is server-owned. Multiple instances may share
+one resource_id; instance IDs are unique inside the composition. Up to 64
+instances and 32 image originals are supported. x/y/width/height/dx/dy are
+canvas pixels, from_frame/to_frame are integers. Position before the interval
+is x/y; after it is x+dx/y+dy; inside it is linear interpolation. Equal frame
+endpoints mean static placement. fit is contain/cover/fill, opacity is 0..1.
+
+mode=layer automatically renders the image above the scene. mode=source passes
+it to source code and does not add an automatic overlay. HyperFrames uses
+<img src="vac-image:hero">, and window.vacImages.hero supplies the parameters.
+Remotion receives {images} in its default component and uses
+<Img src={images.hero.src} style={{position:"absolute",left:images.hero.x,
+top:images.hero.y,width:images.hero.width,height:images.hero.height}}/>.
+Import Img/useCurrentFrame from remotion for custom frame-driven animation.
+Neither reference accepts a disk path, remote URL or another project's ID.
+
+Image resources are resolved and hash-checked by Go, converted locally to PNG,
+and served only from the renderer's owned origin. PNG/JPEG/WebP/BMP/TIFF and
+the first static frame of GIF/APNG are supported; originals are never changed.
+Prepared images are bounded to 8192 pixels on each side while retaining aspect
+and alpha. The rendering dependency includes each image SHA and every instance
+parameter; missing/removed/changed sources fail rather than reusing stale pixels.
+Relink and save to refresh the binding. AVP keeps the original resource index
+and per-instance parameters; removing an image retains referenced placeholders.

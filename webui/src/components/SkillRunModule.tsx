@@ -206,6 +206,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
       sequence_id:editor.sequenceId,
       flow,
       skill_id: skillId,
+ strategy: skillId.startsWith('vac-draw-')?'draw':'edit',
       execution_mode: mode,
       visible_set_sha: visible.data.sha256,
       goal: goal.trim(),

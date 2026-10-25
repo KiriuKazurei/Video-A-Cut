@@ -8,6 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 assert.ok(process.env.VAC_TEST_OUTPUT && process.env.VAC_DIST, 'Run through TestWorkspace.ps1 with VAC_DIST');
 const here = path.dirname(fileURLToPath(import.meta.url));
+// Browser preference for local UI QA is explicit: Chrome only, never Edge.
+const chosenBrowser=process.env.CHROME||[
+ 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+ 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+ path.join(process.env.LOCALAPPDATA||'', 'Google/Chrome/Application/chrome.exe'),
+ 'D:/Applications/Google/Chrome/Application/chrome.exe'
+].find(file=>fs.existsSync(file));
+assert(chosenBrowser&&fs.existsSync(chosenBrowser)&&!/(^|[\\/])msedge(?:\.exe)?$/i.test(chosenBrowser),'Set CHROME to the installed local Chrome executable. Edge is prohibited; no browser is downloaded.');
+
 const dist = path.resolve(process.env.VAC_DIST);
 const output = path.join(process.env.VAC_TEST_OUTPUT, 'review-smokes');
 fs.mkdirSync(output, { recursive: true });
@@ -31,6 +40,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/visible-set') return json({ confirmed: true, sha256: 'review-visible', assets: [asset] });
   if (url.pathname === '/api/assets/_selfcheck') return json(asset);
   if (url.pathname === '/api/projects/review-project/sequences/seq-review') return json({session:workspace.id,project_revision:workspace.revision,sequence,history:[],content_version:'browser-fixture'});
+  if (url.pathname.endsWith('/loudness')) return json({version:1,stream_index:1,channels:2,duration:6,bucket_seconds:.02,buckets:300,floor_db:-60,clip_db:-.1,encoding:'u8-dbfs',peak:Buffer.alloc(300,128).toString('base64'),rms:Buffer.alloc(300,100).toString('base64'),clipped_buckets:0});
   if (url.pathname === '/api/ingest-roots') return json({ configured: false, roots: [], policy: {}, ingesters: [] });
   if (/^\/api\/workflows\/[^/]+\/previews$/.test(url.pathname)) return json({ previews: [], presets: [], workers: [] });
   if (url.pathname.startsWith('/api/')) {
@@ -49,9 +59,9 @@ const base = `http://127.0.0.1:${server.address().port}`;
 try {
   const scripts = process.argv.slice(2);
   for (const script of scripts.length ? scripts : ['review_shortcuts_smoke.mjs']) {
-    assert.ok(['review_shortcuts_smoke.mjs'].includes(script), 'The retired quickstart page is no longer mounted; current startup is covered by Skill tests and native regression');
+    assert.ok(['review_shortcuts_smoke.mjs','draw_smoke.mjs','settings_smoke.mjs'].includes(script), 'The retired quickstart page is no longer mounted; current startup is covered by Skill tests and native regression');
     const log = fs.createWriteStream(path.join(output, `${script}.log`));
-    const child = spawn(process.execPath, [path.join(here, script), base, path.join(output, script)], { cwd: here, windowsHide: true });
+    const child = spawn(process.execPath, [path.join(here, script), base, path.join(output, script)], { cwd: here, windowsHide: true, env: {...process.env,CHROME:chosenBrowser} });
     child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });
     const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
     await new Promise(resolve => log.end(resolve));

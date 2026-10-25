@@ -45,8 +45,8 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
 }
 /** Premiere-style: one source-in poster at the clip start, aspect ratio preserved. */
 function ClipThumbnails({clip}:{clip:TimelineClip}) {
- const e=useSequenceEditor(),from=timeSeconds(clip.source_in);
- return <div className="clip-thumbnails" aria-hidden="true"><img draggable={false} loading="lazy" alt="" src={timelineApi.thumbnailURL(e.projectId,clip.resource_id,from)}/></div>;
+ const e=useSequenceEditor(),p=useProjectWorkspace(),from=timeSeconds(clip.source_in);
+ return <div className="clip-thumbnails" aria-hidden="true"><img draggable={false} loading="lazy" alt="" src={timelineApi.thumbnailURL(e.projectId,clip.resource_id,from)+((p.session?.document?.resources.find(r=>r.id===clip.resource_id)?.raw_develop)?"&recipe="+encodeURIComponent(JSON.stringify(p.session?.document?.resources.find(r=>r.id===clip.resource_id)?.raw_develop)):"")}/></div>;
 }
 type Drag={id:string;ids:string[];kind:'move'|'left'|'right';x:number;y:number;scroll:number;at:number;end:number;delta:number;target:string;started:boolean;snapped:boolean;unlinked:boolean};
 function effectLabel(clip:TimelineClip) {
@@ -166,7 +166,7 @@ export function SequenceTimeline({ onOpenDraw }: { onOpenDraw?: () => void }) {
    <Tooltip title="在播放头分割 Ctrl+K"><Button size="small" aria-label="分割" icon={<ColumnWidthOutlined/>} onClick={()=>void e.split().catch(()=>{})} disabled={e.pending}/></Tooltip>
    <Tooltip title="添加标记 M"><Button size="small" aria-label="标记 M" icon={<PushpinOutlined/>} onClick={()=>e.marker()}/></Tooltip>
    <Tooltip title="引用到脚本：在播放头落点并插入工作台"><Button size="small" aria-label="引用到脚本" icon={<FormOutlined/>} onClick={citeToScript}/></Tooltip>
-   {onOpenDraw && <Tooltip title="打开绘制页。构图时间与这条多轨分开；未渲拼合和一并渲染在绘制页发起。"><Button size="small" aria-label="打开绘制" onClick={onOpenDraw}>绘制</Button></Tooltip>}
+   {onOpenDraw && <Tooltip title="打开绘制页。构图源时间与多轨剪辑分开；先渲染成片，再导入当前序列继续编辑。"><Button size="small" aria-label="打开绘制" onClick={onOpenDraw}>绘制</Button></Tooltip>}
    <Tooltip title="吸附（Alt 临时关闭）"><Button size="small" aria-label="吸附" aria-pressed={e.snap} type={e.snap?'primary':'default'} icon={<AimOutlined/>} onClick={()=>e.setSnap(!e.snap)}/></Tooltip>
    <Tooltip title="插入模式"><Button size="small" aria-label="插入模式" aria-pressed={insert} type={insert?'primary':'default'} icon={<VerticalAlignMiddleOutlined/>} onClick={()=>setInsert(!insert)}/></Tooltip>
    <Tooltip title="闭合播放头所在空隙（与波纹删除同一套位移）"><Button size="small" aria-label="闭合空隙" disabled={e.pending} onClick={closeGapAtHead}>闭合空隙</Button></Tooltip>

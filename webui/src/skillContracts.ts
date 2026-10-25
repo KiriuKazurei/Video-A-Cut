@@ -1,3 +1,4 @@
+import type {DrawComposition,DrawImageResource} from './drawContracts';
 /** Backend contracts only. No workspace layout is prescribed here. */
 import type { TtsSettings } from './ttsContracts';
 export type SkillFlow = 'lightweight' | 'visual_heavy' | 'custom';
@@ -56,6 +57,7 @@ export interface ContentSummary {
     confidence: 'high' | 'medium' | 'low'; frame_ids: string[] }[];
 }
 export interface SkillRun {
+ strategy?: 'edit'|'draw';
 	edit_request?: SkillEditContext;
   lease_until?: string;
   transcription_authorized: boolean; agent_role?: string; elapsed_milliseconds: number;
@@ -91,6 +93,7 @@ export interface SkillWorkbench {
   previews: { artifact: SkillArtifact; available: boolean; is_current: boolean; historical: boolean; checkpoint_id: string; exportable: boolean; preview_url?: string }[];
 }
 export interface SkillRunCreate {
+ strategy?: 'edit'|'draw';
   sequence_id?: string;
   flow?: SkillFlow;
   accept_transcription?: boolean;
@@ -98,7 +101,7 @@ export interface SkillRunCreate {
   goal: string; profile_id?: string; profile_revision?: number; accept_external?: boolean;
   idempotency_key: string; budget?: Partial<SkillBudget>;
 }
-export type SkillToolName = 'media.list' | 'media.get_frames' | 'media.transcribe'
+export type SkillToolName = 'draw.list'|'draw.save'|'draw.check'|'draw.render'|'draw.get_frame'|'draw.import'|'media.list' | 'media.get_frames' | 'media.transcribe'
   | 'timeline.read' | 'timeline.edit' | 'references.resolve'
   | 'summaries.get' | 'summaries.submit' | 'scripts.propose' | 'renders.create'
   | 'renders.inspect' | 'renders.review' | 'artifacts.list' | 'artifacts.get' | 'run.finish';
@@ -110,7 +113,8 @@ export interface SkillStep {
   id: string; run_id: string; name: string; state: 'running' | 'succeeded' | 'failed';
   request_sha256: string; result?: unknown; error?: string; created_at: string;
 }
-export interface SkillRunContext { run: SkillRun; skill: SkillPackage; media: ProjectMedia[]; tools: string[] }
+export interface SkillRunContext {
+ draw_compositions?:DrawComposition[];image_resources?:DrawImageResource[]; run: SkillRun; skill: SkillPackage; media: ProjectMedia[]; tools: string[] }
 export interface FFmpegCapabilities {
   available: boolean; ffprobe: boolean; version: string; libx264: boolean; aac: boolean;
   subtitles: boolean; hardware_acceleration?: string;

@@ -20,7 +20,7 @@ interface EditingWorkspaceProps { route:RouteState;navigate:(state:Partial<Route
 
 function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; seekTo?:number|null; onSeeked?:()=>void }) {
  const p=useProjectWorkspace(),e=useSequenceEditor(),r=p.resource,[proxy,setProxy]=useState(false),[proxyError,setProxyError]=useState(''),[sourceTime,setSourceTime]=useState(0),request=useRef<AbortController|null>(null);
- useEffect(()=>{const media=e.source.current;media?.pause();request.current?.abort();setProxy(false);setProxyError('');setSourceTime(0);return()=>{media?.pause();request.current?.abort();};},[e.active,p.session?.id,r?.id,r?.source.sha256]);
+ useEffect(()=>{const media=e.source.current;media?.pause();request.current?.abort();setProxy(false);setProxyError('');setSourceTime(0);return()=>{media?.pause();request.current?.abort();};},[e.active,p.session?.id,r?.id,r?.source.sha256,JSON.stringify(r?.raw_develop)]);
  useEffect(()=>{
   if(seekTo==null)return;
   const media=e.source.current;
@@ -30,7 +30,7 @@ function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; s
  },[seekTo,r?.id,proxy]);
  const textual=r?.kind==='script'||r?.kind==='document'||r?.kind==='subtitle';
  const text=useQuery({queryKey:['source-text',p.session?.id,r?.id],queryFn:async({signal})=>{const response=await fetch(projectApi.contentURL(e.projectId,r!.id),{signal});if(!response.ok)throw Error('内容加载失败');return (await response.text()).slice(0,65536);},enabled:e.active&&!!r&&textual});
- const url=r?projectApi.contentURL(e.projectId,r.id,proxy):'';
+ const url=r?projectApi.contentURL(e.projectId,r.id,proxy)+(r.raw_develop?(proxy?"&":"?")+"recipe="+encodeURIComponent(JSON.stringify(r.raw_develop)):""):'';
  const fallback=()=>{if(!e.active||request.current&&!request.current.signal.aborted)return;if(!r||proxy){setProxyError('源预览加载失败，请检查资源或重新定位');return;}const controller=new AbortController();request.current=controller;void projectApi.createPreview(e.projectId,r.id,controller.signal).then(()=>{if(!controller.signal.aborted)setProxy(true);}).catch(reason=>{if(!controller.signal.aborted)setProxyError(String(reason));}).finally(()=>{if(request.current===controller)request.current=null;});};
  if(!e.active)return null;
  return <section className="editor-monitor source-monitor" aria-label="源监视器">

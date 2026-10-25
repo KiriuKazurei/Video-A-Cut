@@ -4,61 +4,60 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-func TestDrawBuiltinsAreInstructionStubs(t *testing.T) {
+func TestDrawBuiltinsAreExecutableLocalStrategies(t *testing.T) {
 	byID := map[string]Package{}
 	for _, p := range Builtins() {
 		byID[p.ID] = p
 	}
 	video := byID["video-use"]
-	if video.Version != "0.1.0-vac.5" || video.Runtime != "harness" {
-		t.Fatalf("video-use promotion: %#v", video.Version)
-	}
-	if !strings.Contains(video.Content, "绘制") || !strings.Contains(video.Content, "0.1.0-vac.5") || !strings.Contains(video.Content, "方案接线中") {
-		t.Fatal("video-use adapter is not the route-2 entry")
+	if video.Version != "0.1.0-vac.7" || video.Runtime != "harness" || !slices.Contains(video.Tools, "draw.render") {
+		t.Fatal("video-use cannot execute drawing")
 	}
 	for _, id := range []string{"vac-draw-hyperframes", "vac-draw-remotion", "vac-draw-pipeline"} {
-		p, ok := byID[id]
-		if !ok {
-			t.Fatalf("missing builtin %s", id)
+		p := byID[id]
+		if p.Runtime != "harness" || !p.Enabled || !p.Builtin || p.Version != "0.3.0" {
+			t.Fatalf("inactive drawing Skill: %#v", p)
 		}
-		if p.Runtime != "instructions_only" || len(p.Tools) != 0 || len(p.Permissions) != 0 || !p.Builtin || !p.Enabled {
-			t.Fatalf("%s is not an empty instruction stub: runtime=%s tools=%v", id, p.Runtime, p.Tools)
+		for _, tool := range []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "timeline.edit", "run.finish"} {
+			if !slices.Contains(p.Tools, tool) {
+				t.Fatalf("%s missing %s", id, tool)
+			}
 		}
-		if !strings.Contains(p.Content, "方案接线中") || !strings.Contains(p.Content, "import_into_editing") || !strings.Contains(p.Content, "composite_preview") || !strings.Contains(p.Content, "merge_render") {
-			t.Fatalf("%s does not encode the three handoffs", id)
+		if !strings.Contains(p.Content, "strategy=draw") || p.Resources["vac/tool-contracts.md"] == "" {
+			t.Fatal("missing strategy or readable contracts")
 		}
-		assertNoShell(t, id, p.Content)
-		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "skills", id, "SKILL.md"))
-		if err != nil {
-			t.Fatal(err)
+		body, e := os.ReadFile(filepath.Join("..", "..", "..", "skills", id, "SKILL.md"))
+		if e != nil {
+			t.Fatal(e)
 		}
-		if strings.TrimRight(string(raw), "\n") != strings.TrimRight(p.Content, "\n") {
-			t.Fatalf("%s SKILL.md drifted from the builtin", id)
+		if !strings.HasPrefix(p.Content, strings.TrimRight(strings.ReplaceAll(string(body), "\r\n", "\n"), "\r\n")) {
+			t.Fatalf("%s builtin documentation drift", id)
 		}
 		var meta Package
-		body, err := os.ReadFile(filepath.Join("..", "..", "..", "skills", id, "skill.json"))
-		if err != nil {
-			t.Fatal(err)
+		raw, e := os.ReadFile(filepath.Join("..", "..", "..", "skills", id, "skill.json"))
+		if e != nil {
+			t.Fatal(e)
 		}
-		if err = json.Unmarshal(body, &meta); err != nil {
-			t.Fatal(err)
+		if e = json.Unmarshal(raw, &meta); e != nil {
+			t.Fatal(e)
 		}
-		if meta.ID != p.ID || meta.Version != p.Version || meta.Runtime != p.Runtime || len(meta.Tools) != 0 {
-			t.Fatalf("%s skill.json does not match the builtin", id)
+		if meta.ID != p.ID || meta.Version != p.Version || meta.Runtime != p.Runtime || !slices.Equal(meta.Tools, p.Tools) {
+			t.Fatalf("%s metadata mismatch", id)
 		}
+		assertNoShell(t, id, p.Content)
 	}
 	assertNoShell(t, "video-use", video.Content)
 }
-
 func assertNoShell(t *testing.T, id, content string) {
 	t.Helper()
 	for _, marker := range []string{"npx ", "exec.Command", "child_process", "os/exec", "bash -c", "/bin/sh"} {
 		if strings.Contains(content, marker) {
-			t.Fatalf("%s exposes a shell marker %q", id, marker)
+			t.Fatalf("%s exposes shell marker %q", id, marker)
 		}
 	}
 }

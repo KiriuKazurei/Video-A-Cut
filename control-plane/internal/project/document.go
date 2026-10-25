@@ -27,6 +27,7 @@ type Source struct {
 }
 
 type Resource struct {
+	RawDevelop *RawDevelop    `json:"raw_develop,omitempty"`
 	ID         string         `json:"id"`
 	Kind       string         `json:"kind"`
 	Name       string         `json:"name"`
@@ -77,16 +78,17 @@ type Identity struct {
 }
 
 type AvpDocument struct {
-	FileReferences  map[string]string `json:"file_references,omitempty"`
-	Format          string            `json:"format"`
-	SchemaVersion   int               `json:"schema_version"`
-	Project         Identity          `json:"project"`
-	Resources       []Resource        `json:"resources"`
-	Scripts         []AvsDocument     `json:"scripts"`
-	Sequences       []Sequence        `json:"sequences"`
-	LegacySequences []json.RawMessage `json:"legacy_sequences,omitempty"`
-	Settings        map[string]any    `json:"settings"`
-	Workspace       map[string]any    `json:"workspace"`
+	DrawCompositions []DrawComposition `json:"draw_compositions,omitempty"`
+	FileReferences   map[string]string `json:"file_references,omitempty"`
+	Format           string            `json:"format"`
+	SchemaVersion    int               `json:"schema_version"`
+	Project          Identity          `json:"project"`
+	Resources        []Resource        `json:"resources"`
+	Scripts          []AvsDocument     `json:"scripts"`
+	Sequences        []Sequence        `json:"sequences"`
+	LegacySequences  []json.RawMessage `json:"legacy_sequences,omitempty"`
+	Settings         map[string]any    `json:"settings"`
+	Workspace        map[string]any    `json:"workspace"`
 	// Runtime is a versioned, allowlisted projection of this project's editable
 	// database records. Global configuration and credentials are never included.
 	Runtime json.RawMessage `json:"runtime,omitempty"`
@@ -124,11 +126,35 @@ func (d AvpDocument) Validate() error {
 	if d.Format != "avp" || (d.SchemaVersion != 1 && d.SchemaVersion != SchemaVersion) || !validID(d.Project.ID) || strings.TrimSpace(d.Project.Name) == "" {
 		return fmt.Errorf("不支持的 AVP 工程或格式版本")
 	}
+	if len(d.DrawCompositions) > 16 {
+		return fmt.Errorf("too many draw compositions")
+	}
 	seen := map[string]bool{}
+	for _, c := range d.DrawCompositions {
+		if err := c.Validate(); err != nil {
+			return err
+		}
+		if c.Revision == 0 || c.ContentVersion != c.ContentHash() {
+			return fmt.Errorf("draw source content version mismatch")
+		}
+		if seen["draw:"+c.ID] {
+			return fmt.Errorf("duplicate draw id")
+		}
+		seen["draw:"+c.ID] = true
+	}
+
 	resources := map[string]Resource{}
 	for _, r := range d.Resources {
 		if !validID(r.ID) || seen[r.ID] || !validKind(r.Kind) || math.IsNaN(r.In) || math.IsNaN(r.Out) || math.IsInf(r.In, 0) || math.IsInf(r.Out, 0) || r.In < 0 || r.Out < r.In {
 			return fmt.Errorf("无效或重复的工程资源 %q", r.ID)
+		}
+		if r.RawDevelop != nil {
+			if r.Kind != "image" || !IsCameraRaw(r.Source.OriginalPath) {
+				return fmt.Errorf("RAW 参数仅适用于相机原片")
+			}
+			if err := r.RawDevelop.Validate(); err != nil {
+				return err
+			}
 		}
 		seen[r.ID] = true
 		resources[r.ID] = r
@@ -140,6 +166,14 @@ func (d AvpDocument) Validate() error {
 				return fmt.Errorf("无效或重复的素材标记")
 			}
 			seen["marker:"+marker.ID] = true
+		}
+	}
+	for _, composition := range d.DrawCompositions {
+		for _, image := range composition.Images {
+			resource, ok := resources[image.ResourceID]
+			if !ok || resource.Kind != "image" || len(image.ResourceSHA) != 64 {
+				return fmt.Errorf("draw image resource is not in this project")
+			}
 		}
 	}
 	for _, sc := range d.Scripts {

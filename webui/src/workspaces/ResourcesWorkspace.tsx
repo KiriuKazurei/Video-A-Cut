@@ -6,6 +6,7 @@ import { useProjectWorkspace } from '../projectWorkspace';
 import { projectApi } from '../projectApi';
 import { formatSeconds } from '../components/Monitor';
 import { errorText } from '../components/ui';
+import { RawDevelopControls } from '../components/RawDevelopControls';
 
 export function ResourcesWorkspace({ active, onOpenScript }: { active: boolean; onOpenScript: (asset: string, script: string) => void }) {
   const project = useProjectWorkspace();
@@ -25,7 +26,8 @@ export function ResourcesWorkspace({ active, onOpenScript }: { active: boolean; 
   const proxyRequest = useRef<AbortController | null>(null);
   const timed = resource?.kind === 'video' || resource?.kind === 'audio';
   const textual = resource && ['document', 'subtitle', 'script'].includes(resource.kind);
-  const source = resource ? projectApi.contentURL(projectId, resource.id, proxy) : '';
+  const rawVersion=JSON.stringify(resource?.raw_develop??null);
+  const source = resource ? projectApi.contentURL(projectId, resource.id, proxy)+(resource.raw_develop?(proxy?'&':'?')+'recipe='+encodeURIComponent(rawVersion):'') : '';
   const text = useQuery({ queryKey: ['resource-text', projectId, resource?.id], enabled: Boolean(active && textual && !resource?.removed && !resource?.missing), queryFn: async ({ signal }) => {
     const result = await fetch(source, { signal }); if (!result.ok) throw new Error('无法读取资源内容'); return result.text();
   } });
@@ -33,7 +35,7 @@ export function ResourcesWorkspace({ active, onOpenScript }: { active: boolean; 
     media.current?.pause(); proxyRequest.current?.abort(); setPlaying(false); setPosition(0); setDuration(Number(resource?.metadata.duration ?? 0));
     setProxy(false); setPreparing(false); setFailure(''); setNotes(resource?.notes ?? ''); setZoom(100);
     return () => proxyRequest.current?.abort();
-  }, [resource?.id, resource?.source.sha256, resource?.removed, resource?.missing]);
+  }, [resource?.id, resource?.source.sha256, resource?.removed, resource?.missing, rawVersion]);
   useEffect(() => { const node=media.current; return () => { node?.pause(); proxyRequest.current?.abort(); }; }, [active]);
   useEffect(() => {
     if (!resource) return;
@@ -92,6 +94,7 @@ export function ResourcesWorkspace({ active, onOpenScript }: { active: boolean; 
         <Flex gap={12} align="center" wrap><Button onClick={() => mark('in')}>设置入点 I</Button><InputNumber aria-label="资源入点" min={0} max={resource.out} value={resource.in} step={0.001} onChange={value => { if (value !== null) void project.patchResource(resource.id, { in: value }).catch(e => setFailure(errorText(e))); }} /><Button onClick={() => mark('out')}>设置出点 O</Button><InputNumber aria-label="资源出点" min={resource.in} max={duration} value={resource.out} step={0.001} onChange={value => { if (value !== null) void project.patchResource(resource.id, { out: value }).catch(e => setFailure(errorText(e))); }} /></Flex>
       </Flex> : resource.kind === 'image' ? <Flex align="center" gap={12}><Typography.Text>缩放</Typography.Text><Slider aria-label="图片缩放" min={25} max={200} step={25} value={zoom} onChange={setZoom} style={{ width: 220 }} /><Typography.Text>{zoom}%</Typography.Text><Button onClick={() => setZoom(100)}>适合窗口</Button></Flex> : <Flex align="center" gap={12}><Typography.Text type="secondary">{resource.kind === 'script' ? '脚本副本保存在当前工程中。' : '文本预览'}</Typography.Text>{resource.script_id && resource.asset_id && <Button onClick={() => onOpenScript(resource.asset_id!, resource.script_id!)}>在脚本工作台打开</Button>}</Flex>}
     </Card>
+    {resource.raw_develop && <Card size="small" title="相机原片"><RawDevelopControls /></Card>}
     <Card size="small" title="备注" className="resource-notes"><Input.TextArea aria-label="资源备注" value={notes} rows={4} placeholder="记录这项资源的用途、内容或编辑想法" onChange={event => setNotes(event.target.value)} onBlur={() => { if (notes !== resource.notes) void project.patchResource(resource.id, { notes }).catch(e => setFailure(errorText(e))); }} /></Card>
   </div>;
 }

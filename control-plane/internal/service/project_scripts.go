@@ -94,7 +94,7 @@ func (s *Service) ImportScriptFile(ctx context.Context, projectID string, req Sc
 		}
 		resourceID := req.Bindings[b.ID]
 		if file := req.Files[b.ID]; file != "" {
-			r, err := inspectResource(ctx, file)
+			r, err := s.inspectResource(ctx, file)
 			if err != nil {
 				return project.Session{}, err
 			}
@@ -195,7 +195,7 @@ func (s *Service) ImportScriptFile(ctx context.Context, projectID string, req Sc
 		}
 	}
 	doc.ID = newID("scr")
-	r, err := inspectResource(ctx, req.Path)
+	r, err := s.inspectResource(ctx, req.Path)
 	if err != nil {
 		return project.Session{}, err
 	}
@@ -396,7 +396,7 @@ func (s *Service) BindProjectScript(ctx context.Context, projectID, id string, r
 		oldResource := binding.ResourceID
 		selected := req.Bindings[binding.ID]
 		if file := req.Files[binding.ID]; file != "" {
-			r, err := inspectResource(ctx, file)
+			r, err := s.inspectResource(ctx, file)
 			if err != nil {
 				return project.Session{}, err
 			}

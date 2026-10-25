@@ -9,7 +9,7 @@ export function TtsTemplateBindingEditor({ binding, onChange }: { binding?: TtsB
   const value = binding ? `${binding.template_id}/${binding.revision}` : '';
   const options = (templates.data ?? []).map(t => ({ value: `${t.template_id}/${t.revision}`, label: `${t.name} · v${t.revision}` }));
   if (binding && !options.some(o => o.value === value)) options.unshift({ value, label: `${binding.template_id} · v${binding.revision}（固定历史版本）` });
-  return <Form.Item label="正式配音使用的 TTS 模板" style={{ marginBottom: 8 }}>
+  return <Form.Item label="正式配音使用的 TTS 模板" layout="vertical" style={{ marginBottom: 8 }}>
     <Flex gap={8} wrap>
       <ValueSelect<string> aria-label="正式配音 TTS 模板" style={{ flex: '1 1 240px', minWidth: 0 }} value={value}
         loading={templates.isFetching} options={[{ value: '', label: '旧版 SAPI 配置（使用声音名称）' }, ...options]}

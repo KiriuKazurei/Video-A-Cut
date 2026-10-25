@@ -97,11 +97,11 @@ export default function AuditLogViewer() {
       extra={<Tag>{auditQuery.isPending ? '读取中' : `已加载 ${logs.length} 条 · 命中 ${visible.length} 条`}</Tag>}>
       <Flex vertical gap={12}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          服务端 <Typography.Text code>GET /api/audit</Typography.Text> 只支持 <Typography.Text code>limit</Typography.Text> 分页，newest first，
-          不提供时间范围或操作类型过滤（control-plane/internal/api/audit.go）。
-          <Typography.Text strong>下面的过滤只作用于本页已加载的 {logs.length} 条，不是全表筛选</Typography.Text>；
-          要看更早的记录请把单页条数调大。当前读取的端点：<Typography.Text code>{endpoint ?? '探测中'}</Typography.Text>
+          筛选只作用于已加载的最近 {logs.length} 条记录。需要更早的记录时，请增加下方的加载条数。
         </Typography.Paragraph>
+        <details className="audit-interface-info"><summary>查看接口信息</summary>
+          <Typography.Text type="secondary">当前接口：<Typography.Text code>{endpoint ?? '探测中'}</Typography.Text>，按时间倒序读取；时间、类型与关键字在已加载记录中筛选。</Typography.Text>
+        </details>
 
         <Form layout="vertical" className="audit-filters">
           <Row gutter={12}>
@@ -115,7 +115,7 @@ export default function AuditLogViewer() {
               <DatePicker id="audit-to" showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} value={toDate(to)} onChange={(value) => setTo(fromDate(value))} />
             </Form.Item></Col>
             <Col xs={12} md={8}><Form.Item label="关键字" htmlFor="audit-keyword" style={{ marginBottom: 8 }}>
-              <Input id="audit-keyword" type="search" allowClear value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="actor / action / target / detail / id" />
+              <Input id="audit-keyword" type="search" allowClear value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索操作、来源、对象或详情" />
             </Form.Item></Col>
           </Row>
           <Form.Item label="操作类型" style={{ marginBottom: 8 }} extra={<>复选框显示的是别名的意图，箭头后是服务端实际写出的 action 值。当前生效的 action 过滤：<Typography.Text code>{activeActions.length > 0 ? activeActions.join('、') : '不限'}</Typography.Text></>}>

@@ -1,7 +1,7 @@
 {
   "name": "@video-auto-cut/webui",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.3.1",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"

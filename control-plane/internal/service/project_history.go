@@ -52,7 +52,7 @@ func (s *Service) moveResourceHistory(ctx context.Context, action string) (proje
 		return project.Session{}, model.ErrInvalidState
 	}
 	w.mu.Unlock()
-	contentChanged := previous.Source != target.Source || previous.Removed != target.Removed
+	contentChanged := previous.Source != target.Source || previous.Removed != target.Removed || project.ResourceContentVersion(previous) != project.ResourceContentVersion(target)
 	if contentChanged && target.AssetID != "" {
 		if err := s.materializeResource(ctx, target, s.CurrentProjectID()); err != nil {
 			return project.Session{}, err
@@ -74,7 +74,7 @@ func (s *Service) moveResourceHistory(ctx context.Context, action string) (proje
 		if err := s.refreshProjectMedia(ctx); err != nil {
 			return project.Session{}, err
 		}
-		if previous.Source.SHA256 != target.Source.SHA256 || previous.Removed != target.Removed {
+		if project.ResourceContentVersion(previous) != project.ResourceContentVersion(target) || previous.Removed != target.Removed {
 			s.cancelSkillExecutions(ctx, func(run skill.Run) bool {
 				return run.ProjectID == s.CurrentProjectID() && s.skillRunUsesResource(ctx, run, target.ID)
 			})

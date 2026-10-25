@@ -44,6 +44,10 @@ func (s *Service) markRemovedResourceReferences(ctx context.Context, doc *projec
 		raw, _ := json.Marshal(script)
 		mark(raw)
 	}
+	for _, composition := range doc.DrawCompositions {
+		raw, _ := json.Marshal(composition.Images)
+		mark(raw)
+	}
 	for _, sequence := range doc.Sequences {
 		raw, _ := json.Marshal(sequence.Tracks)
 		mark(raw)
@@ -135,7 +139,11 @@ func (s *Service) scriptSourceFingerprint(ctx context.Context, w ScriptWorkbench
 		if err != nil {
 			return "", err
 		}
-		deps = append(deps, map[string]string{"id": id, "sha256": hex.EncodeToString(hash.Sum(nil))})
+		dependency := map[string]string{"id": id, "sha256": hex.EncodeToString(hash.Sum(nil))}
+		if project.IsCameraRaw(r.Source.OriginalPath) {
+			dependency["raw_content"] = project.ResourceContentVersion(r)
+		}
+		deps = append(deps, dependency)
 	}
 	return skillHash(map[string]any{"sources": deps, "anchors": anchors}), nil
 }
