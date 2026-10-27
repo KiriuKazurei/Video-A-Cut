@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { CDP, sleep } from './tauri-cdp.mjs';
 import { testStorageRoot } from './test-paths.mjs';
 const [portArg, pidArg, directoryArg] = process.argv.slice(2);
+const testVersion = JSON.parse(await fs.readFile(path.resolve('desktop/tauri.conf.json'), 'utf8')).version;
 let pid = Number(pidArg), c, launched, originalClipboard;
 const out = path.resolve(directoryArg), port = Number(portArg);
 assert(out.startsWith(testStorageRoot + path.sep), 'Versioned output required');
@@ -55,7 +56,7 @@ const mcpClient = endpoint => {
     const messages=response.headers.get('Content-Type')?.includes('text/event-stream')?text.split('\n').filter(line=>line.startsWith('data:')).map(line=>JSON.parse(line.slice(5))):[JSON.parse(text)];
     const result=messages.find(message=>message.id===request.id);assert(result&&!result.error,JSON.stringify(result));return result.result;
   };
-  return {async init(){const result=await send('initialize',{protocolVersion:protocol,capabilities:{},clientInfo:{name:'VAC desktop timeline regression',version:'0.2.1'}});protocol=result.protocolVersion;await send('notifications/initialized',{},true);},async call(name,args){const result=await send('tools/call',{name,arguments:args});assert(!result.isError,JSON.stringify(result));return result.structuredContent??JSON.parse(result.content.find(item=>item.type==='text').text);}};
+  return {async init(){const result=await send('initialize',{protocolVersion:protocol,capabilities:{},clientInfo:{name:'VAC desktop timeline regression',version:testVersion}});protocol=result.protocolVersion;await send('notifications/initialized',{},true);},async call(name,args){const result=await send('tools/call',{name,arguments:args});assert(!result.isError,JSON.stringify(result));return result.structuredContent??JSON.parse(result.content.find(item=>item.type==='text').text);}};
 };
 const verifyTimeline = async runtime => {
   await probe('resize',['-Width','1900','-Height','1200']);
@@ -103,13 +104,71 @@ const verifyTimeline = async runtime => {
   await probe('resize',['-Width','1000','-Height','720']);await c.wait('document.querySelector(".compact-monitor-switch")?.offsetParent!==null');
   await sleep(300);const trackLayout=await c.ev(`(()=>{const sc=document.querySelector('.timeline-scroll').getBoundingClientRect(),timeline=document.querySelector('.sequence-timeline').getBoundingClientRect(),footer=document.querySelector('.app-footer').getBoundingClientRect();return {scroll:{top:sc.top,bottom:sc.bottom},timelineBottom:timeline.bottom,footerTop:footer.top,centers:[${JSON.stringify(track)},${JSON.stringify(view.sequence.tracks.find(t=>t.kind==='audio').id)}].map(id=>{const r=document.querySelector('[data-track-id="'+id+'"]').getBoundingClientRect();return r.top+r.height/2})}})()`);assert(trackLayout.timelineBottom<=trackLayout.footerTop+1&&trackLayout.centers.every(y=>y>=trackLayout.scroll.top+52&&y<=trackLayout.scroll.bottom));report.compact_track_layout=trackLayout;
   const layout=await c.ev(`(()=>{const v=document.querySelector('.program-monitor video'),r=v.getBoundingClientRect(),s=v.parentElement.getBoundingClientRect();return {video:{w:r.width,h:r.height},screen:{w:s.width,h:s.height},controls:v.controls,bodyWidth:document.documentElement.scrollWidth,viewport:innerWidth}})()`);assert(layout.controls&&layout.video.h<=layout.screen.h+1&&layout.video.w<=layout.screen.w+1&&layout.bodyWidth<=layout.viewport+1);await c.screenshot(path.join(out,'timeline-compact.png'));await record('program preview and export share a hash; compact monitors retain the complete frame and native controls',{hash,layout});
-  await shortcut('s');await until(workspace,v=>!v.dirty);const saved=JSON.parse(await fs.readFile(file));assert.equal(saved.schema_version,2);assert.equal(saved.sequences.length,2);assert(saved.scripts[0].references.some(r=>r.target_id===marker.id));
+  await shortcut('s');await until(workspace,v=>!v.dirty);const saved=JSON.parse(await fs.readFile(file));assert.equal(saved.schema_version,3);assert.equal(saved.sequences.length,2);assert(saved.scripts[0].references.some(r=>r.target_id===marker.id));
   await menu('文件','关闭项目');await until(workspace,v=>!v.document);await shortcut('o');await choose('打开 VAC 工程',file);ws=await until(workspace,v=>v.document?.project.id===project);assert.equal(ws.document.sequences.length,2);assert(ws.document.scripts[0].body.includes('新的定位'));await record('multisequence AVP v2 reopens with stable clips, effects and typed script bindings');
   await probe('resize',['-Width','1900','-Height','1200']);await c.wait(`document.querySelector('.project-resource-list [data-resource-id="${resource.id}"]')?.getAttribute('aria-pressed')==='true'`);
   const savedHead=saved.workspace.sequence_states[sequence].head,nominal=Math.round(saved.sequences[0].fps.num/saved.sequences[0].fps.den),seconds=Math.floor(savedHead/nominal),savedLabel=[Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60,savedHead%nominal].map(n=>String(n).padStart(2,'0')).join(':');
   await c.wait('document.querySelector(".program-monitor video")?.readyState>=2',60000);await c.wait(`document.querySelector('.timeline-ruler>.track-heading')?.textContent===${JSON.stringify(savedLabel)}`);await c.wait(`document.title===${JSON.stringify('Video Auto Cut — 多轨工程 ')}+${pid}`);
   await c.send('Page.reload');await c.wait(`document.querySelector('.project-resource-list [data-resource-id="${resource.id}"]')?.getAttribute('aria-pressed')==='true'`);await c.wait(`document.querySelector('.timeline-ruler>.track-heading')?.textContent===${JSON.stringify(savedLabel)}`);await c.wait(`document.title===${JSON.stringify('Video Auto Cut — 多轨工程 ')}+${pid}`);ws=await workspace();assert(!ws.dirty&&ws.document.workspace.selected_resource===resource.id);await record('page reload restores saved selection and nonzero playhead without a spurious dirty layout',{head:savedHead});
   await shortcut('s');await until(workspace,v=>!v.dirty);await menu('文件','关闭项目');await until(workspace,v=>!v.document);await probe('resize',['-Width','1900','-Height','1200']);
+};
+// Focused drawing mode reuses the native runner, dialogs, MCP transport and
+// shutdown assertions rather than keeping a second desktop acceptance suite.
+const verifyUnifiedDrawing = async runtime => {
+ await probe('resize',['-Width','1600','-Height','1050']);
+ const file=path.join(out,'统一绘制 '+pid+'.avp');
+ await shortcut('n');await choose('保存 VAC 工程',file);let ws=await until(workspace,v=>v.path===file);
+ const project=ws.document.project.id,sequence=ws.document.sequences[0].id;
+ const image=process.env.VAC_DRAW_TEST_IMAGE||path.resolve('.run-data/tests',testVersion,'cache/media-fixtures/Sony-ILCE-7M3.ARW');
+ await fs.access(image);await importFile(image);ws=await workspace();const resource=ws.document.resources.find(r=>r.kind==='image');assert(resource);
+ await menu('视图','绘制');await click('新建构图');await c.wait('document.querySelector(".draw-preview-status")?.textContent.startsWith("当前画面")',60000);
+ assert.equal(await c.ev('document.querySelectorAll(".draw-toolbar input[type=radio]").length'),0);
+ await click('素材','.ant-tabs-tab-btn');await click(resource.name);await c.wait('document.querySelector(".draw-selection")',60000);
+ await c.wait('document.querySelector(".draw-preview-status")?.textContent.startsWith("当前画面")',60000);
+ const x=Number(await c.ev(`document.querySelector('input[aria-label="位置 X"]').value`));
+ const from=await nativePoint('.draw-selection',.25,.4),scale=await c.ev('devicePixelRatio');
+ await probe('drag',['-X',String(from.x),'-Y',String(from.y),'-EndX',String(from.x+60*scale),'-EndY',String(from.y+25*scale)]);
+ await c.wait(`Number(document.querySelector('input[aria-label="位置 X"]').value)>${x+10}`);
+ const dragged=Number(await c.ev(`document.querySelector('input[aria-label="位置 X"]').value`));
+ await nativeClick('button[aria-label="撤销绘制修改"]');await c.wait(`Math.abs(Number(document.querySelector('input[aria-label="位置 X"]').value)-${x})<1`);
+ await nativeClick('button[aria-label="重做绘制修改"]');await c.wait(`Math.abs(Number(document.querySelector('input[aria-label="位置 X"]').value)-${dragged})<1`);
+ await shortcut('s');ws=await until(workspace,v=>!v.dirty);
+ await record('native image file import, automatic canvas, pointer move and atomic gesture undo/redo',{resource:resource.id,path:image,x,dragged});
+ const composition=ws.document.draw_compositions[0],d=structuredClone(composition.document);
+ d.canvas={width:1280,height:720,fps:{num:30,den:1},color_space:'srgb',alpha:'straight'};d.duration_frames=30;d.preset='interface';d.goal='图片背景上的界面演示与数据卡同步呈现';d.explanation='保留图片素材，以界面动效与数据卡组合呈现。';d.variables={series:[36,68,92]};d.theme={accent:'#6c91ff'};d.seed=7;
+ d.nodes=d.nodes.map(n=>({...n,duration:30,transform:n.kind==='image'?{x:0,y:0,width:1280,height:720}:n.transform}));
+ const title=d.nodes.find(n=>n.kind==='text');title.text='一个画布 · 同步绘制';title.font_size=62;title.transform={x:72,y:48,width:1100,height:100};title.z=6;
+ d.sources=[{id:'interface',engine:'hyperframes',name:'界面演示',reason:'HTML 布局和 GSAP 动效',canvas:{width:600,height:370,fps:{num:30,den:1}},duration_frames:30,source:`<!doctype html><html><head><style>body{margin:0;font-family:Arial,sans-serif;color:#eff3ff;background:transparent}#root{width:600px;height:370px;box-sizing:border-box;padding:30px;background:#171e31;border:1px solid #405477;border-radius:18px}.dots{color:#88a8ff;font-size:16px;letter-spacing:7px}.row{height:46px;margin-top:20px;border-radius:8px;background:#273651;width:90%}#active{background:#567de4;width:55%}h2{font-size:28px}#cursor{position:absolute;width:18px;height:18px;top:260px;left:70px;border:3px solid white;border-radius:50%}</style></head><body><div id="root" data-composition-id="ui" data-width="600" data-height="370" data-duration="1"><div class="dots">● ● ●</div><h2>Interface / live canvas</h2><div class="row" id="active"></div><div class="row"></div><div id="cursor"></div></div><script>const tl=gsap.timeline({paused:true});tl.to('#active',{width:'90%',duration:1,ease:'none'},0).to('#cursor',{x:360,y:-40,duration:1,ease:'none'},0);window.__timelines.ui=tl;</script></body></html>`},{id:'data',engine:'remotion',name:'数据卡',reason:'复用 React SVG 逐帧数据组件',canvas:{width:460,height:370,fps:{num:30,den:1}},duration_frames:30,source:`import React from 'react';import {useCurrentFrame} from 'remotion';export default function Data({series,theme}){const f=useCurrentFrame();return <div style={{width:460,height:370,boxSizing:'border-box',background:'#171e31',border:'1px solid #405477',borderRadius:18,padding:30,color:'#eff3ff',fontFamily:'Arial,sans-serif'}}><div style={{fontSize:28,marginBottom:20}}>Data / same frame</div><svg width="390" height="240">{series.map((v,i)=><g key={i}><rect x={28+i*120} y={215-v*(.5+f/29)*1.2} width="70" height={v*(.5+f/29)*1.2} rx="7" fill={theme.accent}/><text x={63+i*120} y="238" textAnchor="middle" fill="#c6d2ed" fontSize="18">{v}%</text></g>)}</svg></div>}` }];
+ d.nodes.push({id:'shade',kind:'shape',shape:'rect',color:'#07101f',opacity:.8,from:0,duration:30,transform:{x:0,y:0,width:1280,height:720},z:3},{id:'web',name:'界面演示',kind:'source',source_id:'interface',from:0,duration:30,transform:{x:72,y:230,width:600,height:370},z:4},{id:'chart',name:'数据卡',kind:'source',source_id:'data',from:0,duration:30,transform:{x:716,y:230,width:460,height:370},z:4});
+ const mcp=mcpClient(runtime.mcp_url);await mcp.init();const pack=await mcp.call('skills.get',{id:'vac-draw-pipeline'});await mcp.call('skills.read_resource',{id:pack.id,content_sha256:pack.content_sha256,resource:'vac/tool-contracts.md'});const visible=await mcp.call('projects.visible_set.get',{id:project});
+ let agentRun=await mcp.call('skill_runs.create',{project_id:project,sequence_id:sequence,flow:'custom',skill_id:pack.id,strategy:'draw',execution_mode:'external_mcp',visible_set_sha:visible.sha256,goal:d.goal,idempotency_key:'native-draw-'+pid});
+ const tool=async(name,args)=>{const response=await mcp.call('skill_runs.tool',{run_id:agentRun.id,request:{name,arguments:args,expected_version:agentRun.version,idempotency_key:'draw-'+agentRun.version+'-'+name}});agentRun=response.run;return response.result;};
+ await tool('draw.capabilities',{});
+ agentRun=await mcp.call('skill_runs.progress',{run_id:agentRun.id,expected_version:agentRun.version,phase:'generating',output_chars:128});
+ await c.ev(`location.hash=${JSON.stringify('/draw?project='+project+'&slot='+composition.id+'&run='+agentRun.id+'&focus=canvas')}`);
+ await c.wait(`document.querySelector('.draw-agent-status')?.textContent.includes('正在生成画面')&&document.querySelector('.draw-agent-status')?.textContent.includes('128')`,15000);
+ await c.screenshot(path.join(out,'native-agent-progress.png'));
+ await record('real MCP heartbeat and visible drawing status show generation phase and output count without model text',{run:agentRun.id,output_chars:128});
+ ws=await workspace();await tool('draw.save',{session:ws.id,expected_revision:ws.revision,idempotency_key:'native-mixed',composition:{...composition,document:d}});ws=await workspace();const mixed=ws.document.draw_compositions[0];
+ await c.wait(`document.body.innerText.includes('界面演示')`,60000);await c.wait(`!document.querySelector('button[aria-label="撤销绘制修改"]').disabled`);
+ await nativeClick('button[aria-label="撤销绘制修改"]');await until(workspace,v=>v.document.draw_compositions[0].document.sources.length===0);
+ await c.wait(`!document.querySelector('button[aria-label="重做绘制修改"]').disabled`);await nativeClick('button[aria-label="重做绘制修改"]');await until(workspace,v=>v.document.draw_compositions[0].document.sources.length===2);
+ await record('native scene undo/redo restores the complete Agent transaction without rewinding runs or original media');
+ await tool('draw.check',{session:ws.id,composition_id:mixed.id,content_version:mixed.content_version});
+ for(const frame of [0,15,29]){const result=await tool('draw.preview',{session:ws.id,composition_id:mixed.id,content_version:mixed.content_version,frame,request_id:'native-frame-'+frame});await tool('artifacts.get',{id:result.artifact.id});}
+ await c.wait(`document.querySelector('.draw-layer-item')&&document.body.innerText.includes('界面演示')`,60000);await c.wait('document.querySelector(".draw-preview-status")?.textContent.startsWith("当前画面")',60000);
+ await c.ev(`document.querySelector('[role=slider][aria-label="构图播放帧"]').focus()`);await c.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Home',code:'Home',windowsVirtualKeyCode:36});await c.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Home',code:'Home',windowsVirtualKeyCode:36});for(let n=0;n<15;n++){await c.send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});await c.send('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});}
+ await c.wait('document.querySelector(".draw-preview-status")?.textContent.includes("第 15 帧")',60000);
+ await probe('capture',['-FilePath',path.join(out,'native-unified-draw.png')]);await c.screenshot(path.join(out,'unified-draw.png'));
+ const tv=await tool('timeline.read',{sequence_id:sequence});const attached=await tool('draw.import',{session:ws.id,composition_id:mixed.id,content_version:mixed.content_version,sequence_id:sequence,expected_revision:tv.sequence.revision,idempotency_key:'native-source',source_mode:'snapshot'});
+ const finished=await tool('run.finish',{sequence_revision:attached.sequence.revision,content_version:attached.content_version});assert(finished.completed&&finished.structured_edit);
+ assert((await workspace()).document.resources.some(r=>r.draw_source?.mode==='snapshot'));
+ await record('real MCP authors and previews native HTML, React data and an imported image in one canvas; source import finishes through the shared sequence renderer',{run:agentRun.id,content_version:mixed.content_version,finish:finished});
+ const standalone=path.join(out,'绘制导出.mp4');await click('导出视频');await choose('导出绘制视频',standalone);await until(async()=>{try{return (await fs.stat(standalone)).size}catch{return 0}},v=>v>1000,120000);await record('native drawing export dialog writes a verified standalone video',{path:standalone});
+ await shortcut('s');await until(workspace,v=>!v.dirty);const saved=JSON.parse(await fs.readFile(file));assert.equal(saved.schema_version,3);assert.equal(saved.workspace.draw_states[mixed.id].head,15);
+ await menu('文件','关闭项目');await until(workspace,v=>!v.document);await shortcut('o');await choose('打开 VAC 工程',file);await until(workspace,v=>v.document?.project.id===project);await menu('视图','绘制');await c.wait('document.querySelector(".draw-preview-status")?.textContent.includes("第 15 帧")',60000);
+ assert.equal((await workspace()).document.draw_compositions[0].document.sources.length,2);await record('AVP 3 native save and reopen retain both editable sources and the shared playhead');
+ await shortcut('s');await until(workspace,v=>!v.dirty);await menu('文件','关闭项目');await until(workspace,v=>!v.document);
 };
 const verifyWindowChrome = async title => {
   await until(async()=>JSON.parse(await probe('inspect')),value=>value.title===title);
@@ -164,6 +223,9 @@ try {
   await c.wait(`document.querySelector('.ant-modal-content')?.innerText.includes(${JSON.stringify('Video Auto Cut '+appVersion)})`);
   await pointerClick('.ant-modal .ant-btn-primary');await record('About menu and native runtime report the current application version',{version:appVersion});
   await verifyMcp(status);await record('live MCP address, Codex TOML and JSON copy through native clipboard before opening a project');
+  if(process.env.VAC_VERIFY_DRAW==='1'){
+    await verifyUnifiedDrawing(status);
+  }else{
   if(process.env.VAC_ASR_TEST_MODEL&&process.env.VAC_ASR_TEST_PYTHON){
     await c.ev(`location.hash='/settings/profiles'`);await click('新建预设');
     await c.wait(`document.querySelector('input[pattern]')?.value.startsWith('profile_')`);
@@ -253,6 +315,7 @@ try {
   await shortcut('s');await until(workspace,v=>!v.dirty);await menu('文件','关闭项目');await until(workspace,v=>!v.document);await record('project close resets the native title and keeps service status in the home footer',await verifyWindowChrome('Video Auto Cut'));
   await c.invoke('stop_runtime');const stopped=await until(()=>c.invoke('runtime_status'),v=>v.status==='stopped');await c.wait(`document.querySelector('.desktop-runtime-footer [aria-label="后台服务状态"]')?.textContent.includes(${JSON.stringify(stopped.message)})`);const stoppedLayout=await c.ev(`(()=>{const footer=document.querySelector('.desktop-runtime-footer');return {bottom:footer?.getBoundingClientRect().bottom,height:innerHeight,topBar:!!document.querySelector('.desktop-runtime-bar')}})()`);assert(!stoppedLayout.topBar&&Math.abs(stoppedLayout.bottom-stoppedLayout.height)<2);await record('stopped service retains its status in the bottom footer',stoppedLayout);
   await click('重新启动');const resumed=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(resumed.status,'ready',resumed.message);base=resumed.api_base_url;await until(workspace,v=>!v.document);await record('runtime restart restores the home footer without a top status row',await verifyWindowChrome('Video Auto Cut'));
+  }
   report.result='passed';
 } catch(error){report.result='failed';report.error=String(error.stack||error);report.messages=await c?.ev('window.__VAC_TEST_MESSAGES').catch(()=>[]);await c?.screenshot(path.join(out,'failure.png')).catch(()=>{});await fs.writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));if(process.env.VAC_DESKTOP_KEEP_FAILURE==='1'){console.log('Diagnostic hold: '+report.error);await until(async()=>{try{await fs.access(path.join(out,'resume-validation'));return true}catch{return false}},Boolean,180000).catch(()=>{});}throw error;}
 finally{

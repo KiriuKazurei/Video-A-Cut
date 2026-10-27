@@ -2,6 +2,7 @@ package service
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -96,6 +97,18 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	prior := r.Version
 	r.Version++
 	r.State = "running"
+	r.Reason = ""
+	phase := "working"
+	switch req.Name {
+	case "agent.model":
+		phase = "generating"
+	case "draw.check", "draw.preview", "draw.get_frame":
+		phase = "checking"
+	case "draw.render", "run.finish":
+		phase = "rendering"
+	}
+	now := s.autoNow()
+	r.Progress = &skill.RunProgress{Phase: phase, StartedAt: now, UpdatedAt: now}
 	if r.AgentRole != "" {
 		until := s.autoNow().Add(time.Duration(r.Budget.MaxSeconds) * time.Second)
 		r.LeaseUntil = &until
@@ -117,6 +130,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	if err != nil {
 		return r, nil, err
 	}
+	s.publish("workspace.skill.progress", map[string]any{"id": r.ID, "project_id": r.ProjectID})
 	started := time.Now()
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(int64(r.Budget.MaxSeconds)*1000-(r.ElapsedMilliseconds-r.BudgetElapsedBase))*time.Millisecond)
 	defer cancel()
@@ -147,6 +161,10 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		step.Error = "tool_failed"
 		r.State = "waiting_human"
 		r.Reason = "tool_failed"
+		if strings.HasPrefix(req.Name, "draw.") && errors.Is(toolErr, model.ErrArgument) {
+			r.State = "queued"
+			r.Reason = "invalid_tool_arguments"
+		}
 		if errors.Is(toolErr, model.ErrConflict) {
 			r.Reason = "context_changed"
 		}
@@ -158,12 +176,24 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 			r.Reason = "frame_budget_exceeded"
 			step.Error = r.Reason
 		}
+		if errors.Is(toolErr, errModelOutputTruncated) {
+			r.Reason = "model_output_truncated"
+			step.Error = r.Reason
+		}
+		if errors.Is(toolErr, errModelRequestTimeout) {
+			r.Reason = "model_request_timeout"
+			step.Error = r.Reason
+		}
 	} else {
 		step.State = "succeeded"
 		step.Result = result
 		if r.State == "running" {
 			r.State = "queued"
 		}
+	}
+	if r.State == "queued" {
+		now := s.autoNow()
+		r.Progress = &skill.RunProgress{Phase: "working", StartedAt: now, UpdatedAt: now}
 	}
 	committed := r.Version
 	if r.AgentRole != "" {
@@ -201,6 +231,8 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 }
 
 var errFrameBudget = fmt.Errorf("frame budget exceeded: %w", model.ErrInvalidState)
+var errModelOutputTruncated = fmt.Errorf("模型输出达到额度上限，请在服务商设置中调整最大输出 Token: %w", model.ErrInvalidState)
+var errModelRequestTimeout = fmt.Errorf("模型请求超时，请检查连接或调整任务时限: %w", model.ErrInvalidState)
 
 func decodeSkillArgs(raw json.RawMessage, out any) error {
 	if len(raw) == 0 {
@@ -209,7 +241,18 @@ func decodeSkillArgs(raw json.RawMessage, out any) error {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	if err := d.Decode(out); err != nil {
-		return model.ErrArgument
+		if field, ok := strings.CutPrefix(err.Error(), "json: unknown field \""); ok && strings.HasSuffix(field, "\"") {
+			field = strings.TrimSuffix(field, "\"")
+			if len(field) > 0 && len(field) <= 64 && strings.IndexFunc(field, func(r rune) bool {
+				return !(r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+			}) < 0 {
+				if field == "images" {
+					return fmt.Errorf("unknown field %q: use composition.images or document.nodes for imported images: %w", field, model.ErrArgument)
+				}
+				return fmt.Errorf("unknown field %q: %w", field, model.ErrArgument)
+			}
+		}
+		return fmt.Errorf("invalid tool JSON arguments: %w", model.ErrArgument)
 	}
 	return nil
 }
@@ -421,7 +464,11 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		if art.Kind != "frame" && art.Kind != "transcript" {
 			return nil, model.ErrArgument
 		}
-		if art.Size > 256<<10 {
+		limit := int64(256 << 10)
+		if art.Kind == "frame" {
+			limit = 16 << 20
+		} // Full RGBA PNGs are larger than text transcripts.
+		if art.Size > limit {
 			return nil, model.ErrArgument
 		}
 		raw, err := os.ReadFile(path)
@@ -549,7 +596,52 @@ func (s *Service) skillProcessWithPython(ctx context.Context, operation string, 
 	var out scriptOutput
 	cmd.Stdout = &out
 	cmd.Stderr = io.Discard
+	var progressDone chan struct{}
+	var liveRun *skill.Run
+	if input, ok := payload.(map[string]any); ok && operation == "agent" {
+		liveRun, _ = input["run"].(*skill.Run)
+	}
+	if liveRun != nil && liveRun.Progress != nil && liveRun.Progress.Phase == "generating" {
+		cmd.Stderr = nil
+		pipe, e := cmd.StderrPipe()
+		if e != nil {
+			return nil, e
+		}
+		runID, projectID, initial := liveRun.ID, liveRun.ProjectID, *liveRun.Progress
+		progressDone = make(chan struct{})
+		go func() {
+			defer close(progressDone)
+			scanner := bufio.NewScanner(pipe)
+			scanner.Buffer(make([]byte, 1024), 64<<10)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if !strings.HasPrefix(line, "VAC_AGENT_PROGRESS ") {
+					continue
+				}
+				var update struct {
+					OutputChars int `json:"output_chars"`
+				}
+				if json.Unmarshal([]byte(strings.TrimPrefix(line, "VAC_AGENT_PROGRESS ")), &update) != nil || update.OutputChars < 0 || update.OutputChars > 4<<20 {
+					continue
+				}
+				p := initial
+				p.OutputChars = update.OutputChars
+				p.UpdatedAt = s.autoNow()
+				s.harnessMu.Lock()
+				if s.harnessProgress == nil {
+					s.harnessProgress = map[string]skill.RunProgress{}
+				}
+				s.harnessProgress[runID] = p
+				s.harnessMu.Unlock()
+				s.publish("workspace.skill.progress", map[string]any{"id": runID, "project_id": projectID})
+			}
+		}()
+		defer func() { s.harnessMu.Lock(); delete(s.harnessProgress, runID); s.harnessMu.Unlock() }()
+	}
 	runErr := cmd.Run()
+	if progressDone != nil {
+		<-progressDone
+	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -564,6 +656,12 @@ func (s *Service) skillProcessWithPython(ctx context.Context, operation string, 
 	if !status.OK || runErr != nil {
 		if status.Code == "frame_budget_exceeded" {
 			return status.Data, errFrameBudget
+		}
+		if status.Code == "model_output_truncated" {
+			return nil, errModelOutputTruncated
+		}
+		if status.Code == "model_request_timeout" {
+			return nil, errModelRequestTimeout
 		}
 		var diagnostic struct {
 			ErrorType string `json:"error_type"`

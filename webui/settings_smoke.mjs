@@ -69,6 +69,14 @@ try {
  await category('服务商接入').click();
  await button('切换为已配置模型以接入服务商').click();
  await page.getByRole('textbox',{name:'画面识别 模型 ID',exact:true}).fill('test-vision');
+ await page.getByRole('combobox',{name:'画面识别 推理强度',exact:true}).focus();
+ await page.keyboard.press('ArrowDown');
+ await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({hasText:/^high$/}).click();
+ await page.getByRole('spinbutton',{name:'画面识别 最大输出 Token',exact:true}).fill('48000');
+ await category('处理预设').click();await category('服务商接入').click();
+ assert.equal(await page.getByRole('spinbutton',{name:'画面识别 最大输出 Token',exact:true}).inputValue(),'48000');
+ assert(await page.getByRole('combobox',{name:'画面识别 推理强度',exact:true}).evaluate(node=>node.closest('.ant-select')?.textContent.includes('high')));
+ check('model effort and output limit survive category changes in an unsaved provider draft');
  await page.getByRole('checkbox',{name:'启用转录',exact:true}).check();
  await page.getByRole('textbox',{name:'本地模型目录',exact:true}).fill('C:/LocalModels/whisper');
  await page.screenshot({path:path.join(output,'settings-providers-configured-1440.png')});

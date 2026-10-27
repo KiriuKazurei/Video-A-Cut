@@ -68,7 +68,7 @@ func TestTimelineAtomicCASReplayHistoryAndPortableSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.Document.SchemaVersion != 2 || len(view.Document.Sequences[0].Tracks) != 7 {
+	if view.Document.SchemaVersion != project.SchemaVersion || len(view.Document.Sequences[0].Tracks) != 7 {
 		t.Fatal("saved timeline lost")
 	}
 	req.Session = view.ID

@@ -56,6 +56,7 @@ func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) stri
 	state.Markers = nil
 	state.Groups = nil
 	sources := map[string]string{}
+	usesDrawing := false
 	for i := range state.Tracks {
 		t := &state.Tracks[i]
 		t.Name = ""
@@ -68,9 +69,20 @@ func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) stri
 			for _, r := range doc.Resources {
 				if r.ID == c.ResourceID {
 					sources[r.ID] = project.ResourceContentVersion(r)
+					usesDrawing = usesDrawing || r.Draw != nil
+					if r.Draw != nil && r.Draw.Mode == "follow" {
+						for _, draw := range doc.DrawCompositions {
+							if draw.ID == r.Draw.CompositionID {
+								sources[r.ID] = draw.ContentVersion
+							}
+						}
+					}
 				}
 			}
 		}
+	}
+	if usesDrawing {
+		return skillHash(map[string]any{"state": state, "sources": sources, "drawing_environment": drawingEnvironmentVersion()})
 	}
 	return skillHash(map[string]any{"state": state, "sources": sources})
 }

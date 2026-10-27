@@ -8,8 +8,10 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -19,20 +21,79 @@ from .provider_http import NoRedirect, generation_request, response_text
 MAX_BYTES = 4 * 1024 * 1024
 
 
-def call_model(spec, prompt, images, opener=None):
+def _stream_model_text(response, progress):
+    """Read bounded SSE without logging model reasoning or response contents."""
+    events, content, total, finish, chars, last_report = [], [], 0, None, 0, 0.0
+    while True:
+        raw = response.readline(65537)
+        if not raw:
+            break
+        if len(raw) > 65536:
+            raise ContentError('模型流式事件超出大小限制')
+        total += len(raw)
+        if total > MAX_BYTES:
+            raise ContentError('模型流式输出超出大小限制')
+        line = raw.decode('utf-8').strip()
+        if not line:
+            if not events:
+                continue
+            data = '\n'.join(events)
+            events = []
+            if data == '[DONE]':
+                break
+            payload = json.loads(data)
+            if payload.get('error'):
+                raise ContentError('模型流式请求失败')
+            for choice in payload.get('choices', []):
+                finish = choice.get('finish_reason') or finish
+                value = choice.get('delta', {}).get('content')
+                if isinstance(value, str):
+                    content.append(value)
+                    chars += len(value)
+                if progress and time.monotonic()-last_report >= 1:
+                    progress(chars)
+                    last_report = time.monotonic()
+            continue
+        if line.startswith('data:'):
+            events.append(line[5:].lstrip())
+    if finish == 'length':
+        raise ContentError('模型输出达到额度上限，请调高最大输出 Token 后重试')
+    if finish not in ('stop', 'tool_calls'):
+        raise ContentError('模型流式输出不完整或被拒绝')
+    text = ''.join(content)
+    if not text.strip():
+        raise ContentError('模型没有返回有效内容')
+    if progress:
+        progress(chars)
+    return text.strip()
+
+
+def call_model(spec, prompt, images, opener=None, *, max_tokens=None, timeout=90, stream=False, progress=None):
     token = os.environ.get(spec['token_env'], '').strip()
     if not token:
         raise ContentError('所选预设的凭证变量未配置')
     api_format = spec.get('api_format') or 'openai'
     if api_format not in ('openai', 'anthropic', 'gemini'):
         raise ContentError('脚本生成需要 OpenAI / Anthropic / Gemini 标准协议预设')
-    request = generation_request(api_format, spec['endpoint'], spec['model'], token, prompt, images, max_tokens=8192)
+    stream = bool(stream and api_format == 'openai')
+    if max_tokens is None:
+        max_tokens = spec.get('max_output_tokens') or 8192
+    request = generation_request(api_format, spec['endpoint'], spec['model'], token, prompt, images, max_tokens=max_tokens,
+                                 stream=stream, reasoning_effort=spec.get('reasoning_effort', ''))
     open_request = opener or urllib.request.build_opener(NoRedirect()).open
     # Provider error text is not sent back: it may echo the bearer token.
     try:
-        with open_request(request, timeout=90) as response:
-            payload = json.loads(_read_limited_response(response, MAX_BYTES))
-        text = response_text(api_format, payload)
+        with open_request(request, timeout=timeout) as response:
+            content_type = getattr(response, 'headers', {}).get('Content-Type', '')
+            if stream and 'text/event-stream' in content_type.lower():
+                text = _stream_model_text(response, progress)
+            else:
+                payload = json.loads(_read_limited_response(response, MAX_BYTES))
+                if api_format == 'openai' and (payload.get('choices') or [{}])[0].get('finish_reason') == 'length':
+                    raise ContentError('模型输出达到额度上限，请调高最大输出 Token 后重试')
+                text = response_text(api_format, payload)
+                if progress:
+                    progress(len(text))
         if text.startswith('```'):
             match = re.fullmatch(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.S)
             if not match:
@@ -45,6 +106,8 @@ def call_model(spec, prompt, images, opener=None):
     except Exception as error:
         if isinstance(error, ContentError):
             raise
+        if isinstance(error, (TimeoutError, socket.timeout)) or isinstance(getattr(error, 'reason', None), TimeoutError):
+            raise ContentError('模型请求超时，请检查连接或调整任务时限') from None
         raise ContentError('模型请求失败或没有返回有效脚本；请检查预设后手动重试') from None
 
 

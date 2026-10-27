@@ -18,7 +18,7 @@ var ToolContracts string
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
-	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import"}
+	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview"}
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
 		{ID: "video-use", Name: "Video Use", Description: "Executable source-free drawing and lightweight video editing.", Version: "0.1.0-vac.7", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
@@ -50,7 +50,7 @@ func Builtins() []Package {
 }
 
 func drawSkills() []Package {
-	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish"}
+	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish"}
 	makePackage := func(id, name, content string) Package {
 		return Package{ID: id, Name: name, Description: "Executable local code-to-video and editing handoff", Version: "0.3.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: []string{"external_mcp", "builtin_api"}, Tools: tools, Permissions: []string{"project_media", "ffmpeg", "browser_render"}, Inputs: []string{"goal", "composition_spec", "project_images"}, Outputs: []string{"composition_source", "mp4", "timeline"}, Content: content, Resources: map[string]string{}}
 	}
@@ -72,13 +72,13 @@ workflow is guidance; the following VAC boundary applies to every action.
 Route 2, 绘制, is a first-class strategy of this package, not an overlay accessory.
 When the goal asks for programmatic picture, a title, UI motion, kinetic type,
 or a film without source footage, follow this draw strategy and read
-vac-draw-hyperframes, vac-draw-remotion, or vac-draw-pipeline.
+vac-draw-pipeline as the default unified entry; use engine Skills only for a specific source.
 For drawing, create the run with strategy=draw (empty media is valid), then use draw.list/save/check/render/get_frame/import.
 Imported project images are available through composition.images and image_resources; read the image contract before use.
 Read the dedicated engine Skill and the common tool contracts. Author self-contained HTML with local GSAP or a default React component importing react/remotion.
 Inspect real frames with draw.get_frame and artifacts.get. Import the verified render into the launch sequence, edit via timeline.read/edit and finish with the version-checked structured-sequence flow.
 The installed official runtimes render locally with an existing Chromium. No shell, remote source imports, automatic dependency/browser/model installation or cloud fallback.
-Unrendered source-level composite_preview/merge_render remain unavailable; use verified rendered resources in the editing preview/export pipeline.
+Use the unified DrawDocument, draw.capabilities and draw.preview for same-frame HTML/React collaboration, then draw.import source_mode=snapshot for editable source in the sequence; no preliminary MP4 is required.
 Work only within the run's visible media. Never scan directories, invoke shell,
 install dependencies or ask for secrets. Use media.list, media.transcribe,
 media.get_frames, scripts.propose and renders.create. Return a readable dependency
@@ -122,7 +122,7 @@ Author one complete HTML document with a data-composition-id root and matching d
 draw.save commits source and dimensions to the AVP with project session, project revision and an idempotency key.
 Then draw.check, draw.render, draw.get_frame and artifacts.get inspect actual rendered frames. Runtime dependencies and an installed Chromium must exist; missing dependencies fail explicitly without downloads or cloud fallback.
 draw.import adds the verified video to the run's launch sequence as a separate Agent track group. Use timeline.read/edit to trim, split, apply effects or combine with source media. Finish using run.finish {sequence_revision,content_version} after the final timeline edit.
-import_into_editing is executable. composite_preview and merge_render currently use rendered resources in Editing; unrendered source-level composition is not implemented. Never claim otherwise.
+For source-level editing use draw.import source_mode=snapshot (or explicit follow); no standalone MP4 prerequisite. The shared FrameSource participates in composite_preview and merge_render. Legacy rendered MP4 import remains available.
 Human acceptance is not_checked, not automatic approval. Preserve source for subsequent code edits; MP4 is not reversible source.
 
 
@@ -146,7 +146,7 @@ Read vac/tool-contracts.md. Author one TSX module exporting a default React comp
 Use inline graphics and bound current-project image resources. Add external audio/video through the editing timeline. No remote imports, Node APIs, arbitrary paths, shell or installation commands.
 draw.save stores source/specification with the current project session/revision and an idempotency key; draw.check checks syntax/imports/specification; draw.render uses the installed official renderer and Chromium without downloading a browser or using a cloud fallback.
 Use draw.get_frame plus artifacts.get to inspect real pixels, then draw.import into the run's launch sequence. timeline.read/edit can change the resulting clips; run.finish takes the current sequence_revision and content_version.
-import_into_editing is executable. composite_preview and merge_render operate on rendered resources in Editing; unrendered source-level composition remains unavailable.
+Source-level composite_preview and merge_render use the shared FrameSource after draw.import source_mode=snapshot (or explicit follow), without an intermediate MP4. Omitted source_mode retains verified rendered import.
 Retain editable source in the AVP. Do not invent human acceptance; machine completion reports not_checked.
 
 
@@ -165,28 +165,21 @@ composition to refresh its dependency fingerprint. Preserve all instance IDs.
 `
 const pipelineDraw = `# vac-draw-pipeline
 
-Executable drawing pipeline alongside video editing. Select HyperFrames HTML/GSAP or Remotion React from the composition model; set strategy=draw for source-free generation.
-Read vac/tool-contracts.md before invoking tools. draw.list/save/check/render/get_frame/import share project isolation, CAS, content versions and idempotency with Editing.
-A composition stores stable id, name, engine, source, even width/height, rational fps and duration_frames. Use the actual response's revision/content_version; do not substitute a stale version or a same-name object.
-A full round trip is draw.save -> draw.check -> draw.render -> draw.get_frame -> artifacts.get -> draw.import -> timeline.read/edit -> run.finish. draw.import is restricted to the run's launch sequence; no human undo/redo or approvals are Agent tools.
-import_into_editing is executable. composite_preview and merge_render currently use verified rendered resources through the existing multitrack preview/export path. Source-level unrendered mixing is not implemented and must not be presented as completed.
-The worker uses fixed local dependencies and an installed browser, browser network isolation, and the existing FFmpeg verifier. It does not accept shell commands or silently install dependencies/download browsers/models. Missing capability returns an actionable failure.
-Generated frames can be inspected through native artifact images. Machine verification and human acceptance stay separate.
+Default unified drawing strategy (strategy=draw). Users describe a goal, not an engine. Read vac/tool-contracts.md and draw.capabilities first. Reuse the current DrawDocument and stable IDs. Preserve unrelated sources, layers, variables and manual edits; scope changes to the requested nodes. Source revision and project revision are separate CAS checks.
 
+Choose per layer: HyperFrames for HTML/CSS layout, DOM/SVG, websites, UI motion and GSAP; Remotion for existing React components/templates or data expressions that are simpler as React; common image/text/group layers for basic graphics. Mix HTML and React in one document when it benefits the goal. Do not start both engines unnecessarily or switch a working implementation on every edit. Purpose presets auto/interface/data/media guide planning without forcing an engine. Record source.reason and a short document.explanation. Go validates and freezes the deterministic plan; there is no additional autonomous backend planner.
 
-Imported project images are first-class drawing assets. Read image_resources from
-skill_runs.get (builtin model input includes the same catalog), or resources.list,
-then add composition.images entries using stable image resource_id values.
-Each instance has its own id,x,y,width,height,dx,dy,from_frame,to_frame,fit,
-opacity and mode. Go supplies resource_sha256; never submit a filesystem path.
-mode="layer" automatically places the image above the scene, with linear dx/dy
-movement over the frame interval. mode="source" supplies the same image and
-parameters for custom source placement, without an automatic duplicate overlay.
-HyperFrames source uses <img src="vac-image:INSTANCE_ID"> and window.vacImages;
-Remotion's default component receives {images}, with images[INSTANCE_ID].src.
-Missing/removed/changed images fail explicitly; relink the resource and save the
-composition to refresh its dependency fingerprint. Preserve all instance IDs.
+Use draw.save with composition.document schema_version=1: canvas {width,height,fps:{num,den},alpha:"straight",color_space:"srgb"}, duration_frames, preset, sources [{id,engine,source,reason,canvas?,duration_frames?}], nodes [{id,name,kind,source_id?,resource_id?,from,duration,transform:{x,y,width?,height?,rotation?},opacity?,z?,parameters?}]. Kinds source/image/text/group/mask/shape. Groups use parent_id, and must form a DAG. Node ranges are half-open [from,from+duration). source_offset is in source frames, speed is rational. Keep stable source and instance IDs. The outer transform belongs to the layer; internal source motion belongs to its source. Never duplicate the same motion in both scopes.
+
+Imported images reference current-project image_resources IDs; Go supplies fingerprints and local decoding/RAW development. A common image node appears automatically; hidden image nodes may provide bindings for a source without adding another visible copy. Legacy image_bindings remain supported. Never supply filesystem paths. Missing/changed/removed resources are explicit errors.
+
+For external runs, report actual model progress with skill_runs.progress every 30–60 seconds while awaiting output; use the returned run version and never send model text or credentials. Use draw.preview or draw.get_frame to inspect actual mixed pixels before any movie exists; each consumes the frame budget. artifacts.get returns a native MCP image. Inspect first/middle/end and relevant transition frames. Do not equate a render file with good visual quality. Preview and final render share the native HyperFrames runtime, React frame context, rational time map, RGBA composition and resources. Use paused deterministic GSAP timelines, useCurrentFrame/useVideoConfig and seeded deterministic expressions; no wall-clock timers, uncontrolled playback or network sources.
+
+Use draw.import {source_mode:"snapshot",...} to add editable source directly to the launch editing sequence without rendering an MP4 first. snapshot freezes source; follow explicitly follows future saved changes. Omitted source_mode/rendered retains verified-MP4 import compatibility. A source import is one undoable independent track group at frame zero, leaving manual edits intact. Read timeline.read immediately before import for sequence revision. After timeline editing use run.finish {sequence_revision,content_version}; it exports the shared footage/audio/subtitle/drawing compositor and preserves frozen historical outputs. draw.render supports standalone mp4, webm-alpha and prores4444 (format optional, default mp4).
+
+Fixed local engine dependencies and an installed Chrome/headless shell are required. Missing capability fails explicitly; never install packages, download browsers/models, invoke commands or silently use cloud fallbacks. Unsupported cross-document backdrop sampling is unavailable. Human acceptance remains not_checked until the user reviews the result.
 `
+
 const SyntaxAdapter = `# VAC script syntax
 Blank lines separate paragraphs. Ordinary text is the user's instruction, not
 automatically narration. Explicit typed {@recognition-name} binds a resource or frame anchor; resolve IDs using references.resolve. A video binding chooses one current-project

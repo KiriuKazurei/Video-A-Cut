@@ -6,7 +6,7 @@ Author one complete HTML document with a data-composition-id root and matching d
 draw.save commits source and dimensions to the AVP with project session, project revision and an idempotency key.
 Then draw.check, draw.render, draw.get_frame and artifacts.get inspect actual rendered frames. Runtime dependencies and an installed Chromium must exist; missing dependencies fail explicitly without downloads or cloud fallback.
 draw.import adds the verified video to the run's launch sequence as a separate Agent track group. Use timeline.read/edit to trim, split, apply effects or combine with source media. Finish using run.finish {sequence_revision,content_version} after the final timeline edit.
-import_into_editing is executable. composite_preview and merge_render currently use rendered resources in Editing; unrendered source-level composition is not implemented. Never claim otherwise.
+For source-level editing use draw.import source_mode=snapshot (or explicit follow); no standalone MP4 prerequisite. The shared FrameSource participates in composite_preview and merge_render. Legacy rendered MP4 import remains available.
 Human acceptance is not_checked, not automatic approval. Preserve source for subsequent code edits; MP4 is not reversible source.
 
 

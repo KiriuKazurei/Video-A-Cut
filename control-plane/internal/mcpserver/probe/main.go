@@ -47,7 +47,7 @@ func main() {
 	token := os.Getenv(*tokenEnv)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	client := mcp.NewClient(&mcp.Implementation{Name: *clientName, Version: "0.3.1"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: *clientName, Version: "0.3.2"}, nil)
 	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint:             *url,
 		HTTPClient:           &http.Client{Transport: bearer{token: token, base: http.DefaultTransport, source: *source}},

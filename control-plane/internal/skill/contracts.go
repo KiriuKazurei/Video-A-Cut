@@ -89,6 +89,7 @@ type Budget struct {
 	MaxFrames  int `json:"max_frames,omitempty"`
 }
 type Run struct {
+	Progress                *RunProgress    `json:"progress,omitempty"`
 	Strategy                string          `json:"strategy,omitempty"`
 	StructuredEdit          bool            `json:"structured_edit,omitempty"`
 	SequenceContentVersion  string          `json:"sequence_content_version,omitempty"`
@@ -128,6 +129,14 @@ type Run struct {
 	Artifacts               []Artifact      `json:"artifacts"`
 	CreatedAt               time.Time       `json:"created_at"`
 	UpdatedAt               time.Time       `json:"updated_at"`
+}
+
+// RunProgress is reported by the owning Agent; it never contains model output.
+type RunProgress struct {
+	Phase       string    `json:"phase"`
+	OutputChars int       `json:"output_chars"`
+	StartedAt   time.Time `json:"started_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 type EditWindow struct {
 	SegmentIndex  int     `json:"segment_index"`

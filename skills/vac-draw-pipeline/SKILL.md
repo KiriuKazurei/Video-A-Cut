@@ -1,23 +1,15 @@
 # vac-draw-pipeline
 
-Executable drawing pipeline alongside video editing. Select HyperFrames HTML/GSAP or Remotion React from the composition model; set strategy=draw for source-free generation.
-Read vac/tool-contracts.md before invoking tools. draw.list/save/check/render/get_frame/import share project isolation, CAS, content versions and idempotency with Editing.
-A composition stores stable id, name, engine, source, even width/height, rational fps and duration_frames. Use the actual response's revision/content_version; do not substitute a stale version or a same-name object.
-A full round trip is draw.save -> draw.check -> draw.render -> draw.get_frame -> artifacts.get -> draw.import -> timeline.read/edit -> run.finish. draw.import is restricted to the run's launch sequence; no human undo/redo or approvals are Agent tools.
-import_into_editing is executable. composite_preview and merge_render currently use verified rendered resources through the existing multitrack preview/export path. Source-level unrendered mixing is not implemented and must not be presented as completed.
-The worker uses fixed local dependencies and an installed browser, browser network isolation, and the existing FFmpeg verifier. It does not accept shell commands or silently install dependencies/download browsers/models. Missing capability returns an actionable failure.
-Generated frames can be inspected through native artifact images. Machine verification and human acceptance stay separate.
+Default unified drawing strategy (strategy=draw). Users describe a goal, not an engine. Read vac/tool-contracts.md and draw.capabilities first. Reuse the current DrawDocument and stable IDs. Preserve unrelated sources, layers, variables and manual edits; scope changes to the requested nodes. Source revision and project revision are separate CAS checks.
 
+Choose per layer: HyperFrames for HTML/CSS layout, DOM/SVG, websites, UI motion and GSAP; Remotion for existing React components/templates or data expressions that are simpler as React; common image/text/group layers for basic graphics. Mix HTML and React in one document when it benefits the goal. Do not start both engines unnecessarily or switch a working implementation on every edit. Purpose presets auto/interface/data/media guide planning without forcing an engine. Record source.reason and a short document.explanation. Go validates and freezes the deterministic plan; there is no additional autonomous backend planner.
 
-Imported project images are first-class drawing assets. Read image_resources from
-skill_runs.get (builtin model input includes the same catalog), or resources.list,
-then add composition.images entries using stable image resource_id values.
-Each instance has its own id,x,y,width,height,dx,dy,from_frame,to_frame,fit,
-opacity and mode. Go supplies resource_sha256; never submit a filesystem path.
-mode="layer" automatically places the image above the scene, with linear dx/dy
-movement over the frame interval. mode="source" supplies the same image and
-parameters for custom source placement, without an automatic duplicate overlay.
-HyperFrames source uses <img src="vac-image:INSTANCE_ID"> and window.vacImages;
-Remotion's default component receives {images}, with images[INSTANCE_ID].src.
-Missing/removed/changed images fail explicitly; relink the resource and save the
-composition to refresh its dependency fingerprint. Preserve all instance IDs.
+Use draw.save with composition.document schema_version=1: canvas {width,height,fps:{num,den},alpha:"straight",color_space:"srgb"}, duration_frames, preset, sources [{id,engine,source,reason,canvas?,duration_frames?}], nodes [{id,name,kind,source_id?,resource_id?,from,duration,transform:{x,y,width?,height?,rotation?},opacity?,z?,parameters?}]. Kinds source/image/text/group/mask/shape. Groups use parent_id, and must form a DAG. Node ranges are half-open [from,from+duration). source_offset is in source frames, speed is rational. Keep stable source and instance IDs. The outer transform belongs to the layer; internal source motion belongs to its source. Never duplicate the same motion in both scopes.
+
+Imported images reference current-project image_resources IDs; Go supplies fingerprints and local decoding/RAW development. A common image node appears automatically; hidden image nodes may provide bindings for a source without adding another visible copy. Legacy image_bindings remain supported. Never supply filesystem paths. Missing/changed/removed resources are explicit errors.
+
+For external runs, report actual model progress with skill_runs.progress every 30–60 seconds while awaiting output; use the returned run version and never send model text or credentials. Use draw.preview or draw.get_frame to inspect actual mixed pixels before any movie exists; each consumes the frame budget. artifacts.get returns a native MCP image. Inspect first/middle/end and relevant transition frames. Do not equate a render file with good visual quality. Preview and final render share the native HyperFrames runtime, React frame context, rational time map, RGBA composition and resources. Use paused deterministic GSAP timelines, useCurrentFrame/useVideoConfig and seeded deterministic expressions; no wall-clock timers, uncontrolled playback or network sources.
+
+Use draw.import {source_mode:"snapshot",...} to add editable source directly to the launch editing sequence without rendering an MP4 first. snapshot freezes source; follow explicitly follows future saved changes. Omitted source_mode/rendered retains verified-MP4 import compatibility. A source import is one undoable independent track group at frame zero, leaving manual edits intact. Read timeline.read immediately before import for sequence revision. After timeline editing use run.finish {sequence_revision,content_version}; it exports the shared footage/audio/subtitle/drawing compositor and preserves frozen historical outputs. draw.render supports standalone mp4, webm-alpha and prores4444 (format optional, default mp4).
+
+Fixed local engine dependencies and an installed Chrome/headless shell are required. Missing capability fails explicitly; never install packages, download browsers/models, invoke commands or silently use cloud fallbacks. Unsupported cross-document backdrop sampling is unavailable. Human acceptance remains not_checked until the user reviews the result.

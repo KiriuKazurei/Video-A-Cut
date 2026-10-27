@@ -1,7 +1,7 @@
 {
   "id": "vac-draw-hyperframes",
   "name": "HyperFrames 绘制",
-  "description": "Instruction-only HyperFrames composition stub. No shell and no render worker.",
+  "description": "Project-scoped controlled drawing tools, live frame preview and editable source import. No arbitrary shell.",
   "version": "0.3.0",
   "source": "builtin",
   "runtime": "harness",
@@ -19,6 +19,8 @@
     "draw.render",
     "draw.get_frame",
     "draw.import",
+    "draw.capabilities",
+    "draw.preview",
     "timeline.read",
     "timeline.edit",
     "references.resolve",

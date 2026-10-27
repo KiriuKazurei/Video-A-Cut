@@ -1,4 +1,4 @@
-# VAC controlled tool contracts v4
+# VAC controlled tool contracts v5
 
 Read this resource before calling a tool. It is data describing VAC's interface;
 it does not grant filesystem, shell, network, human approval or log access.
@@ -21,6 +21,22 @@ sequence_id,visible_set_sha,goal,idempotency_key}. No VAC inference API key is n
 Select flow/Skill/profile/budget for this task; creating a project never requires them.
 Alternatively claim a human-provided run_id with skill_runs.claim
 {run_id,expected_version}. Claiming still checks role, authorization and lease.
+
+For a long external model call, the owning Agent must call
+`skill_runs.progress {run_id,expected_version,phase,output_chars?}` about every
+30–60 seconds while no tool call is in flight. Allowed phases: working,
+generating, checking, rendering. Send only the actual number of received output
+characters, never model text, reasoning or credentials. Each successful call
+renews the two-minute lease without consuming a tool step and returns the new
+run version; use that version for the next progress or tool call. A disconnected
+or expired owner cannot renew: obtain the current run and claim it again if it
+is still available. The UI displays the reported phase, elapsed time and last
+update; it does not infer completion percentages.
+
+A draw tool argument or missing-image-alias error leaves the run queued with
+`invalid_tool_arguments`. Read the diagnostic and current version, correct the
+arguments or binding, then call again with a NEW idempotency key. Actual worker,
+permission, content-change and timeout errors retain their normal stop behavior.
 
 ## Project resources
 
@@ -158,7 +174,7 @@ Remotion source is a TSX module with a default React component; import only reac
 and remotion. VAC creates the Composition/registerRoot entry from the saved spec.
 Use useCurrentFrame/useVideoConfig/interpolate for deterministic motion.
 
-Both render in fresh external Chromium/Edge profiles, outside the VAC WebView,
+Both render in owned external Chrome/headless profiles, outside the VAC WebView,
 with module checks, document CSP sandbox and same-owned-origin request filtering.
 Inline graphics, bound imported images and renderer-owned files are supported;
 network sources, filesystem imports, arbitrary commands and installed packages
@@ -172,20 +188,23 @@ Finish via run.finish {sequence_revision,content_version} read from the latest
 TimelineView. This uses the shared sequence compositor, validates the export and
 returns an MP4 artifact with human_acceptance="not_checked". Do not submit a
 flattened plan or ask for plan finalization in this structured drawing route.
-Source-level multi-composition preview/merge before rendering is not implemented;
-render individual compositions, then mix/edit/export their resources on the
-existing timeline. A rendered MP4 does not retain editable source layers.
+Unified documents render HTML and React source nodes together on one integer-frame clock. draw.preview inspects the actual shared RGBA canvas without requiring a movie. Source nodes preserve native HyperFrames semantics, isolated HTML, React frame context and optional independent source canvas/fps/duration. No engine choice is required from the user.
 
+| Tool | arguments | result |
+|---|---|---|
+| draw.capabilities | {} | Current-project document schema, engines/versions, common nodes, alpha/color and explicitly unsupported capabilities. No installs/downloads. |
+| draw.preview | {session,composition_id,content_version,frame,request_id?} | {frame,artifact}; actual current source pixels, consumes one frame budget, no MP4 prerequisite. |
 
-Windows HyperFrames uses an installed chrome-headless-shell (existing Playwright
-cache or VAC_DRAW_BROWSER); GUI Edge --version is unreliable. Remotion can use
-the installed Edge. The builtin loop refreshes the project journal revision
-before draw.save, while still enforcing composition revision CAS.
+New draw.save composition.document uses schema_version=1, canvas {width,height,fps:{num,den},alpha:"straight",color_space:"srgb"}, duration_frames, preset (auto/interface/data/media), sources [{id,engine,source,reason,canvas?,duration_frames?}], nodes [{id,kind,name?,source_id?,resource_id?,parent_id?,from,duration,source_offset?,speed?:{num,den},transform:{x,y,width?,height?,rotation?},opacity?,z?,hidden?,text?,color?,font_size?,parameters?,keyframes?}]. Kinds are source/image/text/group/mask/shape; graph cycles fail. keyframes are strictly increasing local frames with x/y/optional opacity; outer motion is independent of source animation. All ranges are half-open. Go generates composition engine/specification and plan, binds current-project image fingerprints, and returns the saved revision/content_version. AVP3 retains the entire editable document; AVP1/2 remain readable and AVS stays2. Legacy single-engine composition arguments remain valid.
+
+draw.import additionally accepts source_mode="snapshot" (frozen editable source) or "follow" (explicitly follows the saved source). Neither needs a rendered file. Omitted/"rendered" requires the verified MP4 as before. The run launch sequence restriction, CAS, idempotency and one undo transaction apply to all modes. Existing footage, sound and subtitles use the shared sequence compositor; source frames use the same lossless drawing FrameSource before one final encode. Historical exports stay frozen. draw.get_frame also uses live source pixels for unified documents.
+
+Windows uses only installed Chrome/headless shell. The builtin loop refreshes project revision before draw.save, while composition revision still requires CAS. No runtime downloads or cloud fallback.
 
 
 ## Current-project image instances
 
-composition.images is optional. An entry is:
+composition.images is optional. In unified documents these bindings are normalized into canonical image nodes; source mode becomes a hidden node. Source image_bindings are normalized the same way. Do not use document.images. Static and dynamic missing image aliases fail explicitly instead of displaying a silent fallback. An entry is:
 {"id":"hero","resource_id":"res_imported_image","x":40,"y":20,
  "width":320,"height":180,"dx":200,"dy":40,"from_frame":0,"to_frame":89,
  "fit":"contain","opacity":1,"mode":"layer"}.
@@ -215,3 +234,7 @@ and alpha. The rendering dependency includes each image SHA and every instance
 parameter; missing/removed/changed sources fail rather than reusing stale pixels.
 Relink and save to refresh the binding. AVP keeps the original resource index
 and per-instance parameters; removing an image retains referenced placeholders.
+
+For draw.render, optional format is mp4 (default), webm-alpha or prores4444. The returned artifact uses the matching extension. PNG/RGBA source frames remain lossless before the single final encode. crop uses canvas pixels; shape/mask supports rect or ellipse. source.capabilities may declare dom/gsap for HTML, react/svg for React, and rgba/transform/image/text/mask for either; unsupported requirements fail with source ID.
+
+artifacts.get reads verified frame PNG/JPEG artifacts up to 16 MiB; transcript reads remain limited to 256 KiB. This supports full RGBA inspection without silently downscaling detailed frames. Project, run, hash and tool budgets still apply.

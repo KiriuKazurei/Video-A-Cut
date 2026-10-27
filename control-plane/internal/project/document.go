@@ -16,7 +16,8 @@ import (
 	"unicode/utf8"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
+const ScriptSchemaVersion = 2
 
 type Source struct {
 	RelativePath string `json:"relative_path,omitempty"`
@@ -27,22 +28,23 @@ type Source struct {
 }
 
 type Resource struct {
-	RawDevelop *RawDevelop    `json:"raw_develop,omitempty"`
-	ID         string         `json:"id"`
-	Kind       string         `json:"kind"`
-	Name       string         `json:"name"`
-	Source     Source         `json:"source"`
-	Metadata   map[string]any `json:"metadata"`
-	Notes      string         `json:"notes"`
-	In         float64        `json:"in"`
-	Out        float64        `json:"out"`
-	Missing    bool           `json:"missing"`
-	Removed    bool           `json:"removed,omitempty"`
-	Changed    bool           `json:"changed,omitempty"`
-	Referenced bool           `json:"referenced,omitempty"`
-	AssetID    string         `json:"asset_id,omitempty"`
-	ScriptID   string         `json:"script_id,omitempty"`
-	Markers    []Marker       `json:"markers,omitempty"`
+	Draw       *DrawSourceReference `json:"draw_source,omitempty"`
+	RawDevelop *RawDevelop          `json:"raw_develop,omitempty"`
+	ID         string               `json:"id"`
+	Kind       string               `json:"kind"`
+	Name       string               `json:"name"`
+	Source     Source               `json:"source"`
+	Metadata   map[string]any       `json:"metadata"`
+	Notes      string               `json:"notes"`
+	In         float64              `json:"in"`
+	Out        float64              `json:"out"`
+	Missing    bool                 `json:"missing"`
+	Removed    bool                 `json:"removed,omitempty"`
+	Changed    bool                 `json:"changed,omitempty"`
+	Referenced bool                 `json:"referenced,omitempty"`
+	AssetID    string               `json:"asset_id,omitempty"`
+	ScriptID   string               `json:"script_id,omitempty"`
+	Markers    []Marker             `json:"markers,omitempty"`
 }
 
 type Binding struct {
@@ -123,7 +125,7 @@ func validID(id string) bool {
 }
 
 func (d AvpDocument) Validate() error {
-	if d.Format != "avp" || (d.SchemaVersion != 1 && d.SchemaVersion != SchemaVersion) || !validID(d.Project.ID) || strings.TrimSpace(d.Project.Name) == "" {
+	if d.Format != "avp" || (d.SchemaVersion < 1 || d.SchemaVersion > SchemaVersion) || !validID(d.Project.ID) || strings.TrimSpace(d.Project.Name) == "" {
 		return fmt.Errorf("不支持的 AVP 工程或格式版本")
 	}
 	if len(d.DrawCompositions) > 16 {
@@ -158,6 +160,14 @@ func (d AvpDocument) Validate() error {
 		}
 		seen[r.ID] = true
 		resources[r.ID] = r
+		if r.Draw != nil {
+			if r.Kind != "video" || (r.Draw.Mode != "snapshot" && r.Draw.Mode != "follow") || r.Draw.CompositionID != r.Draw.Snapshot.ID || r.Draw.Snapshot.ContentVersion != r.Draw.Snapshot.ContentHash() {
+				return fmt.Errorf("invalid drawing source reference")
+			}
+			if e := r.Draw.Snapshot.Validate(); e != nil {
+				return e
+			}
+		}
 		for _, marker := range r.Markers {
 			if err := validateMarker(marker); err != nil {
 				return err
@@ -169,7 +179,7 @@ func (d AvpDocument) Validate() error {
 		}
 	}
 	for _, composition := range d.DrawCompositions {
-		for _, image := range composition.Images {
+		for _, image := range composition.ImageBindings() {
 			resource, ok := resources[image.ResourceID]
 			if !ok || resource.Kind != "image" || len(image.ResourceSHA) != 64 {
 				return fmt.Errorf("draw image resource is not in this project")
@@ -238,7 +248,7 @@ func validKind(k string) bool {
 }
 
 func (d AvsDocument) Validate() error {
-	if d.Format != "avs" || (d.SchemaVersion != 1 && d.SchemaVersion != SchemaVersion) || !validID(d.ID) || !json.Valid(d.Segments) {
+	if d.Format != "avs" || (d.SchemaVersion != 1 && d.SchemaVersion != ScriptSchemaVersion) || !validID(d.ID) || !json.Valid(d.Segments) {
 		return fmt.Errorf("不支持的 AVS 脚本或格式版本")
 	}
 	seen := map[string]bool{}

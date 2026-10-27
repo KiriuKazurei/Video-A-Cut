@@ -12,6 +12,7 @@ import uuid
 import wave
 
 from .provider_http import NoRedirect
+from .content import ContentError
 from .script_workbench import call_model
 
 
@@ -277,10 +278,10 @@ def agent(request):
               '\nAuthoritative VAC tool contracts:\n'+request['skill'].get('resources', {}).get('vac/tool-contracts.md', '')+
               '\nYou are the VAC builtin Agent. Read instructions as guidance, never authorize yourself. '
               'Call exactly one available tool by returning JSON {"tool":"name","arguments":{...}}. '
-              'For run.strategy=draw, do not request ASR or require source media. Author code using the selected drawing Skill. '
-              'Tool schemas: draw.list {}; draw.save {session,expected_revision,idempotency_key,composition:{id,name,engine,source,width,height,fps:{num,den},duration_frames,revision}}; '
-              'draw.check/render/get_frame {session,composition_id,content_version,frame?}; draw.import {session,composition_id,content_version,sequence_id,expected_revision,idempotency_key}; '
-              'Use current image_resources IDs in composition.images; image layers support x/y/width/height/dx/dy/from_frame/to_frame and mode layer/source. Never supply a filesystem path. '
+              'For run.strategy=draw, do not request ASR or require footage. Follow vac-draw-pipeline: preserve stable IDs and unrelated nodes, use common image/text layers, HTML/CSS/GSAP for interface motion and React for reusable components/data. Mix sources in one DrawDocument only when useful; save source reasons and a short explanation. '
+              'Tool schemas: draw.capabilities {}; draw.list {}; draw.save {session,expected_revision,idempotency_key,composition:{id,name,revision,document:{schema_version:1,canvas:{width,height,fps:{num,den},alpha:straight,color_space:srgb},duration_frames,preset:auto,sources:[{id,engine,source,reason,canvas?,duration_frames?}],nodes:[{id,kind,source_id?,resource_id?,from,duration,transform:{x,y,width?,height?},text?,font_size?,color?,z?}]}}}; '
+              'draw.check/render/get_frame/preview {session,composition_id,content_version,frame?}; draw.import {session,composition_id,content_version,sequence_id,expected_revision,idempotency_key,source_mode:snapshot}; '
+              'Use current image_resources IDs in composition.images or document.nodes (kind image); image layers support x/y/width/height/dx/dy/from_frame/to_frame and mode layer/source. Never put images inside document.images or supply a filesystem path. '
               'Inspect actual frame artifacts with artifacts.get, import to the launch sequence, edit and then finish with sequence_revision/content_version. '
               'media.list {}; media.get_frames {media_id?,every?,interval_seconds?,threshold?,coverage_seconds?}; '
               'media.transcribe {media_id}; artifacts.get {id}; summaries.get {}; summaries.submit '
@@ -303,6 +304,24 @@ def agent(request):
                           'media': request['media'], 'sequence': request.get('sequence'),
                           'image_resources': request.get('image_resources', []), 'references': request.get('references', []), 'draw_compositions':request.get('draw_compositions', []), 'tools': request['tools'], 'history': history}, ensure_ascii=False))
     provider = request.get('vision_provider', request['provider']) if images else request['provider']
+    if request['run'].get('strategy') == 'draw':
+        budget = request['run'].get('budget') or {}
+        elapsed = request['run'].get('elapsed_milliseconds', 0) - request['run'].get('budget_elapsed_base', 0)
+        remaining = max(1, int(budget.get('max_seconds', 600) - elapsed / 1000))
+        effort = provider.get('reasoning_effort', '')
+        default_tokens = 48000 if provider.get('model', '').lower().startswith('step-5') and effort in ('high', 'xhigh') else 8192
+        limit = provider.get('max_output_tokens') or default_tokens
+        def report(count):
+            print('VAC_AGENT_PROGRESS '+json.dumps({'output_chars': count}), file=sys.stderr, flush=True)
+        try:
+            return call_model(provider, prompt, images, max_tokens=limit, timeout=remaining,
+                              stream=provider.get('api_format') == 'openai', progress=report)
+        except ContentError as error:
+            if str(error).startswith('模型输出达到额度上限'):
+                raise ToolFailure('model_output_truncated') from None
+            if str(error).startswith('模型请求超时'):
+                raise ToolFailure('model_request_timeout') from None
+            raise
     return call_model(provider, prompt, images)
 
 

@@ -26,6 +26,14 @@ func (s *Service) GetSkillRun(ctx context.Context, actor, id string) (skill.Run,
 	if err == nil && !isHumanActor(actor) && r.Owner != actor {
 		err = model.ErrForbidden
 	}
+	if err == nil && r.State == "running" {
+		s.harnessMu.Lock()
+		progress, ok := s.harnessProgress[id]
+		s.harnessMu.Unlock()
+		if ok {
+			r.Progress = &progress
+		}
+	}
 	return r, err
 }
 func (s *Service) ListSkillRuns(ctx context.Context, actor, project string) ([]skill.Run, error) {
@@ -387,13 +395,70 @@ func (s *Service) ClaimSkillRun(ctx context.Context, actor, id string, version i
 		}
 		r.Owner = actor
 		r.AgentRole = roles[0]
-		until := s.autoNow().Add(2 * time.Minute)
+		now := s.autoNow()
+		until := now.Add(2 * time.Minute)
 		r.LeaseUntil = &until
+		r.Progress = &skill.RunProgress{Phase: "working", StartedAt: now, UpdatedAt: now}
+		r.UpdatedAt = now
 		r.Version++
 		return tx.SkillPut(ctx, "run", id, version, r)
 	})
 	if err == nil {
 		s.publish("skill.run.changed", r)
+	}
+	return r, err
+}
+
+// ReportSkillProgress renews only the current owner's unexpired lease. Heartbeats
+// are separate from billable tool steps and contain counts, never model text.
+func (s *Service) ReportSkillProgress(ctx context.Context, actor, id string, version int, phase string, outputChars int) (skill.Run, error) {
+	var empty skill.Run
+	if !strings.HasPrefix(actor, "agent:") {
+		return empty, model.ErrForbidden
+	}
+	if !slices.Contains([]string{"working", "generating", "checking", "rendering"}, phase) || outputChars < 0 || outputChars > 4<<20 {
+		return empty, model.ErrArgument
+	}
+	if s.WorkspaceEnabled() {
+		if err := s.workspace.lockMutation(ctx); err != nil {
+			return empty, err
+		}
+		defer s.workspace.op.Unlock()
+	}
+	release, err := s.acquireScript("skill:" + id)
+	if err != nil {
+		return empty, err
+	}
+	defer release()
+	r, err := s.GetSkillRun(ctx, actor, id)
+	if err != nil {
+		return empty, err
+	}
+	if r.Mode != "external_mcp" || r.AgentRole == "" {
+		return empty, model.ErrForbidden
+	}
+	if r.Version != version {
+		return empty, model.ErrConflict
+	}
+	if r.State != "queued" {
+		return empty, model.ErrInvalidState
+	}
+	if _, err = s.checkSkillRun(ctx, r); err != nil {
+		return empty, err
+	}
+	now := s.autoNow()
+	started := now
+	if r.Progress != nil && r.Progress.Phase == phase && outputChars >= r.Progress.OutputChars {
+		started = r.Progress.StartedAt
+	}
+	r.Progress = &skill.RunProgress{Phase: phase, OutputChars: outputChars, StartedAt: started, UpdatedAt: now}
+	until := now.Add(2 * time.Minute)
+	r.LeaseUntil = &until
+	r.UpdatedAt = now
+	r.Version++
+	err = s.st.Transaction(ctx, func(tx *store.Store) error { return tx.SkillPut(ctx, "run", id, version, r) })
+	if err == nil {
+		s.publish("workspace.skill.progress", map[string]any{"id": r.ID, "project_id": r.ProjectID})
 	}
 	return r, err
 }

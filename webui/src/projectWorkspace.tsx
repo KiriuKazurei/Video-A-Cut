@@ -52,6 +52,7 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
   const [selectedId, setSelectedId] = useState('');
   const [localDirty, setLocalDirty] = useState(false);
   const editors = useRef(new Map<string, Editor>());
+  const stateWrite = useRef<Promise<void>>(Promise.resolve());
   const activeSession = useRef('');
   const operation = useRef(false);
   const operationDone = useRef<Promise<void>>(Promise.resolve());
@@ -168,7 +169,15 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
     editors.current.set(key, editor); setLocalDirty([...editors.current.values()].some(v => v.dirty));
     return () => { if (editors.current.get(key) === editor) editors.current.delete(key); setLocalDirty([...editors.current.values()].some(v => v.dirty)); };
   }, []);
-  const setWorkspaceState = async (state: Record<string, unknown>) => { if (!session?.document) return; const started = activeSession.current; const next = await projectApi.state(started, { ...session.document.workspace, ...state }); if (activeSession.current === started) { client.setQueryData(['project-workspace'], next); } };
+  const setWorkspaceState = (state: Record<string, unknown>) => {
+    const started=activeSession.current;
+    const task=stateWrite.current.catch(()=>{}).then(async()=>{
+      if(!started||activeSession.current!==started)return;
+      const current=await projectApi.workspace();if(current.id!==started||!current.document)return;
+      const next=await projectApi.state(started,{...current.document.workspace,...state});
+      if(activeSession.current===started)client.setQueryData(['project-workspace'],next);
+    });stateWrite.current=task;return task;
+  };
   const history = (action: 'undo' | 'redo') => run(async () => { await flushEditors(); await accept(await projectApi.command(action, { expected_session: activeSession.current })); });
   const refresh = async () => { await workspace.refetch(); };
   const resource = session?.document?.resources.find(r => r.id === selectedId);

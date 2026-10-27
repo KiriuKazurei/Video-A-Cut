@@ -24,6 +24,7 @@
     "gsap": "3.13.0",
     "esbuild": "0.28.1",
     "acorn": "8.19.0",
-    "puppeteer-core": "25.16.0"
+    "puppeteer-core": "25.16.0",
+    "@remotion/player": "4.0.538"
   }
 }

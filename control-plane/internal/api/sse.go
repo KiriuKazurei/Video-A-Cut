@@ -15,6 +15,7 @@ import (
 
 var sseEventNames = []string{
 	"workspace.changed", "workspace.saved", "resource.changed",
+	"workspace.draw.preview", "workspace.skill.progress",
 	"workspace.timeline.changed", "workspace.timeline.import-failed",
 	"project.changed", "skill.changed", "skill.run.changed",
 	"asset_created", "asset_updated", "task_created", "task_updated",
@@ -119,6 +120,14 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 		case ev := <-stream:
 			if s.svc.ProjectSessionID() != projectSession && ev.Name != "workspace.changed" {
 				return
+			}
+			if ev.Name == "workspace.skill.progress" || ev.Name == "workspace.draw.preview" {
+				if project := s.svc.CurrentProjectID(); project != "" {
+					payload, ok := ev.Payload.(map[string]any)
+					if !ok || payload["project_id"] != project {
+						continue
+					}
+				}
 			}
 			if err := prepareSSEWrite(controller); err != nil {
 				slog.Default().Debug("sse: write deadline failed", "err", err)

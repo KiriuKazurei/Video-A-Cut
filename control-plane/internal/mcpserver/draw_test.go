@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/color"
-	"image/png"
+	"image/jpeg"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,7 +55,7 @@ func TestDrawRT(t *testing.T) {
 		t.Fatal(err)
 	}
 	pid, seq := view.Document.Project.ID, view.Document.Sequences[0].ID
-	imagePath := filepath.Join(t.TempDir(), "imported.png")
+	imagePath := filepath.Join(t.TempDir(), "imported%03d.jpg")
 	picture := image.NewRGBA(image.Rect(0, 0, 100, 60))
 	for y := 0; y < 60; y++ {
 		for x := 0; x < 100; x++ {
@@ -66,7 +66,7 @@ func TestDrawRT(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	e = png.Encode(imageFile, picture)
+	e = jpeg.Encode(imageFile, picture, &jpeg.Options{Quality: 95})
 	closeErr := imageFile.Close()
 	if e != nil || closeErr != nil {
 		t.Fatalf("image fixture: %v %v", e, closeErr)
@@ -266,4 +266,103 @@ func TestDrawRT(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+}
+
+func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.T) {
+	f := newLoopFixture(t, 3*time.Minute, Agent{ID: "unified", Role: "editor"})
+	ctx := t.Context()
+	root, e := filepath.Abs("../../..")
+	if e != nil {
+		t.Fatal(e)
+	}
+	delivery := filepath.Join(t.TempDir(), "delivery")
+	if e = os.MkdirAll(delivery, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.svc.ConfigureDeliveryRoot(delivery); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.svc.ConfigureTTS("python", filepath.Join(root, "workers", "python")); e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(f.svc.CloseTTS)
+	if e = f.svc.ConfigureProjectWorkspace(ctx); e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(f.svc.CloseProjectWorkspace)
+	if e = f.svc.ConfigureSkillHarness(ctx); e != nil {
+		t.Fatal(e)
+	}
+	view, e := f.svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(t.TempDir(), "unified.avp"), Name: "Unified MCP"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	pid, sequence := view.Document.Project.ID, view.Document.Sequences[0].ID
+	must := func(name string, args any) map[string]any {
+		t.Helper()
+		out, bad, raw := f.call("unified", name, args)
+		if bad {
+			t.Fatalf("%s: %.2400s", name, raw)
+		}
+		return out
+	}
+	pack := must("skills.get", map[string]any{"id": "vac-draw-pipeline"})
+	must("skills.read_resource", map[string]any{"id": "vac-draw-pipeline", "content_sha256": pack["content_sha256"], "resource": "vac/tool-contracts.md"})
+	visible := must("projects.visible_set.get", map[string]any{"id": pid})
+	run := must("skill_runs.create", map[string]any{"project_id": pid, "sequence_id": sequence, "flow": "custom", "skill_id": "vac-draw-pipeline", "strategy": "draw", "execution_mode": "external_mcp", "visible_set_sha": visible["sha256"], "goal": "Combine HTML and React in a single editable picture", "idempotency_key": "create"})
+	runID := run["id"].(string)
+	step := 0
+	tool := func(name string, args any) map[string]any {
+		t.Helper()
+		step++
+		out := must("skill_runs.tool", map[string]any{"run_id": runID, "request": map[string]any{"name": name, "arguments": args, "expected_version": run["version"], "idempotency_key": name + strconv.Itoa(step)}})
+		run = out["run"].(map[string]any)
+		return out["result"].(map[string]any)
+	}
+	capability := tool("draw.capabilities", map[string]any{})
+	if capability["live_preview"] != true {
+		t.Fatal("missing unified capability")
+	}
+	doc := project.DrawDocument{SchemaVersion: 1, Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}}, DurationFrames: 6, Preset: "auto", Sources: []project.DrawSource{{ID: "html", Engine: "hyperframes", Source: `<!doctype html><html><head><style>body{margin:0}#root{width:320px;height:180px}#box{width:80px;height:80px;background:red}</style></head><body><div id="root" data-composition-id="root" data-width="320" data-height="180" data-duration="0.2"><div id="box"></div></div><script>const tl=gsap.timeline({paused:true});tl.to("#box",{x:60,duration:.2,ease:"none"});window.__timelines.root=tl;</script></body></html>`}, {ID: "react", Engine: "remotion", Source: `import React from "react";export default function Card(){return <div style={{position:"absolute",left:160,top:40,width:80,height:60,background:"rgba(0,0,255,.5)"}}/>;}`}}, Nodes: []project.DrawNode{{ID: "web", Kind: "source", SourceID: "html", Duration: 6}, {ID: "card", Kind: "source", SourceID: "react", Duration: 6}}}
+	current := must("sequences.get", map[string]any{"project_id": pid, "sequence_id": sequence})
+	// A real detailed PNG must remain inspectable beyond the old 256 KiB
+	// transcript-sized limit, without reducing the source or losing alpha.
+	doc.Canvas.Width, doc.Canvas.Height = 640, 360
+	doc.Sources[0].Canvas = &project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}}
+	doc.Sources[1].Source = `import React,{useLayoutEffect,useRef} from "react";export default function Pixels(){const ref=useRef();useLayoutEffect(()=>{const c=ref.current.getContext('2d'),im=c.createImageData(640,360);let seed=7;for(let i=0;i<im.data.length;i+=4){for(let j=0;j<3;j++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;im.data[i+j]=seed>>>24;}im.data[i+3]=255;}c.putImageData(im,0,0);},[]);return <canvas ref={ref} width={640} height={360}/>;}`
+	tool("draw.save", DrawSaveForTest(view.ID, uint64(current["project_revision"].(float64)), doc))
+	list, e := f.svc.DrawCompositions(pid)
+	if e != nil || len(list) != 1 {
+		t.Fatalf("save %v %v", list, e)
+	}
+	c := list[0]
+	frame := tool("draw.preview", map[string]any{"session": view.ID, "composition_id": c.ID, "content_version": c.ContentVersion, "frame": 3, "request_id": "same-frame"})
+	if frame["artifact"].(map[string]any)["size_bytes"].(float64) <= 256<<10 {
+		t.Fatal("fixture failed to cover a detailed frame")
+	}
+	step++
+	image, bad, rawImage := f.call("unified", "skill_runs.tool", map[string]any{"run_id": runID, "request": map[string]any{"name": "artifacts.get", "arguments": map[string]any{"id": frame["artifact"].(map[string]any)["id"]}, "expected_version": run["version"], "idempotency_key": "native-image"}})
+	if bad || !strings.Contains(rawImage, `"type":"image"`) {
+		t.Fatalf("native MCP image missing: %.300s", rawImage)
+	}
+	run = image["run"].(map[string]any)
+	if _, _, e = f.svc.DrawRenderPath(pid, c.ID, c.ContentVersion); e == nil {
+		t.Fatal("preview unexpectedly required/published standalone movie")
+	}
+	tv := tool("timeline.read", map[string]any{"sequence_id": sequence})
+	attached := tool("draw.import", map[string]any{"session": view.ID, "composition_id": c.ID, "content_version": c.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach", "source_mode": "snapshot"})
+	finished := tool("run.finish", map[string]any{"sequence_revision": attached["sequence"].(map[string]any)["revision"], "content_version": attached["content_version"]})
+	if run["state"] != "succeeded" || finished["human_acceptance"] != "not_checked" {
+		t.Fatalf("finish: %v %v", run, finished)
+	}
+	if output := os.Getenv("VAC_TEST_OUTPUT"); output != "" {
+		raw, _ := json.MarshalIndent(map[string]any{"capabilities": capability, "preview": frame, "finish": finished, "run": run, "no_standalone_mp4": true}, "", "  ")
+		if e = os.WriteFile(filepath.Join(output, "unified-draw-mcp.json"), raw, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+}
+
+func DrawSaveForTest(session string, revision uint64, doc project.DrawDocument) service.DrawSaveRequest {
+	return service.DrawSaveRequest{Session: session, ExpectedRevision: revision, IdempotencyKey: "save-unified", Composition: project.DrawComposition{ID: "unified", Name: "Unified", Document: &doc}}
 }

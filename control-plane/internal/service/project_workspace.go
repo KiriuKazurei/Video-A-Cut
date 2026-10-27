@@ -40,6 +40,7 @@ type projectWorkspace struct {
 	undoCursor       int
 	draining         map[string]string
 	timelineReceipts map[string]timelineReceipt
+	drawHistories    map[string]*drawEditHistory
 }
 
 type projectContextKey struct{}
@@ -159,6 +160,7 @@ func (s *Service) ConfigureProjectWorkspace(ctx context.Context) error {
 }
 
 func (s *Service) CloseProjectWorkspace() {
+	s.CloseDrawPreviews()
 	if w := s.workspace; w != nil {
 		select {
 		case <-w.stop:
@@ -508,6 +510,7 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 	w.mu.Lock()
 	w.closing = true
 	w.mu.Unlock()
+	s.CloseDrawPreviews()
 	defer func() { w.mu.Lock(); w.closing = false; w.mu.Unlock() }()
 	if err = s.stopProjectTasks(ctx); err != nil {
 		return view, err
@@ -574,6 +577,7 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 		}
 		s.rememberProject(path, incoming.Project.Name)
 	}
+	s.CloseDrawPreviews()
 	w.mu.Lock()
 	w.document = incoming
 	w.path = path
@@ -586,6 +590,7 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 	w.undo = nil
 	w.undoCursor = 0
 	w.timelineReceipts = nil
+	w.drawHistories = nil
 	w.mu.Unlock()
 	s.publish("workspace.changed", map[string]any{"session_id": s.ProjectSessionID(), "project_id": s.CurrentProjectID()})
 	if incoming != nil {

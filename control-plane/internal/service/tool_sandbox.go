@@ -11,7 +11,7 @@ import (
 // reviewed executables receive validated paths; models never supply commands.
 func toolEnvironment(tokenNames ...string) []string {
 	allowed := map[string]bool{}
-	for _, name := range []string{"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "VAC_TEST_ROOT", "VAC_TEST_OUTPUT", "VAC_DRAW_BROWSER", "PLAYWRIGHT_BROWSERS_PATH", "LOCALAPPDATA"} {
+	for _, name := range []string{"PATH", "SYSTEMROOT", "SYSTEMDRIVE", "PROGRAMDATA", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "VAC_TEST_ROOT", "VAC_TEST_OUTPUT", "VAC_DRAW_BROWSER", "PLAYWRIGHT_BROWSERS_PATH", "LOCALAPPDATA"} {
 		allowed[name] = true
 	}
 	for _, name := range tokenNames {

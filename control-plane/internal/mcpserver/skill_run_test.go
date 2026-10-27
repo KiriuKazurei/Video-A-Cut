@@ -166,7 +166,7 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 	for _, tool := range listed.Tools {
 		tools[tool.Name] = true
 	}
-	for _, name := range []string{"skills.get", "skills.read_resource", "projects.list", "projects.visible_set.get", "skill_runs.claim", "skill_runs.create", "skill_runs.get", "skill_runs.tool"} {
+	for _, name := range []string{"skills.get", "skills.read_resource", "projects.list", "projects.visible_set.get", "skill_runs.claim", "skill_runs.create", "skill_runs.get", "skill_runs.progress", "skill_runs.tool"} {
 		if !tools[name] {
 			t.Fatalf("missing discovered tool %s", name)
 		}
@@ -206,11 +206,19 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 	}
 	var run skill.Run
 	call("skill_runs.create", skill.RunRequest{ProjectID: p.ID, SkillID: "video-use", Mode: "external_mcp", VisibleSHA: view.SHA, Goal: "Keep two short moments", IdempotencyKey: "sdk-create"}, &run)
+	call("skill_runs.progress", map[string]any{"run_id": run.ID, "expected_version": run.Version, "phase": "generating", "output_chars": 128}, &run)
+	if run.Progress == nil || run.Progress.Phase != "generating" || run.Progress.OutputChars != 128 || run.Steps != 0 {
+		t.Fatalf("progress not returned or consumed a step: %+v", run)
+	}
 	if local {
 		other := f.sdkClient(ctx, "") // same declared name, separate MCP session
 		denied, e := other.CallTool(ctx, &mcp.CallToolParams{Name: "skill_runs.get", Arguments: map[string]any{"run_id": run.ID}})
 		if e != nil || !denied.IsError {
 			t.Fatalf("another connection accessed run: %+v %v", denied, e)
+		}
+		denied, e = other.CallTool(ctx, &mcp.CallToolParams{Name: "skill_runs.progress", Arguments: map[string]any{"run_id": run.ID, "expected_version": run.Version, "phase": "generating"}})
+		if e != nil || !denied.IsError {
+			t.Fatalf("another connection renewed the lease: %+v %v", denied, e)
 		}
 	}
 	step := 0

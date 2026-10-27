@@ -4,7 +4,7 @@
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前 0.2.4。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前0.3.2。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
 
@@ -36,7 +36,7 @@ $npmCLI = Join-Path (Split-Path (Get-Command node).Source) 'node_modules/npm/bin
 ```powershell
 $managerRoot = 'E:/AI/Video Auto Cut'
 $sourceRoot = "$managerRoot/.run-data/worktrees/timeline-audio-viz"
-& "$managerRoot/scripts/TestWorkspace.ps1" -Action Run -Suite custom -Version '0.2.4' -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-vet=off','-count=1','-timeout=600s')
+& "$managerRoot/scripts/TestWorkspace.ps1" -Action Run -Suite custom -Version '0.3.2' -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-vet=off','-count=1','-timeout=600s')
 ```
 
 Go vet 单独执行，不跳过原失败用例。按变更选择现有包/命名用例；不要在相同结果通过后无理由重复全包。并发入口须避免共享测试根、端口、数据库和管理锁。正常失败保留退出码、摘要与日志。
@@ -70,7 +70,7 @@ node scripts/update-interface-documentation.mjs --refresh-inventory --write
 | `scripts/verify-tauri-desktop.mjs` | 可见 Tauri/WebView、原生文件框/菜单/剪贴板、媒体/脚本、关闭/保存、切换/重启；自己在管理器内部启动并退出 |
 | `scripts/Test-TauriStateGuard.ps1` / `test-support/test-workspace.ps1` | 现有运行/清理/版本轮换守卫；通过对应 suite，不按本轮再复制独立测试 |
 
-生产 Vite 测试构建的 outDir 显式指向 VAC_TEST_OUTPUT 管理目录。浏览器使用已有 Playwright/Edge，不重新下载浏览器。没有真实窗口证据时，不把 CDP 端口、进程 Responding 或页面托管记为可见桌面通过。
+生产 Vite 测试构建的 outDir 显式指向 VAC_TEST_OUTPUT 管理目录。浏览器使用已有 Playwright/本地Chrome，禁止Edge，不重新下载浏览器。没有真实窗口证据时，不把 CDP 端口、进程 Responding 或页面托管记为可见桌面通过。
 
 可见桌面既有调用形状如下；exe、生产前端、Go runtime 清单、desktop.json 和独立测试业务数据须先配套准备，不能把本机历史生成物当作 fresh checkout 自带资源：
 
@@ -238,6 +238,8 @@ $env:VAC_DIST=(Resolve-Path './webui/dist').Path
 
 ## REL031 版本发布检查（2026-10-26，自动验证通过）
 
+以下为当时记录；0.3.1测试输出已随0.3.2按规则轮换，文中“当前”及文件位置不代表现在状态。
+
 当前应用版本0.3.1，实际源码为timeline-audio-viz工作树的a23d138+工作副本。0.2.4证据按仓库规则轮换，原根和当前工作树的测试根只保留新版本及最简Markdown简档；正文中的0.2.4报告路径仅为历史证据定位，不代表文件仍保留。旧版本完整报告、缓存、数据库和渲染输出没有迁存，当前示例只保留工作文件和共享Sony ARW原片以重新生成预览。两测试根同口径占用在轮换时从1,337,966,250字节降至25,676,023字节，释放1,312,290,227字节；该数字不含后续0.3.1检查产生的新缓存与输出。原业务库、录像、用户原AVP、其他工作树保留。
 
 本轮复用前端124项/样式/类型/生产构建、Go project/skill/MCP、真实两引擎绘制及Chrome设置/编辑/绘制回归，新增版本一致性检查仅放当前版本临时输出，不增加永久平行测试套件。版本检查区分Cargo自有包与第三方依赖，不全局替换版本号。前端等价执行package.json里的两组Node命令、style、tsc及Vite，避开此前已记录的npm启动器问题。Windows命令使用系统PowerShell7并加载profile。
@@ -251,3 +253,67 @@ $env:VAC_DIST=(Resolve-Path './webui/dist').Path
 
 
 REL031代码已发布：`5d407409c16aa257e9aa539791ec64ba3074880b` → origin/agent/timeline-audio-viz，已用ls-remote核对。所有本轮源码检查对应此代码提交；后续发布状态文档提交不改变运行代码。当前工作树及原根summary中REL031项更新为passed，其余未在0.3.1重跑的历史项目继续保持pending，不将历史全量结果批量转绿。
+
+
+## DRAW05 统一绘制实施与验收（2026-10-26）
+
+本轮按[统一绘制设计](../docs/架构与功能详解.md#unified-draw-proposal)实施，实际源码为agent/timeline-audio-viz@8974cdc的未提交改动，应用0.3.1。REL031历史计数不作为本轮完成证据。阶段结果与失败轨迹如下，较早的“尚未”指该阶段当时状态。
+
+实施优先扩展现有Node draw.test.mjs、Go project/service/MCP、webui draw_smoke.mjs及既有sequence/原生入口，复用固定媒体与0.3.1版本化临时区，不建立第二套“统一框架”专用永久服务器和报告体系。首个场景必须同时包含实际HF动效、React组件、透明前景和导入图片；以同一帧的组合像素、倒序/随机seek和黑白底alpha边缘证明双方协作，不能仅以统一按钮或先后生成两份MP4验收。
+
+后续覆盖纯HF/纯Remotion旧输出对照、混合FrameAdapter、快照/素材与RAW recipe更新、字体就绪、帧完成等待、过期回包、局部缓存、撤销/草稿并发、缺少引擎与取消、AVP1/2读取/AVP3保存、MCP与工程隔离，以及绘制源在编辑序列中的节目/最终导出一致性。Chrome浏览器、原生Tauri、模型创作质量和人工体验分别留证；预览流畅度以固定样本实测，不从端口或视频编码成功推断。
+
+DRAW05阶段1（2026-10-26，当前未提交工作副本）：既有 `draw.test.mjs` 增加原生HF/React/图片同帧测试，6次正逆序定位及透明像素验证通过（1/1，6.10秒）。首次缺失模块和运行时注入失败已定位并修复；不是整体框架验收。证据：当前版本custom/draw/unified/verification.json、frame-0/15/29/2.png与transparent.png。界面、AVP3、Agent、源入轨和原生桌面尚未验收。
+
+DRAW05增量：Go project模型全包通过；既有service/draw_images_test新增持续预览草稿隔离/进程复用/错误会话/关闭测试通过，修复保存和列表的浅拷贝别名；源构图无MP4入轨、冻结/跟随依赖、AVP3重开通过。Node既有draw测试新增统一导出/透明WebM/纯引擎像素对照通过（2/2，12.85秒）；sequence测试新增FrameSource与原素材/原声混合通过（5.34秒），涉及来源12fps、绘制24fps、序列30fps。证据为当前版本custom/draw/unified-export及custom/sequence/drawing-source/verification.json。后续代码更新需按影响复验；UI、MCP和原生窗口仍待验证。
+
+DRAW05当前增量：嵌套组/有理帧率/源范围的Go project全包通过；Node统一绘制5项通过（17.02秒，包含原生24fps精确seek、跨HTML/React椭圆遮罩和随机/倒序帧）。Go服务常驻预览/字体依赖/源快照/透明WebM与ProRes导出通过（16.51秒）。前端绘制10单元、TSC、Vite及Chrome夹具10项通过；Chrome覆盖1440/1200/900px、连续定位只有一个在途请求、草稿并发保留、失败提示与默认Agent管线。离线原生构建通过（12.13秒）。真实桌面首轮因ARW夹具路径错误、次轮因测试端CDP表达式转义错误停在导入后，属于验收脚本失败，原生完整链尚未通过；已修正既有入口继续复验。源工程/原片未改。
+
+DRAW05回归补充：Go全包短回归中service277.36秒及其余17包通过，Skill因内嵌与文件说明副本不同失败；同步后project/Skill/绘制服务目标回归通过（service20.48秒，含整场景撤销、幂等重放、过期CAS和冻结资源保持）。前端完整127项通过，类型/样式/构建通过。Chrome实际指针新增断言先复现PNG原生dragstart→pointercancel，关闭图片原生拖动后当前10项通过；该修复不以旧桌面报告代验。Node按来源增量编译、共享遮罩、嵌套时钟5项通过（16.80秒）。测试端两次路径/表达式错误及原生拖动失败已分别定位；修复后桌面整轮验收进行中。
+
+DRAW05真实大图修复：原生鼠标/整场景撤销已通过；6024×4024 Sony ARW显影为69,211,204字节PNG，旧路径在HTML+公共图层帧请求中重复内嵌，触发调试连接断开。改为受控本地HTTP资源并在浏览器内部为隔离HTML生成数据URI，帧协议不带图片正文；Node同帧/源码热替换/图片引用5项通过（16.18秒）。随后真实583,481字节检查帧触发旧256KiB产物限制；现有MCP套件增加确定性高细节PNG，先复现失败，再通过16MiB帧读取/原生image返回/无MP4源入轨/终渲回归（10.12秒）。文本产物限制保持256KiB。两次传输失败均保留在当前结果轨迹，原生整轮继续复验。
+
+DRAW05最终原生验收通过：`verify-tauri-desktop.mjs`沿用同一入口，通过`VAC_VERIFY_DRAW=1`执行9项可见Windows检查，结果为passed、human_acceptance=pending。实际导入Sony ARW，鼠标移动/本地手势撤销重做、Go端Agent整场景撤销重做；MCP以图片+原生HTML/GSAP界面+React数据卡制作、检查0/15/29帧并返回原生图像；不先生成MP4即源入轨，run.finish完成共享终渲；原生保存框导出独立视频，AVP3保存/关闭/重开保留两份源码和播放头15。真实画布与帧已由根Agent目视检查，不代签用户观感。
+
+证据：实际源码工作树当前版本`artifacts/custom/unified-native/results.json`、`unified-draw.png`、`native-unified-draw.png`、`绘制导出.mp4`及同目录测试AVP；后台隔离数据在原根同版本`artifacts/custom/unified-native/data`。完成运行`skr_058401d3d312a037`的共享序列MP4 SHA256=`eefb40fc83291989dc2c763d08116fc2dac6c169e8c34e7acfc6bd419297b169`。这是自动原生结果和当前Agent的MCP创作样例，不是内置服务商模型质量或用户人工验收。
+
+最终回归：Node现有draw+sequence完整17项通过（57.50秒）；最终前端127单元通过、类型/样式/生产构建通过；最终Chrome夹具10项通过；Go vet通过。Go全包短回归17个非Skill包通过，Skill说明副本漂移经同步后目标复验通过；新增整场景事务project/Skill/service回归通过，高清PNG的MCP用例先红后绿（10.12秒）。不声称在最后所有增量后又跑过第二轮Go全包。接口文档包含184真实路由、157模型、28事件、17桌面命令；最终文档检查结果以管理入口记录为准。原用户“新项目.avp”SHA256仍为`981E72F51760EC5B0D28C722C32DC9FA722D2040F821C3D24B9CD2B544F38822`。
+
+临时环境：旧输入法Hook生成的`workers/node/timeline-cli/%SystemDrive%`目录已核验非重解析点/无Git跟踪后，原样移入本版本`artifacts/custom/incidental-ime-cache`，344304字节保留、删除0字节。已为受控工具保留SYSTEMDRIVE/PROGRAMDATA；没有删除原片、测试源码、固定样本、业务数据或其他工作树。原生测试关闭后核验其独占进程退出；6102原测试示例使用已验收Go候选恢复，保留预览和正式安装器/业务运行分开。
+
+最终透明像素补验：既有统一导出用例追加ProRes4444解码，对照WebM实际alpha：透明区0、半透明前景129（预期128±2），额外1项通过（10.62秒）；证据仍在同一custom/draw/unified-export/verification.json。最终保留6102示例的真实第15帧返回496127字节PNG/2个命中区域，验证后关闭该临时帧Worker，保留Go服务。受管文档检查通过（184接口/157模型/28事件/17桌面命令），不把直接调用缺少VAC_TEST_OUTPUT的入口错误记为文档语义失败。
+
+## QA-FISH 用户监督的 StepFun 实际创作（2026-10-26）
+
+本轮是实际模型与窗口操作测试，不替代 DRAW05 工程回归。源码仍为 agent/timeline-audio-viz@8974cdc 的当前工作副本；版本0.3.1。输出在原根 `.run-data/tests/0.3.1/artifacts/custom/stepfun-fat-fish/`。未提交/推送、未覆盖原用户工程。用户授权调用 StepFun 并允许寻找素材；根Agent确定橙金胖鱼/青蓝水下/5秒无声方案，全部鱼形和动作TSX由 `step-5-preview`、`reasoning_effort=high` 生成。
+
+- 模型调用：第一次240.125秒超时，未返回正文；第二次HTTP200但16000 token耗尽、finish_reason=length、正文为空；第三次精简上下文并把max_tokens增至48000，247.578秒HTTP200/stop，返回9000字符决策。不能把前两次当作通过。没有记录模型内部推理正文或API Key。
+- 素材：Michael Pointner / Pexels 31843981 水下照片（来源和许可见同目录素材来源.md），通过原生文件选择器导入。模型把图片元数据放到document.images，严格参数解码失败并使任务waiting_human。根Agent只映射图片绑定到统一文档隐藏image节点并更新CAS，鱼形、SVG和动画TSX未修改；原始及重开AVP内源码SHA256同为 `50f31358d0907ea3a9672bbc8362911354967471b484266e58ee642de9575579`。
+- 实际失败：初版预览只有模型的渐变回退，用户指出照片未使用。修正绑定后，FFmpeg7.1将JPG探测为image2，prepareImages的format_whitelist缺少该格式。以原始参数独立复现退出-22。保持原JPG，显式jpeg_pipe解码到同图PNG，经原生选择器重新导入并绑定，实际背景随后生效。本次未改产品解码逻辑，JPG兼容缺陷仍待修。
+- 实际检查：draw.check最终通过；MCP draw.preview和artifacts.get读取0、4、8、75、149帧，根Agent已目视查看。尾根旋转及鱼鳍/气泡变化可见，水下背景实际合成；不把源码自述当作画质证明。可见Tauri操作了原生导入/导出、播放、保存、关闭和重开。
+- 产物：原生导出 `大肥鱼摇尾巴.mp4`，ffprobe独立核验H.264、1280×720、30/1fps、150帧、5.000秒、415098字节、无音轨；SHA256=`648b8591bc79ca698e01ec31824a1a74b1f6d97d4541e05767d3cef7cc95c14e`。实际编码第4帧亦已查看，照片存在。源快照入轨后run.finish完成共享合成，运行 `skr_1320eeacdaedf042` succeeded/23步，共享序列产物SHA256=`a984f6618d8bd0d05c460528edd5f4d2de3f4fe64f1173f2a069c0101cfd4ca8`。
+- 保存与会话：`大肥鱼摇尾巴.avp`为AVP3，含可编辑构图、绑定和150帧序列；已关闭带临时凭据的自有桌面/Worker，模型桥接进程退出、REPL清空，再以明确移除凭据环境的进程重开AVP。重开恢复同一项目、一个序列/一个Remotion源和succeeded运行，未操作原6102预览或其工程。
+- 尚未通过：用户人工观感/模型质量最终认可；外部生成进度未回传、陈旧等待领取提示/租约、模型错误字段的诊断与无绑定图片回退检查、JPG图片准备兼容。上述问题已列QA-FISH-FIX；成片导出成功不代表这些缺陷修复。
+
+证据复用同一临时目录：result-001/002/003.json（仅最终正文和用量）、authorship.json、check-final.json、png-frame-{0,4,8,75,149}.json.png、finished.json、导出核验.json、实际MP4第4帧.png、照片已生效.png，以及AVP/MP4。桥接脚本均为本次可再生产物，不引入第二套永久测试入口。
+QA-FISH收尾复核（2026-10-27）：当前测试桌面和后台已退出；没有将失效CDP连接当作当前可用窗口。对落盘AVP3重新解析，确认完成运行skr_1320eeacdaedf042为succeeded/23步、序列150帧，鱼与动画源码逐字等于StepFun第3次响应、绑定PNG存在且摘要匹配。重新ffprobe仍为5.000秒/1280×720/30fps/150帧/无音轨，MP4摘要未变。证据同目录收尾核验.json。用户随后确认“我觉得可以通过”，成片人工观感已通过；缺陷修复另行记录，不能以该认可替代修复回归。
+
+## QA-FISH-FIX 测试发现问题修复（2026-10-27）
+
+- 当前工作树 `timeline-audio-viz`、应用版本 0.3.1，未提交增量。没有再次请求真实 StepFun，未使用或展示前次密钥。模型协议、长等待和可纠错流程由本地模拟服务验证；原始成片及工程保留。
+- 已通过：Node 现有 draw/sequence 套件 21 项（真实本地 Chrome/FFmpeg，包括图片原件与百分号路径、缺图禁止回退、双引擎/动态引用/位移像素、导出和浏览器生命周期）；前端同一组单元 128 项与样式/类型/生产构建；Chrome draw 最终12组、settings最终8组。
+- Go service/project/api/preparation/skill/mcpserver六包整包通过（service 475.075秒、MCP最终66.571秒）。MCP首轮两项旧工具清单漏计新增心跳，已更新相同测试并完整复验，Worker/人工权限禁止断言保留。Python最终全套172项通过、跳过1项；之后新增错误流/脱敏边界，受影响模块11项通过。
+- 环境记录：本机 `npm run test:unit` 在执行脚本前退出且未提供具体诊断；直接以安装的 Node 执行 package.json 声明的相同测试文件全部通过，不删除失败记录。Python 全套出现既有文件句柄 ResourceWarning，测试未失败。
+- 原生入口沿用 `verify-tauri-desktop.mjs`，增加真实 MCP 心跳→可见绘制进度检查，图片改用包含 `%03d` 的原始 JPG；不把模拟模型测试记为真实模型质量验证。
+- 可见Tauri最终10项通过：原生JPG导入、拖动/撤销重做、MCP真实心跳显示阶段与128字符、双引擎/图片同画布查帧、源入轨共享渲染、独立视频导出及AVP3保存重开。实际截图已目视复核。该次日志与截图在0.3.2版本轮换时按规则清理，结论保留于本说明；用户未对修复后控件手感重新验收。
+- 原生首轮配置把数据放在源码资源目录内，被现有保护拒绝，已改为根测试区独立data；随后发现旧Tauri嵌入前端不能显示新增进度，使用已安装Rust1.98.1离线重建后通过。失败JSON曾保留，已随0.3.2版本轮换清理。调试构建关闭安装包资源打包，显式配置使用新Go二进制及匹配manifest，不代表安装器发布验收。
+- 扩展检查：原有Go所有权/过期租约/角色/版本/项目切换与SSE范围测试；图片缺失/错误别名、草稿图片绑定/位移、删除不复活；流式EOF无完成标志、超大事件、截断、超时及错误不回显凭据；未保存服务商high/48000配置跨页保留；绘制任务刷新后由URL恢复真实进度；窄屏640–1440及键盘/减少动态效果。Node另以JPE/TIF扩展相同兼容用例通过；Go `TestProjectExpandedMediaAndMatroskaStreams`含JPE百分号路径及MKV实际多音轨映射再次通过（11.111秒），未发现需新增修复的格式问题。
+- 结论：QA-FISH-FIX代码与本地分层验收完成。真实StepFun当时未复跑、安装器及修复后的用户人工手感未代签；当时应用为0.3.1、代码未提交。测试生成物随后按0.3.2版本规则轮换，用户素材与成片已保全。
+
+## REL032 版本升级与发布（进行中）
+
+应用版本升级至0.3.2。版本/锁文件及Cargo元数据一致；实际Go MCP/project/skill三包通过，MCP初始化在worker与desktop两种连接下均与桌面版本一致；前端128项、样式、类型和构建通过；真实双引擎同帧/透明及图片测试1项、Chrome绘制12组/设置8组、文档契约184 HTTP/17 IPC/157模型/29 SSE通过。当前为已验证的工作副本，提交与推送待执行；本次没有重跑真实StepFun、安装器或0.3.2可见桌面。
+
+上一版用户确认的成片和素材已复制到根 `.run-data/accepted-projects/2026-10-27-fat-fish/`：原AVP字节备份SHA-256为`6502581a1f6a5b38979ad34db405b152ec4d339283a725722ce79f43adc54ad5`，另有重定位AVP副本；原图/PNG、成片和18项运行产物引用已复制并核对。成片SHA-256为`648b8591bc79ca698e01ec31824a1a74b1f6d97d4541e05767d3cef7cc95c14e`。固定Sony RAW另存根`.run-data/accepted-fixtures/`并复制到当前版本测试缓存，摘要一致。重定位副本已解析，项目、序列、脚本、画面和运行内容与原件一致且引用存在；尚未以0.3.2桌面重新打开验证。
+
+根目录和当前工作树的0.3.1测试目录在核对标记、进程、重解析点和Git跟踪边界后按`Prepare`规则轮换。两测试根`Measure`同口径合计：轮换前10,566,776,555字节、轮换后3,697,773,546字节，减少6,869,003,009字节；保全副本位于统计范围外，因此这是测试存储占用变化，不等同磁盘净释放量。

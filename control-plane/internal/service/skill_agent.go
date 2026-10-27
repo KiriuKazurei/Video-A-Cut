@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
+	"strings"
 	"time"
 )
 
@@ -60,25 +62,28 @@ func (s *Service) RunBuiltinAgent(ctx context.Context, actor, id string, version
 			// prompt snapshot. Rebase that bookkeeping only; the saved source's
 			// own revision still has to match atomically in SaveDrawComposition.
 			var save DrawSaveRequest
-			if e = decodeSkillArgs(decision.Arguments, &save); e != nil {
-				return r, e
-			}
-			current, e := s.ProjectWorkspace(ctx)
-			if e != nil {
-				return r, e
-			}
-			if current.Document == nil || current.Document.Project.ID != r.ProjectID || current.ID != save.Session {
-				return r, model.ErrConflict
-			}
-			save.ExpectedRevision = current.Revision
-			decision.Arguments, e = json.Marshal(save)
-			if e != nil {
-				return r, e
+			if e = decodeSkillArgs(decision.Arguments, &save); e == nil {
+				current, e := s.ProjectWorkspace(ctx)
+				if e != nil {
+					return r, e
+				}
+				if current.Document == nil || current.Document.Project.ID != r.ProjectID || current.ID != save.Session {
+					return r, model.ErrConflict
+				}
+				save.ExpectedRevision = current.Revision
+				decision.Arguments, e = json.Marshal(save)
+				if e != nil {
+					return r, e
+				}
 			}
 		}
 		next, result, e := s.ExecuteSkillTool(ctx, actor, id, skill.ToolRequest{Name: decision.Tool, Arguments: decision.Arguments, ExpectedVersion: r.Version, IdempotencyKey: newID("agent")})
 		r = next
 		if e != nil {
+			if strings.HasPrefix(decision.Tool, "draw.") && errors.Is(e, model.ErrArgument) && r.State == "queued" {
+				history = append(history, map[string]any{"tool": decision.Tool, "arguments": decision.Arguments, "error": e.Error()})
+				continue
+			}
 			return r, e
 		}
 		var payload any

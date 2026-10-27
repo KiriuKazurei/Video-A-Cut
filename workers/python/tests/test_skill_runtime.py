@@ -77,6 +77,16 @@ class LocalTranscriptionTests(unittest.TestCase):
 
 
 class SkillSamplingTests(unittest.TestCase):
+    def test_draw_agent_allows_long_high_reasoning_generation_with_streaming(self):
+        request={'history':[],'run':{'goal':'draw','strategy':'draw','budget':{'max_seconds':900},'elapsed_milliseconds':0},
+                 'skill':{'content':'draw','resources':{}},'media':[],'tools':['draw.list'],
+                 'provider':{'endpoint':'fixture','model':'step-5-preview','api_format':'openai','reasoning_effort':'high'}}
+        with mock.patch('vac_worker.skill_runtime.call_model',return_value={'tool':'draw.list','arguments':{}}) as model:
+            agent(request)
+        self.assertGreaterEqual(model.call_args.kwargs['max_tokens'],24000)
+        self.assertGreater(model.call_args.kwargs['timeout'],240)
+        self.assertTrue(model.call_args.kwargs['stream'])
+
     def test_builtin_agent_receives_typed_frame_context_and_current_tool_contract(self):
         reference = {'kind': 'source_marker', 'target_id': 'point', 'clip_id': 'instance',
                      'resource_id': 'media', 'name': '重名', 'source_time': {'value': 441, 'scale': 44100}}

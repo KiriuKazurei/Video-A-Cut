@@ -938,6 +938,23 @@ body code, body .ant-typography code { font-size: 12px; }
 .draw-preview-metadata { margin-left: auto; font-size: var(--vac-font-sm); white-space: nowrap; }
 .draw-canvas-frame { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--vac-media); color: var(--vac-on-media); border: 1px solid var(--vac-border); }
 .draw-canvas-frame video { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.unified-draw { grid-template-rows: auto minmax(0, 1fr) minmax(160px, 24%); }
+.draw-live-canvas { container-type: size; touch-action: none; }
+.draw-frame-fit { position: relative; flex: none; max-width: 100%; max-height: 100%; }
+.draw-frame-fit > img { display: block; width: 100%; height: 100%; }
+.draw-selection { position: absolute; border: 2px solid var(--vac-accent); pointer-events: none; }
+.draw-resize-handle { position: absolute; right: -5px; bottom: -5px; width: 12px; height: 12px; padding: 0; border: 1px solid var(--vac-text); background: var(--vac-accent); cursor: nwse-resize; pointer-events: auto; }
+.draw-resize-handle:focus-visible { outline: 2px solid var(--vac-text); outline-offset: 3px; }
+.draw-goal { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--vac-border); }
+.draw-goal > label { color: var(--vac-text-2); font-size: var(--vac-font-sm); }
+.draw-layer-rows { overflow: auto; min-height: 24px; flex: 1; }
+.draw-layer-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; min-height: 28px; align-items: center; }
+.draw-layer-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vac-text-2); font-size: var(--vac-font-sm); }
+.draw-layer-range { position: relative; height: 24px; background: var(--vac-bg); }
+.draw-layer-range > button { position: absolute; top: 2px; height: 20px; min-width: 4px; border: 1px solid var(--vac-accent); background: var(--vac-control); color: var(--vac-text); cursor: pointer; }
+.draw-layer-range > button[aria-pressed="true"] { background: var(--vac-accent); }
+.draw-layer-range > button:focus-visible { outline: 2px solid var(--vac-text); outline-offset: 2px; }
+.draw-time-cursor { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--vac-text); pointer-events: none; }
 .draw-preview-status { display: flex; min-width: 0; min-height: 18px; gap: 8px; font-size: var(--vac-font-sm); }
 .draw-preview-status > .ant-typography { flex: 1; min-width: 0; }
 .draw-rendering-label { color: var(--vac-text-2); flex: none; }

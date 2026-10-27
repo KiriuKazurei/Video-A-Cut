@@ -33,12 +33,14 @@ type SequencePreview struct {
 	ScopeGroup     string       `json:"scope_group"`
 }
 type sequenceSource struct {
-	ID       string         `json:"id"`
-	Name     string         `json:"name"`
-	Kind     string         `json:"kind"`
-	Path     string         `json:"path"`
-	SHA256   string         `json:"sha256"`
-	Metadata map[string]any `json:"metadata"`
+	Draw     *project.DrawDocument `json:"draw_document,omitempty"`
+	Assets   []drawImageAsset      `json:"assets,omitempty"`
+	ID       string                `json:"id"`
+	Name     string                `json:"name"`
+	Kind     string                `json:"kind"`
+	Path     string                `json:"path"`
+	SHA256   string                `json:"sha256"`
+	Metadata map[string]any        `json:"metadata"`
 }
 
 func sequenceTracks(seq project.Sequence) []project.Track {
@@ -72,6 +74,22 @@ func (s *Service) sequenceSources(ctx context.Context, projectID string, seq pro
 		if r.Missing || r.Removed || r.Changed {
 			return nil, fmt.Errorf("资源缺失或已改变，请重新定位：%s: %w", r.Name, model.ErrConflict)
 		}
+		if r.Draw != nil {
+			c := r.Draw.Snapshot
+			if r.Draw.Mode == "follow" {
+				c, e = s.drawComposition(projectID, r.Draw.CompositionID)
+				if e != nil {
+					return nil, e
+				}
+			}
+			assets, e := s.drawImageAssets(ctx, projectID, c)
+			if e != nil {
+				return nil, e
+			}
+			doc := c.UnifiedDocument()
+			out = append(out, sequenceSource{ID: r.ID, Name: r.Name, Kind: "video", SHA256: c.ContentVersion, Metadata: map[string]any{"duration": c.FPS.Seconds(c.DurationFrames), "streams": []map[string]any{{"index": 0, "codec_type": "video"}}}, Draw: &doc, Assets: assets})
+			continue
+		}
 		path := r.Source.OriginalPath
 		sha := r.Source.SHA256
 		if project.IsCameraRaw(path) {
@@ -84,7 +102,7 @@ func (s *Service) sequenceSources(ctx context.Context, projectID string, seq pro
 				return nil, e
 			}
 		}
-		out = append(out, sequenceSource{r.ID, r.Name, r.Kind, path, sha, r.Metadata})
+		out = append(out, sequenceSource{ID: r.ID, Name: r.Name, Kind: r.Kind, Path: path, SHA256: sha, Metadata: r.Metadata})
 	}
 	slices.SortFunc(out, func(a, b sequenceSource) int {
 		if a.ID < b.ID {
@@ -297,6 +315,9 @@ func (s *Service) ResourceThumbnail(ctx context.Context, projectID, id string, a
 	}
 	if r.Missing || r.Removed || r.Changed || (r.Kind != "video" && r.Kind != "image") || !finiteScriptTime(at) || at < 0 || (r.Kind == "video" && at >= r.Out) {
 		return "", model.ErrArgument
+	}
+	if r.Draw != nil {
+		return s.DrawResourceThumbnail(ctx, projectID, r, at)
 	}
 	output := filepath.Join(s.workspace.root, "previews", project.ResourceContentVersion(r)+"-"+skillHash(at)+".png")
 	if _, err = os.Stat(output); err == nil {

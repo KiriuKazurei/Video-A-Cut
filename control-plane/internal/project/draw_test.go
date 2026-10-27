@@ -5,6 +5,115 @@ import (
 	"testing"
 )
 
+func TestUnifiedImageBindingsAreNotSilentlyDiscarded(t *testing.T) {
+	for _, placement := range []string{"composition", "source"} {
+		t.Run(placement, func(t *testing.T) {
+			d := DrawDocument{SchemaVersion: 1, Canvas: DrawCanvas{Width: 320, Height: 180, FPS: Rate{30, 1}}, DurationFrames: 30, Sources: []DrawSource{{ID: "fish", Engine: "remotion", Source: "export default ()=>null"}}, Nodes: []DrawNode{{ID: "scene", Kind: "source", SourceID: "fish", Duration: 30}}}
+			im := DrawImageLayer{ID: "water", ResourceID: "photo", Width: 320, Height: 180, Mode: "source"}
+			c := DrawComposition{ID: "draw", Name: "Fish", Document: &d}
+			if placement == "composition" {
+				c.Images = []DrawImageLayer{im}
+			} else {
+				c.Document.Sources[0].ImageBindings = []DrawImageLayer{im}
+			}
+			c.NormalizeDocument()
+			if len(c.ImageBindings()) != 1 {
+				t.Fatal("image binding was silently lost")
+			}
+			node := c.Document.Nodes[1]
+			if node.ID != "water" || node.ResourceID != "photo" || !node.Hidden {
+				t.Fatalf("wrong source image: %+v", node)
+			}
+			if e := c.Validate(); e != nil {
+				t.Fatal(e)
+			}
+			c.NormalizeDocument()
+			if len(c.Document.Nodes) != 2 {
+				t.Fatal("normalization duplicated image")
+			}
+			c.Document.Nodes = c.Document.Nodes[:1]
+			c.NormalizeDocument()
+			if len(c.Document.Nodes) != 1 {
+				t.Fatal("removed image reappeared")
+			}
+		})
+	}
+}
+
+func TestDrawingNestedFrameContract(t *testing.T) {
+	d := DrawDocument{Canvas: DrawCanvas{FPS: Rate{30, 1}}, Sources: []DrawSource{{ID: "s", Canvas: &DrawCanvas{FPS: Rate{24, 1}}}}, Nodes: []DrawNode{{ID: "g", Kind: "group", From: 2, Duration: 6, SourceOffset: 1, Speed: &Rate{2, 1}}, {ID: "m", Kind: "mask", ParentID: "g", From: 3, Duration: 6, Speed: &Rate{1, 2}}, {ID: "v", Kind: "source", ParentID: "m", SourceID: "s", Duration: 6, SourceOffset: 2, Speed: &Rate{3, 2}}}}
+	frame, e := d.InstanceFrame("v", 4)
+	if e != nil || !frame.Active || frame.ParentFrame != 1 || frame.Frame != 3 || frame.FPS != (Rate{24, 1}) {
+		t.Fatalf("nested clock: %#v %v", frame, e)
+	}
+	for _, at := range []int64{1, 7} {
+		frame, e = d.InstanceFrame("v", at)
+		if e != nil || frame.Active {
+			t.Fatalf("half-open range: %#v %v", frame, e)
+		}
+	}
+}
+
+func TestUnifiedDrawingDocumentGraphAndPortablePlan(t *testing.T) {
+	d := DrawDocument{SchemaVersion: 1, Canvas: DrawCanvas{Width: 320, Height: 180, FPS: Rate{Num: 30, Den: 1}}, DurationFrames: 30, Preset: "auto",
+		Sources: []DrawSource{{ID: "html", Engine: "hyperframes", Source: "<!doctype html>"}, {ID: "react", Engine: "remotion", Source: "export default ()=>null"}},
+		Nodes:   []DrawNode{{ID: "group", Kind: "group", Duration: 30}, {ID: "web", Kind: "source", SourceID: "html", ParentID: "group", Duration: 30}, {ID: "card", Kind: "source", SourceID: "react", Duration: 30}},
+	}
+	c := DrawComposition{ID: "unified", Name: "组合", Document: &d}
+	c.NormalizeDocument()
+	if e := c.Validate(); e != nil {
+		t.Fatal(e)
+	}
+	plan, e := d.Plan()
+	if e != nil || len(plan.Nodes) != 3 || plan.Nodes[1].Engine != "hyperframes" || plan.Nodes[2].Engine != "remotion" {
+		t.Fatalf("plan: %#v, %v", plan, e)
+	}
+	if plan.RuntimeVersions["hyperframes"] != "0.8.193" || plan.FrameEvaluations != 90 || plan.FallbackPolicy != "explicit-error-no-unverified-fallback" {
+		t.Fatal("plan lost fixed runtime/budget/failure policy")
+	}
+	d.Sources[0].Capabilities = []string{"cross-document-backdrop-filter"}
+	if d.Validate() == nil {
+		t.Fatal("unsupported source capability silently accepted")
+	}
+	d.Sources[0].Capabilities = nil
+	c.Revision = 1
+	c.ContentVersion = c.ContentHash()
+	avp := AvpDocument{Format: "avp", SchemaVersion: 3, Project: Identity{ID: "p", Name: "test"}, DrawCompositions: []DrawComposition{c}}
+	path := t.TempDir() + "/unified.avp"
+	if e := WriteAtomic(path, avp); e != nil {
+		t.Fatal(e)
+	}
+	var loaded AvpDocument
+	if e := Read(path, "avp", &loaded); e != nil {
+		t.Fatal(e)
+	}
+	if e := loaded.Validate(); e != nil {
+		t.Fatal(e)
+	}
+	if loaded.DrawCompositions[0].Document.Sources[1].Source != d.Sources[1].Source {
+		t.Fatal("editable sources lost")
+	}
+	renamed := c
+	renamed.Name = "new"
+	if renamed.ContentHash() != c.ContentVersion {
+		t.Fatal("rename invalidated pixels")
+	}
+	d.Nodes[0].ParentID = "web"
+	if d.Validate() == nil {
+		t.Fatal("cycle accepted")
+	}
+	d.Nodes[0].ParentID = ""
+	d.Nodes[1].SourceID = "missing"
+	if d.Validate() == nil {
+		t.Fatal("missing source accepted")
+	}
+	legacy := DrawComposition{ID: "old", Name: "Old", Engine: "remotion", Source: "export default ()=>null", Width: 320, Height: 180, FPS: Rate{30, 1}, DurationFrames: 30}
+	legacyDoc := legacy.UnifiedDocument()
+	if len(legacyDoc.Nodes) != 1 || legacyDoc.Sources[0].Source != legacy.Source || legacy.Document != nil {
+		t.Fatal("legacy mapping mutated original")
+	}
+}
+
 func TestDrawCompositionSpecAndPortableSource(t *testing.T) {
 	c := DrawComposition{ID: "draw-1", Name: "Title", Engine: "remotion", Source: "export default ()=>null", Width: 1920, Height: 1080, FPS: Rate{Num: 30, Den: 1}, DurationFrames: 90, Revision: 2, ContentVersion: ""}
 	if e := c.Validate(); e != nil {

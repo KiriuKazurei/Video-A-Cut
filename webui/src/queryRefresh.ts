@@ -120,6 +120,8 @@ function extractFromObject(obj: Record<string, unknown>): EventPayloadMeta {
 
 /** 支持的所有 SSE 事件名单 */
 export const SUPPORTED_SSE_EVENTS = [
+ 'workspace.draw.preview',
+ 'workspace.skill.progress',
  'workspace.changed','workspace.saved','resource.changed','workspace.timeline.changed','workspace.timeline.import-failed',
  'project.changed','skill.changed','skill.run.changed',
   'asset_created',
@@ -157,9 +159,16 @@ export function handleSSEEvent(
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
   const promises: Promise<void>[] = [];
-  if(eventName==='workspace.timeline.changed'||eventName==='workspace.timeline.import-failed')return Promise.all(['project-workspace','timeline','reference-directory','script-workbench','script-revisions','resource-text','vu-visible'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
+  if(eventName==='workspace.draw.preview'){
+    if(typeof window!=='undefined'){
+      try{const detail=typeof data==='string'?JSON.parse(data):data;window.dispatchEvent(new CustomEvent('vac:draw-preview-state',{detail}));}catch{/* A malformed progress event cannot invalidate a valid frame. */}
+    }
+    return Promise.resolve([]);
+  }
+  if(eventName==='workspace.skill.progress')return Promise.all(['vu-runs','vu-run'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
+  if(eventName==='workspace.timeline.changed'||eventName==='workspace.timeline.import-failed')return Promise.all(['project-workspace','draw-compositions','timeline','reference-directory','script-workbench','script-revisions','resource-text','vu-visible'].map(key=>queryClient.invalidateQueries({queryKey:[key]})));
   if (['workspace.changed','workspace.saved','resource.changed'].includes(eventName)) {
-    return Promise.all(['project-workspace','assets','visible-set','vu-project','vu-visible','resource-text'].map(key => queryClient.invalidateQueries({queryKey:[key]})));
+    return Promise.all(['project-workspace','draw-compositions','assets','visible-set','vu-project','vu-visible','resource-text'].map(key => queryClient.invalidateQueries({queryKey:[key]})));
   }
   if (['project.changed','skill.changed','skill.run.changed'].includes(eventName)) {
     return Promise.all(['vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context','audit']

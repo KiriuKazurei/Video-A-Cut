@@ -16,7 +16,7 @@ export function ResourceInspector() {
       {resource.changed && <Tag color="warning">源文件已变化</Tag>}
       <Descriptions column={1} size="small" items={[
         { key: 'type', label: '类型', children: RESOURCE_LABELS[resource.kind] },
-        { key: 'path', label: '位置', children: <Typography.Text style={{ overflowWrap: 'anywhere' }}>{resource.source.original_path || '工程内脚本'}</Typography.Text> },
+        { key: 'path', label: '位置', children: <Typography.Text style={{ overflowWrap: 'anywhere' }}>{resource.draw_source?'工程内绘制源 · '+(resource.draw_source.mode==='follow'?'跟随源更新':'冻结快照'):resource.source.original_path || '工程内脚本'}</Typography.Text> },
         { key: 'size', label: '大小', children: `${(resource.source.size_bytes / 1048576).toFixed(2)} MiB` },
         { key: 'format', label: '格式', children: text(metadata.extension) },
         ...(metadata.duration ? [{ key: 'duration', label: '时长', children: `${Number(metadata.duration).toFixed(3)} 秒` }] : []),

@@ -69,7 +69,8 @@ export function sequenceGraph(sequence, resources) {
    if (transition && (!ci || ordered[ci - 1].at + ordered[ci - 1].duration !== clip.at)) throw Error('交叉溶解需要前一个相邻片段');
    const tail = next && next.at === clip.at + clip.duration ? (next.effects.transition || 0) / fps : 0;
    if (tail && resource.kind !== 'image' && seconds(clip.source_out) + tail * clip.speed > Number(resource.metadata.duration) + 1e-6) throw Error('交叉溶解的前片段没有足够的源尾部，请缩短源出点');
-   if (resource.kind === 'image') args.push('-loop','1','-framerate',rate);
+   if (resource.draw_document) args.push('-framerate',`${resource.draw_document.canvas.fps.num}/${resource.draw_document.canvas.fps.den}`,'-start_number','0');
+   else if (resource.kind === 'image') args.push('-loop','1','-framerate',rate);
    args.push('-i',resource.path); const source = `${inputIndex++}:${clip.stream_index}`;
    if (track.kind === 'audio') {
     const label = `audio${audio.length}`;
@@ -117,9 +118,14 @@ async function subtitleFile(output, cues, sequence) {
 }
 
 export async function renderSequence(input,{run=runTool,probe=probeMedia}={}) {
- const {sequence,resources,output_dir:output,content_version:version}=input;
+ const {sequence,output_dir:output,content_version:version}=input;
+ const resources=[];
+ for(const r of input.resources){
+  if(r.draw_document){const {prepareDrawFrameSource}=await import('./unified-draw.mjs');const directory=join(output,'draw-sources',createHash('sha256').update(r.id+':'+r.sha256).digest('hex'));const path=await prepareDrawFrameSource({document:r.draw_document,assets:r.assets,output_dir:directory});resources.push({...r,path});}
+  else resources.push(r);
+ }
  const graph=sequenceGraph(sequence,resources);await mkdir(output,{recursive:true});
- for (const r of resources) {if (await sequenceFileHash(r.path)!==r.sha256) throw Error(`源素材发生变化：${r.name}`);}
+ for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`源素材发生变化：${r.name}`);}
  const subtitles=await subtitleFile(output,graph.cues,sequence);
  const filters=[...graph.filters];let video=graph.canvas;
  if (subtitles){filters.push(`[${video}]ass=filename='${filterPath(subtitles.path)}'[subtitled]`);video='subtitled';}
@@ -127,10 +133,10 @@ export async function renderSequence(input,{run=runTool,probe=probeMedia}={}) {
  await run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y',...graph.args,'-filter_complex_threads','1','-filter_complex',filters.join(';'),'-map',`[${video}]`,'-map','[mix]','-frames:v',String(graph.frames),'-t',n(graph.duration),'-c:v','libx264','-preset','veryfast','-crf','20','-threads','2','-pix_fmt','yuv420p','-c:a','aac','-ar',String(sequence.sample_rate),'-movflags','+faststart',temporary],{timeoutMs:360_000});
  const media=await probe(temporary);if (!media.video || !media.audio || Math.abs(media.duration-graph.duration)>2/(sequence.fps.num/sequence.fps.den)) throw Error('节目输出验证失败');
  const sha256=await sequenceFileHash(temporary);
- for (const r of resources) {if (await sequenceFileHash(r.path)!==r.sha256) throw Error(`渲染期间源素材发生变化：${r.name}`);}
+ for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`渲染期间源素材发生变化：${r.name}`);}
  await rename(temporary,final);
  const report={schema_version:2,content_version:version,sha256,frames:graph.frames,duration:graph.duration,width:sequence.width,height:sequence.height,fps:sequence.fps,scope_group:sequence.scope_group || '',fonts:subtitles?.fonts || []};
- await writeFile(join(output,'sequence.json'),JSON.stringify({schema_version:2,sequence,resources:resources.map(({path,...r})=>r)},null,2));
+ await writeFile(join(output,'sequence.json'),JSON.stringify({schema_version:2,sequence,resources:resources.map(({path,assets,...r})=>({...r,...(assets?{assets:assets.map(({path,...asset})=>asset)}:{})}))},null,2));
  await writeFile(join(output,'program.json'),JSON.stringify(report,null,2));return report;
 }
 

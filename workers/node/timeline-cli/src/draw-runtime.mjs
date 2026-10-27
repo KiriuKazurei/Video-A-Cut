@@ -27,8 +27,8 @@ export function drawBrowser(engine){
   }
   if(engine==='hyperframes')throw Error('HyperFrames on Windows requires an installed chrome-headless-shell. Set VAC_DRAW_BROWSER to its executable. No browser is downloaded.');
  }
- const paths=['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium','/usr/bin/google-chrome'];
- const path=paths.find(existsSync);if(!path)throw Error('Draw browser missing: configure VAC_DRAW_BROWSER to an installed Chromium/Edge. No browser is downloaded.');
+ const paths=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','/usr/bin/chromium','/usr/bin/google-chrome'];
+ const path=paths.find(existsSync);if(!path)throw Error('Draw browser missing: configure VAC_DRAW_BROWSER to an installed Chrome. No browser is downloaded.');
  return path;
 }
 export function validateDraw(c){
@@ -38,10 +38,32 @@ export function validateDraw(c){
  !Number.isFinite(fps)||fps<1||fps>120||c.duration_frames<1||c.duration_frames>18000||c.duration_frames/fps>300)throw Error('Invalid draw specification');
  return fps;
 }
-function auditScript(code){
+function auditScript(code,deterministic=false,imageIDs=[]){
  const ast=parse(code,{ecmaVersion:'latest',sourceType:'module'});
+ const names=new Set(),allowed=new Set(imageIDs);
+ const findImageParams=node=>{
+  if(!node||typeof node!=='object')return;
+  if(Array.isArray(node.params))for(const p of node.params){
+   if(p.type==='ObjectPattern')for(const item of p.properties||[]){
+    if(item.key?.name==='images'&&item.value?.type==='Identifier')names.add(item.value.name);
+    if(item.key?.name==='images'&&item.value?.type==='AssignmentPattern'&&item.value.left?.type==='Identifier')names.add(item.value.left.name);
+   }
+  }
+  for(const value of Object.values(node)){if(Array.isArray(value))value.forEach(findImageParams);else if(value&&typeof value==='object')findImageParams(value);}
+ };
+ findImageParams(ast);
  const visit=node=>{
   if(!node||typeof node!=='object')return;
+  if(node.type==='MemberExpression'){
+   const obj=node.object,root=names.has(obj?.name)||obj?.type==='MemberExpression'&&((obj.object?.name==='window'&&obj.property?.name==='vacImages')||(obj.property?.name==='images'&&obj.object?.name==='props'));
+   const alias=node.computed?(typeof node.property?.value==='string'?node.property.value:null):node.property?.name;
+   if(root&&alias&&!allowed.has(alias))throw Error('Image alias '+alias+' is not bound to an imported resource');
+  }
+  if(node.type==='VariableDeclarator'&&node.id?.type==='ObjectPattern'&&names.has(node.init?.name))for(const item of node.id.properties||[]){
+   const alias=item.key?.name??item.key?.value;if(alias&&!allowed.has(alias))throw Error('Image alias '+alias+' is not bound to an imported resource');
+  }
+  if(deterministic&&node.type==='Identifier'&&['Date','performance','setTimeout','setInterval','requestAnimationFrame','cancelAnimationFrame'].includes(node.name))throw Error('Use the deterministic frame clock instead of '+node.name);
+  if(deterministic&&node.type==='MemberExpression'&&node.object?.name==='Math'&&(node.property?.name==='random'||node.property?.value==='random'))throw Error('Use deterministic seeded randomness instead of Math.random');
   if(node.type==='ImportExpression')throw Error('Dynamic imports are not allowed in draw source');
   if(node.type==='ImportDeclaration'){
    if(!['react','remotion'].includes(node.source.value))throw Error('Only react and remotion imports are available');
@@ -53,10 +75,11 @@ function auditScript(code){
  };
  visit(ast);
 }
-export async function checkDraw({composition:c}){
- validateDraw(c);imageLayers(c);
+export async function checkDraw({composition:c,deterministic=false}){
+ if(c.document){const {validateUnified}=await import('./unified-draw.mjs');await validateUnified(c.document);return {valid:true,engine:'unified',runtime_version:'vac-unified-1',content_version:c.content_version,checks:['source','graph','timebase','local-resources','shared-alpha']};}
+ validateDraw(c);const imageIDs=imageLayers(c).map(image=>image.id);
  if(c.engine==='remotion'){
-  const js=await transform(c.source,{loader:'tsx',jsx:'automatic',target:'es2022',tsconfigRaw:{compilerOptions:{verbatimModuleSyntax:true}}});auditScript(js.code.replace(/from\s*["']react\/jsx-runtime["']/g,'from "react"'));
+  const js=await transform(c.source,{loader:'tsx',jsx:'automatic',target:'es2022',tsconfigRaw:{compilerOptions:{verbatimModuleSyntax:true}}});auditScript(js.code.replace(/from\s*["']react\/jsx-runtime["']/g,'from "react"'),deterministic,imageIDs);
   if(!/export\s+default\b/.test(c.source))throw Error('Export one default React composition component');
  }else{
   if(!/<html\b/i.test(c.source)||!/<head\b/i.test(c.source)||!/<body\b/i.test(c.source))throw Error('HyperFrames requires a complete HTML document');
@@ -71,7 +94,7 @@ export async function checkDraw({composition:c}){
    const m=root[0].match(new RegExp('data-'+key+'=["\\x27]([^"\\x27]+)["\\x27]','i'));
    if(!m||!Number.isFinite(Number(m[1]))||Math.abs(Number(m[1])-value)>1e-6)throw Error('Root data-'+key+' must match the draw specification');
   }
-  for(const script of c.source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))auditScript(script[1]);
+  for(const script of c.source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))auditScript(script[1],deterministic,imageIDs);
  }
  return {valid:true,engine:c.engine,runtime_version:drawVersions[c.engine],content_version:c.content_version,checks:['source','dimensions','timebase','local-resources']};
 }
@@ -125,17 +148,18 @@ async function renderHyperframes(c,stage,browserPath,prepared){
  });
 }
 export async function renderDraw(input){
+ if(input.composition.document){const {renderUnifiedDraw}=await import('./unified-draw.mjs');return renderUnifiedDraw(input);}
  const c=input.composition;await checkDraw(input);
  const assets=await checkedImageAssets(input,digest);
  const output=await ensureDirectory(input.output_dir),movie=join(output,'program.mp4'),reportFile=join(output,'program.json');
- try{const old=JSON.parse(await readFile(reportFile,'utf8'));if(old.content_version===c.content_version&&old.runtime_version===drawVersions[c.engine]&&(!assets.length||old.image_adapter_version===2)&&old.sha256===await digest(movie))return old;}catch{}
+ try{const old=JSON.parse(await readFile(reportFile,'utf8'));if((old.environment_version??'')===(input.environment_version??'')&&old.content_version===c.content_version&&old.runtime_version===drawVersions[c.engine]&&(!assets.length||old.image_adapter_version===2)&&old.sha256===await digest(movie))return old;}catch{}
  const browser=drawBrowser(c.engine),stage=await mkdtemp(join(output,'.stage-'));
  try{
   const prepared=await prepareImages(assets,stage,digest);
   if(c.engine==='remotion')await renderRemotion(c,stage,browser,prepared);else await renderHyperframes(c,stage,browser,prepared);
   const media=await probeMedia(join(stage,'program.mp4')),fps=validateDraw(c);
   if(media.video?.width!==c.width||media.video?.height!==c.height||Math.abs(media.video.fps-fps)>1e-5||Math.abs(media.duration-c.duration_frames/fps)>1/fps+.001||media.video.frames!==c.duration_frames)throw Error('Rendered video does not match the requested frame count, size or timebase');
-  const report={content_version:c.content_version,sha256:await digest(join(stage,'program.mp4')),size_bytes:(await stat(join(stage,'program.mp4'))).size,width:c.width,height:c.height,frames:media.video.frames,duration:media.duration,engine:c.engine,runtime_version:drawVersions[c.engine],...(assets.length?{image_adapter_version:2,images:prepared.map(({resource_id,sha256,prepared_sha256})=>({resource_id,sha256,prepared_sha256}))}:{})};
+  const report={environment_version:input.environment_version??'',content_version:c.content_version,sha256:await digest(join(stage,'program.mp4')),size_bytes:(await stat(join(stage,'program.mp4'))).size,width:c.width,height:c.height,frames:media.video.frames,duration:media.duration,engine:c.engine,runtime_version:drawVersions[c.engine],...(assets.length?{image_adapter_version:2,images:prepared.map(({resource_id,sha256,prepared_sha256})=>({resource_id,sha256,prepared_sha256}))}:{})};
   await rename(join(stage,'program.mp4'),movie);await writeFile(reportFile+'.partial',JSON.stringify(report));await rename(reportFile+'.partial',reportFile);
   return report;
  }finally{await rm(stage,{recursive:true,force:true});}

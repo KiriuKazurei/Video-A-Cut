@@ -1,5 +1,5 @@
 import {mkdir,copyFile,lstat} from 'node:fs/promises';
-import {join} from 'node:path';
+import {join,extname} from 'node:path';
 import {runTool} from './media.mjs';
 
 export function imageLayers(c){
@@ -41,7 +41,10 @@ export async function prepareImages(assets,stage,digest){
  for(const asset of assets){
   const filename=(asset.binding_sha256??asset.sha256)+'.png',target=join(directory,filename);
   try{
-   await runTool('ffmpeg',['-v','error','-nostdin','-y','-format_whitelist','png_pipe,apng,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe,gif,ico,mov','-i',asset.path,'-frames:v','1','-vf',"scale=w='min(8192,iw)':h='min(8192,ih)':force_original_aspect_ratio=decrease",'-pix_fmt','rgba','-threads','1',target],{timeoutMs:60000});
+   // image2 otherwise treats a percent in an imported filename as a sequence.
+   // Pin static images to one literal local file; keep the protocol restrictions.
+   const literal=['.jpg','.jpeg','.jepg','.png','.webp','.bmp','.tif','.tiff'].includes(extname(asset.path).toLowerCase());
+   await runTool('ffmpeg',['-v','error','-nostdin','-y','-format_whitelist','image2,png_pipe,apng,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe,gif,ico,mov',...(literal?['-f','image2','-pattern_type','none']:[]),'-i',asset.path,'-frames:v','1','-vf',"scale=w='min(8192,iw)':h='min(8192,ih)':force_original_aspect_ratio=decrease",'-pix_fmt','rgba','-threads','1',target],{timeoutMs:60000});
    if(await digest(asset.path)!==asset.sha256)throw Error('source changed');
   }catch{throw Error('Cannot prepare imported image '+asset.resource_id+'; check its format and source fingerprint');}
   prepared.push({resource_id:asset.resource_id,sha256:asset.sha256,prepared_sha256:await digest(target),filename,path:target});
@@ -57,7 +60,8 @@ const attr=value=>String(value).replaceAll('&','&amp;').replaceAll('"','&quot;')
 export function hyperframesImageSource(c,gsap){
  const layers=imageLayers(c);
  let source=c.source;
- if(!layers.length)return source.replace(/<head([^>]*)>/i,m=>m+'<script>'+gsap+'</script>');
+ const guard='window.vacImages=new Proxy(window.vacImages,{get(t,k,r){if(typeof k!=="string"||k==="then"||k==="toJSON"||k in t)return Reflect.get(t,k,r);window.__vacImageError="Image alias "+String(k)+" is not bound to an imported resource";throw Error(window.__vacImageError)}});';
+ if(!layers.length)return source.replace(/<head([^>]*)>/i,m=>m+'<script>'+gsap+'</script><script>window.vacImages={};'+guard+'</script>');
  const byID=Object.fromEntries(layers.map(layer=>[layer.id,layer]));
  source=source.replace(/(\b(?:src|href|poster)\s*=\s*["'])vac-image:([^"']+)(["'])/gi,(all,start,id,end)=>{
   const layer=byID[decodeURIComponent(id)];if(!layer)throw Error('Unknown bound image reference');return start+layer.src+end;
@@ -86,14 +90,14 @@ export function hyperframesImageSource(c,gsap){
 })();
 `.replace('__VAC_META__',safeJSON({fps:c.fps.num/c.fps.den,duration:c.duration_frames*c.fps.den/c.fps.num}));
  const preloads=layers.map(layer=>'<img hidden alt="" data-vac-preload="'+attr(layer.id)+'" src="'+attr(layer.src)+'">').join('');
- return source.replace(/<head([^>]*)>/i,m=>m+'<script>'+gsap+'</script><script>window.vacImages='+safeJSON(byID)+';</script>').replace(/<body([^>]*)>/i,m=>m+preloads).replace(/<\/body\s*>/i,'<script>'+bootstrap+'</script></body>');
+ return source.replace(/<head([^>]*)>/i,m=>m+'<script>'+gsap+'</script><script>window.vacImages='+safeJSON(byID)+';'+guard+'</script>').replace(/<body([^>]*)>/i,m=>m+preloads).replace(/<\/body\s*>/i,'<script>'+bootstrap+'</script></body>');
 }
 export function remotionImageEntry(c){
  const layers=imageLayers(c),images=Object.fromEntries(layers.map(layer=>[layer.id,{...layer,src:'/'+layer.src}]));
  return String.raw`import React from "react";
 import {AbsoluteFill,Composition,Img,registerRoot,useCurrentFrame} from "remotion";
 import Scene from "./Composition";
-const images=__VAC_IMAGES__,metadata=__VAC_META__;
+const images=new Proxy(__VAC_IMAGES__,{get(t,k,r){if(typeof k!=="string"||k==="then"||k==="toJSON"||k in t)return Reflect.get(t,k,r);throw Error("Image alias "+String(k)+" is not bound to an imported resource")}}),metadata=__VAC_META__;
 function ImageLayers(){
  const frame=useCurrentFrame();
  return React.createElement(AbsoluteFill,{style:{pointerEvents:"none"}},Object.values(images).filter(image=>image.mode!=="source").map((image,index)=>{

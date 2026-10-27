@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
 
 // sseAsset is the row every stream test queues work on. It is created before
@@ -334,6 +337,8 @@ func TestSSEResponseHeaders(t *testing.T) {
 // that dropping one fails this test.
 func TestSSESubscribesEveryKnownEventName(t *testing.T) {
 	want := []string{
+		"workspace.skill.progress",
+		"workspace.draw.preview",
 		"asset_created",
 		"asset_updated",
 		"task_created",
@@ -365,12 +370,43 @@ func TestSSEStreamsMediaCompletionEvents(t *testing.T) {
 	srv := newBusServer(t)
 	st, _ := connectSSE(t, srv)
 	defer st.stop()
-	for _, name := range []string{"preview_updated", "delivery_variant.changed", "tts.template.changed", "tts.preview.changed", "script.changed", "script.rendered"} {
+	for _, name := range []string{"preview_updated", "delivery_variant.changed", "tts.template.changed", "tts.preview.changed", "script.changed", "script.rendered", "workspace.skill.progress", "workspace.draw.preview"} {
 		srv.svc.Bus().Publish(events.Envelope{Name: name, Payload: map[string]any{"status": "succeeded"}})
 		frame := st.waitFrameName(t, name)
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(frame.data), &payload); err != nil || payload["status"] != "succeeded" {
 			t.Fatalf("media event %s: payload=%s, error=%v", name, frame.data, err)
+		}
+	}
+}
+
+func TestSSEProgressStaysWithinCurrentProject(t *testing.T) {
+	srv := newBusServer(t)
+	root := t.TempDir()
+	delivery := filepath.Join(root, "delivery")
+	if err := os.Mkdir(delivery, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.ConfigureDeliveryRoot(delivery); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.ConfigureProjectWorkspace(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.svc.CloseProjectWorkspace)
+	view, err := srv.svc.ProjectFileCommand(t.Context(), "new", service.ProjectCommand{Path: filepath.Join(root, "active.avp"), Name: "Active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := connectSSE(t, srv)
+	defer st.stop()
+	for _, name := range []string{"workspace.skill.progress", "workspace.draw.preview"} {
+		srv.svc.Bus().Publish(events.Envelope{Name: name, Payload: map[string]any{"project_id": "old-project"}})
+		srv.svc.Bus().Publish(events.Envelope{Name: name, Payload: map[string]any{"project_id": view.Document.Project.ID}})
+		frame := st.waitFrameName(t, name)
+		var payload map[string]any
+		if json.Unmarshal([]byte(frame.data), &payload) != nil || payload["project_id"] != view.Document.Project.ID {
+			t.Fatalf("foreign progress escaped: %s", frame.data)
 		}
 	}
 }

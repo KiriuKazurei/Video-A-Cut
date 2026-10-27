@@ -27,6 +27,8 @@ type DrawImageLayer struct {
 	Opacity     *float64 `json:"opacity,omitempty"`
 }
 type DrawComposition struct {
+	Plan           *DrawRenderPlan  `json:"plan,omitempty"`
+	Document       *DrawDocument    `json:"document,omitempty"`
 	Images         []DrawImageLayer `json:"images,omitempty"`
 	ID             string           `json:"id"`
 	Name           string           `json:"name"`
@@ -41,6 +43,12 @@ type DrawComposition struct {
 }
 
 func (c DrawComposition) Validate() error {
+	if c.Document != nil {
+		if !validID(c.ID) || strings.TrimSpace(c.Name) == "" || len(c.Name) > 256 || c.Engine != "unified" || c.Width != c.Document.Canvas.Width || c.Height != c.Document.Canvas.Height || c.FPS != c.Document.Canvas.FPS || c.DurationFrames != c.Document.DurationFrames {
+			return fmt.Errorf("invalid unified drawing identity or canvas")
+		}
+		return c.Document.Validate()
+	}
 	if !validID(c.ID) || strings.TrimSpace(c.Name) == "" || len(c.Name) > 256 || len(c.Source) == 0 || len(c.Source) > 96<<10 ||
 		(c.Engine != "hyperframes" && c.Engine != "remotion") || c.Width < 16 || c.Width > 3840 || c.Height < 16 || c.Height > 2160 ||
 		c.Width%2 != 0 || c.Height%2 != 0 || c.FPS.Num < 1 || c.FPS.Den < 1 || (c.FPS.Value() < 1 || c.FPS.Value() > 120) ||
@@ -91,6 +99,24 @@ func (c DrawComposition) Validate() error {
 // ContentHash excludes labels and revision bookkeeping, so renaming does not
 // invalidate pixels while externally edited AVP source cannot reuse stale output.
 func (c DrawComposition) ContentHash() string {
+	c.Plan = nil
+	if c.Document != nil {
+		var d DrawDocument
+		encoded, _ := json.Marshal(c.Document)
+		_ = json.Unmarshal(encoded, &d)
+		d.Goal = ""
+		d.Explanation = ""
+		d.Preset = ""
+		for i := range d.Nodes {
+			d.Nodes[i].Name = ""
+		}
+		for i := range d.Sources {
+			d.Sources[i].Name = ""
+			d.Sources[i].Reason = ""
+			d.Sources[i].Capabilities = nil
+		}
+		c.Document = &d
+	}
 	c.Name = ""
 	c.Revision = 0
 	c.ContentVersion = ""

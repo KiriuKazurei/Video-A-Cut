@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -21,7 +23,17 @@ func drawEngineAllowed(skillID, engine string) bool {
 	return skillID != "vac-draw-hyperframes" && skillID != "vac-draw-remotion" ||
 		skillID == "vac-draw-hyperframes" && engine == "hyperframes" || skillID == "vac-draw-remotion" && engine == "remotion"
 }
-func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string, args json.RawMessage) (json.RawMessage, error) {
+
+var unboundDrawImage = regexp.MustCompile(`Image alias ([A-Za-z0-9_-]{1,64}) is not bound to an imported resource`)
+
+func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string, args json.RawMessage) (result json.RawMessage, err error) {
+	defer func() {
+		if err != nil {
+			if match := unboundDrawImage.FindStringSubmatch(err.Error()); len(match) == 2 {
+				err = fmt.Errorf("image alias %q is not bound to an imported resource: %w", match[1], model.ErrArgument)
+			}
+		}
+	}()
 	respond := func(value any) (json.RawMessage, error) { return json.Marshal(value) }
 	if !s.WorkspaceEnabled() {
 		return nil, model.ErrInvalidState
@@ -32,6 +44,13 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 			return nil, e
 		}
 		return respond(list)
+	}
+	if name == "draw.capabilities" {
+		v, e := s.DrawCapabilities(r.ProjectID)
+		if e != nil {
+			return nil, e
+		}
+		return respond(v)
 	}
 	if name == "draw.save" {
 		var req DrawSaveRequest
@@ -48,6 +67,9 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		return respond(v)
 	}
 	var action struct {
+		Format           string `json:"format,omitempty"`
+		SourceMode       string `json:"source_mode,omitempty"`
+		RequestID        string `json:"request_id,omitempty"`
 		CompositionID    string `json:"composition_id"`
 		Session          string `json:"session"`
 		ContentVersion   string `json:"content_version"`
@@ -71,15 +93,16 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 	case "draw.check":
 		return s.CheckDrawComposition(ctx, r.ProjectID, c.ID, req)
 	case "draw.render":
-		report, e := s.RenderDrawComposition(ctx, r.ProjectID, c.ID, req)
+		report, e := s.RenderDrawCompositionFormat(ctx, r.ProjectID, c.ID, DrawRenderRequest{DrawActionRequest: req, Format: action.Format})
 		if e != nil {
 			return nil, e
 		}
-		path, _, e := s.DrawRenderPath(r.ProjectID, c.ID, c.ContentVersion)
+		path, _, e := s.DrawRenderPathFormat(r.ProjectID, c.ID, c.ContentVersion, action.Format)
 		if e != nil {
 			return nil, e
 		}
-		artifact, e := s.registerSkillArtifact(r, path, c.Name+".mp4", "mp4", 0)
+		_, extension, _ := drawFormat(action.Format)
+		artifact, e := s.registerSkillArtifact(r, path, c.Name+extension, strings.TrimPrefix(extension, "."), 0)
 		if e != nil {
 			return nil, e
 		}
@@ -91,7 +114,7 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		if action.SequenceID != r.SequenceID {
 			return nil, model.ErrForbidden
 		}
-		v, e := s.ImportDrawComposition(ctx, "agent:"+r.ID, r.ProjectID, c.ID, DrawImportRequest{Session: action.Session, ContentVersion: action.ContentVersion, ExpectedRevision: action.ExpectedRevision, IdempotencyKey: action.IdempotencyKey, SequenceID: action.SequenceID})
+		v, e := s.ImportDrawComposition(ctx, "agent:"+r.ID, r.ProjectID, c.ID, DrawImportRequest{Session: action.Session, ContentVersion: action.ContentVersion, ExpectedRevision: action.ExpectedRevision, IdempotencyKey: action.IdempotencyKey, SequenceID: action.SequenceID, SourceMode: action.SourceMode})
 		if e != nil {
 			return nil, e
 		}
@@ -99,7 +122,7 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		r.SequenceContentVersion = v.ContentVersion
 		v.History = nil
 		return respond(v)
-	case "draw.get_frame":
+	case "draw.get_frame", "draw.preview":
 		if _, e = s.drawContext(r.ProjectID, c.ID, req); e != nil {
 			return nil, e
 		}
@@ -109,20 +132,38 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		if r.FramesSpent >= r.Budget.MaxFrames {
 			return nil, errFrameBudget
 		}
-		movie, _, e := s.DrawRenderPath(r.ProjectID, c.ID, c.ContentVersion)
-		if e != nil {
-			return nil, e
-		}
 		dir, e := s.harnessDirectory(filepath.Join("projects", r.ProjectID, "skill-runs", r.ID, "draw-frames"))
 		if e != nil {
 			return nil, e
 		}
 		id := "draw_" + skillHash([]any{c.ContentVersion, action.Frame})[:20]
 		path := filepath.Join(dir, id+".png")
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(c.FPS.Seconds(action.Frame), 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", movie, "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-threads", "1", path)
-		configureMediaCommand(cmd)
-		if e = cmd.Run(); e != nil {
-			return nil, fmt.Errorf("draw frame extraction failed: %w", e)
+		if name == "draw.preview" || c.Document != nil {
+			requestID := action.RequestID
+			if requestID == "" {
+				requestID = newID("frame")
+			}
+			preview, e := s.PreviewDrawComposition(ctx, r.ProjectID, c.ID, DrawPreviewRequest{Session: action.Session, ContentVersion: action.ContentVersion, RequestID: requestID, Frame: action.Frame})
+			if e != nil {
+				return nil, e
+			}
+			raw, e := base64.StdEncoding.DecodeString(preview.PNG)
+			if e != nil {
+				return nil, e
+			}
+			if e = os.WriteFile(path, raw, 0600); e != nil {
+				return nil, e
+			}
+		} else {
+			movie, _, e := s.DrawRenderPath(r.ProjectID, c.ID, c.ContentVersion)
+			if e != nil {
+				return nil, e
+			}
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(c.FPS.Seconds(action.Frame), 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", movie, "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-threads", "1", path)
+			configureMediaCommand(cmd)
+			if e = cmd.Run(); e != nil {
+				return nil, fmt.Errorf("draw frame extraction failed: %w", e)
+			}
 		}
 		artifact, e := s.registerSkillArtifact(r, path, id+".png", "frame", 0)
 		if e != nil {

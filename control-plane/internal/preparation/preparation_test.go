@@ -11,6 +11,27 @@ func fixture() Profile {
 	return Profile{SchemaVersion: 1, ProfileID: "local_regression", Revision: 1, Name: "本地回归", ContentMode: "builtin", Vision: Provider{Adapter: "builtin"}, Narration: Provider{Adapter: "builtin"}, Sampling: Sampling{MaxFrames: 12, MaxBytes: 12 * 1024 * 1024, TimeoutSeconds: 60}, TTSVoice: "Microsoft Huihui Desktop", ExportTarget: "premiere"}
 }
 
+func TestProviderReasoningAndOutputBudgetValidation(t *testing.T) {
+	p := Provider{Adapter: "narration", APIFormat: "openai", Endpoint: "http://localhost:1234/v1", Model: "step-5-preview", TokenEnv: "VAC_TEST", ReasoningEffort: "high", MaxOutputTokens: 48000}
+	if err := p.Validate(true); err != nil {
+		t.Fatal(err)
+	}
+	p.MaxOutputTokens = 128001
+	if p.Validate(true) == nil {
+		t.Fatal("accepted unbounded output")
+	}
+	p.MaxOutputTokens = 48000
+	p.ReasoningEffort = "invented"
+	if p.Validate(true) == nil {
+		t.Fatal("accepted unknown effort")
+	}
+	p.ReasoningEffort = "high"
+	p.APIFormat = "anthropic"
+	if p.Validate(true) == nil {
+		t.Fatal("accepted unsupported effort protocol")
+	}
+}
+
 func TestProfileFingerprintAndCredentialBoundary(t *testing.T) {
 	p := fixture()
 	a, err := p.Fingerprint()

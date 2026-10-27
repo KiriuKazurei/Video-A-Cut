@@ -22,6 +22,16 @@ import (
 )
 
 func TestSDKProtocolNegotiationAndCalls(t *testing.T) {
+	config, err := os.ReadFile(filepath.Join("..", "..", "..", "desktop", "tauri.conf.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var desktop struct {
+		Version string `json:"version"`
+	}
+	if err = json.Unmarshal(config, &desktop); err != nil || desktop.Version == "" {
+		t.Fatalf("desktop version: %v", err)
+	}
 	f := newLoopFixtureOptions(t, time.Minute, Options{LocalAccess: true}, Agent{ID: "sdk", Role: "narrator"})
 	if err := f.svc.ConfigureSkillHarness(t.Context()); err != nil {
 		t.Fatal(err)
@@ -43,6 +53,9 @@ func TestSDKProtocolNegotiationAndCalls(t *testing.T) {
 					defer session.Close()
 					if session.InitializeResult().ProtocolVersion != version {
 						t.Fatalf("negotiated %+v", session.InitializeResult())
+					}
+					if got := session.InitializeResult().ServerInfo.Version; got != desktop.Version {
+						t.Fatalf("MCP server version %q differs from desktop %q", got, desktop.Version)
 					}
 					if _, err = session.ListTools(t.Context(), nil); err != nil {
 						t.Fatal(err)

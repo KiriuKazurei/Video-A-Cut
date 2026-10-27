@@ -11,7 +11,57 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestExternalAgentProgressRenewsLeaseAndKeepsOwnership(t *testing.T) {
+	svc, p, v := projectFixture(t)
+	clock := newFakeClock()
+	svc.SetClock(clock.Now)
+	ctx := t.Context()
+	r, err := svc.CreateSkillRun(ctx, "human:test", skill.RunRequest{ProjectID: p.ID, SkillID: "video-use", Mode: "external_mcp", VisibleSHA: v.SHA, Goal: "draw", IdempotencyKey: "progress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err = svc.ClaimSkillRun(ctx, "agent:narrator", r.ID, r.Version, "narrator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstLease := *r.LeaseUntil
+	clock.Advance(90 * time.Second)
+	r, err = svc.ReportSkillProgress(ctx, "agent:narrator", r.ID, r.Version, "generating", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.LeaseUntil.After(firstLease) || r.Progress == nil || r.Progress.Phase != "generating" || r.Progress.OutputChars != 100 || r.Steps != 0 {
+		t.Fatalf("progress/lease: %+v", r)
+	}
+	if _, err = svc.ReportSkillProgress(ctx, "agent:other", r.ID, r.Version, "generating", 200); !errors.Is(err, model.ErrForbidden) {
+		t.Fatalf("another agent: %v", err)
+	}
+	if _, err = svc.ReportSkillProgress(ctx, "agent:narrator", r.ID, r.Version, "invalid", 200); !errors.Is(err, model.ErrArgument) {
+		t.Fatalf("invalid phase: %v", err)
+	}
+	if _, err = svc.ReportSkillProgress(ctx, "agent:narrator", r.ID, r.Version-1, "generating", 100); !errors.Is(err, model.ErrConflict) {
+		t.Fatalf("stale heartbeat accepted: %v", err)
+	}
+	clock.Advance(90 * time.Second)
+	r, err = svc.ReportSkillProgress(ctx, "agent:narrator", r.ID, r.Version, "generating", 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:narrator", r.ID, skill.ToolRequest{Name: "media.list", Arguments: json.RawMessage(`{}`), ExpectedVersion: r.Version, IdempotencyKey: "after-progress"})
+	if err != nil {
+		t.Fatalf("long generation lost its lease: %v", err)
+	}
+	if r.Steps != 1 {
+		t.Fatalf("heartbeats must not consume tool budget: %+v", r)
+	}
+	clock.Advance(3 * time.Minute)
+	if _, err = svc.ReportSkillProgress(ctx, "agent:narrator", r.ID, r.Version, "generating", 300); !errors.Is(err, model.ErrLeaseExpired) {
+		t.Fatalf("expired lease renewed: %v", err)
+	}
+}
 
 func TestSkillRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, false) }
 

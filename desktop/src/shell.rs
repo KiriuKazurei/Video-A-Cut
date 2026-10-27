@@ -82,7 +82,13 @@ async fn project_dialog(
         let mut dialog = app.dialog().file();
         let save = matches!(
             mode.as_str(),
-            "new-project" | "save-project" | "save-script" | "save-video"
+            "new-project"
+                | "save-project"
+                | "save-script"
+                | "save-video"
+                | "save-draw-mp4"
+                | "save-draw-webm"
+                | "save-draw-prores"
         );
         dialog = match mode.as_str() {
             "new-project" | "save-project" => dialog
@@ -97,6 +103,15 @@ async fn project_dialog(
             "save-video" => dialog
                 .set_title("导出当前序列轨道范围")
                 .add_filter("MP4 视频", &["mp4"]),
+            "save-draw-mp4" => dialog
+                .set_title("导出绘制视频")
+                .add_filter("MP4 视频", &["mp4"]),
+            "save-draw-webm" => dialog
+                .set_title("导出透明绘制视频")
+                .add_filter("WebM 透明视频", &["webm"]),
+            "save-draw-prores" => dialog
+                .set_title("导出透明绘制视频")
+                .add_filter("ProRes 4444", &["mov"]),
             "transcription-model" => dialog.set_title("选择本地转录模型目录"),
             "transcription-python" => dialog
                 .set_title("选择本地转录 Python")
@@ -138,7 +153,13 @@ async fn project_dialog(
             .map(|file| {
                 let mut path = file.into_path().map_err(|error| error.to_string())?;
                 if save && path.extension().is_none() {
-                    path.set_extension(if mode == "save-script" { "avs" } else { "avp" });
+                    path.set_extension(match mode.as_str() {
+                        "save-script" => "avs",
+                        "save-video" | "save-draw-mp4" => "mp4",
+                        "save-draw-webm" => "webm",
+                        "save-draw-prores" => "mov",
+                        _ => "avp",
+                    });
                 }
                 let path = std::path::absolute(path).map_err(|error| error.to_string())?;
                 Ok(path.display().to_string())

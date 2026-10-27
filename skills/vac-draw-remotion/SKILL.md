@@ -5,7 +5,7 @@ Read vac/tool-contracts.md. Author one TSX module exporting a default React comp
 Use inline graphics and bound current-project image resources. Add external audio/video through the editing timeline. No remote imports, Node APIs, arbitrary paths, shell or installation commands.
 draw.save stores source/specification with the current project session/revision and an idempotency key; draw.check checks syntax/imports/specification; draw.render uses the installed official renderer and Chromium without downloading a browser or using a cloud fallback.
 Use draw.get_frame plus artifacts.get to inspect real pixels, then draw.import into the run's launch sequence. timeline.read/edit can change the resulting clips; run.finish takes the current sequence_revision and content_version.
-import_into_editing is executable. composite_preview and merge_render operate on rendered resources in Editing; unrendered source-level composition remains unavailable.
+Source-level composite_preview and merge_render use the shared FrameSource after draw.import source_mode=snapshot (or explicit follow), without an intermediate MP4. Omitted source_mode retains verified rendered import.
 Retain editable source in the AVP. Do not invent human acceptance; machine completion reports not_checked.
 
 

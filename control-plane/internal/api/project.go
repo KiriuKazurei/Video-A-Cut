@@ -147,6 +147,9 @@ func (s *Server) projectResourceContent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	path, err := s.svc.ProjectResourcePath(r.PathValue("id"), r.PathValue("resource"), r.URL.Query().Get("proxy") == "1")
+	if resource.Draw != nil {
+		path, err = s.svc.CreateResourcePreview(r.Context(), r.PathValue("id"), r.PathValue("resource"))
+	}
 	if err != nil {
 		writeServiceError(w, err)
 		return

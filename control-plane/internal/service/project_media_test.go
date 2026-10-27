@@ -141,6 +141,33 @@ func TestProjectCameraRawDevelopAndSharedRender(t *testing.T) {
 	if _, err := svc.RenderDrawComposition(ctx, pid, c.ID, service.DrawActionRequest{Session: view.ID, ContentVersion: c.ContentVersion}); err != nil {
 		t.Fatal(err)
 	}
+	currentTimeline, err := svc.Timeline(ctx, pid, seq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached, err := svc.ImportDrawComposition(ctx, "human:window", pid, c.ID, service.DrawImportRequest{Session: view.ID, ContentVersion: c.ContentVersion, SequenceID: seq.ID, ExpectedRevision: currentTimeline.Sequence.Revision, IdempotencyKey: "freeze-raw-source", SourceMode: "snapshot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = attached
+	resources, err := svc.ProjectResources(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frozenResource project.Resource
+	for _, candidate := range resources {
+		if candidate.Draw != nil {
+			frozenResource = candidate
+		}
+	}
+	firstThumbnail, err := svc.ResourceThumbnail(ctx, pid, frozenResource.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPixels, err := os.ReadFile(firstThumbnail)
+	if err != nil {
+		t.Fatal(err)
+	}
 	recipe.Exposure = 0
 	view, err = svc.UpdateProjectResource(ctx, pid, r.ID, service.ResourcePatch{RawDevelop: &recipe})
 	if err != nil {
@@ -148,6 +175,22 @@ func TestProjectCameraRawDevelopAndSharedRender(t *testing.T) {
 	}
 	if _, _, err := svc.DrawRenderPath(pid, c.ID, c.ContentVersion); !errors.Is(err, model.ErrConflict) {
 		t.Fatalf("stale drawing allowed %v", err)
+	}
+	// Drop only this test's generated frames/derivative: the AVP must retain
+	// enough source and RAW recipe state to regenerate the frozen picture.
+	if err = os.Remove(firstThumbnail); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(current); err != nil {
+		t.Fatal(err)
+	}
+	restoredThumbnail, err := svc.ResourceThumbnail(ctx, pid, frozenResource.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredPixels, err := os.ReadFile(restoredThumbnail)
+	if err != nil || string(restoredPixels) != string(firstPixels) {
+		t.Fatal("RAW source snapshot changed after recipe update/cache loss", err)
 	}
 	view, err = svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{ExpectedSession: view.ID})
 	if err != nil {
@@ -212,9 +255,12 @@ func TestProjectExpandedMediaAndMatroskaStreams(t *testing.T) {
 	if len(streams) != 3 || !streams[0] || !streams[1] || !streams[2] || len(links) != 1 || links[""] {
 		t.Fatalf("source stream/link mapping %v %v", streams, links)
 	}
-	for _, ext := range []string{"mp4", "mov", "avi", "flv", "mp3", "wav", "jpg", "jpeg", "jepg", "png", "gif", "bmp", "tiff", "webp"} {
+	for _, ext := range []string{"mp4", "mov", "avi", "flv", "mp3", "wav", "jpg", "jpeg", "jpe", "jepg", "png", "gif", "bmp", "tiff", "webp"} {
 		t.Run(ext, func(t *testing.T) {
 			path := filepath.Join(root, "fixture."+ext)
+			if ext == "jpe" {
+				path = filepath.Join(root, "fixture%03d.jpe")
+			}
 			args := []string{"-v", "error", "-y", "-i", mkv}
 			if ext == "mp3" {
 				args = append(args, "-map", "0:a:0", "-c:a", "libmp3lame")
@@ -228,6 +274,9 @@ func TestProjectExpandedMediaAndMatroskaStreams(t *testing.T) {
 				args = append(args, "-map", "0:v:0", "-frames:v", "1")
 				if ext == "jepg" {
 					args = append(args, "-c:v", "mjpeg", "-f", "image2")
+				}
+				if ext == "jpe" {
+					args = append(args, "-c:v", "mjpeg", "-f", "image2", "-update", "1")
 				}
 			}
 			mediaTool(t, "ffmpeg", append(args, path)...)

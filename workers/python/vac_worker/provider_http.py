@@ -45,7 +45,8 @@ def api_base(endpoint: str, api_format: str) -> str:
 
 
 def generation_request(api_format: str, endpoint: str, model: str, token: str,
-                       text: str, images: list[str], max_tokens: int = 4096):
+                       text: str, images: list[str], max_tokens: int = 4096,
+                       stream: bool = False, reasoning_effort: str = ''):
     base = api_base(endpoint, api_format)
     headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
     if api_format == 'openai':
@@ -54,8 +55,15 @@ def generation_request(api_format: str, endpoint: str, model: str, token: str,
         content = [{'type': 'text', 'text': text}]
         content += [{'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + data}}
                     for data in images]
+        token_field = 'max_tokens' if model.lower().startswith('step-5') else 'max_completion_tokens'
         body = {'model': model, 'messages': [{'role': 'user', 'content': content}],
-                'max_completion_tokens': max_tokens, 'stream': False}
+                token_field: max_tokens, 'stream': stream}
+        if reasoning_effort:
+            if reasoning_effort not in ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'):
+                raise ContentError('invalid reasoning effort')
+            body['reasoning_effort'] = reasoning_effort
+        if stream:
+            headers['Accept'] = 'text/event-stream, application/json'
     elif api_format == 'anthropic':
         url = base + '/messages'
         headers.update({'x-api-key': token, 'anthropic-version': '2023-06-01'})

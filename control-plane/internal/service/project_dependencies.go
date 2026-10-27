@@ -45,7 +45,7 @@ func (s *Service) markRemovedResourceReferences(ctx context.Context, doc *projec
 		mark(raw)
 	}
 	for _, composition := range doc.DrawCompositions {
-		raw, _ := json.Marshal(composition.Images)
+		raw, _ := json.Marshal(composition.ImageBindings())
 		mark(raw)
 	}
 	for _, sequence := range doc.Sequences {

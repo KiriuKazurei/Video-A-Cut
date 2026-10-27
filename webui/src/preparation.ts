@@ -6,6 +6,8 @@ export interface ProcessingProvider {
   model?: string;
   token_env?: string;
   api_format?: ProviderFormat;
+  reasoning_effort?: 'none'|'minimal'|'low'|'medium'|'high'|'xhigh';
+  max_output_tokens?: number;
 }
 export interface ProviderDiagnostic {
   ok: boolean;

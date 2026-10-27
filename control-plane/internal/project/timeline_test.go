@@ -158,7 +158,7 @@ func TestAVPVersionOneUpgradeAndTwoRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.Upgrade()
-	if len(d.Sequences) != 1 || len(d.LegacySequences) != 1 || d.SchemaVersion != 2 {
+	if len(d.Sequences) != 1 || len(d.LegacySequences) != 1 || d.SchemaVersion != SchemaVersion {
 		t.Fatalf("migration %+v", d)
 	}
 	var round AvpDocument

@@ -13,7 +13,9 @@ type Provider struct {
 	Model    string `json:"model,omitempty"`
 	TokenEnv string `json:"token_env,omitempty"`
 	// Empty preserves the original custom protocol and historical fingerprints.
-	APIFormat string `json:"api_format,omitempty"`
+	APIFormat       string `json:"api_format,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens int    `json:"max_output_tokens,omitempty"`
 }
 
 type Sampling struct {

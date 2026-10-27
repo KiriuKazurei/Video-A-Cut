@@ -56,6 +56,21 @@ func (s *Service) ProjectResources(projectID string) ([]project.Resource, error)
 		return nil, model.ErrNotFound
 	}
 	copy := cloneProject(w.document)
+	for i := range copy.Resources {
+		r := &copy.Resources[i]
+		if r.Draw == nil || r.Draw.Mode != "follow" {
+			continue
+		}
+		for _, c := range copy.DrawCompositions {
+			if c.ID == r.Draw.CompositionID {
+				r.Source.SHA256 = c.ContentVersion
+				r.Metadata["width"] = c.Width
+				r.Metadata["height"] = c.Height
+				r.Metadata["duration"] = c.FPS.Seconds(c.DurationFrames)
+				r.Out = c.FPS.Seconds(c.DurationFrames)
+			}
+		}
+	}
 	refreshResourceAvailability(copy.Resources)
 	return copy.Resources, nil
 }
@@ -63,7 +78,7 @@ func (s *Service) ProjectResources(projectID string) ([]project.Resource, error)
 func refreshResourceAvailability(resources []project.Resource) {
 	for i := range resources {
 		r := &resources[i]
-		if r.Kind == "script" {
+		if r.Kind == "script" || r.Draw != nil {
 			continue
 		}
 		info, err := os.Stat(r.Source.OriginalPath)
@@ -179,7 +194,16 @@ func (s *Service) inspectResource(ctx context.Context, path string) (project.Res
 	} else if r.Kind == "video" || r.Kind == "audio" || r.Kind == "image" {
 		probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(probeCtx, "ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", abs)
+		args := []string{"-v", "error", "-protocol_whitelist", "file,pipe"}
+		if r.Kind == "image" {
+			switch strings.ToLower(filepath.Ext(abs)) {
+			case ".jpg", ".jpeg", ".jepg", ".png", ".webp", ".bmp", ".tif", ".tiff":
+				// Treat the imported pathname as one literal file, not an image sequence.
+				args = append(args, "-f", "image2", "-pattern_type", "none")
+			}
+		}
+		args = append(args, "-show_format", "-show_streams", "-of", "json", abs)
+		cmd := exec.CommandContext(probeCtx, "ffprobe", args...)
 		hideTTSCommand(cmd)
 		var out scriptOutput
 		cmd.Stdout = &out
@@ -353,6 +377,9 @@ func (s *Service) UpdateProjectResource(ctx context.Context, projectID, id strin
 			w.document.Resources[i] = r
 		}
 	}
+	if contentChanged {
+		refreshDrawingDependency(w.document, r)
+	}
 	w.mu.Unlock()
 	s.rememberResourceEdit(&previous, r)
 	if contentChanged {
@@ -368,6 +395,9 @@ func (s *Service) UpdateProjectResource(ctx context.Context, projectID, id strin
 }
 
 func (s *Service) materializeResource(ctx context.Context, r project.Resource, projectID string) error {
+	if r.Draw != nil {
+		return nil
+	}
 	if r.AssetID == "" {
 		return nil
 	}
@@ -447,7 +477,7 @@ func (s *Service) hydrateProject(ctx context.Context, doc *project.AvpDocument, 
 
 	for i := range doc.Resources {
 		r := &doc.Resources[i]
-		if r.Kind != "script" {
+		if r.Kind != "script" && r.Draw == nil {
 			resolved := project.ResolveSource(path, r.Source)
 			info, err := os.Stat(resolved)
 			r.Missing = err != nil || (err == nil && !info.Mode().IsRegular()) || r.Removed
@@ -570,6 +600,9 @@ func (s *Service) CreateResourcePreview(ctx context.Context, projectID, id strin
 	r, err := s.ProjectResource(projectID, id)
 	if err != nil {
 		return "", err
+	}
+	if r.Draw != nil {
+		return s.DrawResourcePreview(ctx, projectID, r)
 	}
 	if r.Missing || r.Removed {
 		return "", model.ErrNotFound

@@ -60,7 +60,7 @@ func (p Profile) Validate() error {
 	}{{"vision", "vision", p.Vision}, {"narration", "narration", p.Narration}} {
 		v := spec.value
 		if p.ContentMode == "builtin" {
-			if v.Adapter != "builtin" || v.Endpoint != "" || v.Model != "" || v.TokenEnv != "" || v.APIFormat != "" {
+			if v.Adapter != "builtin" || v.Endpoint != "" || v.Model != "" || v.TokenEnv != "" || v.APIFormat != "" || v.ReasoningEffort != "" || v.MaxOutputTokens != 0 {
 				return fmt.Errorf("%s must be explicitly builtin without external settings", spec.name)
 			}
 			continue
@@ -77,6 +77,19 @@ func (p Profile) Validate() error {
 
 // Validate checks a provider without transmitting anything. Discovery can omit model.
 func (p Provider) Validate(requireModel bool) error {
+	if p.MaxOutputTokens != 0 && (p.MaxOutputTokens < 256 || p.MaxOutputTokens > 128000) {
+		return fmt.Errorf("max_output_tokens must be between 256 and 128000")
+	}
+	if p.ReasoningEffort != "" {
+		if p.APIFormat != "openai" {
+			return fmt.Errorf("reasoning_effort requires OpenAI-compatible format")
+		}
+		switch p.ReasoningEffort {
+		case "none", "minimal", "low", "medium", "high", "xhigh":
+		default:
+			return fmt.Errorf("invalid reasoning_effort")
+		}
+	}
 	if p.Adapter != "vision" && p.Adapter != "narration" {
 		return fmt.Errorf("adapter must be vision or narration")
 	}

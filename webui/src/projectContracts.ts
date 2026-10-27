@@ -5,6 +5,7 @@ import type { TimelineSequence, TimelineMarker, ScriptReference } from './timeli
 export type ResourceKind = 'video' | 'audio' | 'image' | 'subtitle' | 'document' | 'script';
 export interface RawDevelop { exposure: number; white_balance: 'camera' | 'auto' | 'daylight'; contrast: number; saturation: number }
 export interface ProjectResource {
+ draw_source?:{composition_id:string;mode:'snapshot'|'follow';snapshot:DrawComposition};
  raw_develop?: RawDevelop;
   id: string; kind: ResourceKind; name: string;
   source: { relative_path?: string; original_path?: string; sha256?: string; size_bytes: number; modified_ns?: number };
@@ -19,7 +20,7 @@ export interface AvsDocument {
   tts_enabled: boolean; subtitles_enabled: boolean; allow_web_research: boolean;
 }
 export interface AvpDocument {
-  format: 'avp'; schema_version: 1 | 2; draw_compositions?: DrawComposition[];
+  format: 'avp'; schema_version: 1 | 2 | 3; draw_compositions?: DrawComposition[];
   project: { id: string; name: string; created_at: string; updated_at: string };
   resources: ProjectResource[]; scripts: AvsDocument[];
   sequences: TimelineSequence[];

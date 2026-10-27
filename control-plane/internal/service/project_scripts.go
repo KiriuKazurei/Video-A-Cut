@@ -159,7 +159,7 @@ func (s *Service) ImportScriptFile(ctx context.Context, projectID string, req Sc
 		}
 	}
 	doc.Segments, _ = json.Marshal(segments)
-	doc.SchemaVersion = project.SchemaVersion
+	doc.SchemaVersion = project.ScriptSchemaVersion
 	for i := range doc.References {
 		ref := &doc.References[i]
 		ref.Unresolved = true
@@ -271,7 +271,7 @@ func (s *Service) exportScriptDocument(ctx context.Context, id string) (project.
 	if err != nil {
 		return project.AvsDocument{}, err
 	}
-	doc := project.AvsDocument{Format: "avs", SchemaVersion: project.SchemaVersion, ID: id, Title: w.Script.Title, Body: w.Script.Body, TTSEnabled: w.TTSEnabled, SubtitlesEnabled: w.SubtitlesEnabled, AllowWebResearch: w.AllowWebResearch, Bindings: []project.Binding{}, References: w.References}
+	doc := project.AvsDocument{Format: "avs", SchemaVersion: project.ScriptSchemaVersion, ID: id, Title: w.Script.Title, Body: w.Script.Body, TTSEnabled: w.TTSEnabled, SubtitlesEnabled: w.SubtitlesEnabled, AllowWebResearch: w.AllowWebResearch, Bindings: []project.Binding{}, References: w.References}
 	doc.Segments, _ = json.Marshal(w.Segments)
 	doc.Sources, _ = json.Marshal(w.Sources)
 	revisions, err := s.ScriptRevisions(ctx, id)

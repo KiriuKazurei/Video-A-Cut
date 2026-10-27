@@ -257,7 +257,7 @@ func (d *AvpDocument) UnmarshalJSON(raw []byte) error {
 func (d *AvpDocument) Upgrade() {
 	d.SchemaVersion = SchemaVersion
 	for i := range d.Scripts {
-		d.Scripts[i].SchemaVersion = SchemaVersion
+		d.Scripts[i].SchemaVersion = ScriptSchemaVersion
 	}
 	if len(d.Sequences) == 0 {
 		d.Sequences = []Sequence{NewSequence("主序列")}

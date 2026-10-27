@@ -62,3 +62,14 @@ test('cross dissolve refuses missing handles instead of silently changing edit d
  const s=seq(),a=clip('a'),b={...clip('b'),at:24,effects:{...effects(),transition:6}};s.tracks=[{id:'v',kind:'video',clips:[a,b]}];
  const resources=[{id:'r',kind:'video',path:join(process.cwd(),'example.mp4'),metadata:{duration:.8,streams:[{index:0,codec_type:'video'}]}}];assert.throws(()=>sequenceGraph(s,resources),/源尾部/);
 });
+
+test('editable drawing FrameSource composites alpha with footage and sound on the shared sequence clock',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture(),s=seq();
+ const drawing={id:'draw',name:'Editable source',kind:'video',sha256:'snapshot-1',metadata:{duration:1,streams:[{index:0,codec_type:'video'}]},draw_document:{schema_version:1,canvas:{width:320,height:180,fps:{num:24,den:1}},duration_frames:24,preset:'auto',sources:[{id:'react',engine:'remotion',canvas:{width:320,height:180,fps:{num:12,den:1}},duration_frames:12,source:'import React from "react";import {useCurrentFrame,useVideoConfig} from "remotion";export default function Scene(){const f=useCurrentFrame(),c=useVideoConfig();return <div style={{position:"absolute",left:50+f*4,top:40,width:80,height:50,background:c.fps===12?"rgba(0,0,255,.5)":"lime"}}/>;}'}],nodes:[{id:'react',kind:'source',source_id:'react',from:0,duration:24}]},assets:[]};
+ s.tracks=[{id:'base',kind:'video',clips:[clip('base')]},{id:'drawing',kind:'video',clips:[{...clip('drawing'),resource_id:'draw'}]},{id:'tone',kind:'audio',clips:[clip('audio',2)]}];
+ const output=join(root,'drawing-source'),report=await renderSequence({sequence:s,resources:[...resources,drawing],output_dir:output,content_version:'drawing-source'});
+ const center=await pixelStat(join(output,'program.mp4'),.4,75,55),outside=await pixelStat(join(output,'program.mp4'),.4,230,55),audio=await audioStat(join(output,'program.mp4'),'lavfi.astats.Overall.RMS_level',.1,.4);
+ assert(center.UAVG>165&&center.VAVG>165,'half-alpha blue source must blend with red footage');assert(outside.VAVG>220&&outside.UAVG<110,'transparent drawing area must preserve footage');assert(audio>-45,'existing sound must survive the drawing FrameSource');assert.equal(report.frames,24);
+ const snapshot=JSON.parse(await readFile(join(output,'sequence.json'),'utf8'));assert(snapshot.resources.some(r=>r.draw_document),'editable source snapshot must remain distinguishable from flattened video');
+ await writeFile(join(output,'verification.json'),JSON.stringify({report,center,outside,audio,independent_source_fps:12,drawing_fps:24,sequence_fps:30},null,2));
+});

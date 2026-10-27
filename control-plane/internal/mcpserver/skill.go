@@ -35,6 +35,12 @@ type skillToolArgs struct {
 		IdempotencyKey  string         `json:"idempotency_key"`
 	} `json:"request"`
 }
+type skillProgressArgs struct {
+	RunID       string `json:"run_id"`
+	Version     int    `json:"expected_version"`
+	Phase       string `json:"phase"`
+	OutputChars int    `json:"output_chars,omitempty"`
+}
 
 func mcpSkillActor(ctx context.Context) string { return "agent:" + ctx.Value(identityKey{}).(Agent).ID }
 func requireSkillSessionRole(ctx context.Context, svc *service.Service, id string) error {
@@ -106,6 +112,13 @@ func registerSkillTools(server *mcp.Server, svc *service.Service) {
 		v, e := svc.ClaimSkillRun(ctx, mcpSkillActor(ctx), a.RunID, a.Version, ctx.Value(identityKey{}).(Agent).Role)
 		return nil, v, e
 	})
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.progress", Description: "Report the actual phase and received output character count; renew the owning Agent's lease without spending a tool step"}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillProgressArgs) (*mcp.CallToolResult, skill.Run, error) {
+		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
+			return nil, skill.Run{}, e
+		}
+		v, e := svc.ReportSkillProgress(ctx, mcpSkillActor(ctx), a.RunID, a.Version, a.Phase, a.OutputChars)
+		return nil, v, e
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.get", Description: "Read this Agent's run and its immutable Skill/media context"}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillRunIDArgs) (*mcp.CallToolResult, map[string]any, error) {
 		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
 			return nil, nil, e
@@ -120,7 +133,7 @@ func registerSkillTools(server *mcp.Server, svc *service.Service) {
 		v, e := svc.UpdateSkillRun(ctx, mcpSkillActor(ctx), a.RunID, "cancel", a.Version)
 		return nil, v, e
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Human finalization is never available."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Human finalization is never available."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
 		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
 			return nil, nil, e
 		}

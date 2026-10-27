@@ -64,6 +64,9 @@ func (s *Service) moveResourceHistory(ctx context.Context, action string) (proje
 			w.document.Resources[i] = target
 		}
 	}
+	if contentChanged {
+		refreshDrawingDependency(w.document, target)
+	}
 	if action == "undo" {
 		w.undoCursor--
 	} else {

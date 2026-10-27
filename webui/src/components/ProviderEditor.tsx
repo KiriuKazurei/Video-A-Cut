@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Col, Flex, Form, Input, Row, Space, Typography } from 'antd';
+import { Alert, Button, Card, Col, Flex, Form, Input, InputNumber, Row, Space, Typography } from 'antd';
 import { api } from '../api';
 import { ValueSelect } from './ui';
 import type { ProcessingProvider, ProviderDiagnostic, ProviderFormat } from '../preparation';
@@ -51,10 +51,10 @@ export function ProviderEditor({ role, provider, disabled, onChange }: {
   };
   const changeFormat = (format: string) => {
     if (!format) {
-      const { api_format: _, ...rest } = provider;
+      const { api_format: _, reasoning_effort: _effort, ...rest } = provider;
       onChange(rest);
     } else {
-      onChange({ ...provider, api_format: format as ProviderFormat, endpoint: defaults[format as ProviderFormat], model: '' });
+      onChange({ ...provider, api_format: format as ProviderFormat, endpoint: defaults[format as ProviderFormat], model: '', ...(format==='openai'?{}:{reasoning_effort:undefined}) });
     }
   };
   const modelValue = available?.ok && provider.model ? provider.model : undefined;
@@ -74,6 +74,12 @@ export function ProviderEditor({ role, provider, disabled, onChange }: {
       <Col xs={24} md={12}><Form.Item label="运行凭证环境变量名">
         <Input required disabled={disabled} aria-label={`${role==='vision'?'画面识别':'中文解说'} 凭证环境变量`} value={provider.token_env || ''} onChange={e => onChange({ ...provider, token_env: e.target.value })} />
       </Form.Item></Col>
+      {provider.api_format==='openai'&&<Col xs={24} md={12}><Form.Item label="推理强度">
+        <ValueSelect<string> aria-label={`${role==='vision'?'画面识别':'中文解说'} 推理强度`} disabled={disabled} value={provider.reasoning_effort||''} onChange={value=>onChange({...provider,reasoning_effort:(value||undefined) as ProcessingProvider['reasoning_effort']})} options={['','none','minimal','low','medium','high','xhigh'].map(value=>({value,label:value||'服务商默认'}))}/>
+      </Form.Item></Col>}
+      {provider.api_format&&<Col xs={24} md={12}><Form.Item label="最大输出 Token（留空自动）">
+        <InputNumber aria-label={`${role==='vision'?'画面识别':'中文解说'} 最大输出 Token`} disabled={disabled} min={256} max={128000} precision={0} value={provider.max_output_tokens??null} onChange={value=>onChange({...provider,max_output_tokens:value??undefined})}/>
+      </Form.Item></Col>}
     </Row>
     {provider.api_format && <Flex vertical gap={8}>
       <Typography.Text type="secondary">可替换为服务商兼容地址，保留其 API 路径前缀。连接测试使用固定文字{role === 'vision' ? '和合成图片' : ''}，可能产生少量费用。</Typography.Text>

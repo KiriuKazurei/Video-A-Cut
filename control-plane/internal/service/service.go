@@ -12,6 +12,7 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
@@ -20,9 +21,12 @@ import (
 // handlers own their protocols. A Service is safe for concurrent use as long
 // as its collaborators are, which store.Store and events.Bus both are.
 type Service struct {
-	workspace *projectWorkspace
-	harnessMu     sync.Mutex
-	harnessCancel map[string]context.CancelFunc
+	drawMu          sync.Mutex
+	drawFrames      map[string]*drawFrameProcess
+	workspace       *projectWorkspace
+	harnessMu       sync.Mutex
+	harnessCancel   map[string]context.CancelFunc
+	harnessProgress map[string]skill.RunProgress
 	// st is the persistence layer. It never sees a business rule.
 	st         *store.Store
 	ttsRuntime *ttsRuntime

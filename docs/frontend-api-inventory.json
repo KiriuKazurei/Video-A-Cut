@@ -30,8 +30,8 @@
     "tool_count": 16,
     "inner_tool_count": 21
   },
-  "registered_route_count": 177,
-  "expanded_endpoint_count": 178,
+  "registered_route_count": 183,
+  "expanded_endpoint_count": 184,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -1895,7 +1895,7 @@
       "backend_handler": "streamEvents",
       "backend_source": {
         "file": "control-plane/internal/api/sse.go",
-        "line": 47
+        "line": 48
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5613,7 +5613,7 @@
       "id": "AVP-157",
       "frontend_calls": [
         {
-          "line": 111,
+          "line": 112,
           "file": "webui/src/projectWorkspace.tsx"
         }
       ],
@@ -6086,7 +6086,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/draw.go",
-        "line": 8
+        "line": 38
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6095,13 +6095,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/drawApi.ts",
-          "line": 10
+          "line": 15
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/DrawWorkspace.tsx",
-          "line": 22
+          "line": 26
         }
       ],
       "lifecycle": "current_project_only"
@@ -6120,7 +6120,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/draw.go",
-        "line": 12
+        "line": 42
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6129,13 +6129,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/drawApi.ts",
-          "line": 11
+          "line": 16
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/DrawWorkspace.tsx",
-          "line": 40
+          "line": 95
         }
       ],
       "lifecycle": "current_project_only"
@@ -6154,7 +6154,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/draw.go",
-        "line": 21
+        "line": 51
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6163,13 +6163,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/drawApi.ts",
-          "line": 12
+          "line": 17
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/DrawWorkspace.tsx",
-          "line": 52
+          "line": 237
         }
       ],
       "lifecycle": "current_project_only"
@@ -6181,14 +6181,14 @@
       "path": "/api/projects/{id}/draw-compositions/{composition}/render",
       "frontend_function": "drawApi.render",
       "frontend_ui": "绘制四区工作台",
-      "request": "DrawActionRequest: session,content_version",
+      "request": "session,content_version,format? (mp4/webm-alpha/prores4444)",
       "success_response": "DrawRender",
-      "behavior": "本地渲染并校验实际 MP4 参数与 SHA256",
+      "behavior": "共享RGBA帧最终编码，核验帧数/哈希/环境",
       "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/draw.go",
-        "line": 30
+        "line": 60
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6197,13 +6197,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/drawApi.ts",
-          "line": 13
+          "line": 18
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/DrawWorkspace.tsx",
-          "line": 53
+          "line": 117
         }
       ],
       "lifecycle": "current_project_only"
@@ -6215,14 +6215,14 @@
       "path": "/api/projects/{id}/draw-compositions/{composition}/render",
       "frontend_function": "drawApi.renderURL",
       "frontend_ui": "绘制四区工作台",
-      "request": "query version=content_version",
-      "success_response": "video/mp4（Range）",
+      "request": "query version=content_version,format?",
+      "success_response": "video/mp4,video/webm或video/quicktime（Range）",
       "behavior": "当前工程当前指纹视频；不存在或过期明确失败，禁止缓存",
       "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/draw.go",
-        "line": 39
+        "line": 69
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6231,13 +6231,13 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/drawApi.ts",
-          "line": 15
+          "line": 21
         }
       ],
       "frontend_calls": [
         {
           "file": "webui/src/workspaces/DrawWorkspace.tsx",
-          "line": 122
+          "line": 118
         }
       ],
       "lifecycle": "current_project_only"
@@ -6249,14 +6249,48 @@
       "path": "/api/projects/{id}/draw-compositions/{composition}/import",
       "frontend_function": "drawApi.import",
       "frontend_ui": "绘制四区工作台",
-      "request": "DrawImportRequest: session,content_version,sequence_id,expected_revision(sequence),idempotency_key",
+      "request": "DrawImportRequest: session,content_version,sequence_id,expected_revision(sequence),idempotency_key,source_mode? (snapshot/follow/rendered)",
       "success_response": "TimelineView",
-      "behavior": "成片入工程和独立轨组，整组可撤销，明确调用者来源",
+      "behavior": "可编辑源快照/跟随或已渲成片加入独立轨组，整组撤销",
       "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/draw.go",
-        "line": 48
+        "line": 90
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/drawApi.ts",
+          "line": 20
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/DrawWorkspace.tsx",
+          "line": 149
+        }
+      ],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "DRAW-07",
+      "group": "代码绘制与编辑衔接",
+      "method": "GET",
+      "path": "/api/projects/{id}/draw-capabilities",
+      "frontend_function": "drawApi.capabilities",
+      "frontend_ui": "绘制四区工作台",
+      "request": "无body；当前工程",
+      "success_response": "能力矩阵",
+      "behavior": "固定引擎、图层能力与不支持项",
+      "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/draw.go",
+        "line": 21
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6268,12 +6302,152 @@
           "line": 14
         }
       ],
-      "frontend_calls": [
+      "frontend_calls": [],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "DRAW-08",
+      "group": "代码绘制与编辑衔接",
+      "method": "POST",
+      "path": "/api/projects/{id}/draw-compositions/{composition}/preview",
+      "frontend_function": "drawApi.preview",
+      "frontend_ui": "绘制四区工作台",
+      "request": "session,content_version,request_id,frame,document",
+      "success_response": "DrawPreviewFrame",
+      "behavior": "常驻Worker同帧PNG及命中信息，不修改草稿",
+      "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/draw.go",
+        "line": 25
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
         {
-          "file": "webui/src/workspaces/DrawWorkspace.tsx",
-          "line": 57
+          "file": "webui/src/drawApi.ts",
+          "line": 12
         }
       ],
+      "frontend_calls": [],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "DRAW-09",
+      "group": "代码绘制与编辑衔接",
+      "method": "DELETE",
+      "path": "/api/projects/{id}/draw-compositions/{composition}/preview",
+      "frontend_function": "drawApi.closePreview",
+      "frontend_ui": "绘制四区工作台",
+      "request": "query session",
+      "success_response": "{closed:boolean}",
+      "behavior": "销毁当前会话的预览上下文",
+      "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/draw.go",
+        "line": 34
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/drawApi.ts",
+          "line": 13
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "DRAW-10",
+      "group": "代码绘制与编辑衔接",
+      "method": "POST",
+      "path": "/api/projects/{id}/draw-compositions/{composition}/export",
+      "frontend_function": "drawApi.export",
+      "frontend_ui": "绘制四区工作台",
+      "request": "session,content_version,format,path",
+      "success_response": "DrawRender",
+      "behavior": "格式匹配、哈希校验后原子复制到原生选择路径",
+      "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/draw.go",
+        "line": 78
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/drawApi.ts",
+          "line": 19
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "DRAW-11",
+      "group": "代码绘制与编辑衔接",
+      "method": "GET",
+      "path": "/api/projects/{id}/draw-compositions/{composition}/history",
+      "frontend_function": "drawApi.history",
+      "frontend_ui": "绘制四区工作台",
+      "request": "当前工程及构图ID",
+      "success_response": "{can_undo,can_redo}",
+      "behavior": "读取当前会话可撤销/重做状态，无私有快照",
+      "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/draw.go",
+        "line": 8
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/drawApi.ts",
+          "line": 10
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "DRAW-12",
+      "group": "代码绘制与编辑衔接",
+      "method": "POST",
+      "path": "/api/projects/{id}/draw-compositions/{composition}/history",
+      "frontend_function": "drawApi.moveHistory",
+      "frontend_ui": "绘制四区工作台",
+      "request": "session,expected_revision(project),composition_revision,idempotency_key,action",
+      "success_response": "ProjectSession",
+      "behavior": "人工整场景撤销/重做；修订递增、幂等，不回退运行/预算/冻结资源",
+      "usage": "工程会话隔离；源码不在 VAC WebView 内执行",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/draw.go",
+        "line": 12
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/drawApi.ts",
+          "line": 11
+        }
+      ],
+      "frontend_calls": [],
       "lifecycle": "current_project_only"
     }
   ],
@@ -6296,9 +6470,9 @@
     "control-plane/internal/api/tts.go": "a0ffaec8ee432656be67a7d60c3d9ff7ffcc8283a17ed6969227d804542e2cb8",
     "control-plane/internal/api/skill.go": "e2fd009e663ac389dc5bacccd41aff82b8c17730bed3181f703228518a50bce4",
     "control-plane/internal/api/skill_editing.go": "d1a3945a023c2e21611232b119c2f8f49c59d96a54f2c1608ae3dee18c0d8e31",
-    "control-plane/internal/api/project.go": "1890d8948e9979fcd2aff4b15c8e04342bef8a3b03f550222e30a1270cbfab31",
+    "control-plane/internal/api/project.go": "35e01cc9b8fdf51af3dd00d4c442a0bb303cac0347e9d1b37d0c60f30fb934c3",
     "control-plane/internal/api/timeline.go": "f4f1f8cdf176ab4253c2a79442bc21c0e7185308ea1dabe91d2be414086037c0",
-    "control-plane/internal/api/draw.go": "dcc6f412b8976b56e55f7704648582ea0431bc8257041039a5bbbf2651fd8756"
+    "control-plane/internal/api/draw.go": "812774438986eb74d100c2582a52275ab756541ccf657f1d8e725e52fc74bd88"
   },
   "verified_checkout": "agent/vu-skill",
   "verification_note": "2026-10-20 AVP refactor: source registration and interface locations refreshed; runtime and visible window results separately recorded in docs/接口文档.md and scripts/TESTING.md.",
@@ -6328,7 +6502,7 @@
     "verified_date": "2026-10-20",
     "method": "本轮变更的源码接线及工程/桌面证据分别记载；旧接口仍供兼容模式使用，工程模式的退休流程返回410。",
     "counts": {
-      "page_integrated": 155,
+      "page_integrated": 161,
       "sdk_only": 4,
       "retired_in_workspace": 9,
       "not_wrapped": 10
@@ -6383,7 +6557,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 153
+        "line": 174
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "RuntimeStatus",
@@ -6394,7 +6568,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 158
+        "line": 179
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6405,7 +6579,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 172
+        "line": 193
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6416,7 +6590,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 183
+        "line": 204
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6482,7 +6656,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 201
+        "line": 222
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6493,7 +6667,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 215
+        "line": 236
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "{root_id,relative_path}|null; legacy picker",
@@ -6504,7 +6678,7 @@
       "arguments": "{url}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 234
+        "line": 255
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",

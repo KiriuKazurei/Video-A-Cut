@@ -58,6 +58,7 @@ export interface ContentSummary {
 }
 export interface SkillRun {
  strategy?: 'edit'|'draw';
+	progress?: {phase:'working'|'generating'|'checking'|'rendering';output_chars:number;started_at:string;updated_at:string};
 	edit_request?: SkillEditContext;
   lease_until?: string;
   transcription_authorized: boolean; agent_role?: string; elapsed_milliseconds: number;
@@ -101,7 +102,7 @@ export interface SkillRunCreate {
   goal: string; profile_id?: string; profile_revision?: number; accept_external?: boolean;
   idempotency_key: string; budget?: Partial<SkillBudget>;
 }
-export type SkillToolName = 'draw.list'|'draw.save'|'draw.check'|'draw.render'|'draw.get_frame'|'draw.import'|'media.list' | 'media.get_frames' | 'media.transcribe'
+export type SkillToolName = 'draw.capabilities'|'draw.preview'|'draw.list'|'draw.save'|'draw.check'|'draw.render'|'draw.get_frame'|'draw.import'|'media.list' | 'media.get_frames' | 'media.transcribe'
   | 'timeline.read' | 'timeline.edit' | 'references.resolve'
   | 'summaries.get' | 'summaries.submit' | 'scripts.propose' | 'renders.create'
   | 'renders.inspect' | 'renders.review' | 'artifacts.list' | 'artifacts.get' | 'run.finish';
