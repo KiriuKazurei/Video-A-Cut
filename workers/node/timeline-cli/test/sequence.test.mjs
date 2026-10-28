@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sequenceGraph, selectedTracks, renderSequence, sequenceFileHash, waveform } from '../src/sequence.mjs';
 import { runTool } from '../src/media.mjs';
+import { inspectBasicQuality, sequenceExpectations } from '../src/basic-quality.mjs';
 
 const effects = () => ({scale:1,x:0,y:0,crop_left:0,crop_right:0,crop_top:0,crop_bottom:0,fade_in:0,fade_out:0,transition:0,gain_db:0});
 const clip = (id,stream=0) => ({id,resource_id:'r',name:id,stream_index:stream,at:0,duration:24,source_in:{value:0,scale:48000},source_out:{value:38400,scale:48000},speed:1,effects:effects()});
@@ -72,4 +73,81 @@ test('editable drawing FrameSource composites alpha with footage and sound on th
  assert(center.UAVG>165&&center.VAVG>165,'half-alpha blue source must blend with red footage');assert(outside.VAVG>220&&outside.UAVG<110,'transparent drawing area must preserve footage');assert(audio>-45,'existing sound must survive the drawing FrameSource');assert.equal(report.frames,24);
  const snapshot=JSON.parse(await readFile(join(output,'sequence.json'),'utf8'));assert(snapshot.resources.some(r=>r.draw_document),'editable source snapshot must remain distinguishable from flattened video');
  await writeFile(join(output,'verification.json'),JSON.stringify({report,center,outside,audio,independent_source_fps:12,drawing_fps:24,sequence_fps:30},null,2));
+});
+
+test('program exposes FFmpeg basic inspection for an audible visible sequence',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture();
+ const s=seq(); const v={...clip('v'),duration:60,source_out:{value:96000,scale:48000}};
+ const a={...clip('a',2),duration:60,source_out:{value:96000,scale:48000}};
+ s.tracks=[{id:'v',kind:'video',clips:[v]},{id:'a',kind:'audio',clips:[a]}];
+ const report=await renderSequence({sequence:s,resources,output_dir:join(root,'quality'),content_version:'quality'});
+ assert.ok(report.basic_quality,'the rendered program must include a basic inspection result');
+ assert.equal(report.basic_quality.status,'passed');
+ assert.equal(report.basic_quality.sha256,report.sha256);
+ assert.deepEqual(report.basic_quality.issues,[]);
+});
+
+
+test('basic inspection identifies unexpected black and silence while skipping silent sources',{timeout:120000},async()=>{
+ const {root,path}=await realFixture();const bad=join(root,'quality-bad.mp4');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=black:s=320x180:r=30:d=2','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=2','-c:v','libx264','-threads','1','-c:a','aac',bad]);
+ const args={path:bad,sha256:await sequenceFileHash(bad),duration:2,videoWindows:[{start:0,end:2}],audioSources:[{path,stream_index:2,source_start:0,source_end:2,timeline_start:0,timeline_end:2,speed:1}]};
+ const failed=await inspectBasicQuality(args);assert.equal(failed.status,'failed');assert.deepEqual(failed.issues.map(x=>x.kind).sort(),['black','silence']);
+ for(const issue of failed.issues){assert.ok(issue.start<.1);assert.ok(issue.end>1.9)}
+ const ignored=await inspectBasicQuality({...args,videoWindows:[],audioSources:[{...args.audioSources[0],stream_index:1}]});assert.equal(ignored.status,'not_checked');assert.equal(ignored.audio_status,'skipped');
+ const unavailable=await inspectBasicQuality(args,{run:async()=>{throw Error('ffmpeg unavailable')}});assert.equal(unavailable.status,'not_checked');
+});
+
+
+test('basic inspection honors intentional track attenuation',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture();const silent=join(root,'quality-bad.mp4');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=blue:s=320x180:r=30:d=2','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=2','-c:v','libx264','-threads','1','-c:a','aac',silent]);
+ const s=seq(),v={...clip('v'),duration:60,source_out:{value:96000,scale:48000}},a={...clip('a',2),duration:60,source_out:{value:96000,scale:48000}};
+ s.tracks=[{id:'v',kind:'video',clips:[v]},{id:'a',kind:'audio',gain_db:-80,clips:[a]}];
+ const result=await inspectBasicQuality({path:silent,sha256:await sequenceFileHash(silent),duration:2,...sequenceExpectations(s,resources,selectedTracks(s))});
+ assert.equal(result.status,'passed');assert.equal(result.audio_status,'skipped');
+});
+
+
+test('basic inspection maps source speed, position and explicit black fades',{timeout:120000},async()=>{
+ const {root,path,resources}=await realFixture();const bad=join(root,'quality-offset.mp4');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=black:s=320x180:r=30:d=4','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=4','-c:v','libx264','-threads','1','-c:a','aac',bad]);
+ const args={path:bad,sha256:await sequenceFileHash(bad),duration:4,videoWindows:[],audioSources:[{path,stream_index:2,source_start:0,source_end:2,timeline_start:1,timeline_end:2,speed:2}]};
+ const q=await inspectBasicQuality(args);assert.equal(q.status,'failed');assert.equal(q.issues.length,1);assert.equal(q.issues[0].kind,'silence');assert.ok(Math.abs(q.issues[0].start-1)<.05);assert.ok(Math.abs(q.issues[0].end-2)<.05);
+ const s=seq();s.tracks=[{id:'v',kind:'video',clips:[{...clip('v'),duration:120,effects:{...effects(),fade_in:105,fade_color:'black'}}]}];
+ const expected=sequenceExpectations(s,resources,selectedTracks(s));
+ const fade=await inspectBasicQuality({...args,...expected});assert.equal(fade.status,'passed');
+});
+
+
+test('source pauses are not treated as missing program audio',{timeout:120000},async()=>{
+ const {root}=await realFixture(),src=join(root,'quality-pauses.mp4');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=red:s=320x180:r=30:d=4','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=4','-af',"volume=0:enable='between(t,1,3)'",'-c:v','libx264','-threads','1','-c:a','aac',src]);
+ const q=await inspectBasicQuality({path:src,sha256:await sequenceFileHash(src),duration:4,videoWindows:[{start:0,end:4}],audioSources:[{path:src,stream_index:1,source_start:0,source_end:4,timeline_start:0,timeline_end:4,speed:1}]});
+ assert.equal(q.status,'passed');assert.deepEqual(q.issues,[]);
+});
+
+test('quality detector failure does not prevent the encoded program being returned',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture(),s=seq(),v={...clip('v'),duration:60,source_out:{value:96000,scale:48000}};
+ s.tracks=[{id:'v',kind:'video',clips:[v]}];
+ const checkingFails=(cmd,args,options)=>args.some(a=>a.includes('blackdetect'))?Promise.reject(Error('detector unavailable')):runTool(cmd,args,options);
+ const out=join(root,'quality-unavailable'),report=await renderSequence({sequence:s,resources,output_dir:out,content_version:'quality-unavailable'},{run:checkingFails});
+ assert.equal(report.basic_quality.status,'not_checked');assert.equal(await sequenceFileHash(join(out,'program.mp4')),report.sha256);
+});
+
+
+test('muted tracks and an intentional empty timeline gap are skipped',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture(),s=seq();
+ const v={...clip('v'),at:30,duration:60,source_out:{value:96000,scale:48000}},a={...clip('a',2),at:30,duration:60,source_out:{value:96000,scale:48000}};
+ s.tracks=[{id:'v',kind:'video',clips:[v]},{id:'a',kind:'audio',muted:true,clips:[a]}];
+ const report=await renderSequence({sequence:s,resources,output_dir:join(root,'quality-muted'),content_version:'quality-muted'});
+ assert.equal(report.basic_quality.status,'passed');assert.equal(report.basic_quality.audio_status,'skipped');assert.deepEqual(report.basic_quality.issues,[]);
+});
+
+test('overlapping source audio expectations merge on the timeline',{timeout:120000},async()=>{
+ const {root,path}=await realFixture(),bad=join(root,'quality-overlap.mp4');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=red:s=320x180:r=30:d=2','-f','lavfi','-i','anullsrc=r=48000:cl=stereo:d=2','-c:v','libx264','-threads','1','-c:a','aac',bad]);
+ const source={path,stream_index:2,source_start:0,source_end:1.2,speed:1};
+ const q=await inspectBasicQuality({path:bad,sha256:await sequenceFileHash(bad),duration:2,videoWindows:[{start:0,end:2}],audioSources:[{...source,timeline_start:0,timeline_end:1.2},{...source,timeline_start:.8,timeline_end:2}]});
+ assert.equal(q.status,'failed');const issue=q.issues.find(i=>i.kind==='silence');assert.ok(issue);assert.ok(issue.start<.05);assert.ok(issue.end>1.95);
 });

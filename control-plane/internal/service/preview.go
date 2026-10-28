@@ -78,8 +78,31 @@ func (s *Service) projectPreviewViewAt(ctx context.Context, st *store.Store, job
 		styleSHA = frozen.SubtitleVariant.StyleSHA256
 	}
 	isCurrent := !job.Invalidated && (latestExportRevID != "") && (job.RevisionID == latestExportRevID)
+	var basicQuality json.RawMessage
+	if job.OutputDir != "" && tk.Status == model.TaskStatusSucceeded {
+		var reportHash, mediaHash string
+		for _, a := range artRecords {
+			if a.Key == "report" {
+				reportHash = a.SHA256
+			}
+			if a.Key == "mp4" {
+				mediaHash = a.SHA256
+			}
+		}
+		basicQuality = uncheckedBasicQuality(mediaHash)
+		if root, e := s.previewPackageDir(job.OutputDir); e == nil {
+			if path, info, e := s.previewPackageFile(root, preview.ReportFilename); e == nil && info.Size() <= 2<<20 {
+				if raw, e := os.ReadFile(path); e == nil && sha256Hex(raw) == reportHash {
+					var report preview.Report
+					if json.Unmarshal(raw, &report) == nil && validBasicQuality(report.BasicQuality, mediaHash) {
+						basicQuality = report.BasicQuality
+					}
+				}
+			}
+		}
+	}
 	return preview.View{
-		SubtitleVariantID: subtitleID, StyleSHA256: styleSHA,
+		SubtitleVariantID: subtitleID, StyleSHA256: styleSHA, BasicQuality: basicQuality,
 		PreviewID:   job.PreviewID,
 		TaskID:      job.TaskID,
 		AssetID:     job.AssetID,

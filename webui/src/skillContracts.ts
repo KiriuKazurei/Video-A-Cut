@@ -45,6 +45,7 @@ export interface SkillVoiceSave {
   settings: TtsSettings; offset_seconds: number; accept_external: boolean;
 }
 export interface SkillArtifact {
+  basic_quality?: import('./timelineContracts').BasicQuality;
   id: string; name: string; kind: 'frame' | 'transcript' | 'summary' | 'mp4' | 'premiere_package' | 'inspection';
   size_bytes: number; sha256: string; plan_version?: number;
 }

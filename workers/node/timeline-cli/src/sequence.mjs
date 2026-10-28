@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { runTool, probeMedia } from './media.mjs';
+import { inspectBasicQuality, sequenceExpectations } from './basic-quality.mjs';
 import { installedFonts, resolveFonts } from './fonts.mjs';
 import { assText, assTime } from '../adapters/ass.mjs';
 
@@ -135,7 +136,9 @@ export async function renderSequence(input,{run=runTool,probe=probeMedia}={}) {
  const sha256=await sequenceFileHash(temporary);
  for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`渲染期间源素材发生变化：${r.name}`);}
  await rename(temporary,final);
- const report={schema_version:2,content_version:version,sha256,frames:graph.frames,duration:graph.duration,width:sequence.width,height:sequence.height,fps:sequence.fps,scope_group:sequence.scope_group || '',fonts:subtitles?.fonts || []};
+ const basic_quality=await inspectBasicQuality({path:final,sha256,duration:graph.duration,...sequenceExpectations(sequence,resources,selectedTracks(sequence))},{run});
+ const report={schema_version:2,content_version:version,sha256,basic_quality,frames:graph.frames,duration:graph.duration,width:sequence.width,height:sequence.height,fps:sequence.fps,scope_group:sequence.scope_group || '',fonts:subtitles?.fonts || []};
+
  await writeFile(join(output,'sequence.json'),JSON.stringify({schema_version:2,sequence,resources:resources.map(({path,assets,...r})=>({...r,...(assets?{assets:assets.map(({path,...asset})=>asset)}:{})}))},null,2));
  await writeFile(join(output,'program.json'),JSON.stringify(report,null,2));return report;
 }

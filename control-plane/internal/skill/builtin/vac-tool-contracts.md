@@ -86,11 +86,11 @@ HTTP/RPC errors are transport/input errors, not successful tool results.
 
 
 | renders.create | {} | Artifact array including same-plan MP4 and Premiere ZIP. Only after a human finalizes this exact plan/version and clears edit_request. |
-| renders.inspect | {} | Inspection {plan_version,frame_ids,verdict,issues}; extracts rendered first/last/cut frames and validates media. This is REQUIRED before review/finish. |
+| renders.inspect | {} | {inspection, engineering, basic_quality, human_acceptance}; inspection has plan_version/frame_ids/verdict/issues. basic_quality is bound to the MP4 sha256 and has status passed/failed/not_checked, audio_status/video_status and issues [{kind:black|silence,start,end}] in seconds. Missing/unknown audio expectations are skipped. Quality findings are advisory and do not block review/finish. Extracts rendered first/last/cut frames and validates media; inspection is REQUIRED before review/finish. |
 | artifacts.list | {} | Current run artifact metadata [{id,name,kind,size_bytes,sha256,plan_version}]. |
 | artifacts.get | {id:artifact_id} | Only registered frame/transcript artifacts up to 256 KiB. Frames return {artifact,mime_type} AND native MCP image content; inspect the image. Transcripts return {artifact,base64}, decode JSON text for word timestamps. IDs are not paths. Full films/packages are browsed/downloaded by the human in VAC. |
 | renders.review | {plan_version,frame_ids,verdict:"passed",issues:[]} | Inspection. Read EVERY inspection frame via artifacts.get first. Use the exact ordered frame_ids from renders.inspect and current plan_version; verdict is passed/needs_changes, maximum 20 textual issues, passed requires no issues. This is machine review, not human acceptance. |
-| run.finish | {} for a finalized flattened plan; {sequence_revision,content_version} for a structured edit without a flattened plan | {completed:true}; requires current human-finalized plan, no pending edit_request, same-plan valid MP4 and passed inspection/review. Never claim completion from an unrendered proposal. |
+| run.finish | {} for a finalized flattened plan; {sequence_revision,content_version} for a structured edit without a flattened plan | {completed:true}; requires current human-finalized plan, no pending edit_request, same-plan valid MP4 and passed inspection/review. Structured sequence completion also returns basic_quality bound to its MP4. Quality warnings do not block completion. Never claim completion from an unrendered proposal. |
 
 
 scripts.propose also accepts references:[...] using the AVS v2 occurrence binding

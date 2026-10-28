@@ -134,6 +134,8 @@ func (s *Service) finishSequenceEdit(ctx context.Context, run *skill.Run, args j
 	if artifact.SHA != report.SHA256 {
 		return nil, model.ErrConflict
 	}
+	artifact.BasicQuality = report.BasicQuality
+	run.Artifacts[len(run.Artifacts)-1].BasicQuality = report.BasicQuality
 	run.State = "succeeded"
-	return map[string]any{"completed": true, "structured_edit": true, "sequence_revision": view.Sequence.Revision, "content_version": view.ContentVersion, "artifact": artifact, "human_acceptance": "not_checked"}, nil
+	return map[string]any{"completed": true, "structured_edit": true, "sequence_revision": view.Sequence.Revision, "content_version": view.ContentVersion, "artifact": artifact, "basic_quality": report.BasicQuality, "human_acceptance": "not_checked"}, nil
 }

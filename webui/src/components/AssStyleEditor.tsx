@@ -479,6 +479,7 @@ export function AssStyleEditor({
               <Button size="small" onClick={() => onSelectPreview?.(createPreviewSource(mp4View))}>在监视器播放</Button>
             </> : null}
           />
+          {mp4View?.status === 'succeeded' && <Alert showIcon type={mp4View.basic_quality?.status === 'passed' ? 'success' : 'warning'} message={mp4View.basic_quality?.status === 'passed' ? '基础检验通过' : mp4View.basic_quality?.status === 'failed' ? '基础检验发现异常，仍可交付' : '基础检验未完成'} description={mp4View.basic_quality?.issues.map(i=>`${i.kind === 'black' ? '黑屏' : '静音'} ${i.start.toFixed(1)}–${i.end.toFixed(1)} 秒`).join('、')} />}
           {mp4View?.status === 'succeeded' && <video ref={bindPlayer} data-testid="ass-editor-player" className="ass-editor-player" controls preload="metadata" src={previewFileURL(mp4View.preview_id, 'mp4')} />}
           {variants.data?.can_start_editable === false && <Alert type="info" showIcon message="当前导出还不能生成可编辑 ASS" description={variants.data.checks.filter(check => check.status !== 'passed').map(check => check.message || check.code).join('；')} />}
           <Typography.Text type="secondary">生成 MP4 会先保存草稿，再复用或创建 style hash 相同的 ASS，成功后才烧录这一条字幕版本。切换资产或导出版本会停下尚未发出的后续步骤。</Typography.Text>

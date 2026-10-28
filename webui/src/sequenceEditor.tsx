@@ -131,10 +131,10 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
     const percent=Math.min(92,8+Math.round(84*(1-Math.exp(-elapsed/12))));
     setExportStatus(prev=>prev.active&&!prev.error&&prev.percent<100?{...prev,percent}:prev);
    },400);
-   await timelineApi.export(projectId,sequenceId,{session:session.id,expected_revision:view.sequence.revision,content_version:view.content_version,path});
+   const exported=await timelineApi.export(projectId,sequenceId,{session:session.id,expected_revision:view.sequence.revision,content_version:view.content_version,path});
    stopExportTimer();
    setExportStatus({active:true,percent:100,label:'已导出当前范围',error:''});
-   void message.success('已导出当前范围');
+   const q=exported.basic_quality;if(q?.status==='failed')void message.warning(`已导出；基础检验发现 ${q.issues.map(i=>`${i.kind==='black'?'黑屏':'静音'} ${i.start.toFixed(1)}–${i.end.toFixed(1)} 秒`).join('、')}`);else if(!q || q.status==='not_checked')void message.warning('已导出；基础检验未完成');else void message.success('已导出；基础检验通过');
    window.setTimeout(()=>setExportStatus(current=>current.percent===100?idleExport:current),1600);
   }catch(reason){
    stopExportTimer();

@@ -944,11 +944,16 @@ func (s *Service) renderSkillPlan(ctx context.Context, r *skill.Run, snap harnes
 		return err
 	}
 	rel, _ := filepath.Rel(s.deliveryRoot, out)
-	if _, err = s.verifyScriptDelivery(ctx, filepath.ToSlash(rel), r.ID, r.Plan.Version, r.VisibleSHA); err != nil {
+	delivery, err := s.verifyScriptDelivery(ctx, filepath.ToSlash(rel), r.ID, r.Plan.Version, r.VisibleSHA)
+	if err != nil {
 		return err
 	}
-	if _, err = s.registerSkillArtifact(r, filepath.Join(out, "final.mp4"), "final.mp4", "mp4", r.Plan.Version); err != nil {
+	artifact, err := s.registerSkillArtifact(r, filepath.Join(out, "final.mp4"), "final.mp4", "mp4", r.Plan.Version)
+	if err != nil {
 		return err
+	}
+	if len(delivery.BasicQuality) != 0 && delivery.SHA256 == artifact.SHA {
+		r.Artifacts[len(r.Artifacts)-1].BasicQuality = delivery.BasicQuality
 	}
 	zipPath := filepath.Join(dir, newID("delivery")+".zip")
 	f, err := os.Create(zipPath)

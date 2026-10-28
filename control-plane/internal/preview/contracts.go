@@ -95,22 +95,23 @@ type Artifact struct {
 
 // View projects status/progress/message from Task. Initialize empty slices to serialize [].
 type View struct {
-	SubtitleVariantID string     `json:"subtitle_variant_id,omitempty"`
-	StyleSHA256       string     `json:"style_sha256,omitempty"`
-	PreviewID         string     `json:"preview_id"`
-	TaskID            string     `json:"task_id"`
-	AssetID           string     `json:"asset_id"`
-	RunID             string     `json:"run_id"`
-	RevisionID        string     `json:"revision_id"`
-	PresetID          string     `json:"preset_id"`
-	InputSHA256       string     `json:"input_sha256"`
-	Status            string     `json:"status"`
-	Progress          float64    `json:"progress"`
-	Message           string     `json:"message,omitempty"`
-	Invalidated       bool       `json:"invalidated"`
-	IsCurrent         bool       `json:"is_current"`
-	Artifacts         []Artifact `json:"artifacts"`
-	Media             *Media     `json:"media,omitempty"`
+	BasicQuality      json.RawMessage `json:"basic_quality,omitempty"`
+	SubtitleVariantID string          `json:"subtitle_variant_id,omitempty"`
+	StyleSHA256       string          `json:"style_sha256,omitempty"`
+	PreviewID         string          `json:"preview_id"`
+	TaskID            string          `json:"task_id"`
+	AssetID           string          `json:"asset_id"`
+	RunID             string          `json:"run_id"`
+	RevisionID        string          `json:"revision_id"`
+	PresetID          string          `json:"preset_id"`
+	InputSHA256       string          `json:"input_sha256"`
+	Status            string          `json:"status"`
+	Progress          float64         `json:"progress"`
+	Message           string          `json:"message,omitempty"`
+	Invalidated       bool            `json:"invalidated"`
+	IsCurrent         bool            `json:"is_current"`
+	Artifacts         []Artifact      `json:"artifacts"`
+	Media             *Media          `json:"media,omitempty"`
 }
 
 type List struct {
@@ -150,12 +151,13 @@ type Receipt struct {
 	Font            *Font  `json:"font,omitempty"`
 }
 type Report struct {
-	SchemaVersion int     `json:"schema_version"`
-	InputSHA256   string  `json:"input_sha256"`
-	TargetFrames  int64   `json:"target_frames"`
-	TargetSamples int64   `json:"target_samples"`
-	Media         Media   `json:"media"`
-	Checks        []Check `json:"checks"`
+	BasicQuality  json.RawMessage `json:"basic_quality,omitempty"`
+	SchemaVersion int             `json:"schema_version"`
+	InputSHA256   string          `json:"input_sha256"`
+	TargetFrames  int64           `json:"target_frames"`
+	TargetSamples int64           `json:"target_samples"`
+	Media         Media           `json:"media"`
+	Checks        []Check         `json:"checks"`
 }
 type Manifest struct {
 	SchemaVersion int        `json:"schema_version"`

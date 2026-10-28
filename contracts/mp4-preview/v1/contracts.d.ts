@@ -77,6 +77,7 @@ export interface PreviewArtifact {
   sha256: string;
 }
 export interface PreviewView {
+  basic_quality?: { sha256?: string; status: 'passed' | 'failed' | 'not_checked'; audio_status: string; video_status: string; issues: { kind: string; start: number; end: number }[] };
   subtitle_variant_id?: string;
   style_sha256?: string;
   preview_id: string; task_id: string; asset_id: string; run_id: string; revision_id: string;
@@ -114,6 +115,7 @@ export interface PreviewReceipt {
   font?: { family: string; sha256: string };
 }
 export interface PreviewReport {
+  basic_quality?: PreviewView['basic_quality'];
   schema_version: 1; input_sha256: string;
   target_frames: number; target_samples: number;
   media: PreviewMedia; checks: PreviewCheck[];

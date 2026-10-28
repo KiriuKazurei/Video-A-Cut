@@ -4674,11 +4674,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillDeliveryModule.tsx",
-          "line": 83
+          "line": 84
         },
         {
           "file": "webui/src/components/SkillDeliveryModule.tsx",
-          "line": 84
+          "line": 85
         }
       ],
       "lifecycle": "current_or_compatible"

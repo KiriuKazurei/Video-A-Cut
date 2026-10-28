@@ -1,6 +1,6 @@
 # 测试维护说明
 
-更新：2026-10-26。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
+更新：2026-10-29。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
 ## 1. 统一规则与源码身份
 
@@ -8,11 +8,19 @@
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
 
-当前源码工作树为 `E:/AI/Video Auto Cut/.run-data/worktrees/timeline-audio-viz`，分支 agent/timeline-audio-viz，基线 a23d138；当前增量尚未提交。原根和其他旧工作树保留不同源码与未提交内容，不能用旧根 HEAD 或端口健康证明当前代码。custom 的 WorkingDirectory 必须明确；摘要中 runner 所在仓库的 HEAD 与实际被测源码不同时，单独记录源码提交/改动和证据。
+2026-10-29 当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 codex/integrate-remote-20261029，以 98ba0e0 合入 origin/agent/vu-skill@8511f2e，应用保持 0.3.2。原根和其他旧工作树保留不同源码与未提交内容，不能用旧根 HEAD 或端口健康证明当前代码。custom 的 WorkingDirectory 必须明确；摘要中 runner 所在仓库的 HEAD 与实际被测源码不同时，单独记录源码提交/改动和证据。
 
 不设固定容量上限，不按容量自动终止或清空 artifacts/cache；Measure 仅报告占用。版本变化后 Prepare 按规则提炼旧版本简档并轮换；同版本需要清空时显式 Clear，CacheOnly 保留 artifacts。每版本一份极简 Markdown，最多最近 3 版，未知修复版本/提交写未记录。
 
 任何清理先确认相关进程退出、目标属于明确测试根、目标/父链/子项无重解析点且无 Git 跟踪文件，PowerShell 使用 LiteralPath，并报告同口径前后占用。此条针对生成物；本轮用户单独授权的源文档删除按精确文档清单处理，不把它扩展到源码/固定样本。
+
+### 2026-10-29 远程整合核查
+
+使用既有套件，未新增独立测试或固定样本。前端全部 128 项、tsc --noEmit 和样式检查通过；证据为整合工作树 `.run-data/tests/0.3.2/artifacts/custom/output.log`。媒体沿用 sequence/script-workbench/preview-render 三文件，28 项全部通过，包含可编辑绘制 FrameSource 的透明混合/声音、正常成片、异常黑屏静音、主动衰减、自然停顿及检查失败仍交付；证据为原根 `.run-data/tests/0.3.2/int-node/0.3.2/artifacts/custom/output.log`。两处正常开发 node_modules 链接复用 timeline-audio-viz 已安装依赖，不是测试清理目标。
+
+Go 全部包编译及默认预设/质量结果/租约/真实媒体交付定向测试通过（go test ./... -run 指定既有用例 -count=1 -timeout=240s，含未匹配用例包的编译，不代表全量 Go 用例通过）；统一入口为原根 TestWorkspace.ps1，WorkingDirectory 明确为本整合源码 control-plane，输出为原根 `.run-data/tests/0.3.2/int-go/0.3.2/`。摘要中的旧根 HEAD 仅代表 runner 所在仓库，实际被测源码身份以本段为准。文档/契约已通过：13 份、554 链接、184 HTTP、17 IPC、158 类型、29 SSE；证据为整合工作树 `.run-data/tests/0.3.2/doc-check/0.3.2/artifacts/custom/output.log`。
+
+更新器仅做源码及公开源核查：latest.json GET 200，清单为 0.2.3，安装器与 .sig HEAD 200；未下载更新包或验证其密码学签名，未执行当前 0.3.2 的原生打包/安装/升级/回退、真实模型或人工验收。旧 0.1.0→0.1.1 验收仅保留历史边界。初次测试入口在受限环境的 CIM 进程查询失败，测试尚未开始；获得工具提升权限后按同一入口运行。没有清理其他工作树、原工程、媒体或历史测试数据。
 
 ## 2. 常用工程检查
 
@@ -113,6 +121,11 @@ HyperFrames 自动层首轮只有图片、没有按帧移动，像素断言失�
 为避免 Windows 嵌套临时路径，Go 全包输出用原根的短版本目录。已核验旧 0.2.2 标记、Git 跟踪、进程及父链/子项重解析边界，按既有入口 Prepare 轮换。原根测试目录同口径在轮换前 207,527,606 字节、轮换后 14,797 字节，释放 207,512,809 字节（随后新测试会新增缓存）。原始录像、用户 AVP、业务库、旧恢复运行目录、固定样本、未提交源码及正常依赖保留；原 AVP SHA256 仍为 981E72F51760EC5B0D28C722C32DC9FA722D2040F821C3D24B9CD2B544F38822。
 
 
+2026-10-28 REL023：当前工作区已按版本轮换 0.2.2 生成物，仅保留 archives/0.2.2.md；下文 0.2.2 输出路径为历史溯源，可能已不再存在。0.2.3 Timeline 全套 69 项、前端 96 项及类型检查、MCP 全包（37.918s）、Cargo 离线锁定元数据、版本一致性与文档契约通过；未重跑完整 Go、原生窗口或外部模型。未对原根及其他工作区执行清理。
+
+2026-10-28 QC01（0.2.2 / agent/vu-skill@3ec5909 加未提交改动）：现有 Timeline 全套 69 项通过，含真实 FFmpeg 成片、正常声画、异常黑屏/静音及时间段、短音轨、无音轨/静音轨、自然停顿、重叠、变速、配音偏移、黑场淡变、空白区间、检测失败仍发布。短音轨结束误报和主动降低音量误报均先复现、修复后复验通过。Go 服务/Skill/MCP 定向通过，含真实 MP4 哈希绑定与黑屏警告后 review/finish 成功；未重跑完整 Go。前端 96 项、样式和类型检查通过，Vite 生产构建通过但报告依赖的 use client 忽略提示；首轮 npm 启动器在用例前退出 1，保留其 npm 日志，直接运行 package.json 同一 Node 入口后通过。检查结果是工程信号；未运行真实桌面窗口交互、用户业务工程、人工观看/听感或外部模型。新增检查的 30 秒超时、旧预览音轨探测 10 秒超时会返回未完成而非通过；未测试超长视频性能。
+
+2026-10-28 CFG01（0.2.2 / agent/vu-skill@3ec5909 加未提交默认配置改动）：复用 control-plane/main_test.go 的启动集成测试，新增 2 项覆盖空库默认项/固定模板快照、重启保留用户修订与归档/自定义项、初始化失败事务回滚和重试。定向命令为统一入口 custom + go -C control-plane test -count=1 -run "TestAssemble(DefaultSeed|SeedsBoundDefaults)" .，已通过。最初缺少默认数据的预期失败、一次测试误以为预设列表过滤归档项的失败均已定位；现断言直接检查归档行，未改变列表契约。完整 Go 套件（嵌套工作树入口 -Suite go）16 个有测试包通过，service 包 1 项失败：TestAutoConfirmSceneRefusesWhatItCannotJustify 在快照目录 rename 时 Access is denied（526.494s，B04 同类现象），不能记全绿。原始结果保留于当前工作树 .run-data/tests/0.2.2/artifacts/go/output.log；随后按本说明原根短输出入口，以 go test ./internal/service -count=3 -run ^TestAutoConfirmSceneRefusesWhatItCannotJustify$ -timeout=120s 定向复跑，3 次通过（10.994s，日志在原根 .run-data/tests/0.2.2/artifacts/custom/output.log）。这不能覆盖先前完整套件失败，也未确认 B04 根因。文档检查 10 份/507 链接、171 HTTP/17 IPC/135 类型/27 SSE 通过；首次把说明写入自动生成区导致契约检查失败，移到人工维护区后复验通过。没有新增套件/固定媒体或删除旧覆盖；未执行桌面窗口、实际 SAPI 合成、云端模型或人工听感验收。
 
 轮换同口径仅统计两个已删除的 0.2.1 目录：原根 7,214,871,405 → 0 字节，当前工作树 143,934,676 → 0 字节；合计旧目录逻辑占用减少 7,358,806,081 字节（约 6.85 GiB），不包含新 0.2.2 输出、简档和业务数据，不当作整个磁盘的净释放。
 
