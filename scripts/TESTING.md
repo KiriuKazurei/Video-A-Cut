@@ -22,6 +22,16 @@ Go 全部包编译及默认预设/质量结果/租约/真实媒体交付定向�
 
 更新器仅做源码及公开源核查：latest.json GET 200，清单为 0.2.3，安装器与 .sig HEAD 200；未下载更新包或验证其密码学签名，未执行当前 0.3.2 的原生打包/安装/升级/回退、真实模型或人工验收。旧 0.1.0→0.1.1 验收仅保留历史边界。初次测试入口在受限环境的 CIM 进程查询失败，测试尚未开始；获得工具提升权限后按同一入口运行。没有清理其他工作树、原工程、媒体或历史测试数据。
 
+### 2026-10-29 0.3.2 公开 Release 与更新器下载
+
+源码为整合分支 f004655（已推送，Release 标签一致），本轮只维护既有 updater 验收脚本及文档。Build-TauriDesktop.ps1 -Installer -Version 0.3.2 的前端/Go/Rust release 编译通过；首次在 NSIS 3.11 工具下载时报 timeout: global，复用原 0.2.3 工作树已有且版本核验为 3.11 的 NSIS 缓存后重试完整构建退出 0。保留 build/desktop/build-installer-0.3.2.log 与 build-installer-retry-0.3.2.log。
+
+Release ID 427079350，v0.3.2 已公开并设为 latest，三附件大小为安装器 74908962、.sig 428、清单 806 字节。安装器 SHA256 为 4d85d1c401e88fa372ddf51f1c6c317a86dbfce6ae4358f09bb055c6f9a1510c；公开 latest.json 实际返回 0.3.2，安装器和 .sig HEAD 200，远程标签精确为 f004655aa980d83cee3d045d233ad862ca2f581e。发布元数据为 build/desktop/release-result-0.3.2.json；签名私钥未上传。
+
+使用当前工作树 TestWorkspace.ps1 的 custom 入口、StorageRoot=.run-data/tests/0.3.2/public-update，执行 node scripts/verify-tauri-updater.mjs --public-download <codex-skill-harness/build/desktop/release绝对目录> 0.3.2。复制 0.2.3 正式 exe 到独立测试目录，业务库独立，更新地址没有测试覆盖；正式 HTTPS 检查得到 available_version=0.3.2，完整下载 74908962 字节，phase=downloaded、ready_to_install=true、签名验证成功。Win32 探针 visible=true，截图实际检查了版本、下载进度和“安装并重启”按钮；后台停止及自身进程退出成功，入口退出 0。证据为当前工作树 .run-data/tests/0.3.2/public-update/0.3.2/artifacts/custom/updater-public/results.json、downloaded.png 及父目录 output.log。
+
+本轮未触发 install_update，不宣称当前版本安装替换、升级后运行或回退通过；用户业务目录和原窗口未操作。正常开发缓存/签名目录/正式安装包保留，没有测试清理。按用户追加授权，全部记录和推送完成后通过系统 PowerShell 休眠。
+
 ## 2. 常用工程检查
 
 Windows 使用系统 PowerShell 7、UTF-8 和已安装依赖，保持 profile 设置。以下从实际源码根执行：
@@ -76,6 +86,7 @@ node scripts/update-interface-documentation.mjs --refresh-inventory --write
 | `control-plane/internal/mcpserver/probe/main.go` | 官方 SDK 真实发现/调用；通过 managed custom 执行 go run -tags probe，内部 Worker 才显式给 token-env |
 | `scripts/verify-skill-ui-completion.mjs --real-flow` | 基于运行探针产出的受管数据库副本/媒体和生产前端检查交互，夹具与真实后端范围分别记录 |
 | `scripts/verify-tauri-desktop.mjs` | 可见 Tauri/WebView、原生文件框/菜单/剪贴板、媒体/脚本、关闭/保存、切换/重启；自己在管理器内部启动并退出 |
+| `scripts/verify-tauri-updater.mjs --public-download <0.2.3-release目录> 0.3.2` | 通过统一 custom 入口运行；复制旧版桌面到独立测试目录，用正式 HTTPS 更新源检查/下载/验签并截取可安装状态，不执行安装；已有用户桌面实例时拒绝启动，停止并退出自身测试进程 |
 | `scripts/Test-TauriStateGuard.ps1` / `test-support/test-workspace.ps1` | 现有运行/清理/版本轮换守卫；通过对应 suite，不按本轮再复制独立测试 |
 
 生产 Vite 测试构建的 outDir 显式指向 VAC_TEST_OUTPUT 管理目录。浏览器使用已有 Playwright/本地Chrome，禁止Edge，不重新下载浏览器。没有真实窗口证据时，不把 CDP 端口、进程 Responding 或页面托管记为可见桌面通过。

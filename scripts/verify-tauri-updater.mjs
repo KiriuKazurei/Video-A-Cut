@@ -6,6 +6,82 @@ import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
 import { CDP, sleep } from './tauri-cdp.mjs';
 
+// Exercise the production HTTPS feed without replacing an installed application.
+if (process.argv[2] === '--public-download') {
+  const root = testDirectory('updater-public');
+  const baseline = path.resolve(process.argv[3]);
+  const expected = process.argv[4];
+  assert.match(expected, /^\d+\.\d+\.\d+$/);
+  const application = path.join(root, 'app', 'video-auto-cut-desktop.exe');
+  await fs.mkdir(path.dirname(application), { recursive: true });
+  await fs.copyFile(path.join(baseline, 'video-auto-cut-desktop.exe'), application);
+  const configFile = path.join(root, 'desktop.json');
+  await fs.writeFile(configFile, JSON.stringify({
+    data_directory: path.join(root, 'data'), resource_root: path.join(baseline, 'runtime'),
+    control_binary: path.join(baseline, 'control-plane.exe'), ingest_roots: [],
+    desktop_origin: 'http://tauri.localhost',
+  }));
+  const env = { ...process.env, VAC_DESKTOP_CONFIG: configFile,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=19342',
+    WEBVIEW2_USER_DATA_FOLDER: path.join(root, 'webview-profile') };
+  delete env.VAC_UPDATE_TEST_ENDPOINT;
+  delete env.VAC_DATA_DIR;
+  let c, owned;
+  const result = { expected_version: expected, passed: false, installed: false };
+  const until = async (read, accept, timeout) => {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) { const value = await read(); if (accept(value)) return value; await sleep(200); }
+    throw Error('Production updater timed out');
+  };
+  try {
+    const existing = JSON.parse(execFileSync('pwsh', ['-Command', "@(Get-CimInstance Win32_Process | Where-Object {$_.Name -eq 'video-auto-cut-desktop.exe'} | Select-Object ProcessId) | ConvertTo-Json -AsArray"], { encoding: 'utf8', windowsHide: true }) || '[]');
+    assert.equal(existing.length, 0, 'A user desktop instance is running; preserve it');
+    owned = spawn(application, [], { env, windowsHide: true, stdio: 'ignore' });
+    owned.on('error', error => { result.spawn_error = String(error); });
+    c = await CDP.connect(19342);
+    await c.wait('window.__TAURI__?.core');
+    await c.wait('document.querySelector("button")');
+    result.baseline = await c.invoke('update_status');
+    assert.equal(result.baseline.current_version, '0.2.3');
+    await c.invoke('check_update');
+    result.available = await c.invoke('update_status');
+    assert.equal(result.available.phase, 'available', result.available.message);
+    assert.equal(result.available.available_version, expected);
+    await c.ev("window.dispatchEvent(new Event('vac:check-updates'));true");
+    await c.ev("void window.__TAURI__.core.invoke('download_update').catch(e=>window.__publicDownloadError=String(e));true");
+    result.downloaded = await until(() => c.invoke('update_status'), value => ['downloaded', 'error'].includes(value.phase), 650000);
+    assert.equal(result.downloaded.phase, 'downloaded', result.downloaded.message);
+    assert.equal(result.downloaded.ready_to_install, true);
+    assert(result.downloaded.downloaded_bytes > 0);
+    await c.wait("document.body.innerText.includes('签名已验证')");
+    result.window = JSON.parse(execFileSync('pwsh', ['-File', 'scripts/Tauri-WindowProbe.ps1', '-DesktopPid', String(owned.pid), '-Action', 'inspect'], { encoding: 'utf8', windowsHide: true }));
+    assert.equal(result.window.visible, true);
+    await c.screenshot(path.join(root, 'downloaded.png'));
+    result.passed = true;
+  } catch (error) { result.error = String(error); process.exitCode = 1; }
+  finally {
+    if (c) {
+      try {
+        await c.invoke('stop_runtime');
+        await until(() => c.invoke('runtime_status'), value => value.status === 'stopped', 60000);
+        await c.ev("setTimeout(()=>window.__TAURI__.core.invoke('confirm_project_exit'),100);true");
+        await until(async () => owned.exitCode !== null, Boolean, 30000);
+        result.exited = true;
+      } catch (error) { result.cleanup_error = String(error); result.passed = false; process.exitCode = 1; }
+      c.close();
+    }
+    if (owned && owned.exitCode === null) {
+      owned.kill();
+      result.passed = false;
+      result.cleanup_error ??= 'Owned test application required forced termination';
+      process.exitCode = 1;
+    }
+    await fs.writeFile(path.join(root, 'results.json'), JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result));
+  }
+  process.exit(process.exitCode || 0);
+}
+
 // Real Windows NSIS update in a copied, repository-contained app directory.
 // The feed is accepted only by the debug baseline. The signed payload is the
 // actual release artifact; it restarts into production HTTPS-only updater code.
