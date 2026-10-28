@@ -19,6 +19,7 @@ test('real script render bakes Chinese subtitles, black/white dips and cross dis
   const document = { version: 1, paragraphs: [{ effect: '黑屏', subtitle: { text: '抽卡机制 {文字}', size_px: 40, font } }, { effect: '白屏' }, {}, { effect: '交叉溶解' }] };
   const output = join(root, 'delivery');
   const result = await renderScript({ segments, document, subtitles_enabled: false, output_dir: output, sources: [] });
+  assert.equal(result.basic_quality.status, 'passed'); assert.equal(result.basic_quality.audio_status, 'skipped'); assert.equal(result.basic_quality.sha256, result.sha256);
   assert.equal(result.width, 1280); assert.equal(result.height, 720);
   assert.ok(result.frames >= 109 && result.frames <= 112, `frames: ${result.frames}`);
   const final = await readFile(join(output,'final.mp4'));
@@ -46,4 +47,23 @@ test('real script render bakes Chinese subtitles, black/white dips and cross dis
   await runTool('ffmpeg',['-v','error','-y','-ss','0.5','-i',join(output,'final.mp4'),'-frames:v','1',join(root,'subtitle.png')]);
   const probe = await probeMedia(join(output,'final.mp4')); assert.ok(probe.audio); assert.equal(probe.video.frames,result.frames);
   await writeFile(join(root,'verification.json'),JSON.stringify({ ...result, black: await stats(0), white: await stats(1), dissolve: mix },null,2));
+});
+
+
+test('black script output is published with a basic quality warning',{timeout:120000},async()=>{
+ const root=join(process.env.VAC_TEST_OUTPUT,'script-workbench-quality');await mkdir(root,{recursive:true});
+ const source=join(root,'black.mp4');await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=black:s=320x180:r=30:d=2','-c:v','libx264','-threads','1',source]);
+ const out=join(root,'delivery');const report=await renderScript({segments:[{path:source,start:0,end:2,narration:''}],document:{version:1,paragraphs:[{}]},subtitles_enabled:false,output_dir:out,sources:[]});
+ assert.equal(report.basic_quality.status,'failed');assert.ok(report.basic_quality.issues.some(i=>i.kind==='black'));
+ assert.equal(createHash('sha256').update(await readFile(join(out,'final.mp4'))).digest('hex'),report.basic_quality.sha256);
+});
+
+
+test('script voice offset remains audible and passes basic inspection',{timeout:120000},async()=>{
+ const root=join(process.env.VAC_TEST_OUTPUT,'script-workbench-voice-quality');await mkdir(root,{recursive:true});
+ const source=join(root,'blue.mp4'),voice=join(root,'voice.wav');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=blue:s=320x180:r=30:d=3','-c:v','libx264','-threads','1',source]);
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','sine=frequency=440:sample_rate=48000:duration=2','-ac','2',voice]);
+ const out=join(root,'delivery');const report=await renderScript({segments:[{path:source,start:0,end:3,narration:'测试',voice_file:voice,voice_offset:.5}],document:{version:1,paragraphs:[{}]},subtitles_enabled:false,output_dir:out,sources:[]});
+ assert.equal(report.basic_quality.status,'passed');assert.equal(report.basic_quality.audio_status,'passed');assert.deepEqual(report.basic_quality.issues,[]);
 });

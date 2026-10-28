@@ -28,6 +28,7 @@ export interface ScriptVoiceSave {
   narration: string; settings: TtsSettings; offset_seconds: number; enabled: boolean; accept_external: boolean;
 }
 export interface ScriptDeliveryInfo {
+  basic_quality?: import('./timelineContracts').BasicQuality;
   script_id: string; version: number; visible_set_sha: string; width: number; height: number;
   duration: number; frames: number; sha256: string; tts_enabled: boolean;
   files: { path: string; size_bytes: number; sha256: string }[];

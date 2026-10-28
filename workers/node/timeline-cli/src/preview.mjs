@@ -1,3 +1,4 @@
+import { inspectBasicQuality } from './basic-quality.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
@@ -852,7 +853,23 @@ export async function renderPreview(options) {
       }
     ];
 
+    const qualityHash = await hashFile(finalMp4Path, signal);
+    let basic_quality;
+    try {
+      const sources=[...gaList,...voList,...muList];
+      const probeTimeout=AbortSignal.timeout(10000), probeSignal=signal?AbortSignal.any([signal,probeTimeout]):probeTimeout;
+      const sourceInfo=await Promise.all(sources.map(a=>probeMedia(a.absPath,{signal:probeSignal})));
+      const audioSources=sources.flatMap((a,i)=>{
+        const duration=Math.min(mediaInfo.duration_seconds,sourceInfo[i].audio?.duration || sourceInfo[i].duration);
+        return Number.isFinite(duration) && duration>0 ? [{path:a.absPath,source_start:0,source_end:duration,timeline_start:0,timeline_end:duration,speed:1}] : [];
+      });
+      basic_quality=await inspectBasicQuality({path:finalMp4Path,sha256:qualityHash,duration:mediaInfo.duration_seconds,
+        videoWindows:videoCuts.map(c=>({start:c.timeline_in,end:c.timeline_out})),audioSources},
+        {run:(command,args,options)=>runTool(command,args,{...options,signal:signal?AbortSignal.any([signal,options.signal]):options.signal})});
+    } catch { basic_quality={sha256:qualityHash,status:'not_checked',audio_status:'not_checked',video_status:'not_checked',issues:[]}; }
+    signal?.throwIfAborted();
     const report = {
+      basic_quality,
       schema_version: 1,
       input_sha256: input.input_sha256,
       target_frames: total_frames,
@@ -878,7 +895,7 @@ export async function renderPreview(options) {
     await writeFile(join(stagingDir, PREVIEW_FILENAMES.receipt), receiptContent, 'utf8');
 
     const mp4Stat = await stat(finalMp4Path);
-    const mp4Hash = await hashFile(finalMp4Path, signal);
+    const mp4Hash = qualityHash;
 
     const reportBytes = Buffer.from(reportContent, 'utf8');
     const reportHash = createHash('sha256').update(reportBytes).digest('hex');

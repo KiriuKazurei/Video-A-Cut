@@ -13,17 +13,23 @@ import (
 	"testing"
 )
 
-func TestSkillRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, false) }
+func TestSkillRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, false, false) }
 
-func TestProjectRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, true) }
+func TestProjectRealMediaFramesAndDelivery(t *testing.T) { runSkillMediaDelivery(t, true, false) }
 
-func runSkillMediaDelivery(t *testing.T, native bool) {
+func TestSkillBlackWarningDoesNotBlockCompletion(t *testing.T) { runSkillMediaDelivery(t, true, true) }
+
+func runSkillMediaDelivery(t *testing.T, native, black bool) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
 	svc, _, media := scriptFixture(t)
 	ctx := t.Context()
-	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=30:duration=3", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", media[0].Path)
+	visual := "testsrc2=size=160x90:rate=30:duration=3"
+	if black {
+		visual = "color=c=black:s=160x90:r=30:d=3"
+	}
+	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", visual, "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", media[0].Path)
 	if raw, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("media fixture: %v %s", err, raw)
 	}
@@ -166,6 +172,11 @@ func runSkillMediaDelivery(t *testing.T, native bool) {
 		t.Fatalf("expected JSON and Markdown summaries, got %d", summaries)
 	}
 	plan := skill.Plan{Body: "Show opening\n\nShow ending", Segments: []skill.Segment{{MediaID: v.Media[0].ID, Start: 0, End: .5, Narration: "Opening"}, {MediaID: v.Media[0].ID, Start: .5, End: 1, Narration: "Ending"}}}
+	if black {
+		plan.Segments[0].End = 1
+		plan.Segments[1].Start = 1
+		plan.Segments[1].End = 2
+	}
 	raw, _ := json.Marshal(plan)
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "plan"})
 	if err != nil {
@@ -192,9 +203,23 @@ func runSkillMediaDelivery(t *testing.T, native bool) {
 	if info, err := os.Stat(path); err != nil || info.Size() < 100 {
 		t.Fatalf("missing MP4 %v", err)
 	}
-	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "renders.inspect", ExpectedVersion: r.Version, IdempotencyKey: "inspect"})
+	var inspectResult json.RawMessage
+	r, inspectResult, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "renders.inspect", ExpectedVersion: r.Version, IdempotencyKey: "inspect"})
 	if err != nil || r.Inspection == nil || len(r.Inspection.FrameIDs) < 2 {
 		t.Fatalf("render inspection: %+v %v", r.Inspection, err)
+	}
+	var checked struct {
+		BasicQuality struct {
+			SHA256 string `json:"sha256"`
+			Status string `json:"status"`
+		} `json:"basic_quality"`
+	}
+	wantQuality := "passed"
+	if black {
+		wantQuality = "failed"
+	}
+	if e := json.Unmarshal(inspectResult, &checked); e != nil || checked.BasicQuality.SHA256 != mp4.SHA || checked.BasicQuality.Status != wantQuality {
+		t.Fatalf("quality inspection: %s, %v", inspectResult, e)
 	}
 	if native {
 		review := *r.Inspection
@@ -208,6 +233,9 @@ func runSkillMediaDelivery(t *testing.T, native bool) {
 		r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "run.finish", ExpectedVersion: r.Version, IdempotencyKey: "finish-before-save"})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if black {
+			return
 		}
 		launch, e := svc.Timeline(ctx, p.ID, r.SequenceID)
 		if e != nil {

@@ -77,6 +77,7 @@ export function SkillDeliveryModule() {
             </Space>
           </List.Item>;
         }} />
+      {pair.mp4 && <Alert showIcon type={pair.mp4.basic_quality?.status === 'passed' ? 'success' : 'warning'} message={pair.mp4.basic_quality?.status === 'passed' ? '基础检验通过' : pair.mp4.basic_quality?.status === 'failed' ? '基础检验发现异常，仍可交付' : '基础检验未完成'} description={pair.mp4.basic_quality?.issues.map(i=>`${i.kind === 'black' ? '黑屏' : '静音'} ${i.start.toFixed(1)}–${i.end.toFixed(1)} 秒`).join('、')} />}
       <Space wrap>
         {pair.mp4 && <Typography.Text>MP4 {pair.mp4.name}</Typography.Text>}
         {pair.premiere && <Typography.Text>Premiere {pair.premiere.name}</Typography.Text>}

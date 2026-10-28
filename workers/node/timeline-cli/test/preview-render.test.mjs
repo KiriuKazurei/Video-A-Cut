@@ -193,6 +193,8 @@ test('real FFmpeg preview rendering without subtitles creates compliant MP4, rep
 
   // Verify render-report.json
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(report.basic_quality.sha256, manifest.artifacts.find(a => a.key === 'mp4').sha256);
+  assert.equal(report.basic_quality.status, 'passed');
   assert.equal(report.schema_version, 1);
   assert.equal(report.input_sha256, input.input_sha256);
   assert.equal(report.target_frames, 39);
@@ -572,4 +574,14 @@ test('schema 2 burns only the frozen ASS, keeps cue color, placement, fade and f
     renderPreview({ input: missing, packageDir, subtitlePackageDir: subtitleDir, outputDir: join(root, 'missing-font') }),
     (error) => error.code === 'font_not_found' && /字体不可用：Unavailable Preview Font/.test(error.message)
   );
+});
+
+
+test('short audio stems do not require sound after their actual end',async(t)=>{
+ const root=await mkdtemp(join(tmpdir(),'vac-preview-short-audio-'));t.after(async()=>rm(root,{recursive:true,force:true}));
+ const packageDir=join(root,'package'),outputDir=join(root,'output');
+ await createTestPackage(packageDir,{video:[{src:'clip_01.mp4',in:0,out:.5,timeline_in:0},{src:'clip_02.mp4',in:.1,out:.6,timeline_in:2.8}]});
+ const {input}=await buildPreviewInputFromPackage({packageDir});await renderPreview({input,packageDir,outputDir});
+ const report=JSON.parse(await readFile(join(outputDir,'render-report.json'),'utf8'));
+ assert.equal(report.basic_quality.status,'passed');assert.deepEqual(report.basic_quality.issues,[]);
 });

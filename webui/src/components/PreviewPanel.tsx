@@ -204,6 +204,7 @@ export function PreviewPanel({
       }
     >
       <Flex vertical gap={12} className="preview-panel-content">
+        {latestSucceededPreview && <Alert showIcon type={latestSucceededPreview.basic_quality?.status === 'passed' ? 'success' : 'warning'} message={latestSucceededPreview.basic_quality?.status === 'passed' ? '基础检验通过' : latestSucceededPreview.basic_quality?.status === 'failed' ? '基础检验发现异常，仍可交付' : '基础检验未完成'} description={latestSucceededPreview.basic_quality?.issues.map(i=>`${i.kind === 'black' ? '黑屏' : '静音'} ${i.start.toFixed(1)}–${i.end.toFixed(1)} 秒`).join('、')} />}
         {!asset && (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}

@@ -23,14 +23,15 @@ type SequencePreviewRequest struct {
 	Path             string `json:"path,omitempty"`
 }
 type SequencePreview struct {
-	ContentVersion string       `json:"content_version"`
-	SHA256         string       `json:"sha256"`
-	Frames         int64        `json:"frames"`
-	Duration       float64      `json:"duration"`
-	Width          int          `json:"width"`
-	Height         int          `json:"height"`
-	FPS            project.Rate `json:"fps"`
-	ScopeGroup     string       `json:"scope_group"`
+	BasicQuality   json.RawMessage `json:"basic_quality,omitempty"`
+	ContentVersion string          `json:"content_version"`
+	SHA256         string          `json:"sha256"`
+	Frames         int64           `json:"frames"`
+	Duration       float64         `json:"duration"`
+	Width          int             `json:"width"`
+	Height         int             `json:"height"`
+	FPS            project.Rate    `json:"fps"`
+	ScopeGroup     string          `json:"scope_group"`
 }
 type sequenceSource struct {
 	ID       string         `json:"id"`
@@ -150,6 +151,27 @@ func (s *Service) CreateSequencePreview(ctx context.Context, projectID, sequence
 	}
 	if _, err = os.Stat(filepath.Join(output, "program.mp4")); err != nil {
 		return report, err
+	}
+	if !validBasicQuality(report.BasicQuality, report.SHA256) {
+		data, checkErr := s.scriptProcess(ctx, true, "quality-sequence", map[string]any{"path": filepath.Join(output, "program.mp4"), "sha256": report.SHA256, "duration": report.Duration, "sequence": current.Sequence, "resources": sources})
+		if ctx.Err() != nil {
+			return report, ctx.Err()
+		}
+		var quality struct {
+			BasicQuality json.RawMessage `json:"basic_quality"`
+		}
+		if checkErr == nil && json.Unmarshal(data, &quality) == nil && validBasicQuality(quality.BasicQuality, report.SHA256) {
+			report.BasicQuality = quality.BasicQuality
+		} else {
+			report.BasicQuality = uncheckedBasicQuality(report.SHA256)
+		}
+	}
+	latest, err := s.Timeline(ctx, projectID, sequenceID)
+	if err != nil {
+		return report, err
+	}
+	if latest.Session != view.Session || latest.ContentVersion != report.ContentVersion {
+		return report, fmt.Errorf("序列已改变，旧检查结果已丢弃: %w", model.ErrConflict)
 	}
 	return report, nil
 }

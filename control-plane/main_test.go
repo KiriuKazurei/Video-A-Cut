@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/config"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/tts"
 )
 
 // dbPath returns the path of a database file that exists nowhere yet. Every
@@ -28,6 +30,120 @@ func headlessConfig() config.Config {
 	cfg := config.Default()
 	cfg.HttpAddr = ""
 	return cfg
+}
+
+func TestAssembleSeedsBoundDefaultsAndPreservesEdits(t *testing.T) {
+	path := dbPath(t)
+	a, err := assemble(path, headlessConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	ctx := t.Context()
+	profiles, err := a.svc.ListProcessingProfiles(ctx, 20, 0)
+	if err != nil || len(profiles) != 1 {
+		t.Fatalf("profiles = %+v, %v", profiles, err)
+	}
+	p := profiles[0]
+	if p.ContentMode != "builtin" || p.TTSTemplate == nil {
+		t.Fatalf("default profile lacks local mode or binding: %+v", p)
+	}
+	template, err := a.svc.GetTTSTemplate(ctx, p.TTSTemplate.TemplateID, p.TTSTemplate.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if template.Settings.Engine != "sapi" || template.Settings.Language != "zh" || template.Settings.Voice == "" || template.Settings.Speed != 1 || template.Settings.Volume != 1 {
+		t.Fatalf("default voice = %+v", template.Settings)
+	}
+	if p.TTSTemplate.SHA256 != template.SHA256 || p.TTSTemplate.Settings == nil || *p.TTSTemplate.Settings != template.Settings {
+		t.Fatal("profile must pin the actual immutable template snapshot")
+	}
+	p.Name = "用户调整的预设"
+	p.Revision++
+	if _, err = a.svc.SaveProcessingProfile(ctx, "human:test", "edit-default", 1, p); err != nil {
+		t.Fatal(err)
+	}
+	settings := template.Settings
+	settings.Volume = 0.8
+	if _, err = a.svc.SaveTTSTemplate(ctx, "human:test", tts.SaveRequest{TemplateID: template.TemplateID, ExpectedRevision: 1, IdempotencyKey: "edit-voice", Name: "用户调整的声音", Settings: settings}); err != nil {
+		t.Fatal(err)
+	}
+	custom := p
+	custom.ProfileID = "my_profile"
+	custom.Revision = 1
+	if _, err = a.svc.SaveProcessingProfile(ctx, "human:test", "custom", 0, custom); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.svc.ArchiveTTSTemplate(ctx, "human:test", template.TemplateID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.st.DB().ExecContext(ctx, `UPDATE processing_profiles SET archived=1 WHERE profile_id=?`, p.ProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a, err = assemble(path, headlessConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := a.svc.GetProcessingProfile(ctx, p.ProfileID, 0)
+	if err != nil || got.Revision != 2 || got.Name != p.Name || got.TTSTemplate.Revision != 1 {
+		t.Fatalf("restart overwrote profile: %+v, %v", got, err)
+	}
+	voice, err := a.svc.GetTTSTemplate(ctx, template.TemplateID, 0)
+	if err != nil || voice.Revision != 2 || !voice.Archived || voice.Settings.Volume != 0.8 {
+		t.Fatalf("restart overwrote voice: %+v, %v", voice, err)
+	}
+	profiles, err = a.svc.ListProcessingProfiles(ctx, 20, 0)
+	if err != nil || len(profiles) != 2 || profiles[0].ProfileID != "my_profile" {
+		t.Fatalf("custom/archived profiles changed: %+v, %v", profiles, err)
+	}
+	row, err := a.st.GetProfileRevision(ctx, p.ProfileID, 0)
+	if err != nil || !row.Archived {
+		t.Fatalf("restart restored archived profile: %+v, %v", row, err)
+	}
+	var revisions int
+	if err = a.st.DB().QueryRowContext(ctx, `SELECT count(*) FROM tts_template_revisions`).Scan(&revisions); err != nil || revisions != 2 {
+		t.Fatalf("duplicate voice revisions: %d, %v", revisions, err)
+	}
+}
+
+func TestAssembleDefaultSeedRollsBackOnFailure(t *testing.T) {
+	path := dbPath(t)
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err = st.DB().Exec(`CREATE TRIGGER fail_default_profile BEFORE INSERT ON processing_profiles BEGIN SELECT RAISE(ABORT, 'seed failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	a, err := assemble(path, headlessConfig())
+	if a != nil {
+		_ = a.Close()
+	}
+	if err == nil {
+		t.Fatal("startup must report failed initialization")
+	}
+	for _, table := range []string{"tts_templates", "tts_template_revisions", "processing_profiles", "processing_profile_revisions", "audit_logs"} {
+		var count int
+		if err := st.DB().QueryRow(`SELECT count(*) FROM ` + table).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("partial seed in %s: %d, %v", table, count, err)
+		}
+	}
+	if _, err = st.DB().Exec(`DROP TRIGGER fail_default_profile`); err != nil {
+		t.Fatal(err)
+	}
+	a, err = assemble(path, headlessConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	profiles, err := a.svc.ListProcessingProfiles(t.Context(), 20, 0)
+	if err != nil || len(profiles) != 1 {
+		t.Fatalf("retry = %+v, %v", profiles, err)
+	}
 }
 
 // TestAssembleBuildsAuditArchiver proves the composition root also builds

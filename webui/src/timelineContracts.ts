@@ -10,7 +10,8 @@ export interface ScriptReference { id: string; name: string; kind: string; targe
 export interface ReferenceCandidate extends ScriptReference { owner: string; frame?: number; source_time?: MediaTime; fps: FrameRate; in?: number; out?: number }
 export interface TimelineOperation { type: string; track_id?: string; target_track_id?: string; clip_ids?: string[]; resource_id?: string; at?: number; end?: number; source_in?: MediaTime; source_out?: MediaTime; duration?: number; mode?: string; kind?: string; name?: string; height?: number; order?: number; locked?: boolean; muted?: boolean; hidden?: boolean; solo?: boolean; gain_db?: number; speed?: number; effects?: ClipEffects; marker?: TimelineMarker; marker_id?: string; group_id?: string; text?: string; font?: string; font_size?: number; clips?: TimelineClip[]; unlinked?: boolean }
 export interface TimelineView { session: string; project_revision: number; sequence: TimelineSequence; history: { id: string; label: string; actor: string; applied: boolean }[]; content_version: string }
-export interface SequencePreview { content_version: string; sha256: string; duration: number; frames: number; width: number; height: number; fps: FrameRate; scope_group: string }
+export interface BasicQuality { sha256?: string; status: 'passed' | 'failed' | 'not_checked'; audio_status: string; video_status: string; issues: { kind: string; start: number; end: number }[] }
+export interface SequencePreview { basic_quality?: BasicQuality; content_version: string; sha256: string; duration: number; frames: number; width: number; height: number; fps: FrameRate; scope_group: string }
 export const fpsValue = (rate: FrameRate) => rate.num / rate.den;
 export const timeSeconds = (time: MediaTime) => time.value / time.scale;
 export const frameSeconds = (frame: number, rate: FrameRate) => frame / fpsValue(rate);

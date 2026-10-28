@@ -1,10 +1,10 @@
 # 测试维护说明
 
-更新：2026-10-22。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
+更新：2026-10-28。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前 0.2.2。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前 0.2.3。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
 
@@ -90,6 +90,12 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
 
 ## 5. 最近适用结果
+
+2026-10-28 REL023：当前工作区已按版本轮换 0.2.2 生成物，仅保留 archives/0.2.2.md；下文 0.2.2 输出路径为历史溯源，可能已不再存在。0.2.3 Timeline 全套 69 项、前端 96 项及类型检查、MCP 全包（37.918s）、Cargo 离线锁定元数据、版本一致性与文档契约通过；未重跑完整 Go、原生窗口或外部模型。未对原根及其他工作区执行清理。
+
+2026-10-28 QC01（0.2.2 / agent/vu-skill@3ec5909 加未提交改动）：现有 Timeline 全套 69 项通过，含真实 FFmpeg 成片、正常声画、异常黑屏/静音及时间段、短音轨、无音轨/静音轨、自然停顿、重叠、变速、配音偏移、黑场淡变、空白区间、检测失败仍发布。短音轨结束误报和主动降低音量误报均先复现、修复后复验通过。Go 服务/Skill/MCP 定向通过，含真实 MP4 哈希绑定与黑屏警告后 review/finish 成功；未重跑完整 Go。前端 96 项、样式和类型检查通过，Vite 生产构建通过但报告依赖的 use client 忽略提示；首轮 npm 启动器在用例前退出 1，保留其 npm 日志，直接运行 package.json 同一 Node 入口后通过。检查结果是工程信号；未运行真实桌面窗口交互、用户业务工程、人工观看/听感或外部模型。新增检查的 30 秒超时、旧预览音轨探测 10 秒超时会返回未完成而非通过；未测试超长视频性能。
+
+2026-10-28 CFG01（0.2.2 / agent/vu-skill@3ec5909 加未提交默认配置改动）：复用 control-plane/main_test.go 的启动集成测试，新增 2 项覆盖空库默认项/固定模板快照、重启保留用户修订与归档/自定义项、初始化失败事务回滚和重试。定向命令为统一入口 custom + go -C control-plane test -count=1 -run "TestAssemble(DefaultSeed|SeedsBoundDefaults)" .，已通过。最初缺少默认数据的预期失败、一次测试误以为预设列表过滤归档项的失败均已定位；现断言直接检查归档行，未改变列表契约。完整 Go 套件（嵌套工作树入口 -Suite go）16 个有测试包通过，service 包 1 项失败：TestAutoConfirmSceneRefusesWhatItCannotJustify 在快照目录 rename 时 Access is denied（526.494s，B04 同类现象），不能记全绿。原始结果保留于当前工作树 .run-data/tests/0.2.2/artifacts/go/output.log；随后按本说明原根短输出入口，以 go test ./internal/service -count=3 -run ^TestAutoConfirmSceneRefusesWhatItCannotJustify$ -timeout=120s 定向复跑，3 次通过（10.994s，日志在原根 .run-data/tests/0.2.2/artifacts/custom/output.log）。这不能覆盖先前完整套件失败，也未确认 B04 根因。文档检查 10 份/507 链接、171 HTTP/17 IPC/135 类型/27 SSE 通过；首次把说明写入自动生成区导致契约检查失败，移到人工维护区后复验通过。没有新增套件/固定媒体或删除旧覆盖；未执行桌面窗口、实际 SAPI 合成、云端模型或人工听感验收。
 
 轮换同口径仅统计两个已删除的 0.2.1 目录：原根 7,214,871,405 → 0 字节，当前工作树 143,934,676 → 0 字节；合计旧目录逻辑占用减少 7,358,806,081 字节（约 6.85 GiB），不包含新 0.2.2 输出、简档和业务数据，不当作整个磁盘的净释放。
 

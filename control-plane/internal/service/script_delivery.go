@@ -19,6 +19,7 @@ type ScriptDeliveryFile struct {
 	SHA256 string `json:"sha256"`
 }
 type ScriptDeliveryInfo struct {
+	BasicQuality  json.RawMessage      `json:"basic_quality,omitempty"`
 	ScriptID      string               `json:"script_id"`
 	Version       int                  `json:"version"`
 	VisibleSetSHA string               `json:"visible_set_sha"`
@@ -44,6 +45,9 @@ func readScriptDelivery(path string) (ScriptDeliveryInfo, error) {
 	}
 	if len(raw) > 2<<20 || json.Unmarshal(raw, &info) != nil {
 		return info, model.ErrInvalidState
+	}
+	if !validBasicQuality(info.BasicQuality, info.SHA256) {
+		info.BasicQuality = uncheckedBasicQuality(info.SHA256)
 	}
 	return info, nil
 }

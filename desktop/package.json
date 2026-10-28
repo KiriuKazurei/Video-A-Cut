@@ -1,6 +1,6 @@
 {
   "name": "@video-auto-cut/desktop-build",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "devDependencies": { "@tauri-apps/cli": "2.11.0" }
 }

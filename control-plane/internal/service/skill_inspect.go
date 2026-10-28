@@ -15,6 +15,8 @@ func (s *Service) inspectSkillRender(ctx context.Context, r *skill.Run) (json.Ra
 		return nil, model.ErrForbidden
 	}
 	var source string
+	var sourceSHA string
+	var basicQuality json.RawMessage
 	for _, a := range r.Artifacts {
 		if a.Kind == "mp4" && a.PlanVersion == r.Plan.Version {
 			p, _, err := s.skillArtifactPath(ctx, *r, a.ID)
@@ -22,6 +24,8 @@ func (s *Service) inspectSkillRender(ctx context.Context, r *skill.Run) (json.Ra
 				return nil, err
 			}
 			source = p
+			sourceSHA = a.SHA
+			basicQuality = a.BasicQuality
 		}
 	}
 	if source == "" {
@@ -64,5 +68,8 @@ func (s *Service) inspectSkillRender(ctx context.Context, r *skill.Run) (json.Ra
 		inspection.FrameIDs = append(inspection.FrameIDs, a.ID)
 	}
 	r.Inspection = inspection
-	return json.Marshal(map[string]any{"inspection": inspection, "engineering": json.RawMessage(data), "human_acceptance": "pending"})
+	if !validBasicQuality(basicQuality, sourceSHA) {
+		basicQuality = uncheckedBasicQuality(sourceSHA)
+	}
+	return json.Marshal(map[string]any{"inspection": inspection, "engineering": json.RawMessage(data), "basic_quality": basicQuality, "human_acceptance": "pending"})
 }

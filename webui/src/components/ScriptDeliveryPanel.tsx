@@ -36,6 +36,7 @@ export function ScriptDeliveryPanel({ scriptId, assetId, active = true }: { scri
       </>}
       {preview && info && <>
         <video ref={video} key={preview} src={preview} controls preload="metadata" aria-label={`脚本修订 ${info.version} 成片预览`} style={{ width: '100%', maxHeight: 420 }} />
+        <Alert showIcon type={info.basic_quality?.status === 'passed' ? 'success' : 'warning'} message={info.basic_quality?.status === 'passed' ? '基础检验通过' : info.basic_quality?.status === 'failed' ? '基础检验发现异常，仍可交付' : '基础检验未完成'} description={info.basic_quality?.issues.map(i => `${i.kind === 'black' ? '黑屏' : '静音'} ${i.start.toFixed(1)}–${i.end.toFixed(1)} 秒`).join('、')} />
         <Typography.Text type="secondary">{info.width}×{info.height} · {info.duration.toFixed(3)} 秒 · {info.frames} 帧 · {info.tts_enabled ? '包含旁白混音' : '无配音'}。预览和交付包对应同一修订。</Typography.Text>
         <Space wrap>
           <Button type="primary" href={apiURL(`/api/scripts/${encodeURIComponent(id!)}/delivery.zip?${query}`)}>进入 Premiere：下载交付包</Button>

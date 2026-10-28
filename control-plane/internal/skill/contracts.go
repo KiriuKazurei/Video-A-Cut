@@ -161,13 +161,14 @@ type Inspection struct {
 	Issues      []string `json:"issues"`
 }
 type Artifact struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
-	Size        int64  `json:"size_bytes"`
-	SHA         string `json:"sha256"`
-	Ref         string `json:"-"`
-	PlanVersion int    `json:"plan_version,omitempty"`
+	BasicQuality json.RawMessage `json:"basic_quality,omitempty"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Kind         string          `json:"kind"`
+	Size         int64           `json:"size_bytes"`
+	SHA          string          `json:"sha256"`
+	Ref          string          `json:"-"`
+	PlanVersion  int             `json:"plan_version,omitempty"`
 }
 type RunRequest struct {
 	SequenceID          string `json:"sequence_id,omitempty"`

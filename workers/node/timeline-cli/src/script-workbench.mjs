@@ -6,7 +6,8 @@ import { resolve, join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runTool, probeMedia } from './media.mjs';
-import { renderSequence, waveform } from './sequence.mjs';
+import { renderSequence, waveform, selectedTracks } from './sequence.mjs';
+import { inspectBasicQuality, sequenceExpectations } from './basic-quality.mjs';
 import { installedFonts, resolveFonts } from './fonts.mjs';
 import { assText, assTime, wrapAssText } from '../adapters/ass.mjs';
 import { formatsAdapter } from '../adapters/formats.mjs';
@@ -30,7 +31,7 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
   await mkdir(output, { recursive: true });
   const available = await fonts();
   const defaultFont = ['Microsoft YaHei', 'Microsoft YaHei UI', 'Noto Sans CJK SC', 'SimHei', 'Arial'].find(f => available.includes(f)) ?? available[0];
-  const paths = [], durations = [], cues = [], fontRecords = [];
+  const paths = [], durations = [], cues = [], fontRecords = [], qualityVideo = [], qualityAudio = [];
   let cursor = 0;
   for (let index = 0; index < segments.length; index++) {
     const seg = segments[index], p = document.paragraphs[index];
@@ -49,6 +50,7 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
     }
     const cut = join(output, `paragraph-${index + 1}.mp4`);
     const voice = seg.voice_file;
+    let spokenDuration = 0;
     const audio = info.audio ? '0:a:0' : '1:a:0';
     const inputs = ['-ss', String(seg.start), '-i', seg.path, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
     const fades = `afade=t=in:st=0:d=0.03,afade=t=out:st=${Math.max(0,duration-.03)}:d=0.03`;
@@ -57,6 +59,7 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
       const offset = seg.voice_offset ?? 0;
       const spoken = await probe(voice);
       if (!Number.isFinite(offset) || offset < 0 || !spoken.audio || spoken.duration + offset > duration + 1 / frameRate) throw new Error('配音超出片段时间窗');
+      spokenDuration = spoken.duration;
       inputs.push('-i', voice);
       const delay = Math.round(offset * 1000);
       audioArgs = ['-filter_complex', `[${audio}]aresample=48000,volume=0.25,apad[game];[2:a]aresample=48000,adelay=${delay}|${delay},apad[voice];[game][voice]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95,${fades}[mixed]`, '-map', '[mixed]'];
@@ -66,6 +69,11 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
       '-crf', '20', '-threads', '1', '-c:a', 'aac', '-ac', '2', '-ar', '48000', '-movflags', '+faststart', cut], { timeoutMs: 120_000 });
     const overlap = index > 0 && p.effect === '交叉溶解' ? overlapDuration(durations[index - 1], duration) : 0;
     cursor -= overlap;
+    const blackIn = p.effect === '黑屏' ? Math.min(.175,duration/3) : 0;
+    const blackOut = next === '黑屏' ? Math.min(.175,duration/3) : 0;
+    qualityVideo.push({start:cursor+blackIn,end:cursor+duration-blackOut});
+    if(info.audio) qualityAudio.push({path:seg.path,source_start:seg.start,source_end:seg.end,timeline_start:cursor,timeline_end:cursor+duration,speed:1,gain_db:voice?-12.0411998266:0});
+    if(voice) qualityAudio.push({path:voice,source_start:0,source_end:spokenDuration,timeline_start:cursor+(seg.voice_offset??0),timeline_end:cursor+duration,speed:1});
 	if (overlap && cues.length) cues[cues.length - 1].end = Math.min(cues[cues.length - 1].end, cursor);
     const sub = p.subtitle;
     if (sub || (seg.subtitles_enabled ?? input.subtitles_enabled)) {
@@ -122,6 +130,7 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
   await writeFile(join(output, 'knowledge-sources.json'), JSON.stringify(input.sources ?? [], null, 2));
   await writeFile(join(output, 'IMPORT.txt'), '在 Premiere 中导入 edit.xml。画面效果和强制字幕已渲染进 media/ 中的视频；不是原生可编辑转场。\n若移动了交付目录，请将素材重新链接到 media/。final.mp4 是同一画面的站内预览。旁白文本在 narration.txt，启用配音的段落已按声音设置与段内起点合成、混音；audio_Game.wav 是与成片对应的混音轨。\n', 'utf8');
   const hash = await fileSHA256(final);
+  const basic_quality=await inspectBasicQuality({path:final,sha256:hash,duration:media.duration,videoWindows:qualityVideo,audioSources:qualityAudio},{run});
   for (const file of [...paths, joined]) await unlink(file);
   // The shared renderer also supports the old workflow's package importer.
   const bakedEDL = { timeline: { fps: frameRate, sample_rate: 48000 },
@@ -148,7 +157,7 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
   const report = { schema_version: 2, script_id: input.script?.script_id, version: input.script?.version,
     visible_set_sha: input.script?.visible_set_sha, tts_enabled: segments.some(s => Boolean(s.voice_file)),
     baked_effects: true, width: media.video.width, height: media.video.height, duration: media.duration, frames,
-    fonts: fontRecords, sha256: hash, artifacts, files };
+    fonts: fontRecords, sha256: hash, basic_quality, artifacts, files };
   await writeFile(join(output, 'script-delivery.json'), JSON.stringify(report, null, 2));
   return report;
 }
@@ -161,7 +170,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       for await (const chunk of process.stdin) { bytes += chunk.length; if (bytes > 4 * 1024 * 1024) throw new Error('request too large'); chunks.push(chunk); }
       const raw = Buffer.concat(chunks).toString('utf8');
       const operation=process.argv[2],input=JSON.parse(raw);
-      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='sequence' ? renderSequence(input) : operation==='waveform' ? waveform(input) : renderScript(input)) }));
+      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='sequence' ? renderSequence(input) : operation==='quality-sequence' ? inspectBasicQuality({...input,...sequenceExpectations(input.sequence,input.resources,selectedTracks(input.sequence))}).then(basic_quality=>({basic_quality})) : operation==='waveform' ? waveform(input) : renderScript(input)) }));
     }
   } catch (e) { process.stdout.write(JSON.stringify({ ok: false, message: e.message })); process.exitCode = 1; }
 }

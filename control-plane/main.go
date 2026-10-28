@@ -144,6 +144,10 @@ func assemble(dbPath string, cfg config.Config) (*app, error) {
 	}
 	bus := events.New()
 	svc := service.New(st)
+	if err := svc.EnsureDefaultProcessing(context.Background()); err != nil {
+		_ = st.Close()
+		return nil, fmt.Errorf("control plane: default processing preset: %w", err)
+	}
 	if err := svc.ConfigureDeliveryRoot(cfg.DeliveryRoot); err != nil {
 		_ = st.Close()
 		return nil, fmt.Errorf("control plane: delivery root: %w", err)
