@@ -149,7 +149,21 @@ body { background: var(--vac-bg); }
   line-height: 32px;
   gap: 0; justify-content: flex-start;
 }
-.app-nav.seg-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) { width: 104px; padding-inline: 0; text-align: center; }
+/* 五项等宽：flex-basis / width / max-width 都锁在滑轨内容区的 1/5，
+   拉丁字母（TTS）和中文的内容宽度都不能把单项撑开或压窄。
+   min-width 104px 保证「资源管理」四字+图标放得下；滑轨变窄到 1/5 < 104px 时
+   min-width 压过 max-width，项不再缩小，多出来的交给原有「…」溢出。 */
+.app-nav.seg-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) {
+  flex: 0 0 20%;
+  width: 20%;
+  min-width: 104px;
+  max-width: 20%;
+  padding-inline: 0;
+  text-align: center;
+  box-sizing: border-box;
+}
+/* antd 水平菜单的 clearfix ::after 会变成 flex 项，占掉等分后的余量。滑块用的是 ::before。 */
+.app-nav.seg-nav::after { display: none; }
 .app-nav.seg-nav > .ant-menu-item > .anticon + .ant-menu-title-content { margin-inline-start: 7px; }
 .app-nav.seg-nav > .ant-menu-item, .app-nav.seg-nav > .ant-menu-submenu, .app-nav.seg-nav > .ant-menu-submenu > .ant-menu-submenu-title { height: 32px; line-height: 32px; }
 .app-nav.seg-nav > .ant-menu-overflow-item-rest { min-width: 52px; text-align: center; padding-inline: 12px; }
