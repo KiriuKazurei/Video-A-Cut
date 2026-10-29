@@ -38,3 +38,29 @@ func TestSkillHTTPProjectAndBuiltinResources(t *testing.T) {
 		t.Fatalf("missing builtin provenance %s", res.Body.String())
 	}
 }
+
+func TestOnlineSkillInterfacesRemainReserved(t *testing.T) {
+	srv := newSeededServer(t)
+	res := get(t, srv, "/api/skills/online/capabilities")
+	var capability struct {
+		Enabled bool   `json:"enabled"`
+		Status  string `json:"status"`
+	}
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &capability) != nil || capability.Enabled || capability.Status != "reserved" {
+		t.Fatalf("unexpected reservation: %d %s", res.Code, res.Body.String())
+	}
+	for _, path := range []string{"/api/skills/online/install", "/api/skills/unknown/check-updates", "/api/skills/unknown/update"} {
+		rec := postJSON(t, srv, path, `{"source":"https://example.invalid/untrusted","version":"main"}`)
+		if rec.Code != http.StatusNotImplemented {
+			t.Fatalf("reserved route %s: %d %s", path, rec.Code, rec.Body.String())
+		}
+		if decodeErr(t, rec).Code != "feature_reserved" {
+			t.Fatal(rec.Body.String())
+		}
+	}
+	res = get(t, srv, "/api/skills")
+	var items []skill.Package
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &items) != nil || len(items) != 0 {
+		t.Fatal("reserved calls changed registry", res.Body.String())
+	}
+}

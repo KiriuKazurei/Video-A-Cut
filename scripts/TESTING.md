@@ -32,6 +32,28 @@ Release ID 427079350，v0.3.2 已公开并设为 latest，三附件大小为安�
 
 本轮未触发 install_update，不宣称当前版本安装替换、升级后运行或回退通过；用户业务目录和原窗口未操作。正常开发缓存/签名目录/正式安装包保留，没有测试清理。按用户追加授权，全部记录和推送完成后通过系统 PowerShell 休眠。
 
+### 2026-10-29 本地生成物清理
+
+用户授权的一次清理已完成：55 个明确 Rust/Go 构建缓存、中间文件和调试副本，以及原根、integrate-remote-20261029、codex-skill-harness、timeline-audio-viz 四组版本化测试输出。使用既有 TestWorkspace.ps1 的 Prepare/Clear，嵌套 int-go/int-node/doc-check/public-update 的 summary 先合并到所属版本简档后移除空壳；每个测试根的 archives 最多三份。当前简档分别为原根 .run-data/tests/archives/0.3.2.md、整合工作树 .run-data/tests/archives/0.3.2.md、codex-skill-harness 的 0.2.3.md 和 timeline-audio-viz 的 0.3.2.md。
+
+上文生成物路径作为历史证据位置保留说明，其测试日志、截图、数据库、缓存和编译运行副本本次已清除，不能当作仍可直接打开的文件。0.3.2 公开更新下载验签的 passed 结论已保留在计划及版本简档；未执行安装的边界不变。旧版 codex-skill-harness/build/desktop/release 下的 exe/runtime 是生成物，已清除，复跑 --public-download 前须从保留的 0.2.3 签名安装器重新准备独立旧版运行目录，不能直接使用该已清空路径。
+
+保留全部工作树、正常 node_modules、源码/固定样本/test-support 恢复副本、原根 .run-data/development、accepted-projects、accepted-fixtures、签名密钥、build/desktop/app、updates 和 release/bundle 正式包。历史 .run-data 中的脚本/备份及无法确定用途的小目录保留，没有按扩展名扫描全仓删除。0.3.2 正式安装器 SHA256 清理后仍为 4d85d1c401e88fa372ddf51f1c6c317a86dbfce6ae4358f09bb055c6f9a1510c。
+
+同一统计范围（原根 .run-data 非工作树子项、build，以及各工作树 build/.run-data/webui/dist）文件逻辑大小 20060982605 → 3312907797 字节，减少 16748074808 字节；磁盘可用空间 2635952128 → 16970043392 字节。逻辑大小与实际磁盘释放因文件系统分配/共享文件不同而不混用。只做文件和 Git 状态核验，未重新测试或构建，避免刚清理后再产生缓存；本次文档更新未提交/推送。
+
+### 2026-10-29 统一诊断与扩展保留接口
+
+实际源码为 codex/integrate-remote-20261029@76a572a 加本轮未提交改动。复用 api_test.go、skill_test.go、skill_api_test.mjs 和 settings_smoke.mjs；新增 service/diagnostics_test.go 只承担诊断版本语义的长期覆盖，仍属于现有 service 套件，没有新增独立runner或固定媒体。初始两个API用例因404失败，新增路由后通过；新增真实本机探测发现 n7.1.3 被截成1.3，版本用例复现失败后改为只读工具首行版本，避免误取编译器/lib版本。诊断用例覆盖无依赖、脱敏、不写业务/审计、配置模型零请求、健康心跳聚合、取消请求和下载响应；在线Skill能力 disabled/reserved，三POST固定501且不改注册表。
+
+统一入口的完整 go test ./... -count=1 -timeout=600s 在18包通过（service 562.330s）；日志为原根 .run-data/tests/0.3.2/diag-red/0.3.2/full-go-output.log。之后仅修正新增版本解析并增加本机实际观察用例，最终 go test ./... -run 'TestSystemDiagnostics|TestOnlineSkillInterfaces|TestDiagnosticVersion' -count=1 -v -timeout=120s 全包编译和5个匹配用例通过；当前 output.log 记录 Node24.22.1/Python3.14.9/FFmpeg及FFprobe7.1.3，未配置Worker/模型明确warning/not_checked。red-output.log、version-red-output.log 与 local-probe-before-fix.log 保留先前差异。原根runner的HEAD不代表实际被测源码，WorkingDirectory已明确指向本整合工作树。
+
+前端正式 npm run test:unit 最终65+64=129项通过，tsc、样式和生产Vite构建通过；使用系统PowerShell加载profile后的npm启动器。直接调用系统Node目录下另一个npm-cli出现用例前退出1（日志只有store-dir提示及exit1，没有业务断言失败），同版本测试输出下保留npm日志，不修改全局npm配置。最终生产构建及前端日志为当前工作树 .run-data/tests/0.3.2/diag-ui-fix/0.3.2/artifacts/custom/。
+
+Chrome既有设置套件最终10组通过、pageerror为空：手动启动才查询、检查中状态、脱敏JSON下载、失败禁用下载与成功恢复、模型未验证标识、窄屏无横向溢出、既有草稿/保存重试/导航/减少动画/TTS。错误恢复需等下载重新可用和错误提示消失，不能仅读取上次快照。最初在减少动画和窄屏长页返回设置分类时出现body弹层负坐标；仅延长探针等待未解决。旧构建+原脚本8组通过、新构建+原脚本复现；将分类弹层挂在自身容器并对该高频选择关闭弹层动画后，恢复原探针，最终全套通过。此修复只影响设置分类选择器。证据为当前工作树 .run-data/tests/0.3.2/diag-browser/0.3.2/artifacts/custom/review-smokes/settings_smoke.mjs/ 中的 results.json、diagnostics.json、diagnostics-1440.png 和 diagnostics-800.png；截图已检查。first-failure.txt 和两个基线输出目录保留失败/对照范围。
+
+接口/文档检查：190 HTTP、17 IPC、163模型、29 SSE，15份文档本地链接与契约检查通过。新增两个开发文档只读交接；FCPXML/Plugin实现、依赖安装作业、AI图像编辑作业均未实现或调用。未运行原生Tauri/安装器、未重新发布、未调用真实外部模型或执行人工验收；本轮测试会重新产生受管缓存，清理记录仅描述此前时点。
+
 ## 2. 常用工程检查
 
 Windows 使用系统 PowerShell 7、UTF-8 和已安装依赖，保持 profile 设置。以下从实际源码根执行：

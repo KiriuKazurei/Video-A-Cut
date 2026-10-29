@@ -50,6 +50,10 @@ Thumbs.db
 !/docs/接口文档.md
 !/docs/架构与功能详解.md
 !/docs/frontend-api-inventory.json
+!/docs/development/
+/docs/development/*
+!/docs/development/依赖与模型部署向导.md
+!/docs/development/AI画面修改.md
 !/docs/后续模块交接/
 /docs/后续模块交接/*
 !/docs/后续模块交接/v1/

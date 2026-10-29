@@ -14,6 +14,7 @@ const documentPath = path.join(root, 'docs/接口文档.md');
 const begin = '<!-- BEGIN VAC GENERATED INTERFACES -->';
 const end = '<!-- END VAC GENERATED INTERFACES -->';
 const modelFiles = [
+  'webui/src/systemContracts.ts',
   'webui/src/projectContracts.ts', 'webui/src/skillContracts.ts', 'webui/src/drawContracts.ts',
   'webui/src/scriptWorkbench.ts', 'webui/src/types.ts', 'webui/src/preparation.ts',
   'webui/src/ttsContracts.ts', 'webui/src/ingest.ts', 'webui/src/autoRun.ts',
@@ -21,7 +22,7 @@ const modelFiles = [
   'webui/src/desktop.ts', 'webui/src/api.ts',
   'webui/src/mcpConnection.ts', 'webui/src/timelineContracts.ts',
 ];
-const sdkFiles = ['webui/src/api.ts', 'webui/src/skillApi.ts', 'webui/src/projectApi.ts', 'webui/src/timelineApi.ts', 'webui/src/drawApi.ts'];
+const sdkFiles = ['webui/src/api.ts', 'webui/src/skillApi.ts', 'webui/src/projectApi.ts', 'webui/src/timelineApi.ts', 'webui/src/drawApi.ts', 'webui/src/systemContracts.ts'];
 const parsed = new Map();
 function source(file) {
   if (!parsed.has(file)) parsed.set(file, ts.createSourceFile(file,

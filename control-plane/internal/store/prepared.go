@@ -16,6 +16,25 @@ type ProfileBinding struct {
 	JSON      string `json:"-"`
 }
 
+// OnlineWorkerCounts exposes aggregate health only, never worker identities.
+func (s *Store) OnlineWorkerCounts(ctx context.Context, since time.Time) (map[string]int, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT role,COUNT(*) FROM agents WHERE last_seen>=? AND health=? GROUP BY role`, since.UTC(), model.AgentHealthHealthy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var role string
+		var count int
+		if err := rows.Scan(&role, &count); err != nil {
+			return nil, err
+		}
+		counts[role] = count
+	}
+	return counts, rows.Err()
+}
+
 func (s *Store) HasCapability(ctx context.Context, id, sha string) (bool, error) {
 	var count int
 	e := s.q.QueryRowContext(ctx, `SELECT count(*) FROM worker_capabilities WHERE agent_id=? AND profile_sha256=? AND expires_at>?`, id, sha, time.Now().UTC()).Scan(&count)

@@ -13,6 +13,7 @@ import { AgentOperationPanel } from '../components/AgentOperationPanel';
 import { ProjectProviderPolicy } from '../components/ProjectProviderPolicy';
 import { McpConnectionPanel } from '../components/McpConnectionPanel';
 import { ValueSelect } from '../components/ui';
+import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 
 interface SettingsWorkspaceProps {
   route: RouteState;
@@ -57,7 +58,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
     <div className="settings-grid">
       <aside className="settings-sidebar" aria-label="设置导航">
         {compact ? <div className="settings-category-picker"><Typography.Text type="secondary">设置分类</Typography.Text>
-          <ValueSelect<SettingsCategory> aria-label="设置分类" value={settingsCategory} onChange={changeCategory} options={SETTINGS_CATEGORIES.map(item=>({value:item.id,label:item.label}))}/>
+          <ValueSelect<SettingsCategory> transitionName="" getPopupContainer={trigger => trigger.parentElement ?? document.body} aria-label="设置分类" value={settingsCategory} onChange={changeCategory} options={SETTINGS_CATEGORIES.map(item=>({value:item.id,label:item.label}))}/>
         </div> : <Menu mode="inline" aria-label="设置分类" selectedKeys={[settingsCategory]} onClick={({key})=>changeCategory(key as SettingsCategory)} items={groups.map(group=>({type:'group' as const,label:group.label,children:group.ids.map(id=>({key:id,icon:icons[id],label:SETTINGS_CATEGORIES.find(item=>item.id===id)!.label}))}))}/>}
       </aside>
       <section className="settings-content" aria-labelledby="settings-category-title">
@@ -71,7 +72,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
           {key:'audit',label:'审计日志',children:<AuditLogViewer />},
           {key:'operations',label:'Agent 操作记录',children:<Card size="small" title="Agent 操作记录"><AgentOperationPanel /></Card>}
         ]}/>}
-        {settingsCategory==='status' && <StatusMonitor connection={connection} events={events} controlPlane={controlPlane} audit={audit}/>}
+        {settingsCategory==='status' && <div className="settings-stack"><DiagnosticsPanel /><StatusMonitor connection={connection} events={events} controlPlane={controlPlane} audit={audit}/></div>}
       </section>
     </div>
   </div>;

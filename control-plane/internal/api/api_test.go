@@ -1,17 +1,144 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preparation"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
+
+func TestSystemDiagnosticsNeverCallConfiguredModelsAndAggregateWorkers(t *testing.T) {
+	srv := newServer(t)
+	var calls atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	defer remote.Close()
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("DIAG_PRIVATE_TOKEN", "private-credential")
+	profile := preparation.Profile{SchemaVersion: 1, ProfileID: "private-profile", Revision: 1, Name: "private customer", ContentMode: "configured", Vision: preparation.Provider{Adapter: "vision", Endpoint: remote.URL, Model: "private-model", TokenEnv: "DIAG_PRIVATE_TOKEN"}, Narration: preparation.Provider{Adapter: "narration", Endpoint: remote.URL, Model: "private-model", TokenEnv: "DIAG_PRIVATE_TOKEN"}, Sampling: preparation.Sampling{MaxFrames: 1, MaxBytes: 1024, TimeoutSeconds: 1}, TTSVoice: "private voice", ExportTarget: "premiere"}
+	if _, err := srv.svc.SaveProcessingProfile(t.Context(), "human:test", "diagnostic-profile", 0, profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.Heartbeat(t.Context(), "private-worker", "recognizer", "", time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	res := get(t, srv, "/api/system/diagnostics")
+	if res.Code != 200 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	var report struct {
+		Checks []struct{ ID, Status string } `json:"checks"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]string{}
+	for _, c := range report.Checks {
+		states[c.ID] = c.Status
+	}
+	if states["worker.recognizer"] != "passed" || states["worker.exporter"] != "warning" || states["models.configuration"] != "not_checked" {
+		t.Fatal(states)
+	}
+	for _, private := range []string{"private-credential", "private-worker", "private-profile", "private customer", "private-model", remote.URL} {
+		if strings.Contains(res.Body.String(), private) {
+			t.Fatalf("private value in diagnostic report: %s", private)
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatal("diagnostics called an external model")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	req := localRequest("GET", "/api/system/diagnostics", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestTimeout {
+		t.Fatal("cancelled diagnostic returned success", rec.Code)
+	}
+}
+
+func TestSystemDiagnosticsInspectLocalToolVersions(t *testing.T) {
+	srv := newServer(t)
+	rec := get(t, srv, "/api/system/diagnostics/report")
+	if rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	var report service.DiagnosticReport
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range report.Checks {
+		if strings.HasPrefix(check.ID, "dependency.") && check.Status == "passed" && check.Version == "" {
+			t.Fatal("passed without observed tool version", check)
+		}
+		if strings.Contains(check.Message, ":\\") || strings.Contains(check.Message, "http://") {
+			t.Fatal("raw path or URL in report", check)
+		}
+	}
+	t.Logf("actual local diagnostic: %s", rec.Body.String())
+}
+
+func TestSystemDiagnosticsAreRedactedAndReadOnly(t *testing.T) {
+	srv := newServer(t)
+	privatePath := t.TempDir()
+	t.Setenv("PATH", privatePath)
+	t.Setenv("VAC_TTS_TOKEN", "diagnostic-secret-must-not-leak")
+	before, err := srv.svc.RuntimeActivity(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/system/diagnostics", "/api/system/diagnostics/report"} {
+		rec := get(t, srv, path)
+		if rec.Code != 200 {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body.String())
+		}
+		var report struct {
+			Schema   int  `json:"schema_version"`
+			Redacted bool `json:"redacted"`
+			Checks   []struct {
+				ID     string `json:"id"`
+				Status string `json:"status"`
+			} `json:"checks"`
+		}
+		if json.Unmarshal(rec.Body.Bytes(), &report) != nil || report.Schema != 1 || !report.Redacted || len(report.Checks) < 8 {
+			t.Fatal(rec.Body.String())
+		}
+		states := map[string]string{}
+		for _, check := range report.Checks {
+			states[check.ID] = check.Status
+		}
+		if states["database"] != "passed" || states["dependency.node"] != "failed" || states["dependency.python"] != "failed" {
+			t.Fatal(states)
+		}
+		if strings.Contains(rec.Body.String(), privatePath) || strings.Contains(rec.Body.String(), "diagnostic-secret-must-not-leak") {
+			t.Fatal("diagnostics leaked private values")
+		}
+		if rec.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("diagnostic snapshot must not be cached")
+		}
+		if strings.HasSuffix(path, "/report") && !strings.Contains(rec.Header().Get("Content-Disposition"), "attachment") {
+			t.Fatal("report is not downloadable")
+		}
+	}
+	after, err := srv.svc.RuntimeActivity(t.Context())
+	if err != nil || after != before {
+		t.Fatal("diagnostics changed active work", after, err)
+	}
+	audit, err := srv.svc.ListAudit(t.Context(), 100)
+	if err != nil || len(audit) != 0 {
+		t.Fatal("diagnostics wrote audit/business state", err)
+	}
+}
 
 type flushErrorWriter struct {
 	header http.Header

@@ -1,6 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { skillApi } from './src/skillApi.ts';
+import { systemApi, diagnosticSummary } from './src/systemContracts.ts';
+
+test('system diagnostics preserve cancellation and reserved skill calls use scoped routes', async () => {
+  const previous = globalThis.fetch, calls=[];
+  const report={schema_version:1,redacted:true,checks:[{status:'failed'},{status:'warning'},{status:'not_checked'},{status:'passed'}]};
+  globalThis.fetch=async(url,options)=>{calls.push({url:String(url),options});return new Response(JSON.stringify(report),{status:200,headers:{'Content-Type':'application/json'}});};
+  try {
+    const signal=new AbortController().signal;
+    assert.equal((await systemApi.diagnostics(signal)).redacted,true);
+    assert.equal(calls[0].options.signal,signal);
+    assert.equal(calls[0].url,'/api/system/diagnostics');
+    assert.deepEqual(diagnosticSummary(report),{failed:1,warning:1,notChecked:1});
+    await systemApi.onlineSkills();
+    await systemApi.installSkill({source:'example',version:'v1'});
+    await systemApi.checkSkillUpdates('中文/id');
+    await systemApi.updateSkill('中文/id',{expected_sha256:'sha'});
+    assert.equal(calls[1].url,'/api/skills/online/capabilities');
+    assert.equal(calls[2].options.method,'POST');
+    assert.deepEqual(JSON.parse(calls[2].options.body),{source:'example',version:'v1'});
+    assert.equal(calls[3].url,'/api/skills/%E4%B8%AD%E6%96%87%2Fid/check-updates');
+    assert.equal(calls[4].url,'/api/skills/%E4%B8%AD%E6%96%87%2Fid/update');
+  } finally { globalThis.fetch=previous; }
+});
 import { createSkillEdit, skillPreviewSource } from './src/skillEditing.ts';
 import { handleSSEEvent, REFRESH_DOMAINS, SUPPORTED_SSE_EVENTS } from './src/queryRefresh.ts';
 

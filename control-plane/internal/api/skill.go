@@ -22,6 +22,10 @@ func (s *Server) skillRoutes() {
 	s.mux.HandleFunc("POST /api/projects/{id}/visible-set/confirm", s.skillConfirmVisible)
 	s.mux.HandleFunc("POST /api/projects/{id}/exports/ffmpeg", s.skillExport)
 	s.mux.HandleFunc("GET /api/skills", s.skillList)
+	s.mux.HandleFunc("GET /api/skills/online/capabilities", s.onlineSkillCapabilities)
+	s.mux.HandleFunc("POST /api/skills/online/install", s.onlineSkillReserved)
+	s.mux.HandleFunc("POST /api/skills/{id}/check-updates", s.onlineSkillReserved)
+	s.mux.HandleFunc("POST /api/skills/{id}/update", s.onlineSkillReserved)
 	s.mux.HandleFunc("POST /api/skills", s.skillImport)
 	s.mux.HandleFunc("GET /api/skills/{id}", s.skillGet)
 	s.mux.HandleFunc("PATCH /api/skills/{id}", s.skillEnable)
@@ -39,6 +43,14 @@ func (s *Server) skillRoutes() {
 	s.mux.HandleFunc("POST /api/skill-runs/{id}/resume", s.skillAction)
 	s.mux.HandleFunc("POST /api/skill-runs/{id}/cancel", s.skillAction)
 	s.mux.HandleFunc("POST /api/skill-runs/{id}/execute", s.skillExecute)
+}
+
+func (s *Server) onlineSkillCapabilities(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"schema_version": 1, "enabled": false, "status": "reserved", "operations": []string{"install", "check_updates", "update"}})
+}
+func (s *Server) onlineSkillReserved(w http.ResponseWriter, r *http.Request) {
+	writeError(w, http.StatusNotImplemented, "feature_reserved", "在线 Skill 安装与更新仅预留接口，当前尚未开放")
 }
 func (s *Server) skillRevisions(w http.ResponseWriter, r *http.Request) {
 	v, e := s.svc.SkillRunRevisions(r.Context(), humanActor, r.PathValue("id"))

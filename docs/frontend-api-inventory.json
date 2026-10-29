@@ -30,8 +30,8 @@
     "tool_count": 16,
     "inner_tool_count": 21
   },
-  "registered_route_count": 183,
-  "expanded_endpoint_count": 184,
+  "registered_route_count": 189,
+  "expanded_endpoint_count": 190,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -82,7 +82,9 @@
     "webui/src/timelineContracts.ts",
     "webui/src/sequenceEditor.tsx",
     "webui/src/components/SequenceTimeline.tsx",
-    "webui/src/components/ScriptCompletion.tsx"
+    "webui/src/components/ScriptCompletion.tsx",
+    "webui/src/systemContracts.ts",
+    "webui/src/components/DiagnosticsPanel.tsx"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -100,7 +102,7 @@
       "backend_handler": "listAssets",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 520
+        "line": 522
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -138,7 +140,7 @@
       "backend_handler": "getAsset",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 541
+        "line": 543
       },
       "frontend_status": "sdk_only",
       "frontend_status_label": "仅 SDK，页面未接入",
@@ -3152,7 +3154,7 @@
       "backend_handler": "runtimeActivity",
       "backend_source": {
         "file": "control-plane/internal/api/runtime.go",
-        "line": 5
+        "line": 18
       },
       "frontend_status": "not_wrapped",
       "frontend_status_label": "未封装/未接入",
@@ -3878,7 +3880,7 @@
       "backend_handler": "skillRevisions",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 43
+        "line": 55
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -3912,7 +3914,7 @@
       "backend_handler": "skillVoice",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 47
+        "line": 59
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -3949,7 +3951,7 @@
       "backend_handler": "skillImportMedia",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 56
+        "line": 68
       },
       "frontend_status": "retired_in_workspace",
       "frontend_status_label": "工程模式退休",
@@ -3984,7 +3986,7 @@
       "backend_handler": "skillProjects",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 72
+        "line": 84
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4018,7 +4020,7 @@
       "backend_handler": "skillSaveProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 80
+        "line": 92
       },
       "frontend_status": "retired_in_workspace",
       "frontend_status_label": "工程模式退休",
@@ -4053,7 +4055,7 @@
       "backend_handler": "skillProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 76
+        "line": 88
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4095,7 +4097,7 @@
       "backend_handler": "skillSaveProject",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 80
+        "line": 92
       },
       "frontend_status": "retired_in_workspace",
       "frontend_status_label": "工程模式退休",
@@ -4134,7 +4136,7 @@
       "backend_handler": "skillVisible",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 89
+        "line": 101
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4172,7 +4174,7 @@
       "backend_handler": "skillConfirmVisible",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 93
+        "line": 105
       },
       "frontend_status": "retired_in_workspace",
       "frontend_status_label": "工程模式退休",
@@ -4207,7 +4209,7 @@
       "backend_handler": "skillExport",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 211
+        "line": 223
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4241,7 +4243,7 @@
       "backend_handler": "skillList",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 105
+        "line": 117
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4283,7 +4285,7 @@
       "backend_handler": "skillImport",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 113
+        "line": 125
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4317,7 +4319,7 @@
       "backend_handler": "skillGet",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 109
+        "line": 121
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4351,7 +4353,7 @@
       "backend_handler": "skillEnable",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 124
+        "line": 136
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4385,7 +4387,7 @@
       "backend_handler": "skillGet",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 109
+        "line": 121
       },
       "frontend_status": "not_wrapped",
       "frontend_status_label": "未封装/未接入",
@@ -4409,7 +4411,7 @@
       "backend_handler": "skillValidate",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 135
+        "line": 147
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4443,7 +4445,7 @@
       "backend_handler": "skillFFmpeg",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 139
+        "line": 151
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4477,7 +4479,7 @@
       "backend_handler": "skillRuns",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 143
+        "line": 155
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4511,7 +4513,7 @@
       "backend_handler": "skillCreateRun",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 147
+        "line": 159
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4545,7 +4547,7 @@
       "backend_handler": "skillRun",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 156
+        "line": 168
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4591,7 +4593,7 @@
       "backend_handler": "skillContext",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 160
+        "line": 172
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4625,7 +4627,7 @@
       "backend_handler": "skillSteps",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 164
+        "line": 176
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4659,7 +4661,7 @@
       "backend_handler": "skillArtifact",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 200
+        "line": 212
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4697,7 +4699,7 @@
       "backend_handler": "skillTool",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 168
+        "line": 180
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4731,7 +4733,7 @@
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 177
+        "line": 189
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4765,7 +4767,7 @@
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 177
+        "line": 189
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4799,7 +4801,7 @@
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 177
+        "line": 189
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -4836,7 +4838,7 @@
       "backend_handler": "skillExecute",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
-        "line": 189
+        "line": 201
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6026,7 +6028,7 @@
       "path": "/api/projects/{id}/sequences/{sequence}/frame-modifications",
       "frontend_function": "",
       "frontend_ui": "历史由 sequence view 覆盖；AI 修改保留关闭",
-      "request": "FrameModificationRequest: session,expected_revision,idempotency_key,anchor,instruction",
+      "request": "保留接口；当前仅校验项目序列后返回501，不读取或执行修改负载。未来合同见 docs/development/AI画面修改.md",
       "success_response": "501 not_implemented",
       "behavior": "预留关闭能力；不创建任务、调用服务商或生成资源",
       "usage": "当前工程、当前会话；实现接线与真实验收分开记录",
@@ -6449,9 +6451,188 @@
       ],
       "frontend_calls": [],
       "lifecycle": "current_project_only"
+    },
+    {
+      "id": "SYS-DIAG-01",
+      "group": "统一诊断与扩展预留",
+      "method": "GET",
+      "path": "/api/system/diagnostics",
+      "frontend_function": "systemApi.diagnostics",
+      "frontend_ui": "设置 → 状态监控 → 统一诊断",
+      "request": "无",
+      "success_response": "200 DiagnosticReport",
+      "behavior": "本机只读、有界探测、固定脱敏字段；不调用外部模型",
+      "usage": "本机检查",
+      "backend_handler": "systemDiagnostics",
+      "backend_source": {
+        "file": "control-plane/internal/api/runtime.go",
+        "line": 5
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "required",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/systemContracts.ts",
+          "line": 20
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/DiagnosticsPanel.tsx",
+          "line": 10
+        }
+      ],
+      "lifecycle": "current_or_compatible"
+    },
+    {
+      "id": "SYS-DIAG-02",
+      "group": "统一诊断与扩展预留",
+      "method": "GET",
+      "path": "/api/system/diagnostics/report",
+      "frontend_function": "systemApi.diagnosticReport",
+      "frontend_ui": "保留 SDK；当前不提供页面操作",
+      "request": "无",
+      "success_response": "200 attachment JSON DiagnosticReport",
+      "behavior": "新建本机脱敏快照并下载；no-store，不附原始日志",
+      "usage": "预留或运维合同",
+      "backend_handler": "systemDiagnostics",
+      "backend_source": {
+        "file": "control-plane/internal/api/runtime.go",
+        "line": 5
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "operations_optional",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/systemContracts.ts",
+          "line": 21
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
+    },
+    {
+      "id": "SKILL-ONLINE-01",
+      "group": "统一诊断与扩展预留",
+      "method": "GET",
+      "path": "/api/skills/online/capabilities",
+      "frontend_function": "systemApi.onlineSkills",
+      "frontend_ui": "保留 SDK；当前不提供页面操作",
+      "request": "无",
+      "success_response": "200 OnlineSkillCapabilities",
+      "behavior": "enabled=false、status=reserved；不联网、不改注册状态",
+      "usage": "预留或运维合同",
+      "backend_handler": "onlineSkillCapabilities",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 48
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "reserved_or_redundant",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/systemContracts.ts",
+          "line": 22
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
+    },
+    {
+      "id": "SKILL-ONLINE-02",
+      "group": "统一诊断与扩展预留",
+      "method": "POST",
+      "path": "/api/skills/online/install",
+      "frontend_function": "systemApi.installSkill",
+      "frontend_ui": "保留 SDK；当前不提供页面操作",
+      "request": "预留草案 OnlineSkillRequest；当前固定501，不执行字段",
+      "success_response": "501 feature_reserved",
+      "behavior": "仅预留安装入口；不读取/下载请求来源，不安装或创建作业",
+      "usage": "预留或运维合同",
+      "backend_handler": "onlineSkillReserved",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 52
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "reserved_or_redundant",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/systemContracts.ts",
+          "line": 23
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
+    },
+    {
+      "id": "SKILL-ONLINE-03",
+      "group": "统一诊断与扩展预留",
+      "method": "POST",
+      "path": "/api/skills/{id}/check-updates",
+      "frontend_function": "systemApi.checkSkillUpdates",
+      "frontend_ui": "保留 SDK；当前不提供页面操作",
+      "request": "预留草案 OnlineSkillRequest；当前固定501，不执行字段",
+      "success_response": "501 feature_reserved",
+      "behavior": "仅预留检查更新入口；不访问外部仓库",
+      "usage": "预留或运维合同",
+      "backend_handler": "onlineSkillReserved",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 52
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "reserved_or_redundant",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/systemContracts.ts",
+          "line": 24
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
+    },
+    {
+      "id": "SKILL-ONLINE-04",
+      "group": "统一诊断与扩展预留",
+      "method": "POST",
+      "path": "/api/skills/{id}/update",
+      "frontend_function": "systemApi.updateSkill",
+      "frontend_ui": "保留 SDK；当前不提供页面操作",
+      "request": "预留草案 OnlineSkillRequest；当前固定501，不执行字段",
+      "success_response": "501 feature_reserved",
+      "behavior": "仅预留更新入口；不改已安装版本、注册表或业务状态",
+      "usage": "预留或运维合同",
+      "backend_handler": "onlineSkillReserved",
+      "backend_source": {
+        "file": "control-plane/internal/api/skill.go",
+        "line": 52
+      },
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅 SDK，页面未接入",
+      "frontend_requirement": "reserved_or_redundant",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/systemContracts.ts",
+          "line": 25
+        }
+      ],
+      "frontend_calls": [],
+      "lifecycle": "current_or_compatible"
     }
   ],
-  "routes_source_sha256": "75bef844e68b7c1c72bf384e2fd0dad39693ec9d9d625dddf710568fd9f10892",
+  "routes_source_sha256": "195983bfebc28e6d048c48f377ac70d6107f2e89b91a20b3d3b5496c975fb484",
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/script_workbench.go",
@@ -6460,19 +6641,21 @@
     "control-plane/internal/api/skill_editing.go",
     "control-plane/internal/api/project.go",
     "control-plane/internal/api/timeline.go",
-    "control-plane/internal/api/draw.go"
+    "control-plane/internal/api/draw.go",
+    "control-plane/internal/api/runtime.go"
   ],
   "sse_new_events_note": "workspace.changed / workspace.saved / resource.changed invalidate current-project queries; streams close when project session changes.",
   "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
   "source_hashes": {
-    "control-plane/internal/api/api.go": "75bef844e68b7c1c72bf384e2fd0dad39693ec9d9d625dddf710568fd9f10892",
+    "control-plane/internal/api/api.go": "195983bfebc28e6d048c48f377ac70d6107f2e89b91a20b3d3b5496c975fb484",
     "control-plane/internal/api/script_workbench.go": "1b3168344b29f05a38f482256041ce8fcf6eb745be3d9fa45ac94f70b3327178",
     "control-plane/internal/api/tts.go": "a0ffaec8ee432656be67a7d60c3d9ff7ffcc8283a17ed6969227d804542e2cb8",
-    "control-plane/internal/api/skill.go": "e2fd009e663ac389dc5bacccd41aff82b8c17730bed3181f703228518a50bce4",
+    "control-plane/internal/api/skill.go": "c675cb099572b63c9224e795bfbfc7066a35604f4fe155bad87e6fae6d95e140",
     "control-plane/internal/api/skill_editing.go": "d1a3945a023c2e21611232b119c2f8f49c59d96a54f2c1608ae3dee18c0d8e31",
     "control-plane/internal/api/project.go": "35e01cc9b8fdf51af3dd00d4c442a0bb303cac0347e9d1b37d0c60f30fb934c3",
     "control-plane/internal/api/timeline.go": "f4f1f8cdf176ab4253c2a79442bc21c0e7185308ea1dabe91d2be414086037c0",
-    "control-plane/internal/api/draw.go": "812774438986eb74d100c2582a52275ab756541ccf657f1d8e725e52fc74bd88"
+    "control-plane/internal/api/draw.go": "812774438986eb74d100c2582a52275ab756541ccf657f1d8e725e52fc74bd88",
+    "control-plane/internal/api/runtime.go": "fe2005b9e6362352b215badc0728182278235f842655d37cdb6d3b53cd0697d8"
   },
   "verified_checkout": "agent/vu-skill",
   "verification_note": "2026-10-20 AVP refactor: source registration and interface locations refreshed; runtime and visible window results separately recorded in docs/接口文档.md and scripts/TESTING.md.",
@@ -6502,8 +6685,8 @@
     "verified_date": "2026-10-20",
     "method": "本轮变更的源码接线及工程/桌面证据分别记载；旧接口仍供兼容模式使用，工程模式的退休流程返回410。",
     "counts": {
-      "page_integrated": 161,
-      "sdk_only": 4,
+      "page_integrated": 162,
+      "sdk_only": 9,
       "retired_in_workspace": 9,
       "not_wrapped": 10
     },

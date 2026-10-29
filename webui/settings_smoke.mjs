@@ -10,6 +10,7 @@ await fs.mkdir(output,{recursive:true});
 const browser=await chromium.launch({executablePath:process.env.CHROME,headless:true});
 const checks=[],errors=[],saved=[];
 let completed=false,failSave=true;
+let diagnosticCalls=0,diagnosticFailure=false;
 const profile={schema_version:1,profile_id:'ux_profile',revision:1,name:'本地剪辑',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'本机声音',export_target:'premiere'};
 const context=await browser.newContext({viewport:{width:1440,height:900}});
 await context.addInitScript(()=>localStorage.setItem('vac_tour_seen_v1','1'));
@@ -25,6 +26,14 @@ await page.route('**/api/processing-profiles**',async route=>{
  return route.fulfill({json:profile});
 });
 await page.route('**/api/workspace/providers',route=>route.fulfill({json:{external_tts:false}}));
+await page.route('**/api/system/diagnostics',async route=>{
+ diagnosticCalls++;await new Promise(resolve=>setTimeout(resolve,350));
+ if(diagnosticFailure)return route.fulfill({status:500,json:{error:{code:'diagnostic_incomplete',message:'fixture unavailable'}}});
+ return route.fulfill({json:{schema_version:1,generated_at:'2026-10-29T00:00:00Z',platform:'windows',architecture:'amd64',status:'warning',redacted:true,scope:'local_read_only_no_model_requests',checks:[
+  {id:'database',label:'本地数据库',status:'passed',message:'运行状态可读取。'},
+  {id:'dependency.node',label:'Node.js',status:'failed',message:'未找到可执行程序。',next_step:'安装所需版本。'},
+  {id:'models.configuration',label:'模型配置',status:'not_checked',message:'未验证服务连通性或模型质量。'}]}});
+});
 const check=name=>{checks.push(name);console.log('PASS '+name);};
 const button=name=>page.getByRole('button',{name,exact:true});
 const category=name=>page.getByRole('menuitem',{name,exact:true});
@@ -43,6 +52,28 @@ try {
  await page.getByText('Agent MCP 连接',{exact:true}).waitFor();
  await category('处理预设').click();
  check('settings navigation separates configuration and diagnostics without unrelated next step');
+ await category('状态监控').click();
+ await page.getByText('统一诊断',{exact:true}).waitFor();
+ assert.equal(diagnosticCalls,0,'diagnostics must be explicitly requested');
+ assert.equal(await button('下载脱敏报告').isDisabled(),true);
+ await button('运行诊断').click();
+ await page.getByText('正在检查本机环境…',{exact:true}).waitFor();
+ await page.getByText('未找到可执行程序。',{exact:true}).waitFor();
+ const downloadPromise=page.waitForEvent('download');await button('下载脱敏报告').click();
+ const download=await downloadPromise;const target=path.join(output,'diagnostics.json');await download.saveAs(target);
+ const diagnostic=JSON.parse(await fs.readFile(target,'utf8'));assert.equal(diagnostic.redacted,true);assert.equal(diagnostic.checks[2].status,'not_checked');
+ await page.screenshot({path:path.join(output,'diagnostics-1440.png')});
+ diagnosticFailure=true;await button('运行诊断').click();
+ await page.getByText('诊断未完成，请确认后台可连接后重试。',{exact:true}).waitFor();
+ assert.equal(await button('下载脱敏报告').isDisabled(),true);
+ diagnosticFailure=false;await button('运行诊断').click();
+ await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='下载脱敏报告'&&!button.disabled));
+ await page.getByText('诊断未完成，请确认后台可连接后重试。',{exact:true}).waitFor({state:'hidden'});
+ check('diagnostics are manual, downloadable, explicit about unverified models, and recover after an error');
+ await page.setViewportSize({width:800,height:800});await page.screenshot({path:path.join(output,'diagnostics-800.png')});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ check('diagnostics fit the compact settings layout');
+ await page.setViewportSize({width:1440,height:900});await category('处理预设').click();
  await page.getByRole('textbox',{name:'预设名称',exact:true}).fill('保留中的草稿');
  await category('服务商接入').click();
  await page.getByRole('switch',{name:'允许云端配音'}).waitFor();
