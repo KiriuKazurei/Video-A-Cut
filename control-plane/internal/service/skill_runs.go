@@ -199,6 +199,15 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 			return r, fmt.Errorf("请选择当前工程序列: %w", model.ErrArgument)
 		}
 	}
+	// Native AVP resources are the authority. Restored projects can carry an
+	// older fingerprint projection in SQL even when the current read model is
+	// confirmed. Refresh only that derived projection; the transaction below
+	// still compares it with the caller's exact current media fingerprint.
+	if s.WorkspaceEnabled() {
+		if err = s.refreshProjectMedia(ctx); err != nil {
+			return r, err
+		}
+	}
 	hash := skillHash(req)
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		old, id, e := tx.SkillRequest(ctx, scope, req.IdempotencyKey)
@@ -462,6 +471,16 @@ func (s *Service) ReportSkillProgress(ctx context.Context, actor, id string, ver
 	}
 	return r, err
 }
+func (s *Service) confirmTaskPlan(r *skill.Run) {
+	now := s.autoNow()
+	r.Plan.FinalizedBy = r.Owner
+	if isHumanActor(r.Owner) {
+		r.Plan.FinalizedBy = "agent:" + r.ID
+	}
+	r.Plan.FinalizedAt = &now
+	r.State, r.Reason = "queued", ""
+}
+
 func (s *Service) UpdateSkillRun(ctx context.Context, actor, id, action string, version int) (skill.Run, error) {
 	r, err := s.GetSkillRun(ctx, actor, id)
 	if err != nil {
@@ -471,9 +490,6 @@ func (s *Service) UpdateSkillRun(ctx context.Context, actor, id, action string, 
 		return r, model.ErrConflict
 	}
 	if action != "cancel" {
-		if err = requireHumanConfirm(actor, action); err != nil {
-			return r, err
-		}
 		check := r
 		check.LeaseUntil = nil
 		if _, err = s.checkSkillRun(ctx, check); err != nil {
@@ -485,6 +501,9 @@ func (s *Service) UpdateSkillRun(ctx context.Context, actor, id, action string, 
 	}
 	switch action {
 	case "finalize":
+		if r.Plan != nil && r.State == "queued" && r.Plan.FinalizedBy != "" {
+			return r, nil
+		}
 		if r.Plan == nil || r.State != "waiting_human" || r.Reason != "plan_confirmation" {
 			return r, model.ErrInvalidState
 		}
@@ -510,7 +529,7 @@ func (s *Service) UpdateSkillRun(ctx context.Context, actor, id, action string, 
 		until := s.autoNow().Add(2 * time.Minute)
 		r.LeaseUntil = &until
 	}
-	if action != "cancel" {
+	if action != "cancel" && isHumanActor(actor) {
 		r.BudgetStepBase, r.BudgetElapsedBase = r.Steps, r.ElapsedMilliseconds
 	}
 	r.UpdatedAt = s.autoNow()
@@ -543,18 +562,12 @@ func (s *Service) skillRunDir(r skill.Run) (string, error) {
 	return filepath.Dir(full), err
 }
 func (s *Service) SkillRunSteps(ctx context.Context, actor, id string) ([]json.RawMessage, error) {
-	if err := requireHumanConfirm(actor, "read operation steps"); err != nil {
-		return nil, err
-	}
 	if _, err := s.GetSkillRun(ctx, actor, id); err != nil {
 		return nil, err
 	}
 	return s.st.SkillSteps(ctx, id)
 }
 func (s *Service) SkillRunRevisions(ctx context.Context, actor, id string) ([]json.RawMessage, error) {
-	if err := requireHumanConfirm(actor, "read operation revisions"); err != nil {
-		return nil, err
-	}
 	if _, err := s.GetSkillRun(ctx, actor, id); err != nil {
 		return nil, err
 	}

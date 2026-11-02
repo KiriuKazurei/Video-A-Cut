@@ -173,7 +173,7 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
       if (key === skillVoiceKey) {
         setSkillLoadedVersion(updated.version);
         setSkillConsent(false);
-        setNotice(`已回写 Skill 运行 v${updated.version}。旧定稿已撤销，请回到编辑页重新人工定稿。`);
+        setNotice(`已回写 Skill 运行 v${updated.version}。Agent 可按新声音继续编辑和出片。`);
         setError('');
       }
       void client.invalidateQueries({ queryKey: runDetailKey(updated.project_id, updated.id, 'workbench') });
@@ -188,7 +188,7 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
         setLoadedVoiceKey(snapshot.key); setLoadedVoiceForm(snapshot.form); setVoiceVersion(w.version); setDirty(snapshot.form !== voiceFormKey);
         navigate?.({ scriptVersion: w.version });
       }
-      setNotice(`已回写脚本修订 ${w.version}，旧预览和交付已失效；请回到脚本重新人工定稿。`); setError('');
+      setNotice(`已回写脚本修订 ${w.version}，旧预览和交付已失效；后续生成会采用当前修订。`); setError('');
       void Promise.all(['scripts', 'script-revisions', 'script-delivery', 'auto', 'workflow', 'audit', 'deliveryFiles'].map(k => client.invalidateQueries({ queryKey: [k] })));
     }, onError: e => setError(errorText(e))
   });
@@ -214,7 +214,7 @@ export function TtsWorkspace({ active, route, navigate, onReturnToScript }: { ac
   return <div className="page-body tts-workspace">
     {skillRunId && <Card size="small" title="Skill 运行配音">
       <Flex vertical gap={8}>
-        <Typography.Text type="secondary">这条声音写回当前 Skill 运行的计划段落，不会改旧脚本。回写后需要重新人工定稿。</Typography.Text>
+        <Typography.Text type="secondary">这条声音写回当前 Skill 运行的计划段落，不会改旧脚本。回写后 Agent 可继续使用新声音生成。</Typography.Text>
         {skillRun.error ? <ProtectedError error={skillRun.error} onRetry={() => void skillRun.refetch()} /> : null}
         {skillRun.data && <Typography.Text>运行 {skillRun.data.id} · v{skillRun.data.version} · 计划 v{skillPlan?.version ?? '—'}</Typography.Text>}
         {skillRun.data && !skillPlan && <Alert type="warning" showIcon message="这次运行还没有计划，暂时不能回写段落声音。" />}

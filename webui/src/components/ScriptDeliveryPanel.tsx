@@ -14,9 +14,17 @@ export function ScriptDeliveryPanel({ scriptId, assetId, active = true }: { scri
   const record = useQuery({ queryKey: ['script-workbench', id], queryFn: () => api.scriptWorkbench(id!), enabled: active && Boolean(id), retry: false });
   const w = record.data;
   const ready = w?.script.status === 'finalized' && w.delivery?.version === w.version;
+  const complete=Boolean(w && w.document.paragraphs.length>0 && !w.document.diagnostics.length && w.segments.length===w.document.paragraphs.length && w.segments.every((segment,index)=>segment.media_id && segment.end>segment.start && (!w.document.paragraphs[index].instruction || segment.narration.trim())));
   const manifest = useQuery({ queryKey: ['script-delivery', id, w?.version], queryFn: () => api.scriptDelivery(id!, w!.version), enabled: active && Boolean(id) && ready, retry: false });
   const render = useMutation({
-    mutationFn: (snapshot: { id: string; version: number; sha: string }) => api.exportScript(snapshot.id, { expected_version: snapshot.version, visible_set_sha: snapshot.sha }),
+    mutationFn: async (snapshot: { id: string; version: number; sha: string }) => {
+      let version=snapshot.version;
+      if(w?.script.status!=='finalized'){
+        const saved=await api.finalizeScriptWorkbench(snapshot.id,{expected_version:version,visible_set_sha:snapshot.sha});
+        version=saved.version;client.setQueryData(['script-workbench',snapshot.id],saved);
+      }
+      return api.exportScript(snapshot.id,{expected_version:version,visible_set_sha:snapshot.sha});
+    },
     onSuccess: async () => { await Promise.all(['script-workbench', 'script-delivery', 'scripts', 'audit'].map(k => client.invalidateQueries({ queryKey: [k] }))); }
   });
   const info = ready && manifest.data?.version === w?.version ? manifest.data : undefined;
@@ -28,11 +36,11 @@ export function ScriptDeliveryPanel({ scriptId, assetId, active = true }: { scri
   return <Card size="small" title="脚本成片与 Premiere 交付">
     <Flex vertical gap={12}>
       {!scriptId && (scripts.data?.length ?? 0) > 1 && <Select aria-label="选择交付脚本" value={id} disabled={render.isPending} options={scripts.data!.map(s => ({ value: s.script_id, label: s.title || s.script_id }))} onChange={setPicked} />}
-      {!id && !scripts.isPending && <Empty description="当前资产还没有脚本，请先在内容编辑中创建并定稿。" />}
+      {!id && !scripts.isPending && <Empty description="当前资产还没有脚本，请先在脚本工作台创建并保存。" />}
       {w && <>
-        <Space wrap><Typography.Text>{w.script.title || w.script.script_id} · 修订 {w.version}</Typography.Text><Tag>{w.script.status === 'finalized' ? '已人工定稿' : '待人工定稿'}</Tag></Space>
-        {w.script.status !== 'finalized' && <Alert type="warning" showIcon message="脚本或声音已更新，旧交付已失效。请回到脚本检查并人工定稿。" />}
-        <Button type="primary" loading={render.isPending} disabled={w.script.status !== 'finalized' || !active} onClick={() => render.mutate({ id: id!, version: w.version, sha: w.script.visible_set_sha })}>{ready ? '重新生成当前修订成片' : '生成成片与 Premiere 包'}</Button>
+        <Space wrap><Typography.Text>{w.script.title || w.script.script_id} · 修订 {w.version}</Typography.Text><Tag>{ready ? '交付有效' : '已保存'}</Tag></Space>
+        {!complete && <Alert type="info" showIcon message="补齐分段文稿与素材后可直接生成，也可交给 Agent 按脚本编辑。" />}
+        <Button type="primary" loading={render.isPending} disabled={!complete || !active} onClick={() => render.mutate({ id: id!, version: w.version, sha: w.script.visible_set_sha })}>{ready ? '重新生成当前修订成片' : '生成成片与 Premiere 包'}</Button>
       </>}
       {preview && info && <>
         <video ref={video} key={preview} src={preview} controls preload="metadata" aria-label={`脚本修订 ${info.version} 成片预览`} style={{ width: '100%', maxHeight: 420 }} />

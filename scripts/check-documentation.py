@@ -7,7 +7,7 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--root',type=Path,action='append',required=True)
 args=parser.parse_args()
 excluded={'.git','.run-data','node_modules','target','dist','build','release','__pycache__','.agents','.codex','.hermes','.venv','venv','legacy','upstream','builtin'}
-primary={'项目文档.md','计划文档.md','接口文档.md','架构与功能详解.md'}
+primary={'项目文档.md','功能文档.md','计划文档.md','接口文档.md','架构与功能详解.md','文档索引.md'}
 errors=[]; counts={'documents':0,'historical':0,'links':0,'routes':0}
 current={}
 for root in args.root:

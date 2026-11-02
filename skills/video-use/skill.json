@@ -33,7 +33,9 @@
     "draw.check",
     "draw.render",
     "draw.get_frame",
-    "draw.import"
+    "draw.import",
+    "scripts.voice",
+    "run.steps"
   ],
   "permissions": [
     "project_media",

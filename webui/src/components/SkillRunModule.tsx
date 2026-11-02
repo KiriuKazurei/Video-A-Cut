@@ -242,7 +242,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
     await skillApi.requestEdit(runId, request);
     editKey.current = newIdempotencyKey('edit');
     setPrompt('');
-    setNotice('修改已提交。新计划需要人工确认后才会继续出片。');
+    setNotice('修改已提交，Agent 将按新计划继续出片。');
   });
 
   const authError = project.error || runs.error || run.error || workbench.error;
@@ -305,7 +305,6 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
         </Space>
         {context.data && <Typography.Text type="secondary">冻结 Skill {context.data.skill.name} · 媒体 {context.data.media.length} · 工具 {context.data.tools.join('、')}</Typography.Text>}
         <Space wrap>
-          <Button disabled={!run.data.plan || busy} onClick={() => action.mutate(() => skillApi.action(runId, 'finalize', run.data!.version))}>人工定稿</Button>
           <Button disabled={run.data.state !== 'waiting_human' || run.data.reason === 'plan_confirmation' || busy} onClick={() => action.mutate(() => skillApi.action(runId, 'resume', run.data!.version))}>恢复执行</Button>
           <Button danger loading={cancelling} disabled={terminal || action.isPending || cancelling} onClick={() => cancelRun.mutate({ project: projectId, run: runId, key: currentRunKey, controller: abortRef.current ?? undefined })}>取消运行</Button>
           {run.data.execution_mode === 'builtin_api'
@@ -381,7 +380,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
           <Button type="primary" disabled={busy || !currentPlanDraft} loading={action.isPending} onClick={() => action.mutate(async () => {
             if (!currentPlanDraft || !planBase) throw new Error(versionConflictMessage());
             await skillApi.savePlan(planBase.run, planBase.version, structuredClone(planDraft));
-            setNotice('计划已保存为新修订，需要重新人工定稿。');
+            setNotice('计划已保存为新修订，Agent 可继续出片。');
           })}>保存计划草案</Button>
         </>}
       </Flex>

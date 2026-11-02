@@ -11,11 +11,18 @@ const browser=await chromium.launch({executablePath:process.env.CHROME,headless:
 const checks=[],errors=[],saved=[];
 let completed=false,failSave=true;
 let diagnosticCalls=0,diagnosticFailure=false;
+let agentState='empty',agentStatusFailure=false,agentStatusCalls=0;
 const profile={schema_version:1,profile_id:'ux_profile',revision:1,name:'本地剪辑',content_mode:'builtin',vision:{adapter:'builtin'},narration:{adapter:'builtin'},sampling:{max_frames:12,max_bytes:12582912,timeout_seconds:60},tts_voice:'本机声音',export_target:'premiere'};
 const context=await browser.newContext({viewport:{width:1440,height:900}});
 await context.addInitScript(()=>localStorage.setItem('vac_tour_seen_v1','1'));
 const page=await context.newPage();
+await page.clock.install();
 page.on('pageerror',e=>errors.push(e.message));
+await page.route('**/api/agents/status',route=>{
+ agentStatusCalls++;
+ if(agentStatusFailure)return route.fulfill({status:503,json:{error:{code:'unavailable',message:'status fixture unavailable'}}});
+ return route.fulfill({json:{generated_at:new Date().toISOString(),stale_after_seconds:90,agents:agentState==='empty'?[]:[{agent_id:'local-client',name:'测试外部 Agent',version:'1',transport:'desktop_mcp',state:agentState,connected_at:new Date().toISOString(),last_seen_at:new Date().toISOString(),last_tool:'projects.list',active_calls:agentState==='busy'?1:0}]}});
+});
 await page.route('**/api/processing-profiles**',async route=>{
  const req=route.request();
  if(req.method()==='GET')return route.fulfill({json:new URL(req.url()).pathname==='/api/processing-profiles'?[profile]:{profile}});
@@ -50,7 +57,30 @@ try {
  assert.equal(await page.getByRole('switch',{name:'允许云端配音'}).count(),0,'global provider policy belongs in providers');
  await category('Agent 与 Skill').click();
  await page.getByText('Agent MCP 连接',{exact:true}).waitFor();
+ const agentPanel=page.getByRole('region',{name:'外部 Agent 状态',exact:true});
+ await agentPanel.getByText('尚无 Agent 活动',{exact:true}).waitFor();
+  agentState='connected';await agentPanel.getByRole('button',{name:'刷新 Agent 状态',exact:true}).click();
+ await agentPanel.getByText('1 个 Agent 最近有活动',{exact:true}).waitFor();
+ await agentPanel.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'agent-status-connected.png')});
+ // Start the polling interval after screenshot work, which may exceed one second.
+ const refreshed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/agents/status');
+ await agentPanel.getByRole('button',{name:'刷新 Agent 状态',exact:true}).click();await refreshed;
+ await agentPanel.getByRole('button',{name:'刷新 Agent 状态',exact:true}).waitFor({state:'visible'});
+ const beforePoll=agentStatusCalls;agentState='busy';
+ await page.clock.fastForward(179000);await page.waitForTimeout(100);
+ assert.equal(agentStatusCalls,beforePoll,'Agent status must not poll before 3 minutes');
+ await page.clock.fastForward(1000);await agentPanel.getByText('1 个 Agent 正在调用工具',{exact:true}).waitFor({timeout:8000});
+ agentState='stale';await agentPanel.getByRole('button',{name:'刷新 Agent 状态',exact:true}).click();
+ await agentPanel.getByText('Agent 连接待确认',{exact:true}).waitFor();
+ agentStatusFailure=true;await agentPanel.getByRole('button',{name:'刷新 Agent 状态',exact:true}).click();
+ await agentPanel.getByText('Agent 状态读取失败',{exact:true}).waitFor();
+ await page.screenshot({path:path.join(output,'agent-status-unavailable.png')});
+ assert.equal(await agentPanel.getByText('1 个 Agent 最近有活动',{exact:true}).count(),0);
+ agentStatusFailure=false;agentState='disconnected';await agentPanel.getByRole('button',{name:'刷新 Agent 状态',exact:true}).click();
+ await agentPanel.getByText('Agent 已断开',{exact:true}).waitFor();
+ check('Agent status hook polls at 3 minutes, preserves manual refresh and hides cached online state on error');
  await category('处理预设').click();
+ const pausedCalls=agentStatusCalls;await page.clock.fastForward(180000);await page.waitForTimeout(100);assert.equal(agentStatusCalls,pausedCalls,'inactive settings must stop Agent polling');
  check('settings navigation separates configuration and diagnostics without unrelated next step');
  await category('状态监控').click();
  await page.getByText('统一诊断',{exact:true}).waitFor();
@@ -143,6 +173,40 @@ try {
  await page.goto(base+'/#/tts');await page.getByRole('textbox',{name:'TTS 朗读文本'}).waitFor();
  assert.equal(await page.locator('.next-step-btn:visible').count(),0);
  check('standalone TTS does not show recording next-step prompts');
+ const desktopPage = await context.newPage();
+ await desktopPage.addInitScript(({ base }) => {
+   window.__copied = []; window.__copyFail = false;
+   window.__runtime = { revision: 1, status: 'ready', api_base_url: base, mcp_url: 'http://127.0.0.1:43210/mcp', session_id: 'test-desktop', data_directory: '', message: '', workers: [] };
+   window.__TAURI__ = { core: { invoke: async (name, args) => {
+     if (name === 'runtime_status') return window.__runtime;
+     if (name === 'update_status') return { revision: 1, phase: 'idle', current_version: '0.3.2' };
+     if (name === 'clipboard_write_text') { if (window.__copyFail) throw Error('clipboard fixture failure'); window.__copied.push(args.text); }
+   } }, event: { listen: async (name, callback) => { if (name === 'runtime-status') window.__runtimeListener = callback; return () => {}; } } };
+ }, { base });
+ desktopPage.on('pageerror', e => errors.push(e.message));
+ try {
+   await desktopPage.goto(base + '/#/settings/skills');
+   const install = desktopPage.getByRole('button', { name: '一键复制安装 MCP', exact: true });
+   await install.waitFor(); await install.click();
+   await desktopPage.getByText('MCP 安装命令已复制', { exact: true }).waitFor();
+   assert.deepEqual(await desktopPage.evaluate(() => window.__copied), ['codex mcp add vac --url http://127.0.0.1:43210/mcp']);
+   await desktopPage.evaluate(() => { window.__runtime = { ...window.__runtime, revision: 2, status: 'stopped' }; window.__runtimeListener({ payload: window.__runtime }); });
+   await install.waitFor({ state: 'hidden' });
+   assert.equal(await desktopPage.getByRole('textbox', { name: 'MCP 安装命令', exact: true }).count(), 0, 'stopped desktop replaces the entire settings shell');
+   await desktopPage.evaluate(() => { window.__runtime = { ...window.__runtime, revision: 3, status: 'ready', mcp_url: 'http://127.0.0.1:54321/mcp' }; window.__runtimeListener({ payload: window.__runtime }); });
+   await desktopPage.waitForFunction(() => document.querySelector('[aria-label="MCP 安装命令"]')?.value.includes('54321'));
+   await install.click(); await desktopPage.waitForFunction(() => window.__copied.length === 2);
+   assert.equal(await desktopPage.evaluate(() => window.__copied.at(-1)), 'codex mcp add vac --url http://127.0.0.1:54321/mcp');
+   await desktopPage.evaluate(() => { window.__copyFail = true; }); await install.click();
+   await desktopPage.getByRole('alert').filter({ hasText: '复制失败' }).waitFor();
+   assert.equal(await desktopPage.evaluate(() => window.__copied.length), 2);
+   for (const width of [1440, 800]) {
+     await desktopPage.setViewportSize({ width, height: 1000 });
+     await desktopPage.screenshot({ path: path.join(output, `mcp-${width}.png`) });
+     assert.equal(await desktopPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+   }
+   check('desktop MCP command copies exactly, clears on stop, refreshes after restart and reports clipboard failure');
+ } finally { await desktopPage.close(); }
  assert.deepEqual(errors,[]);completed=true;
 } finally {
  await page.screenshot({path:path.join(output,'last-state.png')});

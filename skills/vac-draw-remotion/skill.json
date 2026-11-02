@@ -26,7 +26,8 @@
     "references.resolve",
     "artifacts.list",
     "artifacts.get",
-    "run.finish"
+    "run.finish",
+    "run.steps"
   ],
   "permissions": [
     "project_media",

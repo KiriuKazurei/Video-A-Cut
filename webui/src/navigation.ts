@@ -6,7 +6,7 @@ import { isDrawEngine, isDrawFocus, type DrawEngine, type DrawFocus } from './dr
  * 「绘制」是少开顶栏分页的显式例外，页内不再拆子顶栏。
  * 主工作区按操作流程排列；TTS 和设置不依赖素材处理流程。
  */
-export type WorkspaceId = 'resources' | 'editing' | 'draw' | 'export' | 'settings' | 'tts';
+export type WorkspaceId = 'resources' | 'editing' | 'script' | 'draw' | 'export' | 'settings' | 'tts';
 
 /** Digit keys. 1–5 stay on the existing workspaces; 6 opens 绘制. */
 export const WORKSPACE_KEYS: Record<string, WorkspaceId> = {
@@ -15,7 +15,8 @@ export const WORKSPACE_KEYS: Record<string, WorkspaceId> = {
   '3': 'export',
   '4': 'settings',
   '5': 'tts',
-  '6': 'draw'
+  '6': 'draw',
+  '7': 'script'
 };
 
 /**
@@ -24,9 +25,9 @@ export const WORKSPACE_KEYS: Record<string, WorkspaceId> = {
 export type EditingSection = 'import' | 'content';
 
 /**
- * 导出页二级分区：交付 / 人工验收 / 任务监控
+ * 导出页二级分区：交付 / 任务监控
  */
-export type ExportSection = 'delivery' | 'acceptance' | 'tasks';
+export type ExportSection = 'delivery' | 'tasks';
 
 /**
  * 设置页分类：处理预设 / 服务商接入 / 运行准备 / 日志与诊断
@@ -62,21 +63,21 @@ export interface SettingsCategoryDef {
 
 export const WORKSPACES: readonly WorkspaceDef[] = [
   { id: 'resources', label: '资源管理', english: 'Resources', description: '资产库、素材预览、属性治理、本地草稿', apis: 'API-01 · 03 · 43~45' },
+  { id: 'script', label: '脚本', english: 'Script', description: '保存脚本、发送模型并交给 Agent 编辑', apis: 'Script Workbench API' },
   { id: 'editing', label: '编辑', english: 'Editing', description: '多序列轨道编辑、脚本标记引用、Skill 与历史', apis: 'TL API · Script API · Skill API' },
   { id: 'draw', label: '绘制', english: 'Draw', description: '构图预览、构图时间轴、源码与 Inspector。不是工程多轨时间线', apis: 'Draw API · Skill API' },
-  { id: 'export', label: '导出', english: 'Export', description: '交付文件、人工验收、任务监控', apis: 'API-28 · 30 · 39~41 · 43~49' },
+  { id: 'export', label: '导出', english: 'Export', description: '交付文件、任务监控', apis: 'API-28 · 30 · 39~41 · 43~49' },
   { id: 'tts', label: 'TTS', english: 'TTS', description: '文本试听、声音调控、模板版本与正式配音配置', apis: 'TTS API' },
   { id: 'settings', label: '设置', english: 'Settings', description: '处理预设、服务商、运行准备、日志诊断', apis: 'API-17~21 · 23~26 · 49~50' }
 ];
 
 export const EDITING_SECTIONS: readonly EditingSectionDef[] = [
   { id: 'import', label: '时间线', description: '当前序列的轨道、片段、效果及标记' },
-  { id: 'content', label: '脚本工作台', description: '右侧栏脚本工作台（深链打开）' },
+  { id: 'content', label: '脚本工作台', description: '独立脚本工作区（兼容旧深链）' },
 ];
 
 export const EXPORT_SECTIONS: readonly ExportSectionDef[] = [
   { id: 'delivery', label: '交付', description: '预览成片、下载文件、导入已有成片包' },
-  { id: 'acceptance', label: '人工验收', description: '检查预览并逐项通过或标出问题' },
   { id: 'tasks', label: '任务监控', description: '流程阶段、任务派发、失败重试、审计索引' }
 ];
 
@@ -116,6 +117,7 @@ export interface RouteState {
  * 旧路径兼容：#/import → #/editing/import，#/monitor → #/export/tasks 等
  */
 export function parseWorkspaceHash(hash: string): RouteState {
+  if (hash.replace(/^#\/?/, '').split('?')[0] === 'export/acceptance') return { workspace: 'editing', editingSection: 'import' };
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
   const raw = path.split('/');
   const [first, second] = raw;
@@ -125,14 +127,14 @@ export function parseWorkspaceHash(hash: string): RouteState {
     'import': { workspace: 'editing', editingSection: 'import' },
     'assembly': { workspace: 'editing', editingSection: 'import' },
     'prepare': { workspace: 'settings', settingsCategory: 'preparation' },
-    'edit': { workspace: 'editing', editingSection: 'content' },
+    'edit': { workspace: 'script' },
     'export': { workspace: 'export', exportSection: 'delivery' },
     'monitor': { workspace: 'export', exportSection: 'tasks' }
   };
   if (!second && legacyMap[first]) return legacyMap[first];
 
   // 新路径解析
-  const workspace = WORKSPACES.find((w) => w.id === first)?.id ?? DEFAULT_WORKSPACE;
+  const workspace = first === 'editing' && second === 'content' ? 'script' : WORKSPACES.find((w) => w.id === first)?.id ?? DEFAULT_WORKSPACE;
   const state: RouteState = { workspace };
   const parameters = new URLSearchParams(query);
   if (parameters.get('script')) state.scriptId = parameters.get('script')!;
@@ -170,12 +172,13 @@ function parseHash(): RouteState {
 }
 
 export function buildWorkspaceHash(state: RouteState): string {
+  if (state.workspace === 'editing' && state.editingSection === 'content') return buildWorkspaceHash({ ...state, workspace: 'script', editingSection: undefined });
   const { workspace, editingSection, exportSection, settingsCategory } = state;
   const path = workspace === 'editing' && editingSection ? `/${workspace}/${editingSection}`
     : workspace === 'export' && exportSection ? `/${workspace}/${exportSection}`
     : workspace === 'settings' && settingsCategory ? `/${workspace}/${settingsCategory}` : `/${workspace}`;
   const query = new URLSearchParams();
-  if (state.scriptId && (workspace === 'tts' || (workspace === 'editing' && editingSection === 'content'))) {
+  if (state.scriptId && (workspace === 'tts' || workspace === 'script')) {
     query.set('script', state.scriptId);
     if (state.scriptVersion !== undefined) query.set('version', String(state.scriptVersion));
     if (state.scriptSegment !== undefined) query.set('segment', String(state.scriptSegment));
@@ -214,10 +217,11 @@ export function useWorkspaceRoute() {
 
   const navigate = useCallback((state: Partial<RouteState>) => {
     const next: RouteState = { ...route, ...state };
+    if (next.workspace === 'editing' && next.editingSection === 'content') { next.workspace = 'script'; delete next.editingSection; }
     if (state.scriptId === '') {
       delete next.scriptId; delete next.scriptVersion; delete next.scriptSegment;
     }
-    if (next.workspace !== 'tts' && !(next.workspace === 'editing' && next.editingSection === 'content')) {
+    if (next.workspace !== 'tts' && next.workspace !== 'script') {
       delete next.scriptId; delete next.scriptVersion; delete next.scriptSegment;
     }
     const bareDrawTab = state.workspace === 'draw'

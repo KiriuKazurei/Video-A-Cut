@@ -62,7 +62,11 @@ func (s *Service) scriptProcess(ctx context.Context, node bool, operation string
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+	timeout := 6 * time.Minute
+	if node && (operation == "sequence" || operation == "draw-render") {
+		timeout = 30 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var cmd *exec.Cmd
 	if node {

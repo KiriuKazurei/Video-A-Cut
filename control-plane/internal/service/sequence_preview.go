@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
@@ -145,9 +146,20 @@ func (s *Service) CreateSequencePreview(ctx context.Context, projectID, sequence
 	if err != nil {
 		return report, err
 	}
-	release, err := s.acquireScript("sequence:" + projectID + ":" + sequenceID + ":" + view.ContentVersion)
-	if err != nil {
-		return report, err
+	// The desktop preview and Agent export can request the exact same movie.
+	// Join the owned render, then validate/reuse its cache instead of reporting
+	// an unchanged composition as a human-blocking context conflict.
+	var release func()
+	for {
+		release, err = s.acquireScript("sequence:" + projectID + ":" + sequenceID + ":" + view.ContentVersion)
+		if err == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return report, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 	defer release()
 	output := s.sequencePreviewDir(projectID, sequenceID, view.ContentVersion)

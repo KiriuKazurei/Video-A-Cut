@@ -131,3 +131,20 @@ test('remote marker rename preserves an unsaved draft and distinct namesake bind
  for(const ref of next.references)assert.equal(next.body.slice(ref.start,ref.end),`{@${ref.name}}`);
  assert.equal(synchronizeReferenceNames(next.body,next.references,[]).body,next.body,'missing anchors never bind a namesake');
 });
+import { buildWorkspaceHash, parseWorkspaceHash } from './src/navigation.ts';
+import * as workbench from './src/scriptWorkbench.ts';
+
+test('Agent handoff preserves the current draft and identifies its project and base revision', () => {
+  assert.equal(typeof workbench.scriptAgentHandoff, 'function');
+  const task = workbench.scriptAgentHandoff({ projectId: 'p1', scriptId: 's1', version: 4, title: '标题', body: '第一段 {@素材}\n\n第二段🙂', dirty: true });
+  assert.match(task, /p1/); assert.match(task, /s1/); assert.match(task, /修订 4/);
+  assert.match(task, /未保存/); assert.match(task, /第一段 \{@素材\}\n\n第二段🙂/);
+  assert.match(task, /projects.list/); assert.match(task, /resources.read/); assert.match(task, /不等待逐步人工定稿/);
+});
+
+test('script links open the standalone workspace and preserve the selected revision', () => {
+  assert.deepEqual(parseWorkspaceHash('#/script?script=s1&version=3&segment=0'), { workspace: 'script', scriptId: 's1', scriptVersion: 3, scriptSegment: 0 });
+  assert.deepEqual(parseWorkspaceHash('#/editing/content?script=s1&version=3'), { workspace: 'script', scriptId: 's1', scriptVersion: 3 });
+  assert.equal(buildWorkspaceHash({ workspace: 'script', scriptId: 's1', scriptVersion: 3 }), '/script?script=s1&version=3');
+  assert.equal(buildWorkspaceHash({ workspace: 'editing', editingSection: 'content', scriptId: 's1' }), '/script?script=s1');
+});

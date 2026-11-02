@@ -10,16 +10,17 @@ export const FLOW_LABEL: Record<SkillFlow, string> = {
 export const RUN_STATE_LABEL = {
   queued: '排队',
   running: '运行中',
-  waiting_human: '等待人工',
+  waiting_human: '已暂停',
   succeeded: '已完成',
   failed: '失败',
   cancelled: '已取消'
 } as const;
 
 export const PAUSE_REASON_LABEL: Record<string, string> = {
-  plan_confirmation: '计划待人工确认',
+  plan_confirmation: '计划待确认',
   frame_budget_exceeded: '抽帧预算已用尽',
   tool_failed: '工具失败',
+  invalid_tool_arguments: '参数待修正',
   context_changed: '上下文已变化',
   authorization_revoked: '授权已撤销',
   runtime_restarted: '运行时已重启',

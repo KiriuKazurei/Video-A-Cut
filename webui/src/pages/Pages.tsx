@@ -7,7 +7,7 @@ import { Monitor, PreviewScope, type PreviewSource } from '../components/Monitor
 import { IngestPanel, IngestRegister } from '../components/IngestPanel';
 import { DeliveryImport, DeliveryPanel, filePreview, useDeliveryFiles } from '../components/DeliveryPanel';
 import { PreparationPanel } from '../components/PreparationPanel';
-import { AcceptancePanel, WorkflowPanel, type RunSelection } from '../components/WorkflowPanel';
+import { WorkflowPanel, type RunSelection } from '../components/WorkflowPanel';
 import { TaskOrchestrator } from '../components/TaskOrchestrator';
 import AssetManager from '../components/AssetManager';
 import AuditLogViewer from '../components/AuditLogViewer';
@@ -137,7 +137,6 @@ export function ExportPage({ page, asset, selection }: { page: any; asset?: Asse
         <Flex vertical gap={16}>
           <Monitor label="节目" preview={preview} emptyTitle={asset ? '暂无可播放的交付文件' : '未选择资产'}
             emptyHint="资产登记交付产物后，在右侧文件列表选择视频或音频进行预览、试听。" />
-          {asset && <AcceptancePanel key={asset.asset_id} assetId={asset.asset_id} selection={selection} />}
         </Flex>
       </Col>
       <Col xs={24} xl={10}><DeliveryPanel asset={asset} files={files} selectedFile={selectedFile} onSelectFile={handleSelectFile} /></Col>

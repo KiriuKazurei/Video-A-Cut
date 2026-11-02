@@ -1,6 +1,6 @@
 # 测试维护说明
 
-更新：2026-10-29。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
+更新：2026-11-01。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
 ## 1. 统一规则与源码身份
 
@@ -54,6 +54,39 @@ Chrome既有设置套件最终10组通过、pageerror为空：手动启动才查
 
 接口/文档检查：190 HTTP、17 IPC、163模型、29 SSE，15份文档本地链接与契约检查通过。新增两个开发文档只读交接；FCPXML/Plugin实现、依赖安装作业、AI图像编辑作业均未实现或调用。未运行原生Tauri/安装器、未重新发布、未调用真实外部模型或执行人工验收；本轮测试会重新产生受管缓存，清理记录仅描述此前时点。
 
+### 2026-10-30 脚本工作区与 Agent/MCP 入口（UX-AGENT01）
+
+实际源码 codex/integrate-remote-20261029@a336f4f 加本轮未提交改动，版本0.3.2。复用 desktop_test.mjs、script_workbench_test.mjs、draw_page_test.mjs、script_workbench_smoke.mjs、settings_smoke.mjs 和 run-local-smokes.mjs；新增 ScriptAgentHandoff/ScriptWorkspace 是产品组件，没有新增独立测试套件、媒体或依赖。脚本浏览器入口从旧自建服务器迁到共享隔离服务器，随新工作区更新导航、出稿、人工定稿、草稿/冲突、取消、外发授权、高亮滚动与离线不补发覆盖。固定媒体未变，未清理测试输出或业务数据。
+
+统一入口 TestWorkspace.ps1 的 custom 结果：
+
+- 前端最终 `npm run check && npm run test:unit` 退出0，66+66=132项通过，样式通过；证据在本工作树 `.run-data/tests/agent-ux-final-unit/0.3.2/artifacts/custom/output.log`。受管Vite生产构建在 `agent-ux-build/0.3.2/artifacts/custom/ui-dist`，退出0；既有Ant Design use-client忽略警告和外部outDir提示保留，不称无警告。npm提示全局store-dir与可升级版本，本轮未修改npm配置或依赖。
+- Chrome现有浏览器入口：脚本最终9组、设置最终11组及编辑器14组通过，pageerror为空。证据分别为本工作树 `.run-data/tests/agent-ux-script-final-fix/0.3.2/artifacts/custom/review-smokes/` 与 `.run-data/tests/agent-ux-mcp-final/0.3.2/artifacts/custom/review-smokes/`。1440/800脚本与MCP截图已查看，六项顶栏保持600px，原设置覆盖至640px无横向溢出。桌面MCP使用注入IPC桥夹具验证准确复制、停止卸载、重启端口更新和复制失败；未执行真正外部客户端安装或连接。
+- 原根短路径runner执行当前源码control-plane：`go test ./internal/service -run 'Test(Project)?ScriptWorkbenchRealWorkerRoundTrip$' -count=1 -timeout=240s -v`，两项通过（10.22s/7.69s），真实Go→Python/FFmpeg→本机HTTP模型桩→Go→Node/FFmpeg，覆盖旧资产与当前工程。证据为原根 `.run-data/tests/agent-ux-go/0.3.2/artifacts/custom/output.log`，runner的旧根HEAD不代表被测源码。没有重跑完整Go、Python或Timeline套件。
+- 接口190 HTTP/17 IPC/163模型/29 SSE，15份文档599链接及脚本工作台6文档568本地链接检查通过；证据为本工作树 `.run-data/tests/agent-ux-doc/` 与 `agent-ux-doc-contract/` 的0.3.2输出。
+
+失败与修复边界：初次受限入口CIM无权限，提升后才实际运行。新增路由与Agent任务用例修复前失败；六项导航用实际opacity/滑轨边界断言复现export被隐藏，修正六等分后通过（agent-ux-route-red/handoff-red/nav-red保留）。外发探针最初提前读到旧旁白，改等本次修订；MCP探针原以为停止后设置仍挂载，按桌面整页卸载契约修正。扩展桌面桥夹具暴露共享静态测试服务器先写200再读缺失文件、继而重复写404导致headers-sent，已先读文件再写头并复验。离线探针原被route响应夹具绕过断网，改为断网期间放行到浏览器真实网络后验证不补发。前述失败日志保留在agent-ux-browser-final、agent-ux-mcp-fix和agent-ux-script-final等同版本目录，不记成产品模型质量通过。
+
+本轮未验真实外部模型质量、原生Tauri剪贴板/安装器或人工体验，没有提交/推送/发布。官方Codex安装命令只读核对官方文档及本机CLI帮助，未执行安装、改Agent配置或发送任务给外部Agent。ui-ux-pro-max本机缺搜索脚本，沿用项目既有深色主题、固定顶栏与技能通用可访问性清单，没有声称取得数据库搜索结果。
+### 2026-10-30 外部 Agent 状态 hook（AGENT-HOOK01）
+
+源码仍为 codex/integrate-remote-20261029@a336f4f 加本轮及前轮未提交改动，版本0.3.2。新增service/agent_status_test.go承担连接观测状态机的长期职责，仍属于现有service套件；API/MCP/前端/SSE/浏览器覆盖维护在既有api_test.go、security_test.go、desktop_test.mjs、skill_api_test.mjs、test_suite.mjs和settings_smoke.mjs。没有新增独立runner、媒体或依赖，没有清理业务/测试文件。原刷新域断言随新增external-agent-status域更新，不与旧契约并行保留。
+
+- 前端最终 `npm run check && npm run test:unit` 68+66=134项和样式通过。证据：本工作树 `.run-data/tests/agent-hook-ui-fix/0.3.2/artifacts/custom/output.log`。最终Vite构建退出0，产物在 `agent-hook-build/0.3.2/artifacts/custom/ui-dist`；保留既有Ant Design use-client忽略及outDir提示，没有声称无警告。
+- 现有Chrome浏览器入口：设置12组、脚本9组通过，pageerror为空。状态用本机HTTP夹具验证无连接、最近活动、工具调用中、90秒静默待确认、读取失败隐藏旧状态、主动断开、5秒自动刷新和离开设置分类停止轮询；原MCP复制/停止/重启/失败及脚本离线边界仍通过。证据：本工作树 `.run-data/tests/agent-hook-browser/0.3.2/artifacts/custom/review-smokes/`。agent-status-connected.png / agent-status-unavailable.png与既有1440/800截图用于视觉复核。桌面桥为注入夹具，不算原生Tauri验收。
+- 原根短路径受管runner、WorkingDirectory明确为当前源码control-plane：`go test ./internal/service -run TestExternalAgentStatus -count=1 -timeout=120s -v` 两项通过；随后 `go test ./internal/api ./internal/mcpserver -count=1 -timeout=240s` 两个完整包通过（31.514s、139.980s），包括真实HTTP/SSE与现有SDK协议。新覆盖检查并发完成/重复完成、256项边界、静默/过期/断开、迟到回包不复活会话、实际工具在途和失败、初始化/DELETE、会话header/参数不进入快照，以及事件不改变AVP revision/dirty。证据：原根 `.run-data/tests/agent-hook-go-fix/0.3.2/artifacts/custom/output.log`，原根HEAD仅为runner身份，不代表实际源码。
+- 当前接口191 HTTP/17 IPC/165模型/30 SSE，15文档602链接检查通过；机器清单补录AGENT-STATUS-01及状态类型/SDK。文档入口为本工作树 `.run-data/tests/agent-hook-doc/0.3.2/`。
+
+红灯及修复保留：agent-hook-red记录缺少service hook和GET404；agent-hook-ui-red记录前端缺少状态模块；agent-hook-green记录初次观测身份与原审计identity变量重名导致编译失败，改独立变量后通过。agent-hook-ui记录两个既有刷新域快照仍使用41个域而失败，新增领域后更新原断言，最终134通过。会话过期追加红灯保留在原根agent-hook-go-fix的expiry-red.log，修复后与最终整包共用该目录缓存；早期定向通过保留targeted-green.log。不把初次失败或夹具状态当真实客户端/模型质量验收。
+
+本轮没有运行完整service/Go全仓、真实外部模型、原生安装器或用户客户端手动操作，没有提交/推送/发布。状态只证明服务端观测的MCP活动；不会判断客户端思考/审批或扫描外部进程。记录仅在进程内存在，连接静默显示待确认而非断言离线。
+### 2026-10-30 Agent状态刷新周期（AGENT-REFRESH03）
+
+后续用户要求将自动读取由5秒改为3分钟，替代AGENT-HOOK01最初频率。维护原skill_api_test.mjs和settings_smoke.mjs：事件只invalidate且refetchType=none，避免内部Worker的MCP事件仍导致频繁拉取；窗口聚焦不额外刷新，手动刷新立即读取。设置浏览器使用Playwright既有虚拟时钟验证179秒无提前读取、再推进1秒触发一次刷新，以及离开分类后推进180秒仍不读取，无需真实等待3分钟。
+
+当前整合工作树未提交源码、0.3.2，经现有受管入口：npm run check、完整68+66=134项及样式/生产构建通过；证据在本工作树 `.run-data/tests/agent-refresh03/0.3.2/artifacts/custom/output.log` 和 ui-dist。浏览器settings12组通过、pageerror为空；证据 `agent-refresh03-browser/0.3.2/artifacts/custom/review-smokes/`。旧实现用新时钟断言复现179秒内3次读取而失败，红灯在agent-refresh03-browser-red对应output/log；事件断言也取得缺少refetchType的红灯，修复后纳入完整套件。沿用已有runner/夹具，没有新增独立套件、依赖或媒体。
+
+当前用户Tauri dev保持运行，Vite日志记录hook/queryRefresh更新，UI文案同步3分钟频率；未重启后端、改MCP授权或重新发布。本次不重跑Go/API/MCP，因为未修改后端。此前5秒验收仅代表当时历史源码。
 ## 2. 常用工程检查
 
 Windows 使用系统 PowerShell 7、UTF-8 和已安装依赖，保持 profile 设置。以下从实际源码根执行：
@@ -363,3 +396,112 @@ QA-FISH收尾复核（2026-10-27）：当前测试桌面和后台已退出；没
 上一版用户确认的成片和素材已复制到根 `.run-data/accepted-projects/2026-10-27-fat-fish/`：原AVP字节备份SHA-256为`6502581a1f6a5b38979ad34db405b152ec4d339283a725722ce79f43adc54ad5`，另有重定位AVP副本；原图/PNG、成片和18项运行产物引用已复制并核对。成片SHA-256为`648b8591bc79ca698e01ec31824a1a74b1f6d97d4541e05767d3cef7cc95c14e`。固定Sony RAW另存根`.run-data/accepted-fixtures/`并复制到当前版本测试缓存，摘要一致。重定位副本已解析，项目、序列、脚本、画面和运行内容与原件一致且引用存在；尚未以0.3.2桌面重新打开验证。
 
 根目录和当前工作树的0.3.1测试目录在核对标记、进程、重解析点和Git跟踪边界后按`Prepare`规则轮换。两测试根`Measure`同口径合计：轮换前10,566,776,555字节、轮换后3,697,773,546字节，减少6,869,003,009字节；保全副本位于统计范围外，因此这是测试存储占用变化，不等同磁盘净释放量。
+
+## MV-SCRIPT01 原生媒体指纹回归（2026-10-30）
+
+当前整合工作树、0.3.2未提交增量。复用 service/project_draw_test.go 增加旧SQL指纹与当前原生读模型不一致时的创建回归；旧调用方指纹仍被拒绝。TestWorkspace custom 运行 service/MCP draw/project 定向检查，先红（conflict）后绿（service 10.009秒、MCP 31.007秒）。输出位于根 .run-data/tests/agent-hook-go-fix/0.3.2/artifacts/custom，保留 native-fingerprint-red.log。Go新侧载二进制实际构建并已载入原生dev；真实MCP任务创建成功。后续绘制请求字段错误与人工恢复独立记录，不以回归通过代表成片质量或人工验收。
+
+## MV-SCRIPT01 / AGENT-AUTO01 自主剪辑（2026-10-30）
+
+真实业务生成：Excute me工程，用户明确批准Remotion替代Motion Canvas并指定60秒。任务skr_6533e12ed09f51bd通过实际MCP读取素材/歌词、保存源码、检查与预览、入轨、配乐合成、run.finish完成。最终MP4为60.000秒/1920×1080/30fps/1800帧/H.264+AAC 48kHz双声道，12,109,023字节，SHA256 d57817f1e6bcdfaa2ca53b758dadfa9006ff7cad949ce48fbcca064a7b2e7e39；基础音画passed，实际编码2/22/36/57秒画面已目视检查。工程保存，源码/分镜/成片位于根development/creative/world-execute-60s（业务产物不归入测试生成物）。无真实外部模型调用，人工观感和逐字听校未代签。
+
+过程中统一文档缺引擎字段被误报授权失效、timeline操作字段op误用（正确为type）引起暂停，先按用户点击恢复，用户继而明确授权Computer use自行点击恢复；预览争用导致finish冲突，源码逐帧路径过慢，最终采用实际Remotion渲染后合成并完成。这些失败未写成成功。
+
+自主执行维护在既有service/project_draw_test.go、skill_harness_test.go及MCP SDK/security/tasks套件，未新增独立runner。新增参数纠错/原生计划自动继续回归先红后绿；既有内置模型桩改为非绘制参数错误反馈，统一Remotion文档不会被误报权限，实际双请求共用预览输出。service 47.087秒、MCP剪辑定向61.840秒、Skill/project定向通过；新增MCP自助恢复真实SDK往返验证所属会话、状态及预算不重置。MCP整包初轮只在旧工具计数17断言失败（新增update后为18），修正断言后另记最终复验。前端134项、最终类型/样式通过；文档191 HTTP/17 IPC/165类型/30 SSE及15文档602链接通过，脚本文档受管验证通过。初次直接调用verify-script-workbench-docs因缺VAC_TEST_OUTPUT拒绝，随后统一入口通过；测试夹具初次空工程未初始化的失败记录保留，后续已复用固定clip_01.mp4正确初始化。
+
+证据在根.run-data/tests/agent-hook-go-fix/0.3.2/artifacts/custom（autonomy-red.log、autonomy-service-green.log、mcp-tool-count-first.log及最后output.log）、agent-auto-webui和agent-auto-docs同版本目录。实际源码为integrate-remote-20261029@a336f4f加未提交增量；根runner的HEAD仅代表入口，不代表被测源码。原生自主执行新版载入及最终MCP整包结果随完成记录追加。
+
+AGENT-AUTO01最终复验：MCP整包74.400秒通过（含新update接口的真实SDK恢复/确认、预算不重置、另一会话拒绝及原安全边界）；前端134项/最终tsc/样式通过。Go当前主程序构建退出0。原生debug窗口PID57092可见，后端PID59984，http://127.0.0.1:1935；真实HTTP MCP initialize→tools/list→DELETE确认18工具含skill_runs.update。Excute me重开并保存，序列revision8、一个源码构图，工程dirty=false。Codex保存的vac配置已更新该端口；当前聊天仍缓存旧46038连接，未宣称原连接已热重连。未再生成第二份一分钟成片、未发布安装器/提交/推送，人工观感待验。
+
+## AGENT-AUTO02 残留人工门槛清理（2026-11-01）
+
+继续integrate-remote-20261029的既有未提交增量，版本0.3.2。复用service/skill_harness_test.go与skill_agent_test.go、MCP SDK生命周期以及Skill builtin_draw_test.go，未新增独立runner或固定媒体。覆盖旧/原生任务自动确认、配音工具与设置API、所属任务步骤诊断、内置模型桩自动继续、绘制诊断工具声明；MCP SDK以Agent发起计划修改/配音设置/局部重剪，实际渲染1.0秒及0.8秒两份交付，无人工定稿调用。任务隔离与取消继续验证。
+
+既有service定向43.532秒通过；最终计划/配音/实际run.steps调用1.113秒、Skill 0.062秒通过；MCP整包最终66.814秒通过。绘制诊断工具声明先红（缺run.steps）后绿。初轮MCP断言仍要求重剪后清空确认、随后将固定计划版本误当成时长，均保留失败记录并改为验证新行为和明确预期时长；未删除片段边界/成片实际时长检查。输出沿用根.run-data/tests/agent-hook-go-fix/0.3.2/artifacts/custom和agent-auto-docs同版本目录，红灯draw-diagnostics-red.log保留。
+
+文档/契约通过：191 HTTP、17 IPC、165类型、30 SSE，16文档605链接。上一轮问题文档置于docs根导致“四份主文档”校验拒绝，已移至docs/development/当前问题清单与修复指导.md并更新链接，未放宽校验规则。本轮无前端产品代码变更，未重跑前端；无真实外部模型或配音质量验收，未替换正在运行的桌面后端、未打包/提交/发布。SDK模拟模型与真实本地渲染不冒充用户模型质量及原生体验验收。
+
+### 2026-11-01 UX-SCRIPT02：移除验收UI、脚本保存与Agent读取
+
+继续integrate-remote-20261029的既有未提交工作，版本0.3.2。复用project_workspace_test.go、project_test.go、skill_run_test.go及现有前端单元/浏览器入口，无新独立套件或媒体。新增覆盖空工程创建脚本、保存后重开、真实HTTP创建、SDK resources.read读取新正文及工程隔离；旧验收链接重定向、无人工定稿按钮、自动采用文稿导出、保存后交接和失败不复制旧任务纳入既有浏览器套件。未清理任何生成物或业务数据。
+
+- Go定向：service/api/mcpserver三包通过，覆盖TestProjectNewScript、TestProjectHTTPRangeAndIsolation、TestProjectMCPResourcesFollowOpenProject和TestProjectScript；分别10.755/1.721/1.011秒。证据：原根.run-data/tests/agent-hook-go-fix/0.3.2/artifacts/custom/output.log。
+- 前端全部135项、tsc --noEmit、style检查与生产构建通过。证据：原根.run-data/tests/agent-auto-webui/0.3.2/artifacts/custom/script02-unit.log及script02-build.log。
+- 现有run-local-smokes.mjs + script_workbench_smoke.mjs共13项通过，completed=true、errors=[]，1440/800宽度及保存后界面截图已查看。证据：同custom/review-smokes/script_workbench_smoke.mjs/results.json与截图。初轮失败为折叠面板/旧人工定稿按钮的测试预期、导出桩错误递增版本及反馈status角色定位，更新现有夹具与定位后最终通过；不冒称产品故障已修复。
+- 已验证真实HTTP/MCP协议与浏览器夹具流程；未重新启动更新后的原生桌面，未调用真实模型，人工体验与成片观感未代签。原生dev记录为stopped；本轮不更新已安装发行版本，不提交/推送。
+
+接口沿用既有资源POST并扩展kind:"script"创建分支，不新增路由；机器清单与接口文档同步。历史验收API/记录保持兼容，当前UI无独立验收页面和操作。
+
+### 2026-11-01 DOC-FEATURE01：活动文档整理与功能说明
+
+仅整理说明与文档维护脚本，不改产品逻辑、运行时Skill或第三方原件。新增功能文档和文档索引，项目总览与README按当前0.3.2工作副本重整；架构/接口修正过期版本、工具数量、绘制接线及人工定稿描述；问题清单保留复现并同步已实现进展。旧根只增加当前入口，不同步旧工作树源码。
+
+复用check-documentation.py和verify-script-workbench-docs.py，精确文档白名单由原四份调整为五份主文档加索引，脚本专项链接检查纳入两份新增说明；未另建测试套件。首轮静态检查拒绝新增文件，原因是旧白名单未更新；按用户明确新增功能说明的范围更新后通过。受管入口首次因受限环境无法读取CIM而未启动，使用允许的进程检查权限后正常执行。接口生成检查通过191 HTTP/17 IPC/165类型/30 SSE；脚本专项通过8文档604本地链接和191处理器位置。全说明最终18份、644本地链接检查通过，errors=[]，详见现有documentation/documentation-check.json。证据目录沿用原根.run-data/tests/agent-auto-webui/0.3.2/artifacts/custom/documentation与script-workbench，不创建日期报告。
+
+未复跑产品单元、媒体、浏览器、原生桌面或真实模型；这些结论沿用上次记录且不扩展为本轮通过。无依赖安装、原始文档恢复副本清理、提交/推送或发行。
+
+### 2026-11-01 DOC-FEATURE02：功能文档定位纠正
+
+按用户澄清，将操作说明改为模块职责和Agent开发合同；覆盖12个功能模块的现有能力/复用入口/不变量/限制/联动，明确禁止重复入口、双重状态、逐步人工审批和无关扩展。项目/索引/架构/README及AGENTS同步其职责，未改产品代码、接口、测试套件或运行时Skill。复用受管check-documentation.py，18份说明647本地链接、191 HTTP/17 IPC/165类型/30 SSE均通过；证据仍写既有custom/documentation/documentation-check.json。文档变更仅做静态验证，未重跑媒体、桌面和模型；不扩展历史通过结论。
+
+2026-11-02 UX-SCRIPT04：脚本移至持续挂载的可调宽右栏，复用现有useResizable，增加分隔条方向键操作。tsc与样式检查通过；现有脚本浏览器用例仍需适配中央工作区变为侧栏的布局预期，本轮未运行视觉回归或新版原生桌面，不宣称视觉验收完成。
+
+### 2026-11-02 QA-SCRIPT04：当前候选整体流程复验（结束，整包仍有未通过项）
+
+复用现有前端单元、run-local-smokes、draw.test.mjs与Go service/api/mcpserver套件。前端135项、类型/样式及生产构建通过；真实双引擎unified frame host检查通过。浏览器首次暴露两个实际问题：折叠侧栏被旧规则压成0px导致无法再展开，以及脚本入口未把右栏计入hasSider导致面板落到内容下方；分别补齐折叠条标记和容器条件，增加实际点击、草稿保留与水平位置断言。截图发现800px断点不匹配，统一到现有959px断点；工程宽度恢复同步720px范围。
+
+旧测试的中央宽度断言和重复监视器定位已更新；dock分段面板原有折叠由用例正常展开。绘制浏览器首次因缺少前置PNG样本退出，按既有Node真实帧测试生成后继续；未复制新样本或新建runner。一次并发受管调用被目录锁拒绝，改串行。最终候选页面回归与Go整包仍在执行，不使用旧summary/output的通过替代在途结果。浏览器使用隔离API/本地模型桩，不调用真实配置模型或修改用户工程；新版原生桌面尚未验证。
+
+QA-SCRIPT04最终：当前前端脚本15项、编辑14组、设置12项、绘制12项全部通过，脚本/设置completed=true，页面errors=[]；1440/800及空工程截图已目视，右栏位置符合当前要求。设置计时首轮受截图耗时跨越边界影响；暂停虚拟时钟尝试导致交互等待超时，最终改为截图之后主动刷新并等待响应，以该次完成为区间起点，三分钟与停用轮询断言通过，未改变产品轮询频率。生产构建/类型、样式、18文档647链接和191 HTTP/17 IPC/165类型/30 SSE合同通过。
+
+Go完整三包：service在600.117秒整包上限退出，超时时正在运行TestAutoRunParksWhenTheVisibleSetChanges（显示运行0秒），不能证明该用例死锁，也不能记整包通过；API26.146秒、MCP92.423秒通过。原根.run-data/tests/agent-hook-go-fix/0.3.2/artifacts/custom/full-packages.log保留完整失败栈；随后同根output.log为service定向60.524秒通过，选择TestAutoRunParksWhenTheVisibleSetChanges、TestProjectNewScript、TestProjectScript、TestSkill及TestDrawBuiltin，覆盖当前脚本/Agent与绘制内部模型桩路径。定向通过不消除整包超时，后续需分段测量整包耗时/退出。
+
+页面日志/JSON/截图位于原根.run-data/tests/agent-auto-webui/0.3.2/artifacts/custom/review-smokes；真实绘制样本由既有draw.test.mjs unified frame host在同custom/draw/unified生成，1项8054ms通过。所有浏览器均隔离API夹具；未启动新版原生桌面、未调用真实模型、未改用户工程、未提交/推送。
+
+### 2026-11-02 QA-SERVICE-TIMEOUT：service整包超时根因调查（完成，优化未实施）
+
+不修改产品逻辑。保留上一轮full-packages.log，对同一现有service包增加-json和CPU profile采样，诊断上限900秒而非宣称修复；生成物均在原根agent-hook-go-fix/0.3.2/artifacts/custom。超时栈当时位于PreparedPreflight→LocalProbe→runVersion→Windows CreateProcess；运行用例显示0秒，不能据此判断数据库死锁。该用例复用同一个已编译测试二进制独立重复5次全部通过，单次2.54–2.75秒，证据为agent-auto-webui同版本custom/auto-isolation.log。本机ffmpeg/ffprobe版本探测10个样本均exit0，首个0.25秒，其余约0.10秒，证据为同custom/probe-timing.json。
+
+次要缺陷证据：旧超时栈有206个Bus.run等待协程；auto_review_test.go的newScoreEnv注册两个订阅却未Cleanup(bus.Close)，newService把service/store存入全局sync.Map却不Delete；部分ConfigureTTS的用例/辅助函数未注册CloseTTS。它们是可确认的测试生命周期遗漏，是否主导本轮超时尚待profile，不冒称主因。
+
+最终证据：同一源码、相同受管环境，增加-json/-cpuprofile且诊断上限900秒的service全包复跑通过，耗时548.453秒；290个顶层用例通过、6个跳过（不冒充通过），无断言失败。顶层通过耗时之和546.36秒，说明本次时长由逐项执行累积；原600秒上限仅约51.55秒余量。TestAutoRunParksWhenTheVisibleSetChanges在整包内2.36秒通过，独立5次2.54–2.75秒通过。原始超时是包级预算耗尽时恰好进入该用例，不能指认为该用例卡死。上一轮还同时运行前端构建/浏览器，本次耗时变化可能受机器负载影响，但未做同负载A/B，不量化归因。
+
+最慢10项合计248.11秒（约45%），其中5个AutoE2E用例合计166.57秒：MediumRevisedThenCompletes53.97、LowRerunsAndMends29.95、FailedPreviewHalts28.43、HighCompletesAndDelivers27.29、MediumWaitsThenExports26.93；另有ProjectRealMediaFramesAndDelivery21.40、UnifiedPreviewDraftIsolationAndOwnedLifetime18.53、ResourceLoudnessConcurrentConflictAndCancelReleasesLock16.14、SkillRealMediaFramesAndDelivery13.69、SkillLightweightBuiltinFromTranscriptToMP411.78。这些覆盖真实Worker/FFmpeg/渲染，不是纯业务单元。
+
+CPU profile在Windows大量归入cgocall/syscall路径，累计栈主要涉及子进程输出管道读取、进程等待、路径查询和SQLite提交/FlushFileBuffers；LocalProbe/runVersion也有可见开销。累计样本含重叠调用栈和多线程，不能直接相加成墙钟耗时，不能由此猜测杀毒软件或磁盘故障。主结论为整包执行成本接近预算；清理遗漏是独立测试维护缺陷，不认定已证明造成本次超时。
+
+证据保存在原根agent-hook-go-fix/0.3.2/artifacts/custom：full-packages.log为原600秒失败栈；service-profile-events.jsonl为本次逐事件记录，service-timing-summary.json为耗时摘要，service-cpu.pprof与service-profile.test.exe用于本地分析；当前output.log为本次完整JSON。后续修复方向：复用既有short与集成覆盖分层；纯业务检查减少重复进程探测但保留真实依赖覆盖；为newScoreEnv、newService注册表及相关TTS夹具补生命周期清理，再同条件重测。不要仅扩大上限后称性能修复，也不要调低SQLite持久化语义以换取测试速度。本轮仅调查和文档，不实施这些优化，不启动用户工程或真实模型。
+
+### 2026-11-02 EDIT-CONTINUE01：生成后局部修改与原生联合验证（完成，MCP连续性未通过）
+
+复用skill_harness_test.go与verify-tauri-desktop.mjs，未另建runner。首先复现两项失败：SaveSkillPlan可接受target范围外旁白改写；局部保存会清空未选片段声音配置。修复后Save与scripts.propose共用enforceTargetedEdit；未选片段完整沿用可信基线，选区内正文允许同段落数更新，其他段落变化被拒绝。现有真实媒体/AVP往返及声音保留三项37.102秒通过；HTTP全包23.473秒、MCP全包90.800秒通过。
+
+在现有原生脚本增加VAC_VERIFY_AGENT_EDIT模式，调试桌面嵌入当前前端和同版Go/Worker资源；数据与生成物均在当前工作树既有agent-ux-browser-final-fix/0.3.2/artifacts/custom/native-agent-edit。首次用video-use创建visual_heavy任务因包只兼容lightweight而拒绝，测试改用vac-visual-summary，非人工审批阻断。原生/真实MCP已完成脚本保存读取、首次渲染检查、局部缩短第一段、保留第二段及人工片段、保存重开和1.7秒成片ffprobe核验。MCP重启端点2633→26932发生变化，保持配置的连接连续性未通过；重新发现端点后可初始化并读取原工程，不能冒称原客户端已自动重连。原生截图另暴露script路由未复用编辑器高度约束，已复用同一CSS并增加节目监视器与时间线工具防重叠断言，最终复验进行中。
+
+默认测试根含历史非版本子目录导致受管入口拒绝启动，改用已有隔离测试根，无清理；声音测试初轮夹具未递增run_version触发唯一键冲突，修正夹具后才复现真实声音丢失。未调用真实服务商模型/云配音；本轮是可见Tauri+真实Go/MCP/Worker/FFmpeg的外部Agent协议流程，不伪称模型理解质量或人工观感已认可。不修改用户工程或安装发行版。
+
+最终候选：调试Tauri/Go/Worker已重建，原生联合模式完成6项检查，5通过、1失败，result=partial。通过：原生脚本保存后MCP读取、首次真实MP4渲染/检查/完成、局部修改后未选段及人工片段完全保留、新成片1.7秒且AVP重开保存、重新发现地址后MCP重新初始化读取工程。失败：保持原安装地址的重启连续性；最终端点4069→46552，与初轮2633→26932一致复现。没有把重新发现连接记作原连接自动恢复。按用户本次先优化3再验证1/2/3的范围，未顺带修改运行端口/客户端身份机制。
+
+script入口高度CSS已复用editing规则；当轮可见窗口截图已查看，节目监视器不与时间线工具重叠的几何断言通过，WebView异常为0。原生结果、OS截图、WebView截图、1.7秒MP4及隔离AVP在当前工作树.run-data/tests/agent-ux-browser-final-fix/0.3.2/artifacts/custom/native-agent-edit；当轮result=partial，后续同一入口复跑结果见MCP-STABLE01，不回写历史失败为通过。构建当轮使用既有agent-ux-build同版本custom/output.log，Go定向及API/MCP在原根agent-hook-go-fix同版本custom。18份文档647链接、接口合同和diff检查通过。真实模型质量、用户素材与安装器发行未验。
+
+### 2026-11-02 MCP-STABLE01：固定MCP入口与重启恢复（实现及原生验证通过）
+
+只扩展现有Rust runtime与可见桌面回归入口，不新增代理、HTTP接口或测试套件。数据目录的mcp-endpoint.json记录schema_version=1和首次成功启动端口；在覆盖desktop-session.json前迁移旧本机地址。无效固定记录拒绝启动，端口占用明确失败且不更换地址。Go既有会话404行为不变，回归客户端在收到旧会话404时重新初始化并重试一次；网络结果不确定的写请求不自动重放。
+
+所有命令通过当前scripts/TestWorkspace.ps1的custom入口。StorageRoot沿用.run-data/tests/agent-ux-build：cargo +1.98.1 test --offline --locked --manifest-path desktop/Cargo.toml endpoint_tests先4项通过；完整Rust全套最终9项通过，0.39秒。覆盖初次动态分配、持久记录不受starting日志覆盖、旧地址迁移、无效记录和远程/带凭证地址拒绝迁移。四项日志为同版本artifacts/custom/endpoint-unit.log，最终全套为output.log。Build-TauriDesktop.ps1 -Debug构建通过（含当前前端/Go/Worker/Rust），未生成安装器或替换已安装版本。
+
+StorageRoot沿用.run-data/tests/agent-ux-browser-final-fix，VAC_VERIFY_AGENT_EDIT=1；运行node scripts/verify-tauri-desktop.mjs 19339 launch <native-agent-edit绝对目录> <该目录desktop.json>。独立stable-data从空目录首次分配，真实可见Tauri/WebView2+Go/MCP/Worker/FFmpeg完成9项，全通过：脚本新建保存并MCP读取；首次成片/抽帧/完成；局部修改保留未选段及人工片段；新MP4为1.7秒并保存重开；后台重启保持URL；原客户端自动处理旧会话；占用固定端口拒绝换址；释放后恢复；完整桌面退出重开后原客户端继续读取。
+
+本轮URL始终为http://127.0.0.1:36825/mcp，原客户端累计重新初始化3次。results.json模式为visible_tauri_live_mcp_script_edit_and_persistent_endpoint、result=passed；证据位于同版本artifacts/custom/native-agent-edit，父目录output.log列出9项结果。mcp-endpoint.json固定36825；最终desktop-session.json为stopped，拥有的测试窗口/后台已正常退出。OS截图agent-edit-desktop.png已检查，节目监视器与时间线不重叠，WebView无异常。
+
+这覆盖前轮1/2/3的可重复协议/桌面流程，不代替真实模型理解、同等规模60秒创作质量或人工观感。客户端恢复由测试客户端验证，当前Codex聊天和其他第三方Agent实现未测；不自动继承旧MCP会话的任务身份/所有权。没有修改用户工程、安装版或远程仓库。
+
+### 2026-11-02 REL033：0.3.3签名发行与本地安装版更新（进行中）
+
+当前整合工作树版本递增至0.3.3，同步Tauri/Cargo/npm元数据及锁文件、MCP服务端与probe标识；不改依赖版本。复用verify-tauri-updater.mjs新增显式--installed-update模式，使用指定安装目录的实际exe和默认业务数据，通过生产HTTPS源下载安装、确认原生安装对话框、等待NSIS自动重启，并核对新版本、数据目录、资产、Worker、更新源最新状态和固定端口记录。不复制旧exe、不使用调试更新源、不直接运行安装包代替更新器。
+
+已完成：前端完整135项（69+66）与样式通过；MCP整包129.023秒通过；Rust全套9项通过。接口191 HTTP/17 IPC/165类型/30 SSE、18份说明647链接及diff检查通过。签名正式构建与真实安装尚在执行，后续追加结果。原生回归沿用原入口，不新增固定样本或独立套件。
+
+按规则通过Prepare轮换本轮复用的agent-ux-build与agent-ux-browser-final-fix测试根，旧0.3.2结论保留各根archives/0.3.2.md。相同文件统计范围前后分别6571565→392字节、99859928→435字节，共释放106430666字节；仅清理已标记测试生成物，其他测试根、源码、固定样本、签名密钥和业务数据未动。正式构建证据在agent-ux-build/0.3.3，MCP及后续原生回归在agent-ux-browser-final-fix/0.3.3，前端/Rust与实际更新在既有公开更新验证模式下的0.3.3/public-update/0.3.3/artifacts/custom；后者frontend-unit.log已从共享output.log保留，Rust也在更新测试前保留。
+
+候选结果：Build-TauriDesktop.ps1 -Installer -Version 0.3.3已退出0，当前前端/Go/Worker/Rust正式包已生成；NSIS安装器74947424字节，SHA256 a19f1591a66a3d635de4df7681bc2da81c29ccea3ac5171b47567853d94665c3，更新签名428字节。安装器/签名附件名使用Video.Auto.Cut_0.3.3_x64-setup.exe及.sig，与latest.json URL一致。现有原生联合入口切换为build/desktop/app的0.3.3正式候选，9项全部通过，包括脚本保存、生成/二次修改、1.7秒实际成片、工程重开、后台/完整桌面重启同地址、旧会话恢复及端口争用恢复；测试窗口/后台已退出。此时尚未发布或执行本地安装更新。

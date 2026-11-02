@@ -27,11 +27,11 @@
       "resources.list",
       "resources.read"
     ],
-    "tool_count": 16,
-    "inner_tool_count": 21
+    "tool_count": 19,
+    "inner_tool_count": 25
   },
-  "registered_route_count": 189,
-  "expanded_endpoint_count": 190,
+  "registered_route_count": 190,
+  "expanded_endpoint_count": 191,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -102,7 +102,7 @@
       "backend_handler": "listAssets",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 522
+        "line": 523
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -140,7 +140,7 @@
       "backend_handler": "getAsset",
       "backend_source": {
         "file": "control-plane/internal/api/api.go",
-        "line": 543
+        "line": 544
       },
       "frontend_status": "sdk_only",
       "frontend_status_label": "仅 SDK，页面未接入",
@@ -376,7 +376,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 243
+          "line": 244
         },
         {
           "file": "webui/src/components/IngestPanel.tsx",
@@ -924,7 +924,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 166
+          "line": 326
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -970,7 +970,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 166
+          "line": 326
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1105,7 +1105,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 40
+          "line": 39
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1139,7 +1139,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 262
+          "line": 260
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1177,7 +1177,7 @@
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 42
+          "line": 41
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1211,7 +1211,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 43
+          "line": 42
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1245,15 +1245,15 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 215
+          "line": 213
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 326
+          "line": 325
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 327
+          "line": 324
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1287,11 +1287,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 219
+          "line": 217
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 345
+          "line": 343
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1325,7 +1325,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 346
+          "line": 344
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1359,11 +1359,11 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 323
+          "line": 321
         },
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 338
+          "line": 336
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1397,7 +1397,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 379
+          "line": 377
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1431,7 +1431,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 380
+          "line": 378
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1471,19 +1471,19 @@
       "method": "GET",
       "path": "/api/workflows/{run}/acceptance",
       "frontend_function": "api.listAcceptance",
-      "frontend_ui": "WorkflowPanel：当前与历史验收",
+      "frontend_ui": "历史兼容接口；当前页面无验收或人工确认按钮",
       "request": "路径 run",
       "success_response": "200 AcceptanceRecord[]",
       "behavior": "按 check_item 和当前 export_revision_id 过滤后取最新结果；保留历史记录",
-      "usage": "页面已接入（静态接线，不代表人工验收）",
+      "usage": "保留SDK/后端兼容；当前页面无独立操作",
       "backend_handler": "getAcceptance",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 203
       },
-      "frontend_status": "page_integrated",
-      "frontend_status_label": "页面已接入",
-      "frontend_requirement": "required",
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅SDK兼容",
+      "frontend_requirement": "compatibility",
       "frontend_gap": "",
       "frontend_wrapper": [
         {
@@ -1491,12 +1491,7 @@
           "line": 161
         }
       ],
-      "frontend_calls": [
-        {
-          "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 44
-        }
-      ],
+      "frontend_calls": [],
       "lifecycle": "current_or_compatible"
     },
     {
@@ -1505,19 +1500,19 @@
       "method": "POST",
       "path": "/api/workflows/{run}/acceptance",
       "frontend_function": "api.recordAcceptance",
-      "frontend_ui": "WorkflowPanel：记录通过 / 失败",
+      "frontend_ui": "历史兼容接口；当前页面无验收或人工确认按钮",
       "request": "JSON：expected_version, check_item, result:passed或failed, note?:string",
       "success_response": "200 AcceptanceRecord",
       "behavior": "只在 ready_for_acceptance 启用；失败需原因；记录绑定导出修订和 manifest 指纹",
-      "usage": "页面已接入（静态接线，不代表人工验收）",
+      "usage": "保留SDK/后端兼容；当前页面无独立操作",
       "backend_handler": "postAcceptance",
       "backend_source": {
         "file": "control-plane/internal/api/workflow.go",
         "line": 212
       },
-      "frontend_status": "page_integrated",
-      "frontend_status_label": "页面已接入",
-      "frontend_requirement": "required",
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅SDK兼容",
+      "frontend_requirement": "compatibility",
       "frontend_gap": "",
       "frontend_wrapper": [
         {
@@ -1525,16 +1520,7 @@
           "line": 164
         }
       ],
-      "frontend_calls": [
-        {
-          "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 480
-        },
-        {
-          "file": "webui/src/components/WorkflowPanel.tsx",
-          "line": 488
-        }
-      ],
+      "frontend_calls": [],
       "lifecycle": "current_or_compatible"
     },
     {
@@ -1778,7 +1764,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 201
+          "line": 202
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1816,7 +1802,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 195
+          "line": 196
         },
         {
           "file": "webui/src/components/TaskOrchestrator.tsx",
@@ -1870,7 +1856,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 192
+          "line": 193
         },
         {
           "file": "webui/src/components/AssetManager.tsx",
@@ -1897,7 +1883,7 @@
       "backend_handler": "streamEvents",
       "backend_source": {
         "file": "control-plane/internal/api/sse.go",
-        "line": 48
+        "line": 49
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -3154,7 +3140,7 @@
       "backend_handler": "runtimeActivity",
       "backend_source": {
         "file": "control-plane/internal/api/runtime.go",
-        "line": 18
+        "line": 23
       },
       "frontend_status": "not_wrapped",
       "frontend_status_label": "未封装/未接入",
@@ -3317,7 +3303,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 208
+          "line": 230
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3359,7 +3345,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 26
+          "line": 29
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3417,7 +3403,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 72
+          "line": 78
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3527,7 +3513,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 34
+          "line": 37
         },
         {
           "file": "webui/src/workspaces/TtsWorkspace.tsx",
@@ -3565,7 +3551,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 193
+          "line": 200
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3599,7 +3585,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 35
+          "line": 38
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3633,7 +3619,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 298
+          "line": 328
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3644,19 +3630,19 @@
       "method": "POST",
       "path": "/api/scripts/{id}/reject",
       "frontend_function": "api.rejectScript",
-      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "frontend_ui": "历史兼容接口；当前页面无验收或人工确认按钮",
       "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
-      "usage": "页面已接入（静态接线，不代表人工验收）",
+      "usage": "保留SDK/后端兼容；当前页面无独立操作",
       "backend_handler": "rejectScript",
       "backend_source": {
         "file": "control-plane/internal/api/script_workbench.go",
         "line": 122
       },
-      "frontend_status": "page_integrated",
-      "frontend_status_label": "页面已接入",
-      "frontend_requirement": "required",
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅SDK兼容",
+      "frontend_requirement": "compatibility",
       "frontend_gap": "",
       "frontend_wrapper": [
         {
@@ -3664,12 +3650,7 @@
           "line": 132
         }
       ],
-      "frontend_calls": [
-        {
-          "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 335
-        }
-      ],
+      "frontend_calls": [],
       "lifecycle": "current_or_compatible"
     },
     {
@@ -3678,7 +3659,7 @@
       "method": "POST",
       "path": "/api/scripts/{id}/workbench/finalize",
       "frontend_function": "api.finalizeScriptWorkbench",
-      "frontend_ui": "ScriptWorkbench / AutoRunProgress / EditingWorkspace",
+      "frontend_ui": "ScriptDeliveryPanel：生成交付前内部采用已保存文稿，无人工定稿按钮",
       "request": "见 docs/接口文档.md；写稿动作使用 expected_version 与 visible_set_sha",
       "success_response": "200 JSON",
       "behavior": "Go 权威校验；写操作固定 human:webui，无人工凭证；乐观锁冲突 409；资源/脚本内容变化按实际依赖使运行和交付失效，保存/改名/备注不失效；visible_set_sha 是内容快照，不是授权确认",
@@ -3701,7 +3682,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 334
+          "line": 371
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3735,7 +3716,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptDeliveryPanel.tsx",
-          "line": 19
+          "line": 26
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3749,7 +3730,7 @@
       "frontend_ui": "ScriptDeliveryPanel（ScriptWorkbench / ExportWorkspace）",
       "request": "version=N & sha256=成片摘要（前端固定携带）",
       "success_response": "200 video/mp4",
-      "behavior": "当前人工定稿/可见集有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
+      "behavior": "当前采用的文稿修订/媒体上下文有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptPreview",
       "backend_source": {
@@ -3778,7 +3759,7 @@
       "frontend_ui": "ScriptDeliveryPanel（ScriptWorkbench / ExportWorkspace）",
       "request": "version=N & sha256=成片摘要（前端固定携带）",
       "success_response": "200 application/zip",
-      "behavior": "当前人工定稿/可见集有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
+      "behavior": "当前采用的文稿修订/媒体上下文有效；同修订重新渲染后摘要不符返回 409；解析同一包根，旧修订不可下载",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptZIP",
       "backend_source": {
@@ -3807,7 +3788,7 @@
       "frontend_ui": "TtsWorkspace",
       "request": "expected_version, visible_set_sha, segment_index, narration, settings, offset_seconds, enabled, accept_external",
       "success_response": "200 ScriptWorkbenchView（修订递增）",
-      "behavior": "人工动作；CAS/可见集/权限校验；写 voice 修订，旧预览/交付失效；需重新人工定稿",
+      "behavior": "窗口配音编辑；CAS/媒体上下文校验；写voice修订使旧预览/交付失效，后续生成自动采用新修订",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "saveScriptVoice",
       "backend_source": {
@@ -3841,7 +3822,7 @@
       "frontend_ui": "ScriptDeliveryPanel（ScriptWorkbench / ExportWorkspace）",
       "request": "可选 version=N；前端固定请求当前修订",
       "success_response": "200 ScriptDeliveryInfo（规格、时长、帧数、成片和逐文件 SHA256）",
-      "behavior": "只读当前有效人工定稿与已发布的同修订交付；旧清单需重新渲染；无磁盘绝对路径",
+      "behavior": "只读当前有效采用文稿与已发布的同修订交付；旧清单需重新渲染；无磁盘绝对路径",
       "usage": "页面已接入（静态接线，不代表人工验收）",
       "backend_handler": "scriptDeliveryInfo",
       "backend_source": {
@@ -3861,7 +3842,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptDeliveryPanel.tsx",
-          "line": 17
+          "line": 18
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4714,7 +4695,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 328
+          "line": 327
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4725,19 +4706,19 @@
       "method": "POST",
       "path": "/api/skill-runs/{id}/finalize",
       "frontend_function": "skillApi.action",
-      "frontend_ui": "编辑页：人工定稿",
+      "frontend_ui": "历史兼容接口；当前页面无验收或人工确认按钮",
       "request": "见 docs/接口文档.md 及 Go/TS 类型",
       "success_response": "200 JSON；artifact 为受控媒体字节",
-      "behavior": "项目/修订/身份校验与 CAS；HTTP 人工动作不暴露给 MCP Agent",
-      "usage": "页面已接入（静态接线，不代表人工验收）",
+      "behavior": "项目/修订/身份校验与CAS；所属Agent通过skill_runs.update确认旧待定计划，当前任务自动继续",
+      "usage": "保留SDK/后端兼容；当前页面无独立操作",
       "backend_handler": "skillAction",
       "backend_source": {
         "file": "control-plane/internal/api/skill.go",
         "line": 189
       },
-      "frontend_status": "page_integrated",
-      "frontend_status_label": "页面已接入",
-      "frontend_requirement": "required",
+      "frontend_status": "sdk_only",
+      "frontend_status_label": "仅SDK兼容",
+      "frontend_requirement": "compatibility",
       "frontend_gap": "",
       "frontend_wrapper": [
         {
@@ -4745,12 +4726,7 @@
           "line": 45
         }
       ],
-      "frontend_calls": [
-        {
-          "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 308
-        }
-      ],
+      "frontend_calls": [],
       "lifecycle": "current_or_compatible"
     },
     {
@@ -5031,7 +5007,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 383
+          "line": 382
         }
       ],
       "resolved_verification_findings": [
@@ -5204,7 +5180,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 398
+          "line": 397
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5232,7 +5208,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 13
+          "line": 14
         }
       ],
       "frontend_calls": [],
@@ -5261,7 +5237,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 16
+          "line": 17
         }
       ],
       "frontend_calls": [],
@@ -5348,7 +5324,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 20
+          "line": 21
         }
       ],
       "frontend_calls": [],
@@ -5377,7 +5353,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 21
+          "line": 22
         }
       ],
       "frontend_calls": [],
@@ -5414,10 +5390,10 @@
       "path": "/api/projects/{id}/resources",
       "frontend_function": "projectApi.importResource",
       "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "Path id；JSON {path:string}",
+      "request": "Path id；JSON {path:string} 导入资源，或 JSON {kind:\"script\"} 无素材新建脚本",
       "success_response": "200 ProjectSession",
-      "behavior": "本地资源导入为当前工程引用",
-      "usage": "页面或 SDK 已接入，验收见 AVP 文档",
+      "behavior": "导入当前工程资源，或创建独立可保存脚本资源供Agent读取",
+      "usage": "资源管理导入 / 脚本工作区新建",
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
@@ -5450,7 +5426,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 85
+        "line": 95
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5459,7 +5435,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 12
+          "line": 13
         }
       ],
       "frontend_calls": [],
@@ -5479,7 +5455,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 94
+        "line": 104
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5488,7 +5464,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 18
+          "line": 19
         }
       ],
       "frontend_calls": [],
@@ -5508,7 +5484,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 95
+        "line": 105
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5517,7 +5493,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 19
+          "line": 20
         }
       ],
       "frontend_calls": [],
@@ -5537,7 +5513,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 99
+        "line": 109
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5546,7 +5522,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 14
+          "line": 15
         }
       ],
       "frontend_calls": [],
@@ -5566,7 +5542,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 110
+        "line": 120
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5575,7 +5551,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 15
+          "line": 16
         }
       ],
       "frontend_calls": [],
@@ -5595,7 +5571,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 119
+        "line": 129
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5604,7 +5580,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 17
+          "line": 18
         }
       ],
       "frontend_calls": [],
@@ -6466,7 +6442,7 @@
       "backend_handler": "systemDiagnostics",
       "backend_source": {
         "file": "control-plane/internal/api/runtime.go",
-        "line": 5
+        "line": 10
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6500,7 +6476,7 @@
       "backend_handler": "systemDiagnostics",
       "backend_source": {
         "file": "control-plane/internal/api/runtime.go",
-        "line": 5
+        "line": 10
       },
       "frontend_status": "sdk_only",
       "frontend_status_label": "仅 SDK，页面未接入",
@@ -6630,9 +6606,43 @@
       ],
       "frontend_calls": [],
       "lifecycle": "current_or_compatible"
+    },
+    {
+      "frontend_wrapper": [
+        {
+          "line": 21,
+          "file": "webui/src/externalAgentStatus.ts"
+        }
+      ],
+      "request": "无；支持AbortSignal取消",
+      "method": "GET",
+      "path": "/api/agents/status",
+      "frontend_function": "externalAgentApi.status",
+      "group": "外部 Agent 状态",
+      "lifecycle": "process_runtime_read_only",
+      "frontend_ui": "脚本 → 外部Agent / 设置 → Agent与Skill",
+      "frontend_requirement": "required",
+      "frontend_status_label": "页面已接入",
+      "success_response": "200 ExternalAgentStatusReport",
+      "frontend_calls": [
+        {
+          "line": 10,
+          "file": "webui/src/useExternalAgentStatus.ts"
+        }
+      ],
+      "backend_source": {
+        "line": 5,
+        "file": "control-plane/internal/api/runtime.go"
+      },
+      "usage": "外部Agent活动观测",
+      "id": "AGENT-STATUS-01",
+      "backend_handler": "externalAgentStatus",
+      "frontend_status": "page_integrated",
+      "behavior": "进程内只读状态；no-store，不返回会话header、Token或调用参数，不改工程",
+      "frontend_gap": ""
     }
   ],
-  "routes_source_sha256": "195983bfebc28e6d048c48f377ac70d6107f2e89b91a20b3d3b5496c975fb484",
+  "routes_source_sha256": "adcb918dcc3281a9a6b04a04e8286e37c6f4326ef6effc8e96fc4d1db604d64e",
   "routes_sources": [
     "control-plane/internal/api/api.go",
     "control-plane/internal/api/script_workbench.go",
@@ -6647,15 +6657,15 @@
   "sse_new_events_note": "workspace.changed / workspace.saved / resource.changed invalidate current-project queries; streams close when project session changes.",
   "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
   "source_hashes": {
-    "control-plane/internal/api/api.go": "195983bfebc28e6d048c48f377ac70d6107f2e89b91a20b3d3b5496c975fb484",
+    "control-plane/internal/api/api.go": "adcb918dcc3281a9a6b04a04e8286e37c6f4326ef6effc8e96fc4d1db604d64e",
     "control-plane/internal/api/script_workbench.go": "1b3168344b29f05a38f482256041ce8fcf6eb745be3d9fa45ac94f70b3327178",
     "control-plane/internal/api/tts.go": "a0ffaec8ee432656be67a7d60c3d9ff7ffcc8283a17ed6969227d804542e2cb8",
     "control-plane/internal/api/skill.go": "c675cb099572b63c9224e795bfbfc7066a35604f4fe155bad87e6fae6d95e140",
     "control-plane/internal/api/skill_editing.go": "d1a3945a023c2e21611232b119c2f8f49c59d96a54f2c1608ae3dee18c0d8e31",
-    "control-plane/internal/api/project.go": "35e01cc9b8fdf51af3dd00d4c442a0bb303cac0347e9d1b37d0c60f30fb934c3",
+    "control-plane/internal/api/project.go": "aead2e50864355c0e9b57859b3a8d00189a11e774bdb0131ec02dbd9975d1cba",
     "control-plane/internal/api/timeline.go": "f4f1f8cdf176ab4253c2a79442bc21c0e7185308ea1dabe91d2be414086037c0",
     "control-plane/internal/api/draw.go": "812774438986eb74d100c2582a52275ab756541ccf657f1d8e725e52fc74bd88",
-    "control-plane/internal/api/runtime.go": "fe2005b9e6362352b215badc0728182278235f842655d37cdb6d3b53cd0697d8"
+    "control-plane/internal/api/runtime.go": "c71d9b91548845cc4bfba82e778c0a3a9dbcbc5a38c833daa7da5418690f9a8d"
   },
   "verified_checkout": "agent/vu-skill",
   "verification_note": "2026-10-20 AVP refactor: source registration and interface locations refreshed; runtime and visible window results separately recorded in docs/接口文档.md and scripts/TESTING.md.",
@@ -6682,11 +6692,11 @@
     }
   },
   "frontend_status_summary": {
-    "verified_date": "2026-10-20",
-    "method": "本轮变更的源码接线及工程/桌面证据分别记载；旧接口仍供兼容模式使用，工程模式的退休流程返回410。",
+    "verified_date": "2026-11-01",
+    "method": "本轮校对移除验收/人工确认后的接线；静态接线与原生/模型质量分别记录，兼容SDK不描述为当前页面。",
     "counts": {
-      "page_integrated": 162,
-      "sdk_only": 9,
+      "page_integrated": 159,
+      "sdk_only": 13,
       "retired_in_workspace": 9,
       "not_wrapped": 10
     },

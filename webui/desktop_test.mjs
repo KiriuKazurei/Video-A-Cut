@@ -4,7 +4,32 @@ import { setApiBase, apiURL } from './src/runtimeUrl.ts';
 import { previewFileURL } from './src/previewContracts.ts';
 import { variantFileURL, variantZIPURL } from './src/deliveryVariantContracts.ts';
 import { createWorkflowPreview } from './src/previewContext.ts';
-import { currentMcpURL, mcpConnectionConfig } from './src/mcpConnection.ts';
+import { currentMcpURL, mcpConnectionConfig, mcpInstallCommand } from './src/mcpConnection.ts';
+import * as presence from './src/externalAgentStatus.ts';
+import { EXPORT_SECTIONS, parseWorkspaceHash } from './src/navigation.ts';
+
+test('retired acceptance page resolves to the editing workspace',()=>{
+  assert.equal(EXPORT_SECTIONS.some(section=>section.id==='acceptance'),false);
+  assert.equal(parseWorkspaceHash('#/export/acceptance').workspace,'editing');
+});
+
+test('external Agent state never treats backend readiness or stale data as a live Agent', () => {
+  assert.equal(typeof presence.externalAgentSummary, 'function');
+  assert.equal(presence.externalAgentSummary(undefined, false).label, '正在读取 Agent 状态');
+  assert.equal(presence.externalAgentSummary({ agents: [] }, false).label, '尚无 Agent 活动');
+  assert.equal(presence.externalAgentSummary({ agents: [{ state: 'busy' }] }, false).label, '1 个 Agent 正在调用工具');
+  assert.equal(presence.externalAgentSummary({ agents: [{ state: 'connected' }, { state: 'stale' }] }, false).label, '1 个 Agent 最近有活动');
+  assert.equal(presence.externalAgentSummary({ agents: [{ state: 'stale' }] }, false).label, 'Agent 连接待确认');
+  assert.equal(presence.externalAgentSummary({ agents: [{ state: 'disconnected' }] }, false).label, 'Agent 已断开');
+  assert.equal(presence.externalAgentSummary({ agents: [{ state: 'busy' }] }, true).label, 'Agent 状态读取失败');
+});
+
+test('MCP install command follows the ready endpoint and rejects unavailable or unsafe URLs', () => {
+  const ready = { status: 'ready', mcp_url: 'http://127.0.0.1:43210/mcp' };
+  assert.equal(mcpInstallCommand(ready), 'codex mcp add vac --url http://127.0.0.1:43210/mcp');
+  assert.equal(mcpInstallCommand({ ...ready, mcp_url: 'http://127.0.0.1:54321/mcp' }), 'codex mcp add vac --url http://127.0.0.1:54321/mcp');
+  for (const runtime of [undefined, { ...ready, status: 'stopped' }, { ...ready, mcp_url: 'http://evil.test/mcp' }, { ...ready, mcp_url: 'http://127.0.0.1:43210/mcp?x=$(bad)' }]) assert.equal(mcpInstallCommand(runtime), '');
+});
 
 test('MCP configuration uses the current ready desktop endpoint without credentials', () => {
   const ready = { status: 'ready', mcp_url: 'http://127.0.0.1:43210/mcp' };

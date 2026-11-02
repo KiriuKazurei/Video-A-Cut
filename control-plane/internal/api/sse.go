@@ -14,6 +14,7 @@ import (
 )
 
 var sseEventNames = []string{
+	"agent.status.changed",
 	"workspace.changed", "workspace.saved", "resource.changed",
 	"workspace.draw.preview", "workspace.skill.progress",
 	"workspace.timeline.changed", "workspace.timeline.import-failed",

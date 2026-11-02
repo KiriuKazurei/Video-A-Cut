@@ -271,6 +271,50 @@ impl Drop for Pipeline {
     }
 }
 
+// This address belongs to the data directory, not a particular runtime session.
+// Keep it separate from desktop-session.json, which is rewritten during startup.
+fn persisted_http_addr(data: &Path) -> Result<String, String> {
+    let endpoint = data.join("mcp-endpoint.json");
+    plain_path(&endpoint)?;
+    if endpoint.exists() {
+        let value = read_json(&endpoint)?;
+        let port = value["port"]
+            .as_u64()
+            .filter(|p| (1024..=65535).contains(p));
+        if value["schema_version"] != 1 || port.is_none() {
+            return Err("MCP固定端口记录无效，请检查数据目录中的mcp-endpoint.json".into());
+        }
+        return Ok(format!("127.0.0.1:{}", port.unwrap()));
+    }
+    // Adopt an older installation's last direct-loopback MCP URL once, before
+    // the new session journal overwrites it. Never adopt a remote URL.
+    let legacy = data.join("desktop-session.json");
+    plain_path(&legacy)?;
+    if let Ok(bytes) = fs::read(&legacy) {
+        if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+            if let Some(url) = value["mcp_url"]
+                .as_str()
+                .and_then(|u| reqwest::Url::parse(u).ok())
+            {
+                if url.scheme() == "http"
+                    && url.host_str() == Some("127.0.0.1")
+                    && url.username().is_empty()
+                    && url.password().is_none()
+                    && url.path() == "/mcp"
+                    && url.query().is_none()
+                    && url.fragment().is_none()
+                {
+                    if let Some(port) = url.port().filter(|p| *p >= 1024) {
+                        write_json(&endpoint, &json!({"schema_version":1,"port":port}))?;
+                        return Ok(format!("127.0.0.1:{port}"));
+                    }
+                }
+            }
+        }
+    }
+    Ok("127.0.0.1:0".into())
+}
+
 impl Pipeline {
     fn start(config: &Config) -> Result<Self, String> {
         config.validate()?;
@@ -284,6 +328,7 @@ impl Pipeline {
             .map_err(|e| e.to_string())?;
         lock.try_lock()
             .map_err(|_| "业务数据目录已被其他程序使用，请先退出原程序".to_string())?;
+        let http_addr = persisted_http_addr(&config.data_directory)?;
         let session = Uuid::new_v4().simple().to_string();
         let directory = config.data_directory.join("sessions").join(&session);
         plain_path(&directory)?;
@@ -377,7 +422,7 @@ impl Pipeline {
             .collect();
         let agents: Vec<_> = tokens.iter().map(|(role, _, token)| json!({"agent_id":role,"role":role,"token_sha256":format!("{:x}",Sha256::digest(token.as_bytes()))})).collect();
         write_json(&p.directory.join("agents.json"), &json!({"agents":agents}))?;
-        let control_config = json!({"http_addr":"127.0.0.1:0", "desktop_origin":config.desktop_origin,
+        let control_config = json!({"http_addr":http_addr, "desktop_origin":config.desktop_origin,
             "delivery_root":p.data.join("delivery"), "mcp_agents_file":p.directory.join("agents.json"), "mcp_local_access":true,
             "web_root":config.web_root.as_ref().map(|p|p.display().to_string()).unwrap_or_default(),
             "lease_seconds":60, "tts_python":config.python, "tts_worker_dir":config.resource_root.join("workers/python"), "ingest_roots":config.ingest_roots});
@@ -420,9 +465,10 @@ impl Pipeline {
                 }
             }
         });
-        let ready = receive
-            .recv_timeout(Duration::from_secs(30))
-            .map_err(|_| "Go 启动失败或超时，请查看本次 control.err".to_string())?;
+        let ready = receive.recv_timeout(Duration::from_secs(30)).map_err(|_| {
+            if http_addr == "127.0.0.1:0" { "Go启动失败或超时，请查看本次control.err".to_string() }
+            else { format!("后台无法在{http_addr}启动，请检查端口占用及本次control.err；固定端口不会自动更换") }
+        })?;
         if ready["protocol"] != 1 {
             return Err("Go 桌面协议版本不兼容".into());
         }
@@ -447,6 +493,14 @@ impl Pipeline {
             }
             thread::sleep(Duration::from_millis(100));
         }
+        let port = url.port().filter(|p| *p >= 1024).ok_or("后台端口无效")?;
+        if http_addr != "127.0.0.1:0" && http_addr != format!("127.0.0.1:{port}") {
+            return Err("后台地址与固定端口不一致".into());
+        }
+        write_json(
+            &p.data.join("mcp-endpoint.json"),
+            &json!({"schema_version":1,"port":port}),
+        )?;
         let profile: Value = read_json(&config.profile())?;
         let id = profile["profile_id"].as_str().ok_or("处理预设缺少 ID")?;
         if !id
@@ -786,4 +840,75 @@ fn log_file(path: &Path) -> Result<File, String> {
         .append(true)
         .open(path)
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+    fn directory() -> PathBuf {
+        let root = std::env::var_os("VAC_TEST_OUTPUT").expect("Run through TestWorkspace");
+        let path = PathBuf::from(root)
+            .join("endpoint")
+            .join(Uuid::new_v4().simple().to_string());
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+    #[test]
+    fn first_launch_is_dynamic_but_a_recorded_port_survives_starting_journals() {
+        let data = directory();
+        assert_eq!(persisted_http_addr(&data).unwrap(), "127.0.0.1:0");
+        write_json(
+            &data.join("mcp-endpoint.json"),
+            &json!({"schema_version":1,"port":31959}),
+        )
+        .unwrap();
+        write_json(
+            &data.join("desktop-session.json"),
+            &json!({"status":"starting","mcp_url":"/mcp"}),
+        )
+        .unwrap();
+        assert_eq!(persisted_http_addr(&data).unwrap(), "127.0.0.1:31959");
+    }
+    #[test]
+    fn legacy_loopback_address_is_adopted_and_persisted() {
+        let data = directory();
+        write_json(
+            &data.join("desktop-session.json"),
+            &json!({"mcp_url":"http://127.0.0.1:26932/mcp"}),
+        )
+        .unwrap();
+        assert_eq!(persisted_http_addr(&data).unwrap(), "127.0.0.1:26932");
+        assert_eq!(
+            read_json(&data.join("mcp-endpoint.json")).unwrap()["port"],
+            26932
+        );
+    }
+    #[test]
+    fn malformed_fixed_record_does_not_silently_select_another_port() {
+        for value in [
+            json!({"schema_version":1,"port":0}),
+            json!({"schema_version":1,"port":65536}),
+            json!({"schema_version":2,"port":31959}),
+        ] {
+            let data = directory();
+            write_json(&data.join("mcp-endpoint.json"), &value).unwrap();
+            assert!(persisted_http_addr(&data).is_err());
+        }
+    }
+    #[test]
+    fn remote_or_credentialed_legacy_addresses_are_not_adopted() {
+        for address in [
+            "http://example.com:31959/mcp",
+            "http://user@127.0.0.1:31959/mcp",
+            "http://127.0.0.1:31959/mcp?x=1",
+        ] {
+            let data = directory();
+            write_json(
+                &data.join("desktop-session.json"),
+                &json!({"mcp_url":address}),
+            )
+            .unwrap();
+            assert_eq!(persisted_http_addr(&data).unwrap(), "127.0.0.1:0");
+        }
+    }
 }

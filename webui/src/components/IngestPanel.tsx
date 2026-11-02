@@ -498,7 +498,7 @@ function ReadyFiles({ view }: { view: IngestRunView }) {
   };
   useEffect(() => { if (media[0]) open(media[0]); }, [view.run.run_id, media[0]]);
   return <div className="ingest-ready">
-    <Alert type="success" showIcon style={{ marginBottom: 12 }} message={`已生成 ${media.length} 个短片，资产已切换为 EDL 包，可到「准备」页启动内容流程。内容质量仍需人工验收。`} />
+    <Alert type="success" showIcon style={{ marginBottom: 12 }} message={`已生成 ${media.length} 个短片，资产已切换为 EDL 包，可到「准备」页启动内容流程。成片效果可在编辑页面查看。`} />
     <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>点击短片卡片在源监视器播放；卡片内播放器仍可本地试听。</Typography.Paragraph>
     <Row gutter={[12, 12]}>{media.map((k) => <Col key={k} xs={24} sm={12} xxl={8}>
       <Card size="small" className={`ready-clip${focusKey === k ? ' is-active' : ''}`} styles={{ body: { padding: 8 } }}
@@ -517,4 +517,3 @@ function ReadyFiles({ view }: { view: IngestRunView }) {
     </Col>)}</Row>
   </div>;
 }
-

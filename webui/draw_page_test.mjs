@@ -29,7 +29,7 @@ test('draw is one top-level workspace and digit 6 opens it', () => {
   assert.equal(draw.length, 1);
   assert.equal(draw[0].label, '绘制');
   assert.equal(WORKSPACE_KEYS['6'], 'draw');
-  assert.deepEqual(Object.values(WORKSPACE_KEYS), ['resources', 'editing', 'export', 'settings', 'tts', 'draw']);
+  assert.deepEqual(Object.values(WORKSPACE_KEYS), ['resources', 'editing', 'export', 'settings', 'tts', 'draw', 'script']);
   assert.match(shortcuts, /WORKSPACE_KEYS\[e\.key\]/);
   assert.match(app, /workspace !== 'draw'/);
   assert.doesNotMatch(app, /draw\/lint|workspace: 'draw-lint'/);

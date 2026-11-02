@@ -21,6 +21,8 @@ import (
 // handlers own their protocols. A Service is safe for concurrent use as long
 // as its collaborators are, which store.Store and events.Bus both are.
 type Service struct {
+	agentStatusMu   sync.Mutex
+	agentStatus     map[string]*externalAgentEntry
 	drawMu          sync.Mutex
 	drawFrames      map[string]*drawFrameProcess
 	workspace       *projectWorkspace

@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Flex, Form, Input, Space, Tag, Typography } from 'antd';
 import { desktopCommand, isDesktop } from '../desktop';
-import { currentMcpURL, mcpConnectionConfig, type McpConfigFormat } from '../mcpConnection';
+import { currentMcpURL, mcpConnectionConfig, mcpInstallCommand, type McpConfigFormat } from '../mcpConnection';
 import { useDesktopRuntimeStatus } from './DesktopRuntime';
 import { ValueSelect } from './ui';
+import { ExternalAgentStatusPanel } from './ExternalAgentStatusPanel';
 
-export function McpConnectionPanel() {
+export function McpConnectionPanel({ active = true }: { active?: boolean }) {
   const runtime = useDesktopRuntimeStatus();
   const [format, setFormat] = useState<McpConfigFormat>('codex');
   const url = currentMcpURL(runtime);
   const config = mcpConnectionConfig(runtime, format);
+  const install = mcpInstallCommand(runtime);
   const signature = JSON.stringify([runtime?.session_id, url, format]);
   const latest = useRef(signature); latest.current = signature;
   const [busy, setBusy] = useState(false);
@@ -29,9 +31,17 @@ export function McpConnectionPanel() {
   const notice = feedback?.signature === signature ? feedback : undefined;
   return <Card size="small" className="mcp-connection-panel" title="Agent MCP 连接" extra={<Tag>{url ? '后台已就绪' : '暂无连接地址'}</Tag>}>
     <Flex vertical gap={12}>
-      <Typography.Paragraph style={{ marginBottom: 0 }}>外部 Agent 使用 Streamable HTTP 连接，仅访问当前打开工程的资源。无需额外 Agent Token，人工定稿和日志查看继续通过 VAC 窗口操作。</Typography.Paragraph>
+      <ExternalAgentStatusPanel active={active} />
+      <Typography.Paragraph style={{ marginBottom: 0 }}>外部 Agent 使用 Streamable HTTP 连接，仅访问当前打开工程的资源。无需额外 Agent Token，Agent 可读取脚本、自主修改计划与配音、诊断自身任务并完成剪辑导出。</Typography.Paragraph>
       {!isDesktop() && <Alert type="info" showIcon message="请在 VAC 桌面端获取连接地址；浏览器仅用于开发预览。" />}
       {isDesktop() && !url && <Alert type="info" showIcon role="status" message="后台就绪后会显示当前 MCP 地址，请勿使用旧端口。" />}
+      <Typography.Text strong>1. 复制安装命令，在本机终端执行</Typography.Text>
+      <Input.TextArea aria-label="MCP 安装命令" className="settings-config-code" readOnly value={install} placeholder="等待桌面后台服务" autoSize={{ minRows: 2, maxRows: 4 }} />
+      <Button type="primary" disabled={!install || busy} onClick={() => void copy(install, 'MCP 安装命令')}>一键复制安装 MCP</Button>
+      <Typography.Text type="secondary">适用于已安装 Codex CLI 的本机。执行后在 Agent 客户端重新加载 MCP；可运行 codex mcp list 核对 vac。复制成功表示命令已进入剪贴板，连接是否成功需在客户端确认。</Typography.Text>
+      <Typography.Text strong>2. 在 Agent 中选择 vac，读取当前工程</Typography.Text>
+      <Typography.Text type="secondary">让 Agent 调用 projects.list 和 skills.list，确认当前工程后再提交任务。VAC 需保持运行。后台重启导致地址变化时，请重新复制安装命令并更新连接。</Typography.Text>
+      <Typography.Text strong>其他客户端：复制连接配置</Typography.Text>
       <Form.Item label="MCP 地址" layout="vertical" style={{ marginBottom: 0 }}><Input aria-label="MCP 地址" readOnly value={url} placeholder="等待桌面后台服务" /></Form.Item>
       <Form.Item label="连接配置格式" layout="vertical" style={{ marginBottom: 0 }}><ValueSelect<McpConfigFormat> aria-label="连接配置格式" value={format} onChange={setFormat}
         options={[{ value: 'codex', label: 'Codex TOML' }, { value: 'json', label: 'mcpServers JSON' }]} /></Form.Item>

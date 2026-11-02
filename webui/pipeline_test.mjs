@@ -72,7 +72,7 @@ test('workflow states map to generate / review / delivery', () => {
     [wf('awaiting_review', 'draft_review'), '去时间线确认解说', 'review', { review: 'todo' }],
     [wf('failed', 'narrate'), '查看失败并重试', 'review', { generate: 'error', review: 'error' }],
     [wf('cancelled'), '重新启动流程', 'prepare', { generate: 'todo', review: 'blocked' }],
-    [wf('ready_for_acceptance', 'acceptance'), '去交付与验收', 'delivery', { generate: 'done', review: 'done', delivery: 'todo' }]
+    [wf('ready_for_acceptance', 'acceptance'), '查看成片与导出', 'delivery', { generate: 'done', review: 'done', delivery: 'todo' }]
   ];
   for (const [w, label, stage, states] of table) {
     const r = run({ asset: asset(), workflow: w });

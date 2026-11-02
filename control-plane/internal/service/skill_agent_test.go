@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestSkillBuiltinAgentUsesProviderAndStopsAtHumanGate(t *testing.T) {
+func TestSkillBuiltinAgentContinuesAfterPlanWithoutHumanGate(t *testing.T) {
 	svc, p, v := projectFixture(t)
 	ctx := t.Context()
 	root, err := filepath.Abs("../../..")
@@ -36,6 +36,9 @@ func TestSkillBuiltinAgentUsesProviderAndStopsAtHumanGate(t *testing.T) {
 		if n > 1 {
 			decision = map[string]any{"tool": "scripts.propose", "arguments": map[string]any{"body": "Bound source", "segments": []any{map[string]any{"media_id": v.Media[0].ID, "start": 0, "end": 1, "narration": "Generated draft"}}, "subtitles": false}}
 		}
+		if n > 2 {
+			decision = map[string]any{"wait": "fixture stops after proving automatic plan continuation"}
+		}
 		content, _ := json.Marshal(decision)
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": string(content)}}}})
 	}))
@@ -57,11 +60,11 @@ func TestSkillBuiltinAgentUsesProviderAndStopsAtHumanGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v (provider calls=%d)", err, calls.Load())
 	}
-	if calls.Load() != 2 || r.State != "waiting_human" || r.Reason != "plan_confirmation" || r.Plan == nil || r.Plan.FinalizedBy != "" {
+	if calls.Load() != 3 || r.State != "waiting_human" || r.Reason != "agent_clarification" || r.Plan == nil || r.Plan.FinalizedBy == "" {
 		t.Fatalf("unsafe Agent outcome: %+v calls=%d", r, calls.Load())
 	}
 	steps, err := svc.SkillRunSteps(ctx, "human:test", r.ID)
-	if err != nil || len(steps) != 4 {
+	if err != nil || len(steps) != 5 {
 		t.Fatalf("model/tool audit missing: %d %v", len(steps), err)
 	}
 }

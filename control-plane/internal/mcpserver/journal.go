@@ -54,10 +54,23 @@ func serveJournaledMCP(base http.Handler, svc *service.Service, a Agent, w http.
 			Arguments json.RawMessage `json:"arguments"`
 		} `json:"params"`
 	}
-	if json.Unmarshal(raw, &call) != nil || call.Method != "tools/call" {
-		base.ServeHTTP(w, r)
+	valid := json.Unmarshal(raw, &call) == nil && call.Method != ""
+	transport := "worker_mcp"
+	if a.IdentityKind == "client_reported" {
+		transport = "desktop_mcp"
+	}
+	observedIdentity := service.ExternalAgentIdentity{ID: a.ID, Name: a.Name, Version: a.Version, Transport: transport}
+	if !valid || call.Method != "tools/call" {
+		response := &journalResponse{ResponseWriter: w, digest: sha256.New()}
+		base.ServeHTTP(response, r)
+		if valid && !mcpResponseFailed(response) {
+			svc.ObserveExternalAgent(observedIdentity, call.Method, "")(false)
+		}
 		return
 	}
+	finish := svc.ObserveExternalAgent(observedIdentity, call.Method, call.Params.Name)
+	failed := true
+	defer func() { finish(failed) }()
 	var target struct {
 		RunID string `json:"run_id"`
 	}
@@ -71,9 +84,26 @@ func serveJournaledMCP(base http.Handler, svc *service.Service, a Agent, w http.
 	}
 	response := &journalResponse{ResponseWriter: w, digest: sha256.New()}
 	base.ServeHTTP(response, r)
+	failed = mcpResponseFailed(response) || r.Context().Err() != nil
 	result, _ := json.Marshal(map[string]any{"tool": call.Params.Name, "status": response.status, "is_error": bytes.Contains(response.prefix.Bytes(), []byte(`"isError":true`)), "response_sha256": hex.EncodeToString(response.digest.Sum(nil)), "agent": identity})
 	// An incomplete terminal entry leaves a durable requested event. Future tool
 	// requests also fail closed if the journal is unavailable.
 	_ = svc.RecordAgentOperation(r.Context(), actor, target.RunID, "mcp.completed", result)
+}
+
+func mcpResponseFailed(response *journalResponse) bool {
+	if response.status >= 400 {
+		return true
+	}
+	var envelope struct {
+		Error  json.RawMessage `json:"error"`
+		Result struct {
+			IsError bool `json:"isError"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(response.prefix.Bytes(), &envelope) == nil {
+		return len(envelope.Error) > 0 || envelope.Result.IsError
+	}
+	return bytes.Contains(response.prefix.Bytes(), []byte(`"isError":true`))
 }
 func hexDigest(raw []byte) string { h := sha256.Sum256(raw); return hex.EncodeToString(h[:]) }

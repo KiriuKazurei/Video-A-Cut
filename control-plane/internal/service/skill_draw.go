@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
 )
 
@@ -22,6 +23,18 @@ func drawPackage(id string) bool {
 func drawEngineAllowed(skillID, engine string) bool {
 	return skillID != "vac-draw-hyperframes" && skillID != "vac-draw-remotion" ||
 		skillID == "vac-draw-hyperframes" && engine == "hyperframes" || skillID == "vac-draw-remotion" && engine == "remotion"
+}
+
+func drawCompositionAllowed(skillID string, c project.DrawComposition) bool {
+	if c.Document == nil {
+		return drawEngineAllowed(skillID, c.Engine)
+	}
+	for _, source := range c.Document.Sources {
+		if !drawEngineAllowed(skillID, source.Engine) {
+			return false
+		}
+	}
+	return true
 }
 
 var unboundDrawImage = regexp.MustCompile(`Image alias ([A-Za-z0-9_-]{1,64}) is not bound to an imported resource`)
@@ -57,8 +70,8 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		if e := decodeSkillArgs(args, &req); e != nil {
 			return nil, e
 		}
-		if !drawEngineAllowed(r.SkillID, req.Composition.Engine) {
-			return nil, model.ErrForbidden
+		if !drawCompositionAllowed(r.SkillID, req.Composition) {
+			return nil, fmt.Errorf("composition sources do not match this Skill's engine: %w", model.ErrArgument)
 		}
 		v, e := s.SaveDrawComposition(ctx, r.ProjectID, req)
 		if e != nil {
@@ -85,8 +98,8 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 	if e != nil {
 		return nil, e
 	}
-	if !drawEngineAllowed(r.SkillID, c.Engine) {
-		return nil, model.ErrForbidden
+	if !drawCompositionAllowed(r.SkillID, c) {
+		return nil, fmt.Errorf("composition sources do not match this Skill's engine: %w", model.ErrArgument)
 	}
 	req := DrawActionRequest{action.Session, action.ContentVersion}
 	switch name {

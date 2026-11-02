@@ -23,7 +23,7 @@ func TestDrawBuiltinsAreExecutableLocalStrategies(t *testing.T) {
 		if p.Runtime != "harness" || !p.Enabled || !p.Builtin || p.Version != "0.3.0" {
 			t.Fatalf("inactive drawing Skill: %#v", p)
 		}
-		for _, tool := range []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "timeline.edit", "run.finish"} {
+		for _, tool := range []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "timeline.edit", "run.finish", "run.steps"} {
 			if !slices.Contains(p.Tools, tool) {
 				t.Fatalf("%s missing %s", id, tool)
 			}

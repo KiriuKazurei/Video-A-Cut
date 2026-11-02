@@ -42,10 +42,12 @@ Thumbs.db
 # Hermes local scratch
 .hermes/
 
-# Four primary project documents and machine interface inventory.
+# Current project documents and machine interface inventory.
 /desktop/desktop.local.json
 /docs/*
 !/docs/项目文档.md
+!/docs/功能文档.md
+!/docs/文档索引.md
 !/docs/计划文档.md
 !/docs/接口文档.md
 !/docs/架构与功能详解.md
@@ -54,6 +56,7 @@ Thumbs.db
 /docs/development/*
 !/docs/development/依赖与模型部署向导.md
 !/docs/development/AI画面修改.md
+!/docs/development/当前问题清单与修复指导.md
 !/docs/后续模块交接/
 /docs/后续模块交接/*
 !/docs/后续模块交接/v1/

@@ -33,9 +33,6 @@ func editWindows(p *skill.Plan) []skill.EditWindow {
 	return out
 }
 func (s *Service) SkillWorkbench(ctx context.Context, actor, id string) (map[string]any, error) {
-	if err := requireHumanConfirm(actor, "read editing workbench"); err != nil {
-		return nil, err
-	}
 	r, err := s.GetSkillRun(ctx, actor, id)
 	if err != nil {
 		return nil, err
@@ -71,7 +68,7 @@ func (s *Service) SkillWorkbench(ctx context.Context, actor, id string) (map[str
 					return nil, model.ErrConflict
 				}
 				var saved skill.Run
-				if json.Unmarshal(node.Body, &saved) != nil || saved.Plan == nil || saved.Plan.Version != a.PlanVersion || !isHumanActor(saved.Plan.FinalizedBy) {
+				if json.Unmarshal(node.Body, &saved) != nil || saved.Plan == nil || saved.Plan.Version != a.PlanVersion || saved.Plan.FinalizedBy == "" {
 					continue
 				}
 				for _, old := range saved.Artifacts {
@@ -105,9 +102,6 @@ type SkillEditRequest struct {
 
 func (s *Service) RequestSkillEdit(ctx context.Context, actor, id string, req SkillEditRequest) (skill.Run, error) {
 	var zero skill.Run
-	if err := requireHumanConfirm(actor, "request targeted edit"); err != nil {
-		return zero, err
-	}
 	if strings.TrimSpace(req.Prompt) == "" || len(req.Prompt) > 8192 || req.IdempotencyKey == "" || len(req.IdempotencyKey) > 128 {
 		return zero, model.ErrArgument
 	}
@@ -184,7 +178,9 @@ func (s *Service) RequestSkillEdit(ctx context.Context, actor, id string, req Sk
 	r.EditRequest = &skill.EditRequest{Prompt: req.Prompt, BasePlanVersion: base.Version, BasePlan: base, Windows: selected, RequestedStart: req.Start, RequestedEnd: req.End, SourceArtifactID: req.ArtifactID, SourceArtifactSHA: req.ArtifactSHA}
 	r.State = "queued"
 	r.Reason = "targeted_edit"
-	r.BudgetStepBase, r.BudgetElapsedBase = r.Steps, r.ElapsedMilliseconds
+	if isHumanActor(actor) {
+		r.BudgetStepBase, r.BudgetElapsedBase = r.Steps, r.ElapsedMilliseconds
+	}
 	r.Inspection = nil
 	if r.AgentRole != "" {
 		until := s.autoNow().Add(2 * time.Minute)
@@ -216,12 +212,23 @@ func enforceTargetedEdit(r *skill.Run, p *skill.Plan) error {
 	}
 	edit := r.EditRequest
 	base := edit.BasePlan
-	if r.Plan == nil || r.Plan.Version != edit.BasePlanVersion || p.Body != base.Body || p.Subtitles != base.Subtitles || len(p.Segments) != len(base.Segments) {
+	if r.Plan == nil || r.Plan.Version != edit.BasePlanVersion || p.Subtitles != base.Subtitles || len(p.Segments) != len(base.Segments) {
 		return model.ErrConflict
 	}
 	selected := map[int]bool{}
 	for _, w := range edit.Windows {
 		selected[w.SegmentIndex] = true
+	}
+	if p.Body != base.Body {
+		before, after := scriptsyntax.Parse(base.Body), scriptsyntax.Parse(p.Body)
+		if len(before.Paragraphs) != len(base.Segments) || len(after.Paragraphs) != len(before.Paragraphs) {
+			return model.ErrConflict
+		}
+		for i := range before.Paragraphs {
+			if !selected[i] && before.Paragraphs[i].Source != after.Paragraphs[i].Source {
+				return model.ErrForbidden
+			}
+		}
 	}
 	for i := range p.Segments {
 		if selected[i] {
@@ -246,9 +253,6 @@ func (s *Service) SaveSkillPlan(ctx context.Context, actor, id string, req Skill
 	if err != nil {
 		return r, err
 	}
-	if err = requireHumanConfirm(actor, "save editing plan"); err != nil {
-		return r, err
-	}
 	check := r
 	check.LeaseUntil = nil
 	snap, err := s.checkSkillRun(ctx, check)
@@ -264,14 +268,29 @@ func (s *Service) SaveSkillPlan(ctx context.Context, actor, id string, req Skill
 	if err = validateHarnessPlan(req.Plan, snap); err != nil {
 		return r, err
 	}
+	if err = enforceTargetedEdit(&r, &req.Plan); err != nil {
+		return r, err
+	}
 	req.Plan.Version, err = s.st.NextSkillPlanVersion(ctx, id)
 	if err != nil {
 		return r, err
 	}
 	req.Plan.FinalizedBy = ""
 	req.Plan.FinalizedAt = nil
-	// Voice settings and their consent must go through the dedicated human endpoint.
+	// Voice settings and their consent must go through the dedicated voice endpoint.
 	for i := range req.Plan.Segments {
+		if r.EditRequest != nil {
+			selected := false
+			for _, window := range r.EditRequest.Windows {
+				if window.SegmentIndex == i {
+					selected = true
+					break
+				}
+			}
+			if !selected {
+				continue
+			}
+		}
 		req.Plan.Segments[i].TTSEnabled = false
 		req.Plan.Segments[i].Voice = nil
 		req.Plan.Segments[i].VoiceConsent = false
@@ -280,8 +299,7 @@ func (s *Service) SaveSkillPlan(ctx context.Context, actor, id string, req Skill
 	r.Plan = &req.Plan
 	r.EditRequest = nil
 	r.Inspection = nil
-	r.State = "waiting_human"
-	r.Reason = "plan_confirmation"
+	s.confirmTaskPlan(&r)
 	version := r.Version
 	r.Version++
 	r.UpdatedAt = s.autoNow()

@@ -35,6 +35,44 @@ func avpWorkspaceFixture(t *testing.T) (*service.Service, string) {
 	return svc, root
 }
 
+func TestProjectNewScriptPersistsWithoutMedia(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	view, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "scripts.avp"), Name: "Scripts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err = svc.CreateProjectScript(ctx, view.Document.Project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := view.Document.Resources[0]
+	w, err := svc.GetScriptWorkbench(ctx, r.ScriptID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err = svc.SaveScriptWorkbench(ctx, "human:test", r.ScriptID, service.SaveScriptRequest{ExpectedVersion: w.Version, Title: "动画要求", Body: "生成一分钟动画"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := avpWorkspaceFixture(t)
+	_, err = fresh.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: saved.Path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err = fresh.GetScriptWorkbench(ctx, r.ScriptID)
+	if err != nil || w.Script.Body != "生成一分钟动画" {
+		t.Fatalf("saved script lost: %+v %v", w, err)
+	}
+	if _, err = fresh.CreateProjectScript(ctx, "wrong-project"); err == nil {
+		t.Fatal("cross-project script creation")
+	}
+}
+
 func TestProjectSwitchCancelsAndWaitsForOldRequests(t *testing.T) {
 	svc, root := avpWorkspaceFixture(t)
 	ctx := t.Context()

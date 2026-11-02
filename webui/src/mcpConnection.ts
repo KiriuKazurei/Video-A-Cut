@@ -2,6 +2,12 @@ import type { RuntimeStatus } from './desktop';
 
 export type McpConfigFormat = 'json' | 'codex';
 
+/** URL validation limits this command to shell-safe loopback host, port and path. */
+export function mcpInstallCommand(runtime: RuntimeStatus | undefined): string {
+  const url = currentMcpURL(runtime);
+  return url ? `codex mcp add vac --url ${url}` : '';
+}
+
 export function currentMcpURL(runtime?: RuntimeStatus): string {
   if (runtime?.status !== 'ready' || !runtime.mcp_url) return '';
   try {

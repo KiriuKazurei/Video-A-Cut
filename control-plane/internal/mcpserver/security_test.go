@@ -60,6 +60,14 @@ func TestSecurityDesktopMCPConnectionBoundary(t *testing.T) {
 	if connected.Code != 200 || len(id) < 32 {
 		t.Fatalf("connect %d %s", connected.Code, connected.Body.String())
 	}
+	presence := f.svc.ExternalAgentStatus().Agents
+	if len(presence) != 1 || presence[0].State != "connected" || presence[0].Name != "human:reported-only" {
+		t.Fatalf("initialize did not emit presence: %+v", presence)
+	}
+	statusJSON, _ := json.Marshal(f.svc.ExternalAgentStatus())
+	if strings.Contains(string(statusJSON), id) {
+		t.Fatal("protocol session header leaked into UI status")
+	}
 	call := `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`
 	if got := post(call, "", nil); got.Code != 400 {
 		t.Fatal("local tools bypassed connection initialization")
@@ -81,7 +89,7 @@ func TestSecurityDesktopMCPConnectionBoundary(t *testing.T) {
 	if err := json.Unmarshal(listed.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Result.Tools) != 17 {
+	if len(envelope.Result.Tools) != 19 {
 		t.Fatalf("unexpected desktop tool projection: %s", listed.Body.String())
 	}
 	for _, tool := range envelope.Result.Tools {
@@ -101,8 +109,41 @@ func TestSecurityDesktopMCPConnectionBoundary(t *testing.T) {
 	if w.Code != 204 {
 		t.Fatalf("disconnect: %d %s", w.Code, w.Body.String())
 	}
+	if got := f.svc.ExternalAgentStatus().Agents; len(got) != 1 || got[0].State != "disconnected" {
+		t.Fatalf("disconnect did not emit status: %+v", got)
+	}
 	if got := post(call, id, nil); got.Code != 404 {
 		t.Fatal("closed session reused")
+	}
+}
+
+func TestExternalAgentStatusObservesInFlightToolAndFailure(t *testing.T) {
+	f := newLoopFixture(t, time.Minute)
+	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	base := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"isError":true}}`))
+	})
+	req := httptest.NewRequest("POST", "http://127.0.0.1/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"skills.get","arguments":{"private":"private-argument"}}}`))
+	go func() {
+		defer close(done)
+		serveJournaledMCP(base, f.svc, Agent{ID: "tool-client", Name: "client", IdentityKind: "client_reported"}, httptest.NewRecorder(), req)
+	}()
+	<-entered
+	active := f.svc.ExternalAgentStatus().Agents
+	if len(active) != 1 || active[0].State != "busy" || active[0].ActiveCalls != 1 || active[0].LastTool != "skills.get" {
+		t.Fatalf("in flight: %+v", active)
+	}
+	raw, _ := json.Marshal(active)
+	if strings.Contains(string(raw), "private-argument") {
+		t.Fatal("tool arguments leaked into status")
+	}
+	close(release)
+	<-done
+	if got := f.svc.ExternalAgentStatus().Agents; got[0].State != "error" || got[0].ActiveCalls != 0 {
+		t.Fatalf("failure outcome: %+v", got)
 	}
 }
 

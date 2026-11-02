@@ -149,15 +149,12 @@ body { background: var(--vac-bg); }
   line-height: 32px;
   gap: 0; justify-content: flex-start;
 }
-/* 五项等宽：flex-basis / width / max-width 都锁在滑轨内容区的 1/5，
-   拉丁字母（TTS）和中文的内容宽度都不能把单项撑开或压窄。
-   min-width 104px 保证「资源管理」四字+图标放得下；滑轨变窄到 1/5 < 104px 时
-   min-width 压过 max-width，项不再缩小，多出来的交给原有「…」溢出。 */
+/* 六项等宽；固定 600px 滑轨中直接展示脚本、编辑和其余工作区。 */
 .app-nav.seg-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) {
-  flex: 0 0 20%;
-  width: 20%;
-  min-width: 104px;
-  max-width: 20%;
+  flex: 0 0 calc(100% / 6);
+  width: calc(100% / 6);
+  min-width: 96px;
+  max-width: calc(100% / 6);
   padding-inline: 0;
   text-align: center;
   box-sizing: border-box;
@@ -768,16 +765,12 @@ button.timeline-clip:active { transform: scale(0.99); }
   .workflow-status-strip, .run-chip, .workflow-card { transition: none !important; }
 }
 
-/* ---------- 导出·验收与任务（s3f） ---------- */
-.acceptance-revision-strip { padding: 8px 10px; border: 1px solid var(--vac-hairline); border-radius: var(--vac-radius); background: var(--vac-bg); }
-.acceptance-list .acceptance-row { transition: background-color var(--vac-dur-fast) var(--vac-ease); border-radius: var(--vac-radius); }
-.acceptance-list .acceptance-row.is-passed { background: color-mix(in srgb, var(--vac-success) 6%, transparent); }
-.acceptance-list .acceptance-row.is-failed { background: color-mix(in srgb, var(--vac-danger) 6%, transparent); }
+/* ---------- 导出与任务（s3f） ---------- */
 .task-pick-list .task-pick-row { cursor: pointer; border-radius: var(--vac-radius); transition: background-color var(--vac-dur) var(--vac-ease); }
 .task-pick-list .task-pick-row:hover { background: color-mix(in srgb, var(--vac-text) 4%, transparent); }
 .task-pick-list .task-pick-row.is-active { background: color-mix(in srgb, var(--vac-accent) 12%, transparent); box-shadow: none; border-inline-start: 3px solid var(--vac-accent); }
 @media (prefers-reduced-motion: reduce) {
-  .acceptance-list .acceptance-row, .task-pick-list .task-pick-row { transition: none !important; }
+  .task-pick-list .task-pick-row { transition: none !important; }
 }
 .status-monitor .status-tag { border-radius: 3px; margin-inline-end: 0; }
 .status-monitor .status-tag .ant-badge-status-text { font-size: 12px; color: inherit; }
@@ -1069,4 +1062,35 @@ body code, body .ant-typography code { font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
  .settings-workspace *, .settings-workspace *::before, .settings-workspace *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+}
+
+.script-workspace-heading { display: flex; align-items: center; padding-block: 8px; margin-block-end: 12px; }
+.script-workspace-heading h1 { margin-block: 0; font-size: 24px; }
+.script-workspace .script-code-field textarea { min-height: 240px; }
+
+.script-compose-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+.script-compose-editor, .script-compose-actions { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.script-compose-actions { position: sticky; top: 16px; }
+.script-workspace .script-code-field textarea { min-height: clamp(280px, 42vh, 560px); }
+.script-workspace-heading { margin-block-end: 4px; }
+.script-workbench.is-dock .script-compose-layout { grid-template-columns: minmax(0, 1fr); }
+.script-workbench.is-dock .script-compose-actions { position: static; }
+@media (max-width: 1000px) {
+ .script-compose-layout { grid-template-columns: minmax(0, 1fr); }
+ .script-compose-actions { position: static; }
+ .script-workspace .script-code-field textarea { min-height: 280px; }
+}
+
+.script-editor-sider { position: relative; overflow: visible; }
+.script-editor-sider > .ant-layout-sider-children { height: 100%; overflow-y: auto; }
+.script-workspace-docked { padding: 12px; }
+.script-workspace-docked .script-workspace-heading h1 { font-size: 18px; }
+.script-workspace-docked .script-workspace-heading { gap: 8px !important; }
+.script-workspace-docked .script-compose-layout { grid-template-columns: minmax(0, 1fr); }
+.script-workspace-docked .script-code-field textarea { min-height: 260px; }
+.script-editor-sider .sider-resizer { z-index: 10; }
+.script-editor-sider .sider-resizer:focus-visible { outline: 2px solid var(--vac-accent); }
+
+@media (max-width: 959px) {
+ .script-editor-sider { position: fixed !important; inset-block: 90px 24px; right: 0; z-index: 20; max-width: calc(100vw - 36px) !important; }
 }

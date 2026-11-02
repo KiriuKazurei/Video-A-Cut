@@ -7,6 +7,7 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/tts"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -232,9 +233,15 @@ func runSkillMediaDelivery(t *testing.T, native, black bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err = svc.UpdateSkillRun(ctx, "human:test", r.ID, "finalize", r.Version)
-	if err != nil {
-		t.Fatal(err)
+	if svc.WorkspaceEnabled() {
+		if r.State != "queued" || r.Plan.FinalizedBy != "agent:test" {
+			t.Fatal("native plan required manual confirmation")
+		}
+	} else {
+		r, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "finalize", r.Version)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "renders.create", ExpectedVersion: r.Version, IdempotencyKey: "render"})
 	if err != nil {
@@ -367,6 +374,9 @@ func runSkillMediaDelivery(t *testing.T, native, black bool) {
 	proposed := *r.Plan
 	proposed.Segments = append([]skill.Segment{}, r.Plan.Segments...)
 	proposed.Segments[1].Narration = "Unauthorized outside rewrite"
+	if _, saveErr := svc.SaveSkillPlan(ctx, "agent:test", r.ID, service.SkillPlanSave{ExpectedVersion: r.Version, Plan: proposed}); !errors.Is(saveErr, model.ErrForbidden) {
+		t.Fatalf("plan save bypassed target scope: %v", saveErr)
+	}
 	raw, _ = json.Marshal(proposed)
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "outside"})
 	if !errors.Is(err, model.ErrForbidden) {
@@ -381,7 +391,7 @@ func runSkillMediaDelivery(t *testing.T, native, black bool) {
 	proposed.Segments[0].End = .4
 	raw, _ = json.Marshal(proposed)
 	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "inside"})
-	if err != nil || r.Plan.Segments[1].Narration != "Ending" || r.Plan.FinalizedBy != "" {
+	if err != nil || r.Plan.Segments[1].Narration != "Ending" || r.Plan.FinalizedBy == "" {
 		t.Fatalf("local edit: %+v %v", r.Plan, err)
 	}
 	workbench, err := svc.SkillWorkbench(ctx, "human:test", r.ID)
@@ -418,6 +428,18 @@ func runSkillMediaDelivery(t *testing.T, native, black bool) {
 	if err != nil || r.EditRequest.Windows[0].SegmentIndex != 1 || r.EditRequest.Windows[0].TimelineStart != .4 || r.EditRequest.Windows[0].SourceStart != .5 {
 		t.Fatalf("render/source time mapping %+v %v", r.EditRequest, err)
 	}
+	ending := *r.Plan
+	ending.Segments = append([]skill.Segment{}, r.Plan.Segments...)
+	ending.Body = "Unrequested opening\n\nShow ending"
+	if _, e := svc.SaveSkillPlan(ctx, "agent:test", r.ID, service.SkillPlanSave{ExpectedVersion: r.Version, Plan: ending}); !errors.Is(e, model.ErrForbidden) {
+		t.Fatalf("outside script rewrite accepted: %v", e)
+	}
+	ending.Body = "Show opening\n\nRevised ending subtitle instruction"
+	ending.Segments[1].Narration = "Revised ending"
+	r, err = svc.SaveSkillPlan(ctx, "agent:test", r.ID, service.SkillPlanSave{ExpectedVersion: r.Version, Plan: ending})
+	if err != nil || r.Plan.Segments[0].Narration != "New opening" || r.Plan.Segments[0].End != .4 || r.EditRequest != nil {
+		t.Fatalf("target plan save: %+v %v", r, err)
+	}
 	if _, err = svc.AgentOperations(ctx, "agent:test", r.ID, 0, 100); !errors.Is(err, model.ErrForbidden) {
 		t.Fatal("Agent read logs", err)
 	}
@@ -432,6 +454,35 @@ func runSkillMediaDelivery(t *testing.T, native, black bool) {
 	}
 }
 
+func TestSkillAgentPlanVoiceAndDiagnosticsWithoutHumanGate(t *testing.T) {
+	svc, p, v := projectFixture(t)
+	ctx := t.Context()
+	r, err := svc.CreateSkillRun(ctx, "agent:test", skill.RunRequest{ProjectID: p.ID, SkillID: "video-use", Mode: "external_mcp", AgentRole: "narrator", VisibleSHA: v.SHA, Goal: "autonomous voice", IdempotencyKey: "autonomous-voice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(skill.Plan{Body: "Opening", Segments: []skill.Segment{{MediaID: v.Media[0].ID, Start: 0, End: 1, Narration: "Hello"}}})
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: body, ExpectedVersion: r.Version, IdempotencyKey: "plan"})
+	if err != nil || r.State != "queued" || r.Plan.FinalizedBy != "agent:test" {
+		t.Fatalf("plan required a person: %+v %v", r, err)
+	}
+	body, _ = json.Marshal(service.SkillVoiceRequest{SegmentIndex: 0, Enabled: true, Settings: tts.Settings{Engine: "sapi", Voice: "fixture", Language: "en", Speed: 1, Volume: 1}})
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.voice", Arguments: body, ExpectedVersion: r.Version, IdempotencyKey: "voice"})
+	if err != nil || r.State != "queued" || !r.Plan.Segments[0].TTSEnabled || r.Plan.FinalizedBy != "agent:test" {
+		t.Fatalf("voice required a person: %+v %v", r, err)
+	}
+	if _, err = svc.SkillRunSteps(ctx, "agent:test", r.ID); err != nil {
+		t.Fatal("owner cannot inspect failures", err)
+	}
+	r, diagnostics, err := svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "run.steps", Arguments: json.RawMessage(`{}`), ExpectedVersion: r.Version, IdempotencyKey: "diagnostics"})
+	if err != nil || len(diagnostics) == 0 || r.State != "queued" {
+		t.Fatalf("Agent diagnostic tool failed: %s %v", diagnostics, err)
+	}
+	if _, err = svc.SkillRunSteps(ctx, "agent:other", r.ID); !errors.Is(err, model.ErrForbidden) {
+		t.Fatal("other Agent read private task", err)
+	}
+}
+
 func TestSkillToolDraftGateReplayAndCancellation(t *testing.T) {
 	svc, p, v := projectFixture(t)
 	ctx := t.Context()
@@ -443,7 +494,7 @@ func TestSkillToolDraftGateReplayAndCancellation(t *testing.T) {
 	raw, _ := json.Marshal(plan)
 	req := skill.ToolRequest{Name: "scripts.propose", Arguments: raw, ExpectedVersion: r.Version, IdempotencyKey: "propose"}
 	r, result, err := svc.ExecuteSkillTool(ctx, "agent:test", r.ID, req)
-	if err != nil || r.State != "waiting_human" {
+	if err != nil || r.State != "queued" {
 		t.Fatalf("draft: %+v %v", r, err)
 	}
 	before := r.Version
@@ -451,12 +502,20 @@ func TestSkillToolDraftGateReplayAndCancellation(t *testing.T) {
 	if err != nil || string(result) != string(replayed) || again.Version != before {
 		t.Fatalf("replay %v", err)
 	}
-	if _, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "finalize", r.Version); !errors.Is(err, model.ErrForbidden) {
-		t.Fatalf("agent approved: %v", err)
+	if _, err = svc.UpdateSkillRun(ctx, "agent:other", r.ID, "finalize", r.Version); !errors.Is(err, model.ErrForbidden) {
+		t.Fatalf("other Agent approved: %v", err)
 	}
-	r, err = svc.UpdateSkillRun(ctx, "human:test", r.ID, "finalize", r.Version)
-	if err != nil || r.Plan.FinalizedBy != "human:test" {
+	r, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "finalize", r.Version)
+	if err != nil || r.Plan.FinalizedBy != "agent:test" || r.BudgetStepBase != 0 {
 		t.Fatal(err)
+	}
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "artifacts.get", Arguments: json.RawMessage(`{"id":"missing"}`), ExpectedVersion: r.Version, IdempotencyKey: "missing-artifact"})
+	if err == nil || r.State != "waiting_human" {
+		t.Fatalf("expected recoverable pause: %+v %v", r, err)
+	}
+	r, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "resume", r.Version)
+	if err != nil || r.State != "queued" || r.BudgetStepBase != 0 {
+		t.Fatalf("owner resume reset execution budget: %+v %v", r, err)
 	}
 	r, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "cancel", r.Version)
 	if err != nil || r.State != "cancelled" {
@@ -515,8 +574,8 @@ func TestSkillProjectIsolationAndImmutableSnapshot(t *testing.T) {
 	if _, err = svc.GetSkillRun(ctx, "agent:other", r.ID); !errors.Is(err, model.ErrForbidden) {
 		t.Fatalf("owner: %v", err)
 	}
-	if _, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "finalize", r.Version); !errors.Is(err, model.ErrForbidden) {
-		t.Fatalf("fake human: %v", err)
+	if _, err = svc.UpdateSkillRun(ctx, "agent:test", r.ID, "finalize", r.Version); !errors.Is(err, model.ErrInvalidState) {
+		t.Fatalf("missing plan was finalized: %v", err)
 	}
 	if _, err = svc.EnableSkill(ctx, "human:test", "video-use", false); err != nil {
 		t.Fatal(err)
@@ -551,5 +610,43 @@ func TestSkillClaimChecksNewAgentRoleBeforeTransfer(t *testing.T) {
 	claimed, err := svc.ClaimSkillRun(ctx, "agent:narrator", r.ID, r.Version, "narrator")
 	if err != nil || claimed.Owner != "agent:narrator" {
 		t.Fatalf("valid claim: %+v %v", claimed, err)
+	}
+}
+
+func TestSkillTargetPlanSavePreservesUnselectedVoice(t *testing.T) {
+	svc, p, v := projectFixture(t)
+	ctx := t.Context()
+	r, err := svc.CreateSkillRun(ctx, "agent:test", skill.RunRequest{ProjectID: p.ID, SkillID: "video-use", Mode: "external_mcp", AgentRole: "narrator", VisibleSHA: v.SHA, Goal: "edit ending", IdempotencyKey: "target-voice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(skill.Plan{Body: "Opening\n\nEnding", Segments: []skill.Segment{{MediaID: v.Media[0].ID, Start: 0, End: .5, Narration: "Hello"}, {MediaID: v.Media[0].ID, Start: .5, End: 1, Narration: "Ending"}}})
+	r, _, err = svc.ExecuteSkillTool(ctx, "agent:test", r.ID, skill.ToolRequest{Name: "scripts.propose", Arguments: body, ExpectedVersion: r.Version, IdempotencyKey: "plan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err = svc.SaveSkillVoice(ctx, "agent:test", r.ID, service.SkillVoiceRequest{ExpectedVersion: r.Version, SegmentIndex: 0, Enabled: true, Settings: tts.Settings{Engine: "sapi", Voice: "fixture", Language: "en", Speed: 1, Volume: 1}, Offset: .1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Freeze the same target snapshot produced by RequestSkillEdit; media rendering
+	// and artifact selection are covered by runSkillMediaDelivery above.
+	base := *r.Plan
+	base.Segments = append([]skill.Segment{}, r.Plan.Segments...)
+	r.EditRequest = &skill.EditRequest{BasePlan: base, BasePlanVersion: base.Version, Windows: []skill.EditWindow{{SegmentIndex: 1}}}
+	priorVersion := r.Version
+	r.Version++
+	if err = storeOf(t, svc).SkillPut(ctx, "run", r.ID, priorVersion, r); err != nil {
+		t.Fatal(err)
+	}
+	next := base
+	next.Segments = append([]skill.Segment{}, base.Segments...)
+	next.Segments[1].Narration = "New ending"
+	saved, err := svc.SaveSkillPlan(ctx, "agent:test", r.ID, service.SkillPlanSave{ExpectedVersion: r.Version, Plan: next})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.Plan.Segments[0].TTSEnabled || saved.Plan.Segments[0].Voice == nil || saved.Plan.Segments[0].Voice.Voice != "fixture" || saved.Plan.Segments[0].VoiceOffset != .1 {
+		t.Fatalf("outside voice lost: %+v", saved.Plan.Segments[0])
 	}
 }

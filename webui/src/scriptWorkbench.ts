@@ -98,3 +98,11 @@ export function initialScriptSegment(p: ScriptParagraph, media: ScriptMedia[]): 
   const m = matches.length === 1 ? matches[0] : undefined;
   return { index: p.index, narration: '', media_id: m?.id ?? '', start: m?.in ?? 0, end: m ? Math.min(m.out, m.in + 8) : 0 };
 }
+export function scriptAgentHandoff(input: { projectId: string; scriptId: string; resourceId?:string; version: number; title: string; body: string; dirty: boolean }): string {
+  return `请通过 VAC MCP 协助处理以下脚本。先调用 projects.list 核对当前工程为 ${input.projectId}，再通过 skills.list 读取可用能力。工程不匹配时停止并提示我切换工程。
+脚本 ID：${input.scriptId}；基准修订 ${input.version}；${input.dirty ? '以下包含未保存的当前草稿，以此为准' : '以下为已保存脚本'}。
+调用 resources.list 查找脚本 ID 对应的资源，再用 resources.read 读取${input.resourceId?`资源 ${input.resourceId}`:'该脚本资源'}，核对脚本 ID 与修订；若有更新，以最新已保存修订为准。遵照脚本要求检查可见素材和引用，保留特殊语法，使用可用 Skill 自主完成时间线编辑、配音和导出；不等待逐步人工定稿。成片直接在编辑页面查看。
+标题：${input.title}
+脚本正文：
+${input.body}`;
+}

@@ -97,7 +97,7 @@ export function DeliveryPanel({ asset, files, selectedFile, onSelectFile }: {
           <Alert type="success" showIcon className="delivery-readiness"
             message={playable.length ? '成片文件已就绪' : '已有登记文件'}
             description={playable.length
-              ? '可在上方预览可播放文件，或下载 ZIP 整包。需要勾选验收时请打开「人工验收」。'
+              ? '可在上方预览可播放文件，或下载 ZIP 整包。成片效果可直接在编辑页面查看。'
               : '可下载单文件或 ZIP。可播放预览生成后会出现在列表中。'} />
           <Space wrap className="delivery-actions">
             <Button type="primary" icon={<DownloadOutlined />} href={deliveryZipURL(asset.asset_id)}>下载资产交付 ZIP</Button>

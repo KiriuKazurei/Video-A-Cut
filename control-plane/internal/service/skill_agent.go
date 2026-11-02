@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
-	"strings"
 	"time"
 )
 
@@ -80,7 +79,7 @@ func (s *Service) RunBuiltinAgent(ctx context.Context, actor, id string, version
 		next, result, e := s.ExecuteSkillTool(ctx, actor, id, skill.ToolRequest{Name: decision.Tool, Arguments: decision.Arguments, ExpectedVersion: r.Version, IdempotencyKey: newID("agent")})
 		r = next
 		if e != nil {
-			if strings.HasPrefix(decision.Tool, "draw.") && errors.Is(e, model.ErrArgument) && r.State == "queued" {
+			if (errors.Is(e, model.ErrArgument) || errors.Is(e, model.ErrConflict)) && r.State == "queued" {
 				history = append(history, map[string]any{"tool": decision.Tool, "arguments": decision.Arguments, "error": e.Error()})
 				continue
 			}

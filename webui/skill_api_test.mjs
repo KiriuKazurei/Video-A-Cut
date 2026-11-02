@@ -27,6 +27,14 @@ test('system diagnostics preserve cancellation and reserved skill calls use scop
 import { createSkillEdit, skillPreviewSource } from './src/skillEditing.ts';
 import { handleSSEEvent, REFRESH_DOMAINS, SUPPORTED_SSE_EVENTS } from './src/queryRefresh.ts';
 
+test('Agent status events mark the snapshot stale without triggering extra automatic reads', async () => {
+  const invalidated = [];
+  await handleSSEEvent({ invalidateQueries: async options => invalidated.push(options) }, 'agent.status.changed', { agents: [{ state: 'connected' }] });
+  assert.deepEqual(invalidated, [{ queryKey: ['external-agent-status'], refetchType: 'none' }]);
+  assert(REFRESH_DOMAINS.includes('external-agent-status'));
+  assert(SUPPORTED_SSE_EVENTS.includes('agent.status.changed'));
+});
+
 test('Skill client preserves CAS/idempotency and AbortSignal, and encodes object identifiers', async () => {
   const previous = globalThis.fetch;
   const controller = new AbortController();

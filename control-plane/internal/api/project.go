@@ -74,9 +74,19 @@ func (s *Server) projectRoutes() {
 	s.mux.HandleFunc("POST /api/projects/{id}/resources", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Path string `json:"path"`
+			Kind string `json:"kind,omitempty"`
 		}
 		if e := decodeJSON(w, r, &req); e != nil {
 			writeServiceError(w, e)
+			return
+		}
+		if req.Kind == "script" && req.Path == "" {
+			v, e := s.svc.CreateProjectScript(r.Context(), r.PathValue("id"))
+			skillResponse(w, v, e)
+			return
+		}
+		if req.Kind != "" {
+			writeServiceError(w, model.ErrArgument)
 			return
 		}
 		v, e := s.svc.ImportProjectResource(r.Context(), r.PathValue("id"), req.Path)

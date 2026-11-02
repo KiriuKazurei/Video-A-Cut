@@ -83,7 +83,7 @@ export function stageOfRoute(route: RouteState): StageId | undefined {
 }
 export const SECTION_STAGE = {
   editing: { import: 'import', content: 'import' },
-  export: { delivery: 'delivery', acceptance: 'delivery', tasks: 'generate' },
+  export: { delivery: 'delivery', tasks: 'generate' },
   settings: { preparation: 'prepare' }
 } as const;
 
@@ -258,7 +258,7 @@ function deriveNext(input: PipelineInput, imp: ReturnType<typeof importStage>, s
     case 'awaiting_review':
       return go('review', workflow.stage === 'scene_review' ? '去时间线确认场景' : workflow.stage === 'draft_review' ? '去时间线确认解说' : '去时间线查看', stat.review.text);
     case 'ready_for_acceptance':
-      return asset.status === 'exported' ? go('delivery', '查看交付结果', '成片已导出：可下载或继续验收') : go('delivery', '去交付与验收', '生成完成：先看预览，没问题就在验收页点通过');
+      return asset.status === 'exported' ? go('delivery', '查看交付结果', '成片已导出：可下载或继续验收') : go('delivery', '查看成片与导出', '生成完成：在编辑页面查看效果，或到导出页面下载成片');
     default: return { label: '下一步', stage: null, hint: `流程状态 ${workflow.status} / ${workflow.stage}`, disabledReason: `无法判断下一步：流程状态为 ${workflow.status} / ${workflow.stage}` };
   }
 }

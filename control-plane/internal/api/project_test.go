@@ -36,7 +36,11 @@ func TestProjectHTTPRangeAndIsolation(t *testing.T) {
 		srv.Handler().ServeHTTP(rec, req)
 		return rec
 	}
-	for _,path:=range []string{"/api/audit","/api/agent-operations"}{if rec:=call("GET",path,"","");rec.Code!=200{t.Fatal("home logs require a project or credentials",path,rec.Code,rec.Body.String())}}
+	for _, path := range []string{"/api/audit", "/api/agent-operations"} {
+		if rec := call("GET", path, "", ""); rec.Code != 200 {
+			t.Fatal("home logs require a project or credentials", path, rec.Code, rec.Body.String())
+		}
+	}
 	newFile := func(name string) project.Session {
 		data, _ := json.Marshal(service.ProjectCommand{Path: filepath.Join(root, name+".avp"), Name: name, Decision: "discard"})
 		rec := call("POST", "/api/workspace/new", string(data), "")
@@ -71,6 +75,18 @@ func TestProjectHTTPRangeAndIsolation(t *testing.T) {
 	}
 	if len(rec.Result().Cookies()) != 0 {
 		t.Fatal("preview created human cookie")
+	}
+	rec = call("POST", "/api/projects/"+first.Document.Project.ID+"/resources", `{"kind":"script"}`, first.ID)
+	if rec.Code != 200 {
+		t.Fatalf("new script HTTP request failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var scripted project.Session
+	if err := json.Unmarshal(rec.Body.Bytes(), &scripted); err != nil {
+		t.Fatal(err)
+	}
+	created := scripted.Document.Resources[len(scripted.Document.Resources)-1]
+	if created.Kind != "script" || created.ScriptID == "" || len(scripted.Document.Scripts) != 1 {
+		t.Fatal("HTTP creation did not create a readable project script")
 	}
 	second := newFile("B")
 	if second.ID == first.ID {

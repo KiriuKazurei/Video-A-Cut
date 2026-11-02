@@ -82,6 +82,7 @@ func (l *localConnections) serve(base http.Handler, svc *service.Service, w http
 	for id, old := range l.sessions {
 		if now.Sub(old.touched) > localSessionTTL {
 			delete(l.sessions, id)
+			svc.ExpireExternalAgent(old.agent.ID)
 		}
 	}
 	session, exists := l.sessions[sessionID]
@@ -98,6 +99,7 @@ func (l *localConnections) serve(base http.Handler, svc *service.Service, w http
 		}
 		delete(l.sessions, sessionID)
 		l.mu.Unlock()
+		svc.DisconnectExternalAgent(session.agent.ID)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

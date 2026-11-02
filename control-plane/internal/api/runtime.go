@@ -2,6 +2,11 @@ package api
 
 import "net/http"
 
+func (s *Server) externalAgentStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, s.svc.ExternalAgentStatus())
+}
+
 func (s *Server) systemDiagnostics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	report, err := s.svc.SystemDiagnostics(r.Context())

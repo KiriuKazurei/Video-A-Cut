@@ -13,6 +13,48 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
+// CreateProjectScript creates an editable AVP script without a media/file prerequisite.
+func (s *Service) CreateProjectScript(ctx context.Context, projectID string) (project.Session, error) {
+	w := s.workspace
+	if w == nil {
+		return project.Session{}, model.ErrInvalidState
+	}
+	if err := w.lockMutation(ctx); err != nil {
+		return project.Session{}, err
+	}
+	defer w.op.Unlock()
+	w.mu.Lock()
+	if w.document == nil || w.document.Project.ID != projectID {
+		w.mu.Unlock()
+		return project.Session{}, model.ErrNotFound
+	}
+	draft := cloneProject(w.document)
+	w.mu.Unlock()
+	id, rid := newID("scr"), newID("res")
+	doc := project.AvsDocument{Format: "avs", SchemaVersion: project.ScriptSchemaVersion, ID: id, Title: "未命名脚本", Segments: json.RawMessage(`[]`), Bindings: []project.Binding{}}
+	r := project.Resource{ID: rid, AssetID: rid, ScriptID: id, Kind: "script", Name: doc.Title, Metadata: map[string]any{"title": doc.Title}}
+	draft.Resources = append(draft.Resources, r)
+	draft.Scripts = append(draft.Scripts, doc)
+	if err := draft.Validate(); err != nil {
+		return project.Session{}, err
+	}
+	if err := s.materializeResource(ctx, r, projectID); err != nil {
+		return project.Session{}, err
+	}
+	if err := s.hydrateScript(ctx, draft, doc); err != nil {
+		return project.Session{}, err
+	}
+	w.mu.Lock()
+	w.document = draft
+	w.mu.Unlock()
+	s.rememberResourceEdit(nil, r)
+	if err := s.refreshProjectMedia(ctx); err != nil {
+		return project.Session{}, err
+	}
+	s.publish("resource.changed", map[string]any{"project_id": projectID, "resource_id": rid})
+	return s.ProjectWorkspace(ctx)
+}
+
 type ScriptFileImport struct {
 	Path       string            `json:"path"`
 	ScriptOnly bool              `json:"script_only"`

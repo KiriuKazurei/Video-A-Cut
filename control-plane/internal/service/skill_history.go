@@ -164,7 +164,7 @@ func (s *Service) SkillCheckpointPreview(ctx context.Context, actor, id, checkpo
 			return "", zero, err
 		}
 		for _, a := range snapshot.Artifacts {
-			if a.ID == artifact && a.Kind == "mp4" && snapshot.Plan != nil && a.PlanVersion == snapshot.Plan.Version && isHumanActor(snapshot.Plan.FinalizedBy) {
+			if a.ID == artifact && a.Kind == "mp4" && snapshot.Plan != nil && a.PlanVersion == snapshot.Plan.Version && snapshot.Plan.FinalizedBy != "" {
 				r.Plan = snapshot.Plan
 				r.Artifacts = []skill.Artifact{a}
 				return s.skillArtifactPath(ctx, r, artifact)

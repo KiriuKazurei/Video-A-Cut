@@ -89,6 +89,7 @@ const (
 func (s *Server) routes() {
 	s.skillRoutes()
 	s.mux.HandleFunc("GET /api/system/diagnostics", s.systemDiagnostics)
+	s.mux.HandleFunc("GET /api/agents/status", s.externalAgentStatus)
 	s.mux.HandleFunc("GET /api/system/diagnostics/report", s.systemDiagnostics)
 	s.mux.HandleFunc("GET /api/runtime/activity", s.runtimeActivity)
 	s.ttsRoutes()

@@ -33,10 +33,10 @@ or expired owner cannot renew: obtain the current run and claim it again if it
 is still available. The UI displays the reported phase, elapsed time and last
 update; it does not infer completion percentages.
 
-A draw tool argument or missing-image-alias error leaves the run queued with
+A tool argument or missing-image-alias error leaves the run queued with
 `invalid_tool_arguments`. Read the diagnostic and current version, correct the
 arguments or binding, then call again with a NEW idempotency key. Actual worker,
-permission, content-change and timeout errors retain their normal stop behavior.
+permission and timeout errors pause until repaired; a content conflict stays queued for refreshed context.
 
 ## Project resources
 
@@ -72,6 +72,22 @@ HTTP/RPC errors are transport/input errors, not successful tool results.
 
 ## Arguments and observable results
 
+Agent tasks are autonomous editing workflows. Its task authorizes
+plan creation and rendering; scripts.propose records the actual Agent as the plan
+confirmer and continues queued, without a separate human finalization click.
+Human acceptance remains a separate optional review of the rendered result.
+For a paused task, call skill_runs.update {run_id,expected_version,action:"resume"}.
+For an older pending plan, use action:"finalize". Both operate only on this
+authenticated Agent's own run and preserve its remaining execution budget.
+Argument errors and stale-context conflicts leave the run queued: read the
+diagnostic, refresh context, correct the request and use a NEW idempotency key.
+They never require a human recovery click. Do not repeat unchanged failed work.
+Actual dependency failures can be resumed by the owning Agent after repair.
+
+timeline.edit operations use the discriminant field "type", for example
+{"type":"track.add","kind":"audio","name":"Music","group_id":"grp_current"}.
+Read the returned generated track ID before a subsequent clip.insert.
+
 | Name | arguments | result and gates |
 |---|---|---|
 | timeline.read | {sequence_id} (defaults to run.sequence_id) | Current sequence, session, revision, content_version; human history omitted. |
@@ -82,15 +98,15 @@ HTTP/RPC errors are transport/input errors, not successful tool results.
 | media.transcribe | {media_id} | {media_id,transcript,artifact}; transcript contains word-level timings and is cached by content/window/profile. Registers a transcript artifact. Requires a bound transcription Provider enabled in global provider settings and its configured key. Missing dependency: report it and stop; ask human to configure it or choose visual_heavy, do not change the flow yourself. |
 | summaries.get | {} | {summary}, possibly null. |
 | summaries.submit | {model,narrative,beats:[string],timeline:[{media_id,start,end,description,confidence,frame_ids:[string]}]} | {saved:true}; saves JSON/Markdown evidence summary. confidence is low/medium/high; every timeline item references existing extracted frames from that same media within its source interval. Do not invent evidence. |
-| scripts.propose | {body,segments:[{media_id,start,end,narration}],subtitles:false} | Plan; run becomes waiting_human/plan_confirmation. body has one blank-line-separated paragraph per segment (1–20 segments), duration of each is .1–120 seconds within visible media. Optional segment subtitles_enabled overrides global subtitles. Narration may be empty. External voice calls use global provider settings. Proposals never finalize themselves. |
+| scripts.propose | {body,segments:[{media_id,start,end,narration}],subtitles:false} | Plan; runs continue queued with Agent confirmation. body has one blank-line-separated paragraph per segment (1–20 segments), duration of each is .1–120 seconds within visible media. Optional segment subtitles_enabled overrides global subtitles. Narration may be empty. External voice calls use global provider settings. Proposals are confirmed by the task Agent and continue queued. |
 
 
-| renders.create | {} | Artifact array including same-plan MP4 and Premiere ZIP. Only after a human finalizes this exact plan/version and clears edit_request. |
+| renders.create | {} | Artifact array including same-plan MP4 and Premiere ZIP. Only after this exact plan/version is confirmed and edit_request is cleared. |
 | renders.inspect | {} | {inspection, engineering, basic_quality, human_acceptance}; inspection has plan_version/frame_ids/verdict/issues. basic_quality is bound to the MP4 sha256 and has status passed/failed/not_checked, audio_status/video_status and issues [{kind:black|silence,start,end}] in seconds. Missing/unknown audio expectations are skipped. Quality findings are advisory and do not block review/finish. Extracts rendered first/last/cut frames and validates media; inspection is REQUIRED before review/finish. |
 | artifacts.list | {} | Current run artifact metadata [{id,name,kind,size_bytes,sha256,plan_version}]. |
 | artifacts.get | {id:artifact_id} | Only registered frame/transcript artifacts up to 256 KiB. Frames return {artifact,mime_type} AND native MCP image content; inspect the image. Transcripts return {artifact,base64}, decode JSON text for word timestamps. IDs are not paths. Full films/packages are browsed/downloaded by the human in VAC. |
 | renders.review | {plan_version,frame_ids,verdict:"passed",issues:[]} | Inspection. Read EVERY inspection frame via artifacts.get first. Use the exact ordered frame_ids from renders.inspect and current plan_version; verdict is passed/needs_changes, maximum 20 textual issues, passed requires no issues. This is machine review, not human acceptance. |
-| run.finish | {} for a finalized flattened plan; {sequence_revision,content_version} for a structured edit without a flattened plan | {completed:true}; requires current human-finalized plan, no pending edit_request, same-plan valid MP4 and passed inspection/review. Structured sequence completion also returns basic_quality bound to its MP4. Quality warnings do not block completion. Never claim completion from an unrendered proposal. |
+| run.finish | {} for a finalized flattened plan; {sequence_revision,content_version} for a structured edit without a flattened plan | {completed:true}; requires the current confirmed plan, no pending edit_request, same-plan valid MP4 and passed inspection/review. Structured sequence completion also returns basic_quality bound to its MP4. Quality warnings do not block completion. Never claim completion from an unrendered proposal. |
 
 
 scripts.propose also accepts references:[...] using the AVS v2 occurrence binding
@@ -115,19 +131,17 @@ create generation jobs or contact a provider for it.
 
 1. Get context; read media and applicable transcript/frame evidence. For visual
    summary, submit evidence summary before proposing the plan.
-2. scripts.propose; stop on waiting_human and tell the user what to approve.
-   Only the human can edit/finalize the plan through VAC. Refresh run after it.
+2. scripts.propose; in the open desktop project continue with the confirmed plan. For an older pending plan, call skill_runs.update action=finalize.
 3. renders.create → renders.inspect → artifacts.get for EACH inspection frame
    → renders.review with exact plan_version/frame_ids → run.finish.
 4. When a human requests changes, skill_runs.get provides run.edit_request
    with prompt, base_plan and windows [{segment_index,media_id,timeline_start,
-   timeline_end,source_start,source_end}]. Keep body, global subtitles, segment
-   count and unselected segments unchanged. Modify only selected segments,
-   scripts.propose again and stop for a NEW human finalization. Then repeat
+   timeline_end,source_start,source_end}]. Keep global subtitles, segment count, and unselected segments (including voice settings) unchanged. Script body paragraphs may change only at selected indices, with the same paragraph count. Both plan saves and scripts.propose enforce this scope. Modify only selected segments,
+   scripts.propose again, confirm that new version and then repeat
    rendering, inspection, image reads, review and finish for the new plan.
 5. Refresh context after conflict/timeout. If run is waiting_human because of
    dependency, tool failure, frame budget, clarification or context change,
-   stop and ask the human; resume is human-only. Do not retry fresh billable
+   repair the cause, then use skill_runs.update action=resume. Do not retry unchanged billable
    steps, reset budgets, silently switch providers or recreate authorization.
    Revocation/invalid context denies execution. Cancellation is terminal;
    skill_runs.cancel {run_id,expected_version} stops this session's run.
@@ -137,7 +151,7 @@ Budgets default to 24 steps, 900 active seconds and 24 source frames (hard caps
 open bounded execution windows, not unlimited work. Undo/redo does not refund
 consumption or revive approvals. A detached session may need to claim its run
 again after the old owner's lease ends; do not pretend another owner's run is
-accessible. MCP never offers human finalization, resume, visible-set approval,
+accessible. MCP records Agent confirmation and resume through skill_runs.update; it never impersonates human acceptance or grants visible-set approval,
 voice consent, operation logs, history checkpoints, undo or redo.
 
 
@@ -238,3 +252,18 @@ and per-instance parameters; removing an image retains referenced placeholders.
 For draw.render, optional format is mp4 (default), webm-alpha or prores4444. The returned artifact uses the matching extension. PNG/RGBA source frames remain lossless before the single final encode. crop uses canvas pixels; shape/mask supports rect or ellipse. source.capabilities may declare dom/gsap for HTML, react/svg for React, and rgba/transform/image/text/mask for either; unsupported requirements fail with source ID.
 
 artifacts.get reads verified frame PNG/JPEG artifacts up to 16 MiB; transcript reads remain limited to 256 KiB. This supports full RGBA inspection without silently downscaling detailed frames. Project, run, hash and tool budgets still apply.
+
+## Autonomous task editing and diagnostics
+
+Use skill_runs.edit {run_id,expected_version,action,arguments} for your own task.
+Actions: plan with {plan:{body,segments,subtitles}}, voice with
+{segment_index,enabled,settings,offset_seconds?,accept_external?}, target with
+the targeted-edit request {plan_version,prompt,artifact_id,artifact_sha256,
+idempotency_key,segment_index? or at_seconds? or timeline_start?/timeline_end?}. Returns {run}. Creation and edits confirm the
+new plan as the task Agent without a human click, including legacy task flows.
+Voice follows the configured provider policy; no new credential is required.
+Within skill_runs.tool, scripts.voice accepts the same voice arguments;
+run.steps {} reads this task's recorded tool results for failure diagnosis.
+These tools are available to the builtin model loop too. Read the returned
+version before continuing. Repair/resume and export do not constitute human
+acceptance of the movie.

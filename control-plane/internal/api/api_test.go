@@ -18,6 +18,54 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
 
+func TestExternalAgentStatusHTTP(t *testing.T) {
+	srv := newServer(t)
+	rec := get(t, srv, "/api/agents/status")
+	if rec.Code != 200 {
+		t.Fatalf("status: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("live connection status must not be cached")
+	}
+	var report struct {
+		Agents []json.RawMessage `json:"agents"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil || report.Agents == nil {
+		t.Fatalf("empty status contract: %s %v", rec.Body.String(), err)
+	}
+}
+
+func TestExternalAgentStatusEventsDoNotDirtyProject(t *testing.T) {
+	srv := newBusServer(t)
+	if err := srv.svc.ConfigureDeliveryRoot(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.ConfigureProjectWorkspace(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.svc.CloseProjectWorkspace)
+	before, err := srv.svc.ProjectFileCommand(t.Context(), "new", service.ProjectCommand{Name: "Agent status", Path: filepath.Join(t.TempDir(), "agent.avp")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, _ := connectSSE(t, srv)
+	defer stream.stop()
+	finish := srv.svc.ObserveExternalAgent(service.ExternalAgentIdentity{ID: "observed", Name: "client", Transport: "desktop_mcp"}, "tools/call", "projects.list")
+	frame := stream.waitFrameName(t, "agent.status.changed")
+	if frame.data != "{}" {
+		t.Fatalf("event must only invalidate a snapshot: %+v", frame)
+	}
+	finish(false)
+	after, err := srv.svc.ProjectWorkspace(t.Context())
+	if err != nil || before.Revision != after.Revision || before.Dirty != after.Dirty {
+		t.Fatalf("telemetry changed AVP: before %+v after %+v err %v", before, after, err)
+	}
+	rec := get(t, srv, "/api/agents/status")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"agent_id":"observed"`) {
+		t.Fatalf("status snapshot: %s", rec.Body.String())
+	}
+}
+
 func TestSystemDiagnosticsNeverCallConfiguredModelsAndAggregateWorkers(t *testing.T) {
 	srv := newServer(t)
 	var calls atomic.Int32

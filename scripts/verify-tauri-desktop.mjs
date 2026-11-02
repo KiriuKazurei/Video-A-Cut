@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { createHash } from 'node:crypto';
 import { CDP, sleep } from './tauri-cdp.mjs';
 import { testStorageRoot } from './test-paths.mjs';
@@ -48,15 +49,19 @@ const nativePoint = async (selector,fx=.5,fy=.5) => {
 };
 const nativeClick = async (selector,action='click') => {const point=await nativePoint(selector);await probe(action,['-X',String(point.x),'-Y',String(point.y)]);};
 const mcpClient = endpoint => {
-  let session,protocol='2025-11-25',id=0;
-  const send=async(method,params,notification=false)=>{
+  let session,protocol='2025-11-25',id=0,reinitializations=0;
+  const send=async(method,params,notification=false,recover=true)=>{
     const request={jsonrpc:'2.0',method,params,...(!notification?{id:++id}:{})};
     const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',...(session?{'Mcp-Session-Id':session,'MCP-Protocol-Version':protocol}:{})},body:JSON.stringify(request)});
+    if(response.status===404&&session&&recover&&method!=='initialize'&&method!=='notifications/initialized'){
+      await response.text();session=undefined;reinitializations++;await initialize();return send(method,params,notification,false);
+    }
     assert(response.ok,`MCP ${method}: ${response.status}`);session=response.headers.get('Mcp-Session-Id')||session;const text=await response.text();if(notification||!text)return;
     const messages=response.headers.get('Content-Type')?.includes('text/event-stream')?text.split('\n').filter(line=>line.startsWith('data:')).map(line=>JSON.parse(line.slice(5))):[JSON.parse(text)];
     const result=messages.find(message=>message.id===request.id);assert(result&&!result.error,JSON.stringify(result));return result.result;
   };
-  return {async init(){const result=await send('initialize',{protocolVersion:protocol,capabilities:{},clientInfo:{name:'VAC desktop timeline regression',version:testVersion}});protocol=result.protocolVersion;await send('notifications/initialized',{},true);},async call(name,args){const result=await send('tools/call',{name,arguments:args});assert(!result.isError,JSON.stringify(result));return result.structuredContent??JSON.parse(result.content.find(item=>item.type==='text').text);}};
+  const initialize=async()=>{const result=await send('initialize',{protocolVersion:protocol,capabilities:{},clientInfo:{name:'VAC desktop timeline regression',version:testVersion}});protocol=result.protocolVersion;await send('notifications/initialized',{},true);};
+  return {init:initialize,get reinitializations(){return reinitializations;},async call(name,args){const result=await send('tools/call',{name,arguments:args});assert(!result.isError,JSON.stringify(result));return result.structuredContent??JSON.parse(result.content.find(item=>item.type==='text').text);}};
 };
 const verifyTimeline = async runtime => {
   await probe('resize',['-Width','1900','-Height','1200']);
@@ -192,6 +197,107 @@ const verifyMcp = async runtime => {
   await click('复制连接配置');await until(async()=>(await c.invoke('clipboard_read_text')).startsWith('{'),Boolean);const config=JSON.parse(await c.invoke('clipboard_read_text'));assert.equal(config.mcpServers.vac.url,runtime.mcp_url);
   await c.screenshot(path.join(out,checks.length?'mcp-current.png':'mcp.png'));
 };
+const verifyAgentEdit = async runtime => {
+  await probe('resize',['-Width','1600','-Height','1000']);
+  const media=path.join(out,'edit-source.mp4'),projectFile=path.join(out,'agent-edit-'+pid+'.avp');
+  await run('ffmpeg',['-v','error','-nostdin','-y','-f','lavfi','-i','testsrc2=size=320x180:rate=30:duration=4','-f','lavfi','-i','sine=frequency=440:duration=4','-c:v','libx264','-threads','1','-c:a','aac','-shortest',media]);
+  let ws=await api('/api/workspace/new','POST',{path:projectFile,name:'Agent二次修改'});
+  const project=ws.document.project.id,sequence=ws.document.sequences[0].id;
+  ws=await api(`/api/projects/${project}/resources`,'POST',{path:media});
+  const resource=ws.document.resources.find(r=>r.kind==='video');
+  const readSequence=()=>api(`/api/projects/${project}/sequences/${sequence}`);
+  let timeline=await readSequence();
+  timeline=await api(`/api/projects/${project}/sequences/${sequence}/commands`,'POST',{session:timeline.session,expected_revision:timeline.sequence.revision,idempotency_key:'manual-original',label:'保留人工片段',operations:[{type:'clip.insert',track_id:timeline.sequence.tracks[0].id,resource_id:resource.id,at:90,source_in:{value:2,scale:1},source_out:{value:3,scale:1}}]});
+  const manualClips=timeline.sequence.tracks.flatMap(t=>t.clips).map(clip=>JSON.parse(JSON.stringify(clip)));
+  await c.send('Page.reload');await c.wait(`window.__TAURI__?.core`);
+  await c.ev(`location.hash='/script'`);await click('新建脚本');
+  await input('textarea#script-body','保留人工片段。使用素材前两秒生成两个片段，随后仅缩短第一个片段，并保留第二段内容。');
+  await click('保存脚本');await c.wait(`document.body.innerText.includes('脚本已保存，Agent 可读取当前修订。')`);
+  ws=await workspace();const scriptResource=ws.document.resources.find(r=>r.kind==='script');
+  let mcp=mcpClient(runtime.mcp_url);await mcp.init();
+  const savedScript=await mcp.call('resources.read',{project_id:project,resource_id:scriptResource.id});
+  assert(savedScript.script.script.body.includes('仅缩短第一个片段'));
+  await record('native script creation/save is readable through live MCP', {script_id:scriptResource.script_id});
+  const pack=await mcp.call('skills.get',{id:'vac-visual-summary'});
+  await mcp.call('skills.read_resource',{id:pack.id,content_sha256:pack.content_sha256,resource:'vac/tool-contracts.md'});
+  const visible=await mcp.call('projects.visible_set.get',{id:project});
+  let agentRun=await mcp.call('skill_runs.create',{project_id:project,sequence_id:sequence,flow:'visual_heavy',skill_id:pack.id,execution_mode:'external_mcp',visible_set_sha:visible.sha256,goal:savedScript.script.script.body,budget:{max_steps:64,max_seconds:900,max_frames:24},idempotency_key:'native-agent-edit'});
+  const tool=async(name,args={})=>{const response=await mcp.call('skill_runs.tool',{run_id:agentRun.id,request:{name,arguments:args,expected_version:agentRun.version,idempotency_key:'edit-tool-'+crypto.randomUUID()}});agentRun=response.run;return response.result;};
+  const items=await tool('media.list');const source=Array.isArray(items)?items[0]:items.media[0];
+  await tool('scripts.propose',{body:'Opening\n\nEnding',segments:[{media_id:source.id,start:0,end:1,narration:'Opening'},{media_id:source.id,start:1,end:2,narration:'Ending'}],subtitles:false});
+  const finish=async()=>{
+    await tool('renders.create');await tool('renders.inspect');
+    const inspection=agentRun.inspection;assert(inspection?.frame_ids.length);
+    for(const id of inspection.frame_ids)await tool('artifacts.get',{id});
+    await tool('renders.review',{plan_version:inspection.plan_version,frame_ids:inspection.frame_ids,verdict:'passed',issues:[]});
+    await tool('run.finish');assert.equal(agentRun.state,'succeeded');
+    return agentRun.artifacts.find(a=>a.kind==='mp4'&&a.plan_version===agentRun.plan.version);
+  };
+  const first=await finish();assert(first);
+  await record('live MCP produces, inspects and finishes the first real MP4 without approval', {run_id:agentRun.id,sha:first.sha256??first.sha});
+  const originalEnding=JSON.parse(JSON.stringify(agentRun.plan.segments[1]));
+  const target=await mcp.call('skill_runs.edit',{run_id:agentRun.id,expected_version:agentRun.version,action:'target',arguments:{plan_version:agentRun.plan.version,prompt:'只缩短第一段，第二段保持原样',segment_index:0,artifact_id:first.id,artifact_sha256:first.sha256??first.sha,idempotency_key:'shorten-opening'}});agentRun=target.run;
+  const changed=JSON.parse(JSON.stringify(agentRun.plan));changed.segments[0].end=.7;changed.segments[0].narration='Short opening';changed.body='Short opening\n\nEnding';
+  const edited=await mcp.call('skill_runs.edit',{run_id:agentRun.id,expected_version:agentRun.version,action:'plan',arguments:{plan:changed}});agentRun=edited.run;
+  assert.deepEqual(agentRun.plan.segments[1],originalEnding);
+  const second=await finish();assert.notEqual(second.sha256??second.sha,first.sha256??first.sha);
+  timeline=await readSequence();
+  for(const original of manualClips)assert.deepEqual(timeline.sequence.tracks.flatMap(t=>t.clips).find(c=>c.id===original.id),original);
+  await record('targeted edit preserves the ending and manual clips, then renders a new artifact',{first:first.id,second:second.id});
+  await api('/api/workspace/save','POST',{});
+  const exported=path.join(out,'edited-program.mp4');
+  // Read registered artifact bytes through the existing API, never a guessed disk path.
+  const response=await fetch(base+`/api/skill-runs/${agentRun.id}/artifacts/${second.id}`);assert(response.ok);await fs.writeFile(exported,Buffer.from(await response.arrayBuffer()));
+  const probeResult=JSON.parse(await run('ffprobe',['-v','error','-show_format','-show_streams','-of','json',exported]));assert(Math.abs(Number(probeResult.format.duration)-1.7)<.1);
+  await c.wait(`document.querySelector('.program-monitor video')?.readyState>=2`,60000);
+  const geometry=await c.ev(`(()=>{const monitor=document.querySelector('.program-monitor').getBoundingClientRect(),bar=document.querySelector('.editor-panels-bar').getBoundingClientRect();return {monitor_bottom:monitor.bottom,toolbar_top:bar.top}})()`);assert(geometry.monitor_bottom<=geometry.toolbar_top+1,'program preview must not overlap timeline tools');
+  await c.wait(`document.querySelector('.script-editor-sider')`);await c.screenshot(path.join(out,'agent-edit-desktop.png'));await probe('capture',['-FilePath',path.join(out,'native-agent-edit.png')]);
+  await api('/api/workspace/close','POST',{decision:'save',stop_tasks:true});await api('/api/workspace/open','POST',{path:projectFile});
+  const reopened=await workspace();assert.equal(reopened.document.project.id,project);assert(reopened.document.scripts.find(x=>x.id===scriptResource.script_id).body.includes('仅缩短第一个片段'));
+  await record('saved AVP reopens with the edited timeline and script, exported video is 1.7 seconds');
+  await api('/api/workspace/close','POST',{decision:'save',stop_tasks:true});
+  await c.invoke('stop_runtime');await until(()=>c.invoke('runtime_status'),v=>v.status==='stopped');
+  await c.invoke('restart_runtime');const restarted=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault',60000);assert.equal(restarted.status,'ready',restarted.message);
+  assert.equal(restarted.mcp_url,runtime.mcp_url,'backend restart must retain the installed MCP endpoint');
+  await record('backend restart retains the installed MCP endpoint',{endpoint:restarted.mcp_url});
+  base=restarted.api_base_url;
+  await api('/api/workspace/open','POST',{path:projectFile});
+  const after=await mcp.call('resources.read',{project_id:project,resource_id:scriptResource.id});assert.equal(after.script.script.body,savedScript.script.script.body);
+  assert.equal(mcp.reinitializations,1);
+  await record('same client and URL recover a stale session with automatic reinitialization',{reinitializations:mcp.reinitializations});
+  const configPath=path.resolve(process.argv[5]),config=JSON.parse(await fs.readFile(configPath));
+  const pinned=JSON.parse(await fs.readFile(path.join(config.data_directory,'mcp-endpoint.json')));
+  const stablePort=Number(new URL(runtime.mcp_url).port);assert.equal(pinned.port,stablePort);
+  await api('/api/workspace/close','POST',{decision:'save',stop_tasks:true});
+  await c.invoke('stop_runtime');await until(()=>c.invoke('runtime_status'),v=>v.status==='stopped');
+  const holder=createServer(socket=>socket.destroy());
+  await new Promise((resolve,reject)=>{holder.once('error',reject);holder.listen(stablePort,'127.0.0.1',resolve)});
+  try {
+    await c.invoke('restart_runtime');const conflict=await until(()=>c.invoke('runtime_status'),v=>v.status==='fault',60000);
+    assert(conflict.message.includes('端口'));assert.equal(conflict.mcp_url,null);
+    assert.equal(JSON.parse(await fs.readFile(path.join(config.data_directory,'mcp-endpoint.json'))).port,stablePort);
+    await record('occupied fixed port reports failure without switching ports or publishing another endpoint');
+  } finally {await new Promise(resolve=>holder.close(resolve));}
+  await c.invoke('restart_runtime');const recovered=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault',60000);assert.equal(recovered.status,'ready',recovered.message);assert.equal(recovered.mcp_url,runtime.mcp_url);base=recovered.api_base_url;
+  await api('/api/workspace/open','POST',{path:projectFile});
+  assert.equal((await mcp.call('resources.read',{project_id:project,resource_id:scriptResource.id})).script.script.body,savedScript.script.script.body);
+  await record('releasing the occupied port restores service at the original address');
+  assert.equal(c.errors.length,0,'native WebView must have no page exceptions');
+  if(launched){
+    await api('/api/workspace/close','POST',{decision:'save',stop_tasks:true});
+    await c.invoke('confirm_project_exit');await until(async()=>launched.exitCode,code=>code!==null,30000);c.close();
+    const root=path.dirname(configPath),stdout=await fs.open(path.join(root,'desktop.out.log'),'a'),stderr=await fs.open(path.join(root,'desktop.err.log'),'a');
+    launched=spawn(process.env.VAC_DESKTOP_EXECUTABLE,['--desktop-config',configPath,'--webview-data',path.join(root,'webview'),'--webview-debug-port',String(port)],{windowsHide:true,stdio:['ignore',stdout.fd,stderr.fd]});pid=launched.pid;await stdout.close();await stderr.close();
+    c=await attachDesktop();const fresh=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault',60000);assert.equal(fresh.status,'ready',fresh.message);assert.equal(fresh.mcp_url,runtime.mcp_url);base=fresh.api_base_url;
+    const visible=JSON.parse(await probe('inspect'));assert(visible.visible&&visible.handle);
+    await api('/api/workspace/open','POST',{path:projectFile});
+    assert.equal((await mcp.call('resources.read',{project_id:project,resource_id:scriptResource.id})).script.script.body,savedScript.script.script.body);
+    assert.equal(mcp.reinitializations,3);
+    await record('full desktop exit/relaunch retains the URL and the existing client reconnects automatically',{reinitializations:mcp.reinitializations});
+  }
+  assert.equal(c.errors.length,0,'native WebView must have no page exceptions');
+  report.mode='visible_tauri_live_mcp_script_edit_and_persistent_endpoint';
+};
 const attachDesktop = async () => {
   const deadline=Date.now()+120000;let error;
   while(Date.now()<deadline){
@@ -214,6 +320,10 @@ try {
   c=await attachDesktop();
   await c.ev(`(()=>{window.__VAC_TEST_MESSAGES=[];new MutationObserver(()=>{for(const n of document.querySelectorAll('.ant-message-notice-content')){const text=n.textContent;if(!window.__VAC_TEST_MESSAGES.includes(text))window.__VAC_TEST_MESSAGES.push(text)}}).observe(document.body,{subtree:true,childList:true})})()`);
   const status=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(status.status,'ready',status.message);base=status.api_base_url;report.runtime=status;
+  if(process.env.VAC_VERIFY_AGENT_EDIT==='1'){
+    const visible=JSON.parse(await probe('inspect'));assert(visible.visible&&visible.handle);
+    await verifyAgentEdit(status);
+  }else{
   originalClipboard=await c.invoke('clipboard_read_text');
   await c.wait(`document.querySelector('.project-home')`);const window=JSON.parse(await probe('inspect'));assert(window.visible&&window.handle);await record('visible home and real desktop bridge',window);await c.screenshot(path.join(out,'home.png'));if(await c.ev(`document.body.innerText.includes('跳过引导')`))await click('跳过引导');
   await record('native title bar matches the window background; ready status is at the bottom on the home page',await verifyWindowChrome('Video Auto Cut'));
@@ -316,7 +426,9 @@ try {
   await c.invoke('stop_runtime');const stopped=await until(()=>c.invoke('runtime_status'),v=>v.status==='stopped');await c.wait(`document.querySelector('.desktop-runtime-footer [aria-label="后台服务状态"]')?.textContent.includes(${JSON.stringify(stopped.message)})`);const stoppedLayout=await c.ev(`(()=>{const footer=document.querySelector('.desktop-runtime-footer');return {bottom:footer?.getBoundingClientRect().bottom,height:innerHeight,topBar:!!document.querySelector('.desktop-runtime-bar')}})()`);assert(!stoppedLayout.topBar&&Math.abs(stoppedLayout.bottom-stoppedLayout.height)<2);await record('stopped service retains its status in the bottom footer',stoppedLayout);
   await click('重新启动');const resumed=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(resumed.status,'ready',resumed.message);base=resumed.api_base_url;await until(workspace,v=>!v.document);await record('runtime restart restores the home footer without a top status row',await verifyWindowChrome('Video Auto Cut'));
   }
-  report.result='passed';
+  }
+  report.result=checks.every(x=>x.pass)?'passed':'partial';
+  if(report.result==='partial')process.exitCode=1;
 } catch(error){report.result='failed';report.error=String(error.stack||error);report.messages=await c?.ev('window.__VAC_TEST_MESSAGES').catch(()=>[]);await c?.screenshot(path.join(out,'failure.png')).catch(()=>{});await fs.writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));if(process.env.VAC_DESKTOP_KEEP_FAILURE==='1'){console.log('Diagnostic hold: '+report.error);await until(async()=>{try{await fs.access(path.join(out,'resume-validation'));return true}catch{return false}},Boolean,180000).catch(()=>{});}throw error;}
 finally{
   await fs.writeFile(path.join(out,'results.json'),JSON.stringify(report,null,2));

@@ -161,11 +161,12 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		step.Error = "tool_failed"
 		r.State = "waiting_human"
 		r.Reason = "tool_failed"
-		if strings.HasPrefix(req.Name, "draw.") && errors.Is(toolErr, model.ErrArgument) {
+		if errors.Is(toolErr, model.ErrArgument) {
 			r.State = "queued"
 			r.Reason = "invalid_tool_arguments"
 		}
 		if errors.Is(toolErr, model.ErrConflict) {
+			r.State = "queued"
 			r.Reason = "context_changed"
 		}
 		if errors.Is(toolErr, model.ErrForbidden) {
@@ -358,6 +359,24 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		return data, err
 	case "media.list":
 		return respond(snap.Media)
+	case "scripts.voice":
+		var req SkillVoiceRequest
+		if e := decodeSkillArgs(args, &req); e != nil {
+			return nil, e
+		}
+		if !s.WorkspaceEnabled() && !r.ExternalAuthorized {
+			req.AcceptExternal = false
+		}
+		if e := s.applySkillVoice(r, req); e != nil {
+			return nil, e
+		}
+		return respond(r.Plan)
+	case "run.steps":
+		steps, e := s.st.SkillSteps(ctx, r.ID)
+		if e != nil {
+			return nil, e
+		}
+		return respond(steps)
 	case "artifacts.list":
 		return respond(r.Artifacts)
 	case "summaries.get":
@@ -413,15 +432,14 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		r.Plan = &plan
 		r.EditRequest = nil
 		r.Inspection = nil
-		r.State = "waiting_human"
-		r.Reason = "plan_confirmation"
+		s.confirmTaskPlan(r)
 		return respond(plan)
 	case "renders.create":
 		if r.EditRequest != nil {
 			return nil, model.ErrInvalidState
 		}
 		r.Inspection = nil
-		if r.Plan == nil || !isHumanActor(r.Plan.FinalizedBy) || r.Plan.FinalizedAt == nil {
+		if r.Plan == nil || r.Plan.FinalizedBy == "" || r.Plan.FinalizedAt == nil {
 			return nil, model.ErrForbidden
 		}
 		if err := s.bindHarnessReferences(r.Plan); err != nil {

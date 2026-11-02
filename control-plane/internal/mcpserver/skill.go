@@ -26,6 +26,19 @@ type skillClaimArgs struct {
 	RunID   string `json:"run_id"`
 	Version int    `json:"expected_version"`
 }
+
+type skillUpdateArgs struct {
+	RunID   string `json:"run_id"`
+	Version int    `json:"expected_version"`
+	Action  string `json:"action"`
+}
+
+type skillEditArgs struct {
+	RunID     string         `json:"run_id"`
+	Version   int            `json:"expected_version"`
+	Action    string         `json:"action"`
+	Arguments map[string]any `json:"arguments"`
+}
 type skillToolArgs struct {
 	RunID   string `json:"run_id"`
 	Request struct {
@@ -56,6 +69,49 @@ func requireSkillSessionRole(ctx context.Context, svc *service.Service, id strin
 func registerSkillTools(server *mcp.Server, svc *service.Service) {
 	addProjectTimeline(server, svc)
 	addProjectResources(server, svc)
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.edit", Description: "Edit this Agent's task without human confirmation. Actions: plan ({plan}), voice ({segment_index,enabled,settings,offset_seconds?,accept_external?}), target (targeted-edit request). Returns {run}."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillEditArgs) (*mcp.CallToolResult, map[string]any, error) {
+		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
+			return nil, nil, e
+		}
+		raw, e := json.Marshal(a.Arguments)
+		if e != nil {
+			return nil, nil, e
+		}
+		var r skill.Run
+		switch a.Action {
+		case "plan":
+			var req service.SkillPlanSave
+			if e = json.Unmarshal(raw, &req); e == nil {
+				req.ExpectedVersion = a.Version
+				r, e = svc.SaveSkillPlan(ctx, mcpSkillActor(ctx), a.RunID, req)
+			}
+		case "voice":
+			var req service.SkillVoiceRequest
+			if e = json.Unmarshal(raw, &req); e == nil {
+				req.ExpectedVersion = a.Version
+				r, e = svc.SaveSkillVoice(ctx, mcpSkillActor(ctx), a.RunID, req)
+			}
+		case "target":
+			var req service.SkillEditRequest
+			if e = json.Unmarshal(raw, &req); e == nil {
+				req.ExpectedVersion = a.Version
+				r, e = svc.RequestSkillEdit(ctx, mcpSkillActor(ctx), a.RunID, req)
+			}
+		default:
+			return nil, nil, model.ErrArgument
+		}
+		return nil, map[string]any{"run": r}, e
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.update", Description: "Confirm a pending plan or resume this Agent's paused run. Actions: finalize, resume. Returns {run}; preserves the Agent's existing execution budget."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillUpdateArgs) (*mcp.CallToolResult, map[string]any, error) {
+		if a.Action != "finalize" && a.Action != "resume" {
+			return nil, nil, model.ErrArgument
+		}
+		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
+			return nil, nil, e
+		}
+		v, e := svc.UpdateSkillRun(ctx, mcpSkillActor(ctx), a.RunID, a.Action, a.Version)
+		return nil, map[string]any{"run": v}, e
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "skills.list", Description: "List VAC Skill packages and their declared tool contracts"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, map[string]any, error) {
 		v, e := svc.ListSkills(ctx)
 		return nil, map[string]any{"skills": v}, e
@@ -133,7 +189,7 @@ func registerSkillTools(server *mcp.Server, svc *service.Service) {
 		v, e := svc.UpdateSkillRun(ctx, mcpSkillActor(ctx), a.RunID, "cancel", a.Version)
 		return nil, v, e
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Human finalization is never available."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Use skill_runs.update to confirm a pending plan or resume your own run."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
 		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
 			return nil, nil, e
 		}

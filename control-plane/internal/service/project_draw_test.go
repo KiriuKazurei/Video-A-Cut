@@ -18,7 +18,159 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/store"
 )
+
+func TestNativeAgentCorrectsTimelineArgumentsWithoutHumanResume(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	if err := svc.ConfigureSkillHarness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Name: "Autonomous", Path: filepath.Join(root, "autonomous.avp")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible, err := svc.ProjectVisibleSet(ctx, view.Document.Project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := svc.CreateSkillRun(ctx, "agent:draw", skill.RunRequest{ProjectID: view.Document.Project.ID, SequenceID: view.Document.Sequences[0].ID, SkillID: "vac-draw-remotion", Mode: "external_mcp", Strategy: "draw", VisibleSHA: visible.SHA, Goal: "correct a typo", IdempotencyKey: "autonomous"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, _, err = svc.ExecuteSkillTool(ctx, "agent:draw", run.ID, skill.ToolRequest{Name: "timeline.edit", ExpectedVersion: run.Version, IdempotencyKey: "bad-op", Arguments: json.RawMessage(`{"command":{"operations":[{"op":"track.add"}]}}`)})
+	if !errors.Is(err, model.ErrArgument) || run.State != "queued" || run.Reason != "invalid_tool_arguments" {
+		t.Fatalf("argument repair required human: %+v %v", run, err)
+	}
+	run, _, err = svc.ExecuteSkillTool(ctx, "agent:draw", run.ID, skill.ToolRequest{Name: "timeline.read", ExpectedVersion: run.Version, IdempotencyKey: "corrected", Arguments: json.RawMessage(`{}`)})
+	if err != nil || run.State != "queued" {
+		t.Fatalf("owner could not continue: %+v %v", run, err)
+	}
+	current, err := svc.ProjectWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := project.DrawDocument{SchemaVersion: 1, Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}}, DurationFrames: 15, Sources: []project.DrawSource{{ID: "react", Engine: "remotion", Source: "export default ()=>null"}}, Nodes: []project.DrawNode{{ID: "scene", Kind: "source", SourceID: "react", Duration: 15}}}
+	save := service.DrawSaveRequest{Session: current.ID, ExpectedRevision: current.Revision, IdempotencyKey: "unified", Composition: project.DrawComposition{ID: "unified", Name: "Unified Remotion", Document: &doc}}
+	args, _ := json.Marshal(save)
+	run, _, err = svc.ExecuteSkillTool(ctx, "agent:draw", run.ID, skill.ToolRequest{Name: "draw.save", ExpectedVersion: run.Version, IdempotencyKey: "unified", Arguments: args})
+	if err != nil || run.State != "queued" {
+		t.Fatalf("valid unified source mistaken for missing authorization: %+v %v", run, err)
+	}
+}
+
+func TestNativeAgentSharesDesktopPreview(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	sourceRoot, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.ConfigureTTS("python", filepath.Join(sourceRoot, "workers", "python")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(svc.CloseTTS)
+	view, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Name: "Shared preview", Path: filepath.Join(root, "shared.avp")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err = svc.ImportProjectResource(ctx, view.Document.Project.ID, filepath.Join(sourceRoot, "workers", "node", "timeline-cli", "fixtures", "media", "clip_01.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := view.Document.Sequences[0]
+	end := project.Time{Value: 1, Scale: 2}
+	timeline, err := svc.TimelineCommand(ctx, "agent:draw", view.Document.Project.ID, seq.ID, project.Command{Session: view.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "insert", Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: view.Document.Resources[0].ID, SourceOut: &end}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		preview service.SequencePreview
+		err     error
+	}
+	start := make(chan struct{})
+	done := make(chan result, 2)
+	for range 2 {
+		go func() {
+			<-start
+			p, e := svc.CreateSequencePreview(ctx, view.Document.Project.ID, seq.ID, service.SequencePreviewRequest{Session: view.ID, ExpectedRevision: timeline.Sequence.Revision, ContentVersion: timeline.ContentVersion})
+			done <- result{p, e}
+		}()
+	}
+	close(start)
+	a, b := <-done, <-done
+	if a.err != nil || b.err != nil || a.preview.SHA256 == "" || a.preview.SHA256 != b.preview.SHA256 {
+		t.Fatalf("desktop/Agent preview did not share output: %+v %+v", a, b)
+	}
+}
+
+func TestNativeAgentPlanContinuesWithoutHumanFinalization(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	if err := svc.ConfigureSkillHarness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Name: "Autonomous plan", Path: filepath.Join(root, "plan.avp")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := filepath.Abs("../../../workers/node/timeline-cli/fixtures/media/clip_01.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err = svc.ImportProjectResource(ctx, view.Document.Project.ID, fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible, err := svc.ProjectVisibleSet(ctx, view.Document.Project.ID)
+	if err != nil || len(visible.Media) == 0 {
+		t.Fatalf("fixture media: %+v %v", visible, err)
+	}
+	run, err := svc.CreateSkillRun(ctx, "agent:cut", skill.RunRequest{ProjectID: view.Document.Project.ID, SequenceID: view.Document.Sequences[0].ID, SkillID: "video-use", Mode: "external_mcp", AgentRole: "editor", VisibleSHA: visible.SHA, Goal: "cut source", IdempotencyKey: "cut"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(skill.Plan{Body: "Opening", Segments: []skill.Segment{{MediaID: visible.Media[0].ID, Start: 0, End: .5}}})
+	run, _, err = svc.ExecuteSkillTool(ctx, "agent:cut", run.ID, skill.ToolRequest{Name: "scripts.propose", ExpectedVersion: run.Version, IdempotencyKey: "plan", Arguments: body})
+	if err != nil || run.State != "queued" || run.Plan == nil || run.Plan.FinalizedBy != "agent:cut" || run.Plan.FinalizedAt == nil {
+		t.Fatalf("native plan blocked Agent: %+v %v", run, err)
+	}
+}
+
+func TestDrawCreateRefreshesLegacyNativeMediaFingerprint(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	if err := svc.ConfigureSkillHarness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Name: "Restored native", Path: filepath.Join(root, "restored.avp")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, _ := storesByService.Load(svc)
+	st := value.(*store.Store)
+	if _, err = st.DB().ExecContext(ctx, "UPDATE vac_projects SET body=json_set(body,'$.confirmed_sha','legacy-fingerprint') WHERE id=?", view.Document.Project.ID); err != nil {
+		t.Fatal(err)
+	}
+	visible, err := svc.ProjectVisibleSet(ctx, view.Document.Project.ID)
+	if err != nil || !visible.Confirmed {
+		t.Fatalf("native visible set: %+v %v", visible, err)
+	}
+	req := skill.RunRequest{ProjectID: view.Document.Project.ID, SequenceID: view.Document.Sequences[0].ID, SkillID: "vac-draw-remotion", Mode: "external_mcp", Strategy: "draw", VisibleSHA: visible.SHA, Goal: "draw restored project", IdempotencyKey: "restored-native"}
+	run, err := svc.CreateSkillRun(ctx, "agent:draw", req)
+	if err != nil {
+		t.Fatalf("native read model is current but creation still compares obsolete fingerprint: %v", err)
+	}
+	if run.VisibleSHA != visible.SHA {
+		t.Fatal("run did not bind the current fingerprint")
+	}
+	req.VisibleSHA = "legacy-fingerprint"
+	req.IdempotencyKey = "reject-old"
+	if _, err = svc.CreateSkillRun(ctx, "agent:draw", req); !errors.Is(err, model.ErrForbidden) {
+		t.Fatalf("old caller fingerprint must still be rejected: %v", err)
+	}
+}
 
 // The model endpoint is a local fixture: it proves streamed progress reaches
 // the service while generation is still in flight without storing model text.
@@ -226,7 +378,7 @@ func TestDrawSourceTransactions(t *testing.T) {
 	other.ContentVersion = ""
 	args, _ := json.Marshal(service.DrawSaveRequest{Session: current.ID, ExpectedRevision: current.Revision, IdempotencyKey: "wrong-engine", Composition: other})
 	_, _, e = svc.ExecuteSkillTool(ctx, "agent:draw", run.ID, skill.ToolRequest{Name: "draw.save", Arguments: args, ExpectedVersion: run.Version, IdempotencyKey: "wrong-engine"})
-	if !errors.Is(e, model.ErrForbidden) {
+	if !errors.Is(e, model.ErrArgument) {
 		t.Fatalf("engine restriction: %v", e)
 	}
 	list, _ := svc.DrawCompositions(pid)
@@ -265,7 +417,7 @@ func TestDrawBuiltinSourceCAS(t *testing.T) {
 			sawRepairFeedback.Store(true)
 		}
 		if n == 1 {
-			decision = map[string]any{"tool": "draw.save", "arguments": map[string]any{"session": view.ID, "expected_revision": 0, "idempotency_key": "invalid", "composition": map[string]any{"document": map[string]any{"images": []any{}}}}}
+			decision = map[string]any{"tool": "timeline.edit", "arguments": map[string]any{"command": map[string]any{"operations": []any{map[string]any{"op": "track.add"}}}}}
 		}
 		if n == 2 {
 			c := project.DrawComposition{ID: "builtin-source", Name: "Builtin title", Engine: "remotion", Source: "export default ()=>null", Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}, DurationFrames: 30}

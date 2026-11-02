@@ -9,10 +9,10 @@ import { SECTION_STAGE } from '../pipeline';
 import { StageDot } from '../components/PipelineContext';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { Monitor, type PreviewSource } from '../components/Monitor';
-import { AcceptancePanel, useWorkflowData } from '../components/WorkflowPanel';
+import { useWorkflowData } from '../components/WorkflowPanel';
 import { DeliveryPanel, filePreview, useDeliveryFiles } from '../components/DeliveryPanel';
 import { PreviewPanel } from '../components/PreviewPanel';
-import { NoAssetEmpty } from '../components/NoAssetEmpty';
+
 import { DeliveryVariantPanel } from '../components/DeliveryVariantPanel';
 import { isCurrentMp4, previewApi, previewFileURL, previewQueryKey } from '../previewContracts';
 import { TaskOrchestrator } from '../components/TaskOrchestrator';
@@ -45,7 +45,7 @@ interface ExportWorkspaceProps {
 }
 
 /**
- * 导出工作区：交付 / 人工验收 / 任务监控
+ * 导出工作区：交付 / 任务监控
  * P1-03 修复：恢复完整任务派发表单与任务监控可达入口
  */
 export function ExportWorkspace({ route, navigate, asset, selection, audit, task, watchedTaskId, onWatchTask, createTask }: ExportWorkspaceProps) {
@@ -199,7 +199,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                         label="节目" 
                         preview={preview} 
                         emptyTitle={asset ? '还没有可预览的成片' : '请先选择素材'}
-                        emptyHint="生成或导入成片后，可在这里预览、试听，再到「人工验收」勾选通过。"
+                        emptyHint="生成或导入成片后，可直接在编辑页面查看效果，也可在这里预览和下载。"
                       />
                       <PreviewPanel
                         asset={asset}
@@ -207,7 +207,6 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                         onSelectPreview={setActiveMp4Preview}
                         activePreviewSrc={activeMp4Preview?.src}
                       />
-                      {asset && <AcceptancePanel key={asset.asset_id} assetId={asset.asset_id} selection={selection} />}
                       <DeliveryVariantPanel asset={asset} selection={selection} onSelectPreview={setActiveMp4Preview} />
                     </Flex>
                   </Col>
@@ -221,15 +220,6 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                   </Col>
                 </Row>
               )}
-              
-              {section.id === 'acceptance' && asset && (
-                <AcceptancePanel key={asset.asset_id} assetId={asset.asset_id} selection={selection} />
-              )}
-              
-              {section.id === 'acceptance' && !asset && (
-                <NoAssetEmpty navigate={navigate} description="还没有选中素材，没有可验收的成片。" />
-              )}
-              
               {section.id === 'tasks' && (
                 <Flex vertical gap={16}>
                   <Card 

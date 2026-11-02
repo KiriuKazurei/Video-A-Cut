@@ -248,14 +248,6 @@ func TestSkillLightweightBuiltinFromTranscriptToMP4(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err = svc.RunBuiltinAgent(ctx, "human:test", r.ID, r.Version)
-	if err != nil || r.State != "waiting_human" {
-		t.Fatalf("draft %+v %v", r, err)
-	}
-	r, err = svc.UpdateSkillRun(ctx, "human:test", r.ID, "finalize", r.Version)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err = svc.RunBuiltinAgent(ctx, "human:test", r.ID, r.Version)
 	if err != nil || r.State != "succeeded" {
 		t.Fatalf("delivery %+v %v", r, err)
 	}

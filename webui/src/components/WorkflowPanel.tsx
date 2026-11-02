@@ -12,12 +12,11 @@ import { usePreview } from './Monitor';
 import { Timeline, type TimelineClip } from './Timeline';
 import { ValueSelect } from './ui';
 import { createWorkflowPreview, latestWorkflowRun, reviewMatchesCurrent, samePreviewContext, workflowPreviewContext } from '../previewContext';
-import { EvidenceSummaryCard } from './EvidenceSummaryCard';
+
 import { previewProductKey } from '../previewContracts';
-import { buildEvidenceDigest } from '../evidenceSummary';
+
 import { REVIEW_SHORTCUT_EVENT, type ReviewShortcutAction } from '../hooks/useKeyboardShortcuts';
 
-const checks = [['content_fidelity', '内容是否正确'], ['evidence_trace', '画面与素材是否对得上'], ['browser', '浏览器里能否正常操作'], ['premiere', '能否导入 Premiere'], ['cuts_fps', '切点与帧率是否正常'], ['subtitle_audio_duck', '字幕、旁白与压低是否正常']] as const;
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请刷新后重试';
 const PAGE = 20;
 
@@ -41,14 +40,13 @@ export function useWorkflowData(assetId: string, selection: RunSelection) {
   const run = runs.data?.find(r => r.run_id === selection.runId) ?? runs.data?.[0];
   const snapshot = useQuery({ queryKey: ['workflow', run?.run_id], queryFn: () => api.getWorkflow(run!.run_id), enabled: Boolean(run) });
   const reviewQuery = useQuery({ queryKey: ['review', run?.run_id], queryFn: () => api.reviewWorkflow(run!.run_id), enabled: Boolean(run) });
-  const acceptance = useQuery({ queryKey: ['acceptance', run?.run_id], queryFn: () => api.listAcceptance(run!.run_id), enabled: Boolean(run) });
   const [known, setKnown] = useState<Record<string, WorkflowRun>>({});
   const identity = `${assetId}\0${run?.run_id ?? ''}`;
   const current = latestWorkflowRun(assetId, run?.run_id, [reviewQuery.data?.run, snapshot.data?.run, run, known[identity]]);
   // Guarded render-time adjustment prevents a stale version being committed to the UI.
   if (current && current !== known[identity]) setKnown(previous => ({ ...previous, [identity]: current }));
   const review = { ...reviewQuery, data: reviewMatchesCurrent(reviewQuery.data, current) ? reviewQuery.data : undefined };
-  return { runs, run, snapshot, review, acceptance, current };
+  return { runs, run, snapshot, review, current };
 }
 
 function useWorkflowAction() {
@@ -67,11 +65,11 @@ const decisionColor = (decision?: string) => decision === 'confirmed' ? 'success
 
 const STATUS_ZH: Record<string, string> = {
   created: '已创建', running: '生成中', claimed: '执行中', awaiting_review: '等待审查',
-  ready_for_acceptance: '待验收', succeeded: '已成功', failed: '失败', cancelled: '已取消'
+  ready_for_acceptance: '可交付', succeeded: '已成功', failed: '失败', cancelled: '已取消'
 };
 const STAGE_ZH: Record<string, string> = {
   recognize: '识别', sort: '排序', scene_review: '场景审查', narrate: '撰稿',
-  draft_review: '解说审查', tts: '配音', subtitle: '字幕', mix: '混音', export: '导出', acceptance: '验收'
+  draft_review: '解说审查', tts: '配音', subtitle: '字幕', mix: '混音', export: '导出', acceptance: '已生成'
 };
 const TASK_ZH: Record<string, string> = {
   succeeded: '已成功', failed: '失败', cancelled: '已取消', running: '运行中', claimed: '已领取',
@@ -265,7 +263,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
       </Flex>
       <Typography.Text type="secondary">{isReview
         ? '先看画面、确认场景，再批准解说。点时间线或卡片可在监视器预览。快捷键：C 确认场景 · A 批准解说 · N 跳到下一个待处理。'
-        : '在这里修改场景名称、顺序和解说文字，保存后会生成新修订并重新审查。逐项确认与批准可在导出验收完成；成片效果请在编辑时间线的节目监视器查看。'}
+        : '在这里修改场景名称、顺序和解说文字，保存后会生成新修订并重新审查。成片效果请在编辑时间线的节目监视器查看。'}
         {' '}<Tooltip title="「证据」是系统从素材里截取的取样画面，说明为什么识别出这个场景；点缩略图可在节目监视器查看。"><span className="jargon-hint"><QuestionCircleOutlined /> 什么是证据</span></Tooltip></Typography.Text>
       {isReview && current && (sceneGate || draftGate) && <Alert type="info" showIcon className="review-todo"
         message={sceneGate ? `还有 ${pendingScenes.length} 个场景待确认` : `还有 ${pendingLines.length} 段解说待批准`}
@@ -378,7 +376,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
               </Form.Item>
               <Button danger disabled={busy || ['cancelled', 'ready_for_acceptance'].includes(current.status) || !note.trim()} onClick={() => invoke(() => api.cancelWorkflow(current.run_id, current.version, note))}>取消流程</Button>
               <Button disabled={busy || current.status !== 'failed'} onClick={() => invoke(() => api.retryWorkflow(current.run_id, current.version, current.stage, crypto.randomUUID()))}>重试失败阶段</Button>
-              {current.status === 'ready_for_acceptance' && onGoExport && <Button type="primary" ghost icon={<RightOutlined />} iconPosition="end" onClick={onGoExport}>前往导出与验收</Button>}
+              {current.status === 'ready_for_acceptance' && onGoExport && <Button type="primary" ghost icon={<RightOutlined />} iconPosition="end" onClick={onGoExport}>前往导出</Button>}
               {generating && onGoTasks && <Button ghost icon={<RightOutlined />} iconPosition="end" onClick={onGoTasks}>查看生成任务</Button>}
             </Flex>
             {snapshot.data?.stages.length ? <Steps size="small" className="stage-pipeline" aria-label="阶段任务" responsive
@@ -405,155 +403,6 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
     </Flex>
   </Card>;
 }
-
-/** 导出页：此流程的交付 ZIP 与按修订记录的人工验收（API-39~41）。 */
-export function AcceptancePanel({ assetId, selection }: { assetId: string; selection: RunSelection }) {
-  const [note, setNote] = useState('');
-  const { runs, run, snapshot, acceptance, current } = useWorkflowData(assetId, selection);
-  const { invoke, busy, failure } = useWorkflowAction();
-  const ready = current?.status === 'ready_for_acceptance';
-  const revisionId = current?.current_revision_id ?? '';
-  const runId = current?.run_id ?? '';
-
-  const previewList = useQuery({
-    queryKey: previewQueryKey(assetId, runId, revisionId),
-    queryFn: () => previewApi.list(runId),
-    enabled: Boolean(assetId && runId)
-  });
-  const deliveryFiles = useQuery({
-    queryKey: ['deliveryFiles', assetId],
-    queryFn: () => api.listDeliveryFiles(assetId),
-    enabled: Boolean(assetId)
-  });
-
-  const downloadSummary = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({
-      run_id: current!.run_id,
-      asset_id: assetId,
-      content_mode: current!.content_mode,
-      current_revision_id: current!.current_revision_id,
-      profile_binding: snapshot.data?.profile_binding ?? null,
-      records: acceptance.data ?? [],
-      preview: previewList.data ?? null,
-      delivery_file_count: deliveryFiles.data?.length ?? 0
-    }, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'acceptance-summary.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  const latestFor = (item: string) => acceptance.data?.filter(r => r.check_item === item && r.export_revision_id === revisionId).at(-1);
-  /** 仅 pending 算剩余；已 failed 不再被批量通过扫入（避免把失败项悄悄改成通过）。 */
-  const remaining = checks.filter(([item]) => {
-    const r = latestFor(item)?.result;
-    return r !== 'passed' && r !== 'failed';
-  });
-  const failedCount = checks.filter(([item]) => latestFor(item)?.result === 'failed').length;
-
-  const srtPreviews = (previewList.data?.previews ?? []).filter(p => previewProductKey(p) === 'srt');
-  const playablePreview = srtPreviews.find(p => p.status === 'succeeded' && !p.invalidated && p.revision_id === revisionId);
-  const previewBusy = srtPreviews.some(p => (p.status === 'queued' || p.status === 'claimed' || p.status === 'running') && p.revision_id === revisionId && !p.invalidated);
-  const blockedHint = previewList.data?.checks?.filter(c => c.status === 'blocked').map(c => c.message).filter(Boolean).join('；') || undefined;
-  const mp4Art = playablePreview?.artifacts?.find(a => a.key === 'mp4' || a.kind === 'preview');
-
-  const digest = buildEvidenceDigest({
-    workflowStatus: current?.status,
-    workflowStage: current?.stage,
-    revisionId: revisionId || undefined,
-    runId: runId || undefined,
-    checkResults: checks.map(([item, label]) => ({ item, label, result: latestFor(item)?.result })),
-    preview: {
-      hasPlayable: Boolean(playablePreview),
-      inProgress: previewBusy,
-      canStart: previewList.data?.can_start,
-      blockedHint,
-      previewId: playablePreview?.preview_id,
-      inputSha256: playablePreview?.input_sha256,
-      mp4Sha256: mp4Art?.sha256
-    },
-    delivery: {
-      fileCount: deliveryFiles.data?.length ?? 0,
-      hasPlayable: (deliveryFiles.data ?? []).some(f => f.playable)
-    },
-    packageDownloadReady: ready
-  });
-
-  const recordOne = (item: string, result: 'passed' | 'failed') =>
-    invoke(() => api.recordAcceptance(current!.run_id, { expected_version: current!.version, check_item: item, result, note: note.trim() || undefined }));
-  const passRemaining = () => invoke(async () => {
-    // 每条记录会使 run.version +1，批量须递增 expected_version（无 bulk API）；中途失败保留已写入项并报告进度
-    let version = current!.version;
-    let written = 0;
-    const total = remaining.length;
-    try {
-      for (const [item] of remaining) {
-        await api.recordAcceptance(current!.run_id, { expected_version: version, check_item: item, result: 'passed', note: note.trim() || undefined });
-        version += 1;
-        written += 1;
-      }
-    } catch (err) {
-      throw new Error(`批量通过中断：已写入 ${written}/${total} 项。${errorText(err)}`);
-    }
-  });
-
-  return <Card size="small" className="acceptance-panel" aria-labelledby="acceptance-title" title={<span id="acceptance-title">人工验收</span>}
-    extra={current && <Tag color={statusColor(current.status)}>{STATUS_ZH[current.status] ?? current.status}</Tag>}>
-    <Flex vertical gap={12}>
-      <RunPicker runs={runs.data} run={run} selection={selection} busy={runs.isFetching} />
-      {(failure || runs.error || acceptance.error) && <Alert type="error" showIcon role="alert" message={failure || errorText(runs.error || acceptance.error)} />}
-      {runs.isSuccess && !current && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="这个素材还没有可验收的成片。请先完成「运行准备」并生成内容。" />}
-      {current && <>
-        <EvidenceSummaryCard digest={digest} />
-        <Space wrap>
-          {ready ? <Button type="primary" icon={<DownloadOutlined />} href={apiURL(`/api/workflows/${encodeURIComponent(current.run_id)}/delivery.zip`)}>下载成片包</Button>
-            : <Typography.Text type="secondary">成片包将在开放验收后提供。</Typography.Text>}
-          <Popconfirm
-            title="把剩下未确认的项都记为通过？"
-            description={`将写入 ${remaining.length} 项（已标「未通过」的 ${failedCount} 项不会改动）。中途出错会保留已写入的项。`}
-            disabled={busy || !ready || remaining.length === 0}
-            onConfirm={() => passRemaining()}
-            okText="全部通过"
-            cancelText="取消"
-          >
-            <Button type="primary" ghost disabled={busy || !ready || remaining.length === 0}>全部通过剩余 ({remaining.length})</Button>
-          </Popconfirm>
-          <Button size="small" disabled={acceptance.isLoading || Boolean(acceptance.error)} onClick={downloadSummary}>下载验收摘要</Button>
-        </Space>
-        <Form.Item label="备注（点「不通过」时必填）" layout="vertical" style={{ marginBottom: 0 }}>
-          <Input aria-label="验收备注" value={note} onChange={e => setNote(e.target.value)} placeholder="例如：第 12 秒切点不准" />
-        </Form.Item>
-        {busy && <Typography.Text type="secondary" role="status">正在保存，请稍候…</Typography.Text>}
-        <List size="small" bordered className="acceptance-list" dataSource={[...checks]} renderItem={([item, label]) => {
-          const row = latestFor(item);
-          const state = row?.result === 'passed' ? 'passed' : row?.result === 'failed' ? 'failed' : 'pending';
-          return <List.Item key={item} className={`acceptance-row is-${state}`} actions={(['passed', 'failed'] as const).map(result => <Button key={result} size="small" className="vac-cta" type={result === 'passed' ? 'primary' : 'default'} ghost={result === 'passed'} danger={result === 'failed'}
-            disabled={busy || !ready || (result === 'failed' && !note.trim())}
-            onClick={() => recordOne(item, result)}>{result === 'passed' ? '通过' : '不通过'}</Button>)}>
-            <List.Item.Meta
-              title={<span>{label}</span>}
-              description={row
-                ? <Space size={4} wrap>
-                    <Tag color={state === 'passed' ? 'success' : state === 'failed' ? 'error' : 'default'}>{state === 'passed' ? '通过' : state === 'failed' ? '未通过' : row.result}</Tag>
-                    {row.note && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{row.note}</Typography.Text>}
-                  </Space>
-                : <Tag>待确认</Tag>} />
-          </List.Item>;
-        }} />
-        <Collapse size="small" items={[
-          { key: 'history', label: `历史记录（${acceptance.data?.length ?? 0} 条）`,
-          children: <List size="small" dataSource={acceptance.data ?? []} locale={{ emptyText: '暂无记录' }} renderItem={r => <List.Item key={r.id}>
-            <Flex gap={8} wrap align="center" style={{ width: '100%' }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.created_at}</Typography.Text>
-              <Typography.Text code style={{ fontSize: 12 }}>{shortId(r.export_revision_id)}</Typography.Text>
-              <Tag bordered={false}>{checks.find(c => c[0] === r.check_item)?.[1] ?? r.check_item}</Tag>
-              <Tag color={r.result === 'passed' ? 'success' : r.result === 'failed' ? 'error' : 'default'}>{r.result === 'passed' ? '通过' : r.result === 'failed' ? '未通过' : r.result}</Tag>
-              {r.note && <Typography.Text type="secondary" style={{ flex: '1 1 100%' }}>{r.note}</Typography.Text>}
-            </Flex>
-          </List.Item>} /> }
-        ]} />
-      </>}
-    </Flex>
-  </Card>;
-}
-
 
 function SceneEdit({ scene, disabled, save }: { scene: Scene; disabled: boolean; save: (fields: Record<string, unknown>) => void }) {
   const [label, setLabel] = useState(scene.label || ''); const [rank, setRank] = useState<number | null>(scene.sequence_rank ?? null);

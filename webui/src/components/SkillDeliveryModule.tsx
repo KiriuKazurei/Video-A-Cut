@@ -87,7 +87,7 @@ export function SkillDeliveryModule() {
       <Button type="primary" disabled={!enabled || !run.data?.plan?.finalized_by} loading={deliver.isPending} onClick={() => deliver.mutate()}>
         导出当前定稿
       </Button>
-      {run.data?.plan && !run.data.plan.finalized_by && <Typography.Text type="secondary">计划尚未人工定稿，不能把产物当作正式同版交付。</Typography.Text>}
+      {run.data?.plan && !run.data.plan.finalized_by && <Typography.Text type="secondary">计划尚未准备完成，不能把产物当作正式同版交付。</Typography.Text>}
       {deliver.isError && !isVersionConflict(deliver.error) && <Typography.Text type="danger">{errorText(deliver.error)}</Typography.Text>}
     </Flex>
   </Card>;

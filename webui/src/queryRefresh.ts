@@ -6,6 +6,7 @@ import type { QueryClient } from '@tanstack/react-query';
  * prepared、workflows、workflow、review、acceptance、ingest。
  */
 export const REFRESH_DOMAINS = [
+ 'external-agent-status',
  'project-workspace', 'draw-compositions', 'resource-text', 'timeline','sequence-preview','reference-directory','source-text','resource-waveform','resource-loudness',
  'vu-projects','vu-project','vu-visible','vu-skills','vu-runs','vu-run','vu-context',
   'assets',
@@ -120,6 +121,7 @@ function extractFromObject(obj: Record<string, unknown>): EventPayloadMeta {
 
 /** 支持的所有 SSE 事件名单 */
 export const SUPPORTED_SSE_EVENTS = [
+ 'agent.status.changed',
  'workspace.draw.preview',
  'workspace.skill.progress',
  'workspace.changed','workspace.saved','resource.changed','workspace.timeline.changed','workspace.timeline.import-failed',
@@ -159,6 +161,7 @@ export function handleSSEEvent(
 ): Promise<void[]> {
   const meta = extractEventMeta(data);
   const promises: Promise<void>[] = [];
+  if (eventName === 'agent.status.changed') return Promise.all([queryClient.invalidateQueries({ queryKey: ['external-agent-status'], refetchType: 'none' })]);
   if(eventName==='workspace.draw.preview'){
     if(typeof window!=='undefined'){
       try{const detail=typeof data==='string'?JSON.parse(data):data;window.dispatchEvent(new CustomEvent('vac:draw-preview-state',{detail}));}catch{/* A malformed progress event cannot invalidate a valid frame. */}

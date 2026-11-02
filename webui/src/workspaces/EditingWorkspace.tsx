@@ -109,7 +109,7 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
   )}
   <Flex className="editor-panels-bar" align="center" gap={8} wrap>
    <Typography.Text type="secondary">时间线</Typography.Text>
-   <Button size="small" type="link" onClick={()=>window.dispatchEvent(new Event('vac:open-script-dock'))}>脚本工作台</Button>
+   <Button size="small" type="link" onClick={()=>navigate({workspace:'script'})}>脚本工作台</Button>
    <Button size="small" type="link" onClick={()=>navigate(drawRoute({ project: p.session?.document?.project.id, engine: 'hyperframes', focus: 'inspector' }))}>绘制</Button>
    <Space><Button size="small" icon={<PlusOutlined/>} onClick={()=>void e.manageSequence('duplicate',e.sequenceId).catch(()=>{})}>复制序列</Button>{e.pending&&<Typography.Text type="secondary">正在提交编辑…</Typography.Text>}</Space>
   </Flex>

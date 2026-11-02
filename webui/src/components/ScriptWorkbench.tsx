@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, Checkbox, Collapse, Flex, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Tag, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { api } from '../api';
+import { projectApi } from '../projectApi';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { errorText } from './ui';
 import { initialScriptSegment, reconcileScriptSegments, scriptTokens, type ScriptDocument, type ScriptRevision, type ScriptSegment, type ScriptWorkbenchView } from '../scriptWorkbench';
@@ -16,8 +17,10 @@ import type { ReferenceCandidate, ScriptReference } from '../timelineContracts';
 import { candidateLabel, insertReference, rebaseReferences, synchronizeReferenceNames } from '../scriptReferences';
 import { applyAuthoringInsert, CHEATSHEET, EFFECT_INSERTS, invalidReplacements, PARAGRAPH_BREAK, paragraphTemplate, SUBTITLE_INSERT, type AuthoringInsert } from '../scriptAuthoring.ts';
 import { ScriptTimelineMarkers } from './ScriptTimelineMarkers';
+import { ScriptAgentHandoff } from './ScriptAgentHandoff';
+import { scriptAgentHandoff } from '../scriptWorkbench';
 
-export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true, variant = 'page' }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean; /** dock = compact side panel; timeline stays primary */ variant?: 'page' | 'dock' }) {
+export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = true, readOnly = false, variant = 'page' }: { assetId: string; navigate?: (route: Partial<RouteState>) => void; selectedScriptId?: string; active?: boolean; readOnly?:boolean; /** dock = compact side panel; timeline stays primary */ variant?: 'page' | 'dock' }) {
   const client = useQueryClient();
   const projectWorkspace = useProjectWorkspace();
   const sequenceEditor=useSequenceEditor();
@@ -49,7 +52,9 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   const [failure, setFailure] = useState('');
   const [notice, setNotice] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [handoffBusy,setHandoffBusy]=useState(false);
   const [history, setHistory] = useState<ScriptRevision>();
+  const [showSegments,setShowSegments]=useState(false);
   const overlay = useRef<HTMLPreElement>(null);
   const stop = useRef<AbortController | null>(null);
   const locked = useRef(false);
@@ -60,6 +65,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   const previousBody = useRef('');
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; stop.current?.abort(); }; }, []);
   const apply = (w: ScriptWorkbenchView) => {
+    if(w.segments?.some(segment=>segment.narration.trim())) setShowSegments(true);
     previousDocument.current = w.document; previousBody.current = w.script.body ?? '';
     setTitle(w.script.title ?? ''); setBody(w.script.body ?? ''); setParseBody(w.script.body ?? '');
     setReferences(w.references ?? []);
@@ -82,7 +88,8 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
   const drafts = paragraphs.map((p, i) => segments[i] ?? initialScriptSegment(p, currentMedia));
   const usableProfiles = (profiles.data ?? []).filter(p => p.content_mode === 'configured');
   const profile = usableProfiles.find(p => p.profile_id === profileId) ?? usableProfiles[0];
-  const consentIdentity = JSON.stringify([assetId, scriptId, record.data?.version, visible.data?.sha256, profile?.profile_id, profile?.revision]);
+  const modelNotice = useQuery({ queryKey: ['script-model-notice', profile?.profile_id, profile?.revision], queryFn: () => api.autoNotice(profile!.profile_id, profile!.revision), enabled: Boolean(profile), retry: false });
+  const consentIdentity = JSON.stringify([assetId, scriptId, record.data?.version, visible.data?.sha256, profile?.profile_id, profile?.revision, modelNotice.data?.profile_sha256]);
   const previousIdentity = useRef(consentIdentity);
   if (previousIdentity.current !== consentIdentity) { previousIdentity.current = consentIdentity; if (consent) setConsent(''); }
   const canParse = Boolean(doc && doc.diagnostics.length === 0 && paragraphs.length && parseBody === body);
@@ -100,8 +107,8 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     await Promise.all(['scripts', 'script-revisions', 'auto', 'workflow', 'audit'].map(k => client.invalidateQueries({ queryKey: [k] })));
   };
   const versionBody = () => ({ expected_version: loadedVersion, visible_set_sha: visible.data!.sha256, references, sequence_id:sequenceEditor.sequenceId });
-  const canEdit = Boolean(scriptId && record.data && visible.data?.confirmed && !mutate.isPending);
-  const busy = mutate.isPending;
+  const canEdit = Boolean(scriptId && record.data && visible.data?.confirmed && !mutate.isPending && !handoffBusy && !readOnly);
+  const busy = mutate.isPending || handoffBusy || readOnly;
   const tokens = useMemo(() => scriptTokens(body), [body]);
   const invalidTokens = useMemo(() => tokens.filter(token => token.kind === 'invalid'), [tokens]);
   const referenceTokens=useMemo(()=>tokens.flatMap(token=>{const match=token.kind==='directive'?/^\{@([^{}]+)\}$/.exec(token.text):null;return match?[{start:token.start,end:token.end,name:match[1]}]:[];}),[tokens]);
@@ -195,12 +202,27 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     } });
   }, [scriptId, dirty, loadedVersion, title, body, references,segments, tts, subtitles, research, visible.data?.sha256, projectWorkspace.registerEditor]);
   const latest = record.data;
+  const saveScript = async () => {
+    if (!scriptId || !latest || locked.current && generating) throw new Error('请等待脚本读取或生成完成');
+    const saved=dirty?await api.saveScript(scriptId,{...versionBody(),title,body,segments:drafts,tts_enabled:tts,subtitles_enabled:subtitles,allow_web_research:research}):latest;
+    if(dirty) await accept(saved);
+    if(projectWorkspace.session?.path) await projectApi.command('save',{expected_session:projectWorkspace.session.id});
+    await projectWorkspace.refresh();
+    return saved;
+  };
+  const prepareAgentTask = async () => {
+    if(locked.current || readOnly) throw new Error('请等待当前操作完成');
+    locked.current=true;
+    setHandoffBusy(true);
+    try { const saved=await saveScript();return scriptAgentHandoff({projectId,scriptId:saved.script.script_id,resourceId:projectWorkspace.session?.document?.resources.find(r=>r.script_id===saved.script.script_id)?.id,version:saved.version,title:saved.script.title??'',body:saved.script.body??'',dirty:false}); }
+    finally { locked.current=false;setHandoffBusy(false); }
+  };
 
   const dock = variant === 'dock';
   return <Card size="small" title={dock ? null : '脚本工作台'} className={`script-workbench${dock ? ' is-dock' : ''}`} data-testid="script-workbench"
-    extra={<Tag>{latest?.script.status === 'finalized' ? '已定稿' : latest?.script.status === 'needs_refinalize' ? '待重新定稿' : '草稿'}</Tag>}>
+    extra={<Tag>{latest?.script.status === 'finalized' ? '可导出' : '草稿'}</Tag>}>
     <Flex vertical gap={dock ? 8 : 12}>
-      {!dock && <Typography.Text type="secondary">空行分段。普通文字是生成要求；花括号指定视频、字幕或画面效果。生成文稿后可逐段修改并人工定稿。</Typography.Text>}
+      {!dock && <Typography.Text type="secondary">先写下创作要求并保存。Agent 可读取脚本，按要求完成编辑；空行分段，花括号可引用素材、字幕或画面效果。</Typography.Text>}
       {dock && <Typography.Text type="secondary" style={{fontSize:12}}>空行分段；{'{@标记}'} 引用时间线。中心时间线可同时剪辑。</Typography.Text>}
       {scriptId && projectWorkspace.session?.document?.scripts.some(script => script.id === scriptId && script.bindings.some(binding => binding.unresolved)) && <Alert type="warning" message="脚本有待关联素材，可继续编辑。使用相关素材生成或渲染前请完成关联。" action={<Button onClick={() => void projectWorkspace.rebindScript(scriptId).catch(reason => setFailure(errorText(reason)))}>关联素材</Button>} />}
       {list.isError && <Alert type="error" message={errorText(list.error)} />}
@@ -212,10 +234,19 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
       {record.isError && <Alert type="error" message={errorText(record.error)} />}
       {scriptId && <Spin spinning={record.isLoading}>
         <Flex vertical gap={12}>
-          {latest && ['expired', 'needs_refinalize'].includes(latest.script.status) && <Alert type="warning" message="这份脚本需要重新确认"
-            description="素材集合或脚本内容已经变化，旧交付不可继续下载。请检查、保存并重新定稿。" />}
+          {latest && ['expired', 'needs_refinalize'].includes(latest.script.status) && <Alert type="warning" message="这份脚本已更新"
+            description="素材集合或脚本内容已经变化，旧交付不可继续下载。请保存当前脚本，后续生成会使用最新修订。" />}
           {dirty && latest?.version !== loadedVersion && <Alert type="warning" message="其他操作已保存了新修订，当前编辑不会覆盖它"
             action={<Popconfirm title="放弃本地编辑并载入最新修订？" onConfirm={() => latest && apply(latest)}><Button>载入最新修订</Button></Popconfirm>} />}
+          <Space wrap>
+            <Button type="primary" disabled={!canEdit || !canParse} onClick={() => invoke(async () => {
+              await saveScript();setNotice('脚本已保存，Agent 可读取当前修订。');
+            })}>保存脚本</Button>
+            <Button onClick={() => void projectWorkspace.exportScript(scriptId).catch(e => setFailure(errorText(e)))}>导出 .avs</Button>
+            {navigate && <Button onClick={() => navigate(drawRoute({ project: projectId, slot: scriptId, engine: 'hyperframes', focus: 'source' }))}>在绘制页打开</Button>}
+            <Tag>{dirty ? '尚未保存' : `已保存 · 修订 ${latest?.version ?? 0}`}</Tag>
+          </Space>
+          <div className="script-compose-layout"><div className="script-compose-editor">
           <label htmlFor="script-title">脚本标题</label>
           <Input id="script-title" value={title} disabled={!canEdit} maxLength={200} onChange={e => { setTitle(e.target.value); changed(); }} />
           <label htmlFor="script-body">脚本指令</label>
@@ -263,7 +294,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
               {CHEATSHEET.map(row => <button key={row.label} type="button" className="script-cheat-row" disabled={!canEdit} onClick={() => place(row.insert)}><code>{row.label}</code><span>{row.hint}</span></button>)}
             </div>
           ) }]} />
-          <ScriptTimelineMarkers canEdit={canEdit} document={doc} segments={drafts} onInsert={insert} />
+          <Collapse size="small" items={[{key:"markers",label:"时间线标记",children:<ScriptTimelineMarkers canEdit={canEdit} document={doc} segments={drafts} onInsert={insert} />}]} />
           {fonts.isError && <Typography.Text type="secondary">暂时无法读取本机字体；可以先编辑脚本，交付前会核验字体。</Typography.Text>}
           {parsed.isError && <Alert type="error" message="语法检查暂不可用，请稍后重试" />}
           {doc && doc.diagnostics.length > 0 && <Alert type="error" role="alert" message="请修正特殊语法" description={doc.diagnostics.map((d, i) => <div key={i}>第 {d.paragraph + 1} 段，第 {d.column} 字：{d.message}</div>)} />}
@@ -272,35 +303,44 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             <Checkbox checked={subtitles} disabled={!canEdit} onChange={e => { setSubtitles(e.target.checked); changed(); }}>自动字幕</Checkbox>
             <Checkbox checked={research} disabled={!canEdit} onChange={e => { setResearch(e.target.checked); changed(); }}>允许联网查证文字知识</Checkbox>
           </Space>
-          <Typography.Text type="secondary">每段可覆盖配音和字幕开关；声音细调在 TTS 专页保存回当前脚本修订。显式字幕始终生效，画面使用当前工程素材。</Typography.Text>
-          <Space wrap>
-            <Button type="primary" disabled={!canEdit || !canParse} onClick={() => invoke(async () => {
-              await accept(await api.saveScript(scriptId!, { ...versionBody(), title, body, segments: drafts,
-                tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research }));
-            })}>保存草稿</Button>
-            <Button onClick={() => void projectWorkspace.exportScript(scriptId).catch(e => setFailure(errorText(e)))}>导出 .avs</Button>
-            {navigate && <Button onClick={() => navigate(drawRoute({ project: projectId, slot: scriptId, engine: 'hyperframes', focus: 'source' }))}>在绘制页打开</Button>}
-            <Tag>{dirty ? '尚未保存' : `已保存 · 修订 ${latest?.version ?? 0}`}</Tag>
-          </Space>
-          {dock ? (
-            <Collapse size="small" defaultActiveKey={[]} items={[{ key: 'advanced', label: 'Agent 出稿 · 分段 · 定稿 · 历史', children: (
-              <Flex vertical gap={8}>
-          <Card size="small" title="让 Agent 理解脚本并出稿">
+          </div><aside className="script-compose-actions" aria-label="脚本生成与Agent交接">
+          <ScriptAgentHandoff task={scriptAgentHandoff({ projectId, scriptId, version: loadedVersion, title, body, dirty })} prepareTask={prepareAgentTask} navigate={navigate} active={active} />
+          <Collapse size="small" items={[{key:"model",label:"使用内部模型生成文稿",children:(
+          <Card size="small" title="发送给内部模型">
             <Flex vertical gap={8}>
-              <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={v => { setProfileId(v); setConsent(''); }}
-                options={usableProfiles.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
-              <Typography.Text type="secondary">将向所选预设发送当前工程素材的抽帧和脚本要求。允许查证时会查询文字资料并保留实际来源；游戏或规则不明确时会先提出问题。</Typography.Text>
-              <Space>
-                <Button disabled={!canEdit || dirty || !canParse || !profile} onClick={() => invoke(async () => {
-                  stop.current = new AbortController();
-                  setGenerating(true);
-                  stop.current.signal.throwIfAborted();
-                  await accept(await api.generateScript(scriptId!, { ...versionBody(), profile_id: profile!.profile_id, profile_revision: profile!.revision, allow_web_research: research }, stop.current.signal));
-                })}>理解脚本并生成文稿</Button>
-                {busy && generating && <Button onClick={() => stop.current?.abort()}>停止生成</Button>}
+              <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={value => { setProfileId(value); setConsent(''); }} options={usableProfiles.map(item => ({ value: item.profile_id, label: `${item.name} · v${item.revision} · ${item.narration.model || '已配置模型'}` }))} />
+              <Typography.Text type="secondary">使用 VAC 中已保存的模型配置。点击发送会先保存当前脚本，再发送脚本要求和可见素材抽帧，结果回到下方逐段检查。</Typography.Text>
+              {profiles.isError && <Alert type="error" message="模型预设读取失败" action={<Button onClick={() => void profiles.refetch()}>重试读取预设</Button>} />}
+              {!profiles.isPending && !profiles.isError && !profile && <Alert type="info" message="尚无已配置模型的预设" action={navigate && <Button onClick={() => navigate({ workspace: 'settings', settingsCategory: 'providers' })}>配置内部模型</Button>} />}
+              {modelNotice.isError && <Alert type="error" message="模型授权信息读取失败" action={<Button onClick={() => void modelNotice.refetch()}>重试</Button>} />}
+              {modelNotice.data?.external && <Checkbox className="script-model-consent" checked={consent === consentIdentity} disabled={busy} onChange={event => setConsent(event.target.checked ? consentIdentity : '')}>允许本次向所选预设的外部服务发送脚本和可见素材抽帧</Checkbox>}
+              <Space wrap>
+                <Button type="primary" disabled={!canEdit || !canParse || !profile || !modelNotice.data || modelNotice.isError || (modelNotice.data.external && consent !== consentIdentity)} onClick={() => invoke(async () => {
+                  stop.current = new AbortController(); setGenerating(true);
+                  let version = loadedVersion;
+                  if (dirty) {
+                    const saved = await api.saveScript(scriptId!, { ...versionBody(), title, body, segments: drafts, tts_enabled: tts, subtitles_enabled: subtitles, allow_web_research: research });
+                    version = saved.version; await accept(saved);
+                  }
+                  stop.current!.signal.throwIfAborted();
+                  if (modelNotice.data?.external) await api.profileConsent(profile!.profile_id, profile!.revision, true);
+                  stop.current!.signal.throwIfAborted();
+                  await accept(await api.generateScript(scriptId!, { expected_version: version, visible_set_sha: visible.data!.sha256, profile_id: profile!.profile_id, profile_revision: profile!.revision, allow_web_research: research }, stop.current!.signal));
+                })}>发送给内部模型</Button>
+                {generating && <Button onClick={() => stop.current?.abort()}>停止生成</Button>}
+                {navigate && <Button onClick={() => navigate({ workspace: 'settings', settingsCategory: 'providers' })}>配置内部模型</Button>}
               </Space>
             </Flex>
           </Card>
+
+          )}]} />
+          </aside></div>
+          <Typography.Text type="secondary">每段可覆盖配音和字幕开关；声音细调在 TTS 专页保存回当前脚本修订。显式字幕始终生效，画面使用当前工程素材。</Typography.Text>
+
+          <Collapse size="small" activeKey={showSegments?["segments"]:[]} onChange={keys=>setShowSegments(keys.length>0)} items={[{key:"segments",label:"分段文稿、配音与历史",children:<>
+          {dock ? (
+            <Collapse size="small" defaultActiveKey={[]} items={[{ key: 'advanced', label: 'Agent 出稿 · 分段 · 历史', children: (
+              <Flex vertical gap={8}>
           {latest?.questions?.length ? <Alert type="warning" message="Agent 需要补充信息" description={latest.questions.map((q, i) => <div key={i}>{q}</div>)} /> : null}
           {paragraphs.map((p, i) => {
             const seg = drafts[i];
@@ -329,35 +369,13 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             </Card>;
           })}
           {(latest?.sources?.length ?? 0) > 0 && <Collapse items={[{ key: 'sources', label: '本次实际查证的文字资料', children: latest!.sources.map(s => <div key={s.url}><Typography.Link href={s.url} target="_blank" rel="noreferrer">{s.title}</Typography.Link></div>) }]} />}
-          <Space wrap>
-            <Button disabled={!canEdit || dirty || !canParse || !complete || (latest?.questions?.length ?? 0) > 0 || latest?.rejected || latest?.script.status === 'finalized'}
-              onClick={() => invoke(async () => accept(await api.finalizeScriptWorkbench(scriptId!, versionBody())))}>人工定稿</Button>
-            <Popconfirm title="否决当前文稿？" description="保留指令和历史修订，清除当前生成文稿。" onConfirm={() => invoke(async () => accept(await api.rejectScript(scriptId!, versionBody())))}>
-              <Button danger disabled={!canEdit}>否决文稿</Button>
-            </Popconfirm>
-          </Space>
+
           {!dirty && latest && <ScriptDeliveryPanel scriptId={scriptId} active={active} />}
           <Collapse items={[{ key: 'history', label: `修订历史（${revisions.data?.length ?? 0}）`, children: <Space wrap>{revisions.data?.map(r => <Button key={r.version} onClick={() => setHistory(r)}>修订 {r.version} · {r.action}</Button>)}</Space> }]} />
               </Flex>
             )}]} />
           ) : (
             <>
-          <Card size="small" title="让 Agent 理解脚本并出稿">
-            <Flex vertical gap={8}>
-              <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={v => { setProfileId(v); setConsent(''); }}
-                options={usableProfiles.map(p => ({ value: p.profile_id, label: `${p.name} · v${p.revision}` }))} />
-              <Typography.Text type="secondary">将向所选预设发送当前工程素材的抽帧和脚本要求。允许查证时会查询文字资料并保留实际来源；游戏或规则不明确时会先提出问题。</Typography.Text>
-              <Space>
-                <Button disabled={!canEdit || dirty || !canParse || !profile} onClick={() => invoke(async () => {
-                  stop.current = new AbortController();
-                  setGenerating(true);
-                  stop.current.signal.throwIfAborted();
-                  await accept(await api.generateScript(scriptId!, { ...versionBody(), profile_id: profile!.profile_id, profile_revision: profile!.revision, allow_web_research: research }, stop.current.signal));
-                })}>理解脚本并生成文稿</Button>
-                {busy && generating && <Button onClick={() => stop.current?.abort()}>停止生成</Button>}
-              </Space>
-            </Flex>
-          </Card>
           {latest?.questions?.length ? <Alert type="warning" message="Agent 需要补充信息" description={latest.questions.map((q, i) => <div key={i}>{q}</div>)} /> : null}
           {paragraphs.map((p, i) => {
             const seg = drafts[i];
@@ -386,17 +404,13 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             </Card>;
           })}
           {(latest?.sources?.length ?? 0) > 0 && <Collapse items={[{ key: 'sources', label: '本次实际查证的文字资料', children: latest!.sources.map(s => <div key={s.url}><Typography.Link href={s.url} target="_blank" rel="noreferrer">{s.title}</Typography.Link></div>) }]} />}
-          <Space wrap>
-            <Button disabled={!canEdit || dirty || !canParse || !complete || (latest?.questions?.length ?? 0) > 0 || latest?.rejected || latest?.script.status === 'finalized'}
-              onClick={() => invoke(async () => accept(await api.finalizeScriptWorkbench(scriptId!, versionBody())))}>人工定稿</Button>
-            <Popconfirm title="否决当前文稿？" description="保留指令和历史修订，清除当前生成文稿。" onConfirm={() => invoke(async () => accept(await api.rejectScript(scriptId!, versionBody())))}>
-              <Button danger disabled={!canEdit}>否决文稿</Button>
-            </Popconfirm>
-          </Space>
+
           {!dirty && latest && <ScriptDeliveryPanel scriptId={scriptId} active={active} />}
           <Collapse items={[{ key: 'history', label: `修订历史（${revisions.data?.length ?? 0}）`, children: <Space wrap>{revisions.data?.map(r => <Button key={r.version} onClick={() => setHistory(r)}>修订 {r.version} · {r.action}</Button>)}</Space> }]} />
             </>
           )}
+
+          </>}]} />
         </Flex>
       </Spin>}
       {failure && <Alert type="error" showIcon role="alert" message={failure} closable onClose={() => setFailure('')} />}

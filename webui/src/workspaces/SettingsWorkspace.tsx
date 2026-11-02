@@ -67,7 +67,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
         <div hidden={!isProfileCategory}>
           <PreparationPanel assetId={asset?.asset_id ?? ''} onStarted={onStarted} activeSection={isProfileCategory ? settingsCategory as 'profiles'|'providers'|'preparation' : 'profiles'} onNavigate={navigate}/>
         </div>
-        {settingsCategory==='skills' && <div className="settings-stack"><McpConnectionPanel /><SkillManagerModule /></div>}
+        {settingsCategory==='skills' && <div className="settings-stack"><McpConnectionPanel active={route.workspace==='settings'} /><SkillManagerModule /></div>}
         {settingsCategory==='logs' && <Tabs className="settings-log-tabs" items={[
           {key:'audit',label:'审计日志',children:<AuditLogViewer />},
           {key:'operations',label:'Agent 操作记录',children:<Card size="small" title="Agent 操作记录"><AgentOperationPanel /></Card>}

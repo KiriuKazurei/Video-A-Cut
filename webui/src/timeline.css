@@ -1,9 +1,9 @@
 .unified-editor,.timeline-inspector { --vac-muted:var(--vac-text-2); }
 .unified-editor { display:flex; flex-direction:column; gap:4px; min-width:0; padding:4px 8px 8px; min-height:calc(100dvh - 200px); background:var(--vac-bg); container-type:inline-size; }
 .desktop-runtime-content .stage-main { overflow-y:auto; }
-.workspace-editing .stage-main { display:flex; flex-direction:column; overflow:hidden !important; }
-.workspace-editing .stage-main>.page[data-page-view="editing"]:not([hidden]) { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
-.workspace-editing .stage-main>.page[data-page-view="editing"]:not([hidden])>.unified-editor { flex:1; min-height:0; }
+:is(.workspace-editing,.workspace-script) .stage-main { display:flex; flex-direction:column; overflow:hidden !important; }
+:is(.workspace-editing,.workspace-script) .stage-main>.page[data-page-view="editing"]:not([hidden]) { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+:is(.workspace-editing,.workspace-script) .stage-main>.page[data-page-view="editing"]:not([hidden])>.unified-editor { flex:1; min-height:0; }
 .unified-editor[data-panel="timeline"] { height:100%; min-height:0; overflow:hidden; }
 .unified-editor[data-panel="timeline"]>.sequence-tabs,.unified-editor[data-panel="timeline"]>.compact-monitor-switch,.unified-editor[data-panel="timeline"]>.editor-panels-bar { flex-shrink:0; }
 /* Preview stays put (not in timeline scroll); canvas may grow; only timeline scrolls. */

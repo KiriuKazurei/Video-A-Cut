@@ -9,6 +9,7 @@ export const projectApi = {
   command: (action: string, value: { path?: string; name?: string; decision?: string; stop_tasks?: boolean; expected_session?: string; recovery_path?: string }) => request<ProjectSession>(`/api/workspace/${id(action)}`, json(value)),
   state: (session: string, state: Record<string, unknown>) => request<ProjectSession>('/api/workspace/state', json({ session, state }, 'PATCH')),
   importResource: (project: string, path: string) => request<ProjectSession>(`/api/projects/${id(project)}/resources`, json({ path })),
+  createScript: (project: string) => request<ProjectSession>(`/api/projects/${id(project)}/resources`, json({ kind: 'script' })),
   patchResource: (project: string, resource: string, patch: ResourcePatch) => request<ProjectSession>(`/api/projects/${id(project)}/resources/${id(resource)}`, json(patch, 'PATCH')),
   inspectProject: (path: string) => request('/api/workspace/inspect-project', json({ path })),
   inspectScript: (path: string) => request<AvsDocument>('/api/workspace/inspect-script', json({ path })),

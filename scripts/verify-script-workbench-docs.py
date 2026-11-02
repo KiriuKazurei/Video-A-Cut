@@ -36,11 +36,12 @@ def main():
     documents = [root / p for p in (
         'docs/项目文档.md', 'docs/计划文档.md',
         'docs/接口文档.md', 'docs/架构与功能详解.md',
+        'docs/功能文档.md', 'docs/文档索引.md',
         'scripts/TESTING.md',
         'skills/vac-script-syntax/SKILL.md',
     )]
     if options.local_docs and options.local_docs.resolve() != (root / 'docs').resolve():
-        documents += [options.local_docs / p for p in ('项目文档.md', '计划文档.md', '接口文档.md', '架构与功能详解.md')]
+        documents += [options.local_docs / p for p in ('项目文档.md', '功能文档.md', '计划文档.md', '接口文档.md', '架构与功能详解.md', '文档索引.md')]
     links = 0
     for document in documents:
         text = re.sub(r'```.*?```', '', document.read_text(encoding='utf-8-sig'), flags=re.S)

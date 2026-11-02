@@ -61,6 +61,27 @@ func TestProjectMCPResourcesFollowOpenProject(t *testing.T) {
 	if r.IsError || !bytes.Contains(raw, []byte("only-project-A")) {
 		t.Fatal("current resource unreadable", string(raw))
 	}
+	withScript, e := f.svc.CreateProjectScript(ctx, first.Document.Project.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	scriptResource := withScript.Document.Resources[len(withScript.Document.Resources)-1]
+	workbench, e := f.svc.GetScriptWorkbench(ctx, scriptResource.ScriptID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = f.svc.SaveScriptWorkbench(ctx, "human:test", scriptResource.ScriptID, service.SaveScriptRequest{ExpectedVersion: workbench.Version, Title: "Saved instructions", Body: "Edit according to this saved script"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	readScript, e := client.CallTool(ctx, &mcp.CallToolParams{Name: "resources.read", Arguments: map[string]any{"project_id": first.Document.Project.ID, "resource_id": scriptResource.ID}})
+	if e != nil || readScript.IsError {
+		t.Fatalf("Agent cannot read saved script: %+v %v", readScript, e)
+	}
+	encoded, _ := json.Marshal(readScript)
+	if !bytes.Contains(encoded, []byte("Edit according to this saved script")) {
+		t.Fatal("Agent received stale script")
+	}
 	second, err := f.svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "b.avp"), Name: "B", Decision: "discard"})
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +187,7 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 	for _, tool := range listed.Tools {
 		tools[tool.Name] = true
 	}
-	for _, name := range []string{"skills.get", "skills.read_resource", "projects.list", "projects.visible_set.get", "skill_runs.claim", "skill_runs.create", "skill_runs.get", "skill_runs.progress", "skill_runs.tool"} {
+	for _, name := range []string{"skills.get", "skills.read_resource", "projects.list", "projects.visible_set.get", "skill_runs.claim", "skill_runs.create", "skill_runs.get", "skill_runs.progress", "skill_runs.tool", "skill_runs.update"} {
 		if !tools[name] {
 			t.Fatalf("missing discovered tool %s", name)
 		}
@@ -220,6 +241,26 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 		if e != nil || !denied.IsError {
 			t.Fatalf("another connection renewed the lease: %+v %v", denied, e)
 		}
+		denied, e = other.CallTool(ctx, &mcp.CallToolParams{Name: "skill_runs.update", Arguments: map[string]any{"run_id": run.ID, "expected_version": run.Version, "action": "resume"}})
+		if e != nil || !denied.IsError {
+			t.Fatalf("another connection resumed owned run: %+v %v", denied, e)
+		}
+	}
+	failed, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "skill_runs.tool", Arguments: map[string]any{"run_id": run.ID, "request": map[string]any{"name": "artifacts.get", "arguments": map[string]any{"id": "missing"}, "expected_version": run.Version, "idempotency_key": "recover-missing"}}})
+	if e != nil || !failed.IsError {
+		t.Fatalf("missing artifact should pause with diagnostic: %+v %v", failed, e)
+	}
+	var paused struct {
+		Run skill.Run `json:"run"`
+	}
+	call("skill_runs.get", map[string]any{"run_id": run.ID}, &paused)
+	if paused.Run.State != "waiting_human" {
+		t.Fatalf("expected tool pause: %+v", paused.Run)
+	}
+	call("skill_runs.update", map[string]any{"run_id": run.ID, "expected_version": paused.Run.Version, "action": "resume"}, &paused)
+	run = paused.Run
+	if run.State != "queued" || run.BudgetStepBase != 0 || run.Steps != 1 {
+		t.Fatalf("self recovery changed budget: %+v", run)
 	}
 	step := 0
 	tool := func(name string, args any) (json.RawMessage, *mcp.CallToolResult) {
@@ -272,20 +313,31 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 	}
 	plan := skill.Plan{Body: "Opening\n\nEnding", Segments: []skill.Segment{{MediaID: view.Media[0].ID, Start: 0, End: .5}, {MediaID: view.Media[0].ID, Start: .5, End: 1}}}
 	tool("scripts.propose", plan)
-	if run.State != "waiting_human" || run.Plan.FinalizedBy != "" {
-		t.Fatal("draft bypassed human gate")
+	if run.State != "queued" || run.Plan.FinalizedBy == "" {
+		t.Fatal("draft required human gate")
 	}
-	if _, err = f.svc.UpdateSkillRun(ctx, "agent:editor", run.ID, "finalize", run.Version); err == nil {
-		t.Fatal("Agent finalized own plan")
+	var edited struct {
+		Run skill.Run `json:"run"`
+	}
+	call("skill_runs.edit", map[string]any{"run_id": run.ID, "expected_version": run.Version, "action": "plan", "arguments": map[string]any{"plan": plan}}, &edited)
+	run = edited.Run
+	call("skill_runs.edit", map[string]any{"run_id": run.ID, "expected_version": run.Version, "action": "voice", "arguments": map[string]any{"segment_index": 0, "enabled": false, "offset_seconds": 0}}, &edited)
+	run = edited.Run
+	if run.State != "queued" || run.Plan.FinalizedBy == "" {
+		t.Fatal("editing or voice required human confirmation")
 	}
 	finalize := func() {
 		t.Helper()
-		run, err = f.svc.UpdateSkillRun(ctx, "human:test", run.ID, "finalize", run.Version)
-		if err != nil {
-			t.Fatal(err)
+		var updated struct {
+			Run skill.Run `json:"run"`
+		}
+		call("skill_runs.update", map[string]any{"run_id": run.ID, "expected_version": run.Version, "action": "finalize"}, &updated)
+		run = updated.Run
+		if !strings.HasPrefix(run.Plan.FinalizedBy, "agent:") {
+			t.Fatal("Agent confirmation misreported as human acceptance")
 		}
 	}
-	finish := func() skill.Artifact {
+	finish := func(want string) skill.Artifact {
 		t.Helper()
 		tool("renders.create", map[string]any{})
 		var mp4 skill.Artifact
@@ -315,10 +367,6 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 		if e = json.Unmarshal(probe, &info); e != nil {
 			t.Fatal(e)
 		}
-		want := "1.000000"
-		if run.Plan.Version == 2 {
-			want = "0.800000"
-		}
 		if info.Format.Duration != want {
 			t.Fatalf("render duration %s, want %s", info.Format.Duration, want)
 		}
@@ -336,12 +384,10 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 		return mp4
 	}
 	finalize()
-	first := finish()
+	first := finish("1.000000")
 	index := 0
-	run, err = f.svc.RequestSkillEdit(ctx, "human:test", run.ID, service.SkillEditRequest{ExpectedVersion: run.Version, PlanVersion: run.Plan.Version, Prompt: "Shorten opening only", SegmentIndex: &index, ArtifactID: first.ID, ArtifactSHA: first.SHA, IdempotencyKey: "sdk-edit"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	call("skill_runs.edit", map[string]any{"run_id": run.ID, "expected_version": run.Version, "action": "target", "arguments": service.SkillEditRequest{PlanVersion: run.Plan.Version, Prompt: "Shorten opening only", SegmentIndex: &index, ArtifactID: first.ID, ArtifactSHA: first.SHA, IdempotencyKey: "sdk-edit"}}, &edited)
+	run = edited.Run
 	var context struct {
 		Run skill.Run `json:"run"`
 	}
@@ -351,11 +397,11 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 	}
 	plan.Segments[0].End = .3
 	tool("scripts.propose", plan)
-	if run.Plan.FinalizedBy != "" || run.Plan.Segments[1] != plan.Segments[1] {
-		t.Fatal("local edit changed outside target or preserved approval")
+	if run.Plan.FinalizedBy == "" || run.State != "queued" || run.Plan.Segments[1] != plan.Segments[1] {
+		t.Fatal("local edit changed outside target or required human confirmation")
 	}
 	finalize()
-	second := finish()
+	second := finish("0.800000")
 	if first.SHA == second.SHA {
 		t.Fatal("local edit did not produce new video")
 	}

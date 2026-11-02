@@ -35,12 +35,14 @@ import { ExportWorkspace } from './workspaces/ExportWorkspace';
 import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 import { TtsWorkspace } from './workspaces/TtsWorkspace';
 import { DrawWorkspace } from './workspaces/DrawWorkspace';
+import { ScriptWorkspace } from './workspaces/ScriptWorkspace';
 import { SkillWorkspaceProvider } from './skillWorkspace';
 import { protectedQueryRetry } from './skillView';
 
 const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
   resources: <FolderOpenOutlined />,
   editing: <PlaySquareOutlined />,
+  script: <FileTextOutlined />,
   draw: <HighlightOutlined />,
   export: <ExportOutlined />,
   settings: <SettingOutlined />,
@@ -84,7 +86,7 @@ export default function App() {
     initial: screens.xxl ? 360 : 320,
     min: 240,
     // Cap so monitors+timeline keep a usable center stage (Premiere-like coexistence).
-    max: 480,
+    max: 720,
     direction: 'horizontal',
     reverse: true,
     storageKey: 'vac_right_sider_width',
@@ -95,14 +97,13 @@ export default function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDrawerOpen, setRightDrawerOpen] = useState(false);
-  const [scriptDockOpen, setScriptDockOpen] = useState(false);
 
-  // Keep center stage ≥ ~560px when the script dock is wide (resize / window shrink).
+  // Keep the center stage usable when the property dock is wide.
   useEffect(() => {
     const onResize = () => {
       const left = leftCollapsed ? 0 : leftSiderWidth;
       const floor = 560;
-      const allowed = Math.max(240, Math.min(480, window.innerWidth - left - floor));
+      const allowed = Math.max(240, Math.min(720, window.innerWidth - left - floor));
       if (rightSiderWidth > allowed) setRightWidth(allowed);
     };
     onResize();
@@ -124,7 +125,7 @@ export default function App() {
       navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
     }
     if (typeof workspaceState?.left_width === 'number') setLeftWidth(Math.min(420, Math.max(200, workspaceState.left_width)));
-    if (typeof workspaceState?.right_width === 'number') setRightWidth(Math.min(480, Math.max(240, workspaceState.right_width)));
+    if (typeof workspaceState?.right_width === 'number') setRightWidth(Math.min(720, Math.max(240, workspaceState.right_width)));
     setLeftCollapsed(workspaceState?.left_collapsed === true); setRightCollapsed(workspaceState?.right_collapsed === true);
   }, []);
   useEffect(() => projectWorkspace.registerEditor('workspace-state', { dirty: false, flush: async () => {} }), []);
@@ -286,9 +287,9 @@ export default function App() {
 
   // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
   const useSidebar = screens.xl;
-  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw';
+  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw' || workspace === 'script';
   const showLeftSider = useSidebar && !independentWorkspace;
-  const showRightSider = useSidebar && !independentWorkspace;
+  const showRightSider = useSidebar && !independentWorkspace && workspace !== 'editing';
 
   // 侧栏内容
   const leftSiderContent = (
@@ -300,14 +301,14 @@ export default function App() {
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
       {workspace==='editing'
-        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)} route={route} assetId={selected?.asset_id} onModuleOpen={(id)=>{if(id==='script'){setScriptDockOpen(true);setRightCollapsed(false);const left=leftCollapsed?0:leftSiderWidth;const allowed=Math.max(240,Math.min(420,window.innerWidth-left-560));if(rightSiderWidth<360)setRightWidth(Math.min(400,allowed));}}} onModuleClose={(id)=>{if(id==='script')setScriptDockOpen(false);}}/>
+        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)}/>
         : <ResourceInspector />}
     </ConfigProvider>
   );
 
   return (
     <SkillWorkspaceProvider key={projectWorkspace.session?.id} projectId={projectWorkspace.session?.document?.project.id}>
-    <SequenceEditorProvider active={workspace==='editing'}>
+    <SequenceEditorProvider active={workspace==='editing'||workspace==='script'}>
     <PipelineContext.Provider value={{ stages: pipeline.stages, goTo }}>
     <Layout className="app-shell">
       <a className="skip-link" href="#main">跳至主要内容</a>
@@ -360,7 +361,7 @@ export default function App() {
         </div>
       </Layout.Header>
 
-      <Layout hasSider={Boolean(showLeftSider || showRightSider)} className={`workspace workspace-${workspace}${workspace==='editing'&&scriptDockOpen&&!rightCollapsed?' is-script-dock-open':''}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
+      <Layout hasSider={Boolean(showLeftSider || showRightSider || workspace==='editing' || workspace==='script')} className={`workspace workspace-${workspace}`} style={{ '--vac-sider-border': siderBorder } as React.CSSProperties}>
         {/* 左侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showLeftSider && (
           <Layout.Sider 
@@ -387,7 +388,7 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'draw' && workspace !== 'settings' && <ContextBar
+          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'script' && workspace !== 'draw' && workspace !== 'settings' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}
@@ -414,7 +415,7 @@ export default function App() {
             <ResourcesWorkspace active={workspace === 'resources'} onOpenScript={(asset, script) => { setSelectedId(asset); navigate({ workspace: 'editing', editingSection: 'content', scriptId: script }); }} />
           </WorkspacePage>
           
-          <WorkspacePage pageId="editing" active={workspace === 'editing'}>
+          <WorkspacePage pageId="editing" active={workspace === 'editing' || workspace === 'script'}>
             <EditingWorkspace 
               route={route}
               navigate={navigate}
@@ -453,16 +454,32 @@ export default function App() {
           </WorkspacePage>
         </Layout.Content>
         
+        <Layout.Sider theme="light" width={rightSiderWidth} collapsed={rightCollapsed} collapsedWidth={36} trigger={null}
+          className={`dock dock-right script-editor-sider${rightCollapsed ? ' is-strip-collapsed' : ''}${isRightDragging ? ' is-dragging-resize' : ''}`}
+          style={{display: workspace === 'editing' || workspace === 'script' ? undefined : 'none', borderInlineStart:siderBorder}}
+          aria-label="脚本工作台侧栏">
+          <div className="sider-resizer sider-resizer-right" onMouseDown={startRightDrag} onDoubleClick={resetRightWidth}
+            role="separator" aria-orientation="vertical" aria-label="脚本侧栏宽度" aria-valuemin={240} aria-valuemax={720} aria-valuenow={rightSiderWidth}
+            tabIndex={0} onKeyDown={event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();setRightWidth(Math.max(240,Math.min(720,rightSiderWidth+(event.key==='ArrowLeft'?24:-24))));}}}
+            title="拖动调整宽度，方向键微调，双击重置" />
+          <Button type="text" size="small" onClick={()=>setRightCollapsed(!rightCollapsed)} aria-label={rightCollapsed?'展开脚本侧栏':'收起脚本侧栏'}>{rightCollapsed?'脚本':'收起侧栏'}</Button>
+          <div hidden={rightCollapsed}>
+            <WorkspacePage pageId="script" active={(workspace==='editing'||workspace==='script')&&!rightCollapsed}>
+            <ScriptWorkspace route={route} navigate={navigate} assetId={selected?.asset_id} active={(workspace==='editing'||workspace==='script')&&!rightCollapsed} dock />
+            </WorkspacePage>
+            <EditorRightDock navigate={navigate} active={(workspace==='editing'||workspace==='script')&&!rightCollapsed}/>
+          </div>
+        </Layout.Sider>
         {/* 右侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showRightSider && (
           <Layout.Sider 
             theme="light" 
             width={rightSiderWidth}
-            collapsedWidth={workspace==='editing' ? 36 : 0}
+            collapsedWidth={0}
             collapsed={rightCollapsed}
             collapsible
             trigger={null}
-            className={`dock dock-right dock-resizable${isRightDragging ? " is-dragging-resize" : ""}${workspace==='editing'&&rightCollapsed?' is-strip-collapsed':''}`} 
+            className={`dock dock-right dock-resizable${isRightDragging ? " is-dragging-resize" : ""}`}
             aria-label="属性面板" 
             style={{ borderInlineStart: siderBorder }}
           >
@@ -470,9 +487,9 @@ export default function App() {
               className={`sider-resizer sider-resizer-right ${isRightDragging ? 'is-dragging' : ''}`}
               onMouseDown={startRightDrag}
               onDoubleClick={resetRightWidth}
-              title="左右拖拽调整侧栏宽度（脚本展开时上限约 480px，为时间线留空），双击重置 (360px)"
+              title="左右拖拽调整侧栏宽度（上限约 480px，为时间线留空），双击重置 (360px)"
               role="separator"
-              aria-label="右侧栏宽度调整手柄；脚本工作台展开时可拉宽，但会保留时间线可用宽度"
+              aria-label="右侧栏宽度调整手柄"
             />
             {rightSiderContent}
           </Layout.Sider>
@@ -498,7 +515,7 @@ export default function App() {
         width={320}
       >
         {workspace==='editing'
-          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active stripOnly={false} route={route} assetId={selected?.asset_id}/></ConfigProvider>
+          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active stripOnly={false}/></ConfigProvider>
           : rightSiderContent}
       </Drawer>
 

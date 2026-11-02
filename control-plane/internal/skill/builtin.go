@@ -18,7 +18,7 @@ var ToolContracts string
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
-	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview"}
+	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "scripts.voice", "run.steps", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview"}
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
 		{ID: "video-use", Name: "Video Use", Description: "Executable source-free drawing and lightweight video editing.", Version: "0.1.0-vac.7", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
@@ -50,7 +50,7 @@ func Builtins() []Package {
 }
 
 func drawSkills() []Package {
-	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish"}
+	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish", "run.steps"}
 	makePackage := func(id, name, content string) Package {
 		return Package{ID: id, Name: name, Description: "Executable local code-to-video and editing handoff", Version: "0.3.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: []string{"external_mcp", "builtin_api"}, Tools: tools, Permissions: []string{"project_media", "ffmpeg", "browser_render"}, Inputs: []string{"goal", "composition_spec", "project_images"}, Outputs: []string{"composition_source", "mp4", "timeline"}, Content: content, Resources: map[string]string{}}
 	}
@@ -61,12 +61,12 @@ const VideoUseAdapter = `# Video Use — VAC adapter
 Local edits arrive in run.edit_request with the human prompt and explicit
 timeline/source start/end windows. Keep the segment count, body and global
 subtitle option; change only selected segments and submit scripts.propose.
-Never read operation logs or checkpoints. Human approval and undo/redo are not
+Never read operation logs or checkpoints. Human acceptance and undo/redo are not
 Agent tools. Use skill_runs.get and idempotent tool replay for current state.
 For an external MCP Agent, skills.get provides this package. Execute each media,
 summary, script and render tool through skill_runs.tool using {run_id,request:
 {name,arguments,expected_version,idempotency_key}}. Use skill_runs.get to refresh
-the version. There is no MCP human approval tool.
+the version. Use skill_runs.update to confirm an older pending plan or resume your own paused run.
 Read upstream/SKILL.md when available using skills.read_resource. The upstream
 workflow is guidance; the following VAC boundary applies to every action.
 Route 2, 绘制, is a first-class strategy of this package, not an overlay accessory.
@@ -86,23 +86,21 @@ failure if word timestamps are unavailable; offer visual_heavy without switching
 the project yourself.
 Use word-level transcript and on-demand visual evidence to propose cuts, retain
 source timing, avoid cutting words, and preserve meaningful pauses. Confirm the
-strategy by submitting a draft plan. Never approve or finalize it yourself.
+strategy by submitting a plan. VAC confirms it as the task Agent and continues without a human click.
 scripts.propose takes body, segments [{media_id,start,end,narration}], subtitles.
 The body contains one blank-line-separated paragraph per segment. Explicit
 {@media-name}, {"forced subtitle"} and {黑屏}/{白屏}/{交叉溶解} take precedence.
-When the run is waiting_human, stop and explain the decision. After a person
-finalizes, renders.create produces the MP4 and Premiere package from that exact
-plan. Inspect cut boundaries via media.get_frames or artifact evidence, then call
+Plans continue automatically after creation or editing. If paused, inspect run.steps, repair the cause and resume through skill_runs.update. renders.create produces the MP4 and Premiere package from that exact plan. Inspect cut boundaries via media.get_frames or artifact evidence, then call
 run.finish only when deliverables exist. No success claim from an unrendered plan.
 Use at most the run budget. Do not fabricate visual evidence or human acceptance.
 `
 const VisualAdapter = `# VAC visual summary
 For run.edit_request, apply the human prompt only to its listed timeline/source
 windows; preserve body, global subtitles, segment count and unselected segments.
-Propose the edited plan and stop for human approval. Operation logs/checkpoints
+Propose the edited plan and continue with its confirmed version in the open desktop project. Operation logs/checkpoints
 and undo/redo are human-only and are never available through MCP.
 External MCP Agents invoke the named tools through skill_runs.tool with run_id
-and a versioned, idempotent request. Human approval remains in the VAC UI/API.
+and a versioned, idempotent request. The open desktop project confirms plans as the task Agent; use skill_runs.update for pending plans or recovery.
 No ASR dependency. List visible media; extract frames with media.get_frames.
 Default continuous high-change sampling keeps one in three candidates; include
 start/end and low-change coverage. Budget overflow is a human decision, never
@@ -111,8 +109,8 @@ timeline [{media_id,start,end,description,confidence,frame_ids}], narrative,
 beats and model identity. Submit through summaries.submit. Do not infer unseen
 actions from a still image. Read summary plus the user's script to create a
 plan via scripts.propose. Keep explicit script syntax and fixed source windows.
-Stop for human finalization. Render the exact finalized plan through
-renders.create, then inspect and finish. Never approve your own plan.
+Render the exact confirmed plan through
+renders.create, then inspect and finish. Agent confirmation is not human acceptance.
 `
 const hyperframesDraw = `# vac-draw-hyperframes
 

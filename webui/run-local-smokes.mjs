@@ -34,6 +34,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write(': local fixture\n\n'); return;
   }
+  if (url.pathname === '/api/agents/status') return json({ generated_at: new Date().toISOString(), stale_after_seconds: 90, agents: [] });
   if (url.pathname === '/api/assets') return json([asset]);
   if (url.pathname === '/api/workspace') return json(workspace);
   if (url.pathname === '/api/workspace/state') return json(workspace);
@@ -50,8 +51,9 @@ const server = http.createServer((req, res) => {
   const file = path.resolve(dist, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
   if (!file.startsWith(dist + path.sep)) { res.writeHead(403); res.end(); return; }
   try {
+    const body = fs.readFileSync(file);
     res.writeHead(200, { 'Content-Type': ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' })[path.extname(file)] ?? 'application/octet-stream' });
-    res.end(fs.readFileSync(file));
+    res.end(body);
   } catch { res.writeHead(404); res.end(); }
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -59,7 +61,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 try {
   const scripts = process.argv.slice(2);
   for (const script of scripts.length ? scripts : ['review_shortcuts_smoke.mjs']) {
-    assert.ok(['review_shortcuts_smoke.mjs','draw_smoke.mjs','settings_smoke.mjs'].includes(script), 'The retired quickstart page is no longer mounted; current startup is covered by Skill tests and native regression');
+    assert.ok(['review_shortcuts_smoke.mjs','draw_smoke.mjs','settings_smoke.mjs','script_workbench_smoke.mjs'].includes(script), 'The retired quickstart page is no longer mounted; current startup is covered by Skill tests and native regression');
     const log = fs.createWriteStream(path.join(output, `${script}.log`));
     const child = spawn(process.execPath, [path.join(here, script), base, path.join(output, script)], { cwd: here, windowsHide: true, env: {...process.env,CHROME:chosenBrowser} });
     child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });

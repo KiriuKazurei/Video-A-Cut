@@ -18,12 +18,11 @@ type SkillVoiceRequest struct {
 }
 
 func (s *Service) SaveSkillVoice(ctx context.Context, actor, id string, req SkillVoiceRequest) (skill.Run, error) {
-	if s.WorkspaceEnabled() { req.AcceptExternal = s.ProviderPolicy().ExternalTTS }
+	if s.WorkspaceEnabled() {
+		req.AcceptExternal = s.ProviderPolicy().ExternalTTS
+	}
 	r, err := s.GetSkillRun(ctx, actor, id)
 	if err != nil {
-		return r, err
-	}
-	if err = requireHumanConfirm(actor, "configure Skill voice"); err != nil {
 		return r, err
 	}
 	if _, err = s.checkSkillRun(ctx, r); err != nil {
@@ -32,28 +31,9 @@ func (s *Service) SaveSkillVoice(ctx context.Context, actor, id string, req Skil
 	if r.Version != req.ExpectedVersion || r.Plan == nil || req.SegmentIndex < 0 || req.SegmentIndex >= len(r.Plan.Segments) || r.State == "running" || r.State == "cancelled" || r.State == "succeeded" {
 		return r, model.ErrConflict
 	}
-	if req.Enabled {
-		if err = req.Settings.Validate(); err != nil {
-			return r, model.ErrArgument
-		}
-		if req.Settings.External() && !req.AcceptExternal {
-			return r, model.ErrForbidden
-		}
+	if err = s.applySkillVoice(&r, req); err != nil {
+		return r, err
 	}
-	seg := &r.Plan.Segments[req.SegmentIndex]
-	if !finiteScriptTime(req.Offset) || req.Offset < 0 || req.Offset >= seg.End-seg.Start {
-		return r, model.ErrArgument
-	}
-	seg.TTSEnabled = req.Enabled
-	seg.Voice = &req.Settings
-	seg.VoiceOffset = req.Offset
-	seg.VoiceConsent = req.AcceptExternal
-	r.Plan.Version++
-	r.Plan.FinalizedBy = ""
-	r.Plan.FinalizedAt = nil
-	r.Inspection = nil
-	r.State = "waiting_human"
-	r.Reason = "plan_confirmation"
 	version := r.Version
 	r.Version++
 	r.UpdatedAt = s.autoNow()
@@ -67,4 +47,34 @@ func (s *Service) SaveSkillVoice(ctx context.Context, actor, id string, req Skil
 		s.publish("skill.run.changed", r)
 	}
 	return r, err
+}
+
+// Both the model tool and the editing API use the same voice policy.
+func (s *Service) applySkillVoice(r *skill.Run, req SkillVoiceRequest) error {
+	if r.Plan == nil || req.SegmentIndex < 0 || req.SegmentIndex >= len(r.Plan.Segments) {
+		return model.ErrArgument
+	}
+	if s.WorkspaceEnabled() {
+		req.AcceptExternal = s.ProviderPolicy().ExternalTTS
+	}
+	if req.Enabled {
+		if err := req.Settings.Validate(); err != nil {
+			return model.ErrArgument
+		}
+		if req.Settings.External() && !req.AcceptExternal {
+			return model.ErrForbidden
+		}
+	}
+	seg := &r.Plan.Segments[req.SegmentIndex]
+	if !finiteScriptTime(req.Offset) || req.Offset < 0 || req.Offset >= seg.End-seg.Start {
+		return model.ErrArgument
+	}
+	seg.TTSEnabled = req.Enabled
+	seg.Voice = &req.Settings
+	seg.VoiceOffset = req.Offset
+	seg.VoiceConsent = req.AcceptExternal
+	r.Plan.Version++
+	r.Inspection = nil
+	s.confirmTaskPlan(r)
+	return nil
 }
