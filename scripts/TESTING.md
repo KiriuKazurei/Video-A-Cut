@@ -496,7 +496,7 @@ StorageRoot沿用.run-data/tests/agent-ux-browser-final-fix，VAC_VERIFY_AGENT_E
 
 这覆盖前轮1/2/3的可重复协议/桌面流程，不代替真实模型理解、同等规模60秒创作质量或人工观感。客户端恢复由测试客户端验证，当前Codex聊天和其他第三方Agent实现未测；不自动继承旧MCP会话的任务身份/所有权。没有修改用户工程、安装版或远程仓库。
 
-### 2026-11-02 REL033：0.3.3签名发行与本地安装版更新（进行中）
+### 2026-11-02 REL033：0.3.3签名发行与本地安装版更新（完成，首轮观察超时后接续验证通过）
 
 当前整合工作树版本递增至0.3.3，同步Tauri/Cargo/npm元数据及锁文件、MCP服务端与probe标识；不改依赖版本。复用verify-tauri-updater.mjs新增显式--installed-update模式，使用指定安装目录的实际exe和默认业务数据，通过生产HTTPS源下载安装、确认原生安装对话框、等待NSIS自动重启，并核对新版本、数据目录、资产、Worker、更新源最新状态和固定端口记录。不复制旧exe、不使用调试更新源、不直接运行安装包代替更新器。
 
@@ -505,3 +505,13 @@ StorageRoot沿用.run-data/tests/agent-ux-browser-final-fix，VAC_VERIFY_AGENT_E
 按规则通过Prepare轮换本轮复用的agent-ux-build与agent-ux-browser-final-fix测试根，旧0.3.2结论保留各根archives/0.3.2.md。相同文件统计范围前后分别6571565→392字节、99859928→435字节，共释放106430666字节；仅清理已标记测试生成物，其他测试根、源码、固定样本、签名密钥和业务数据未动。正式构建证据在agent-ux-build/0.3.3，MCP及后续原生回归在agent-ux-browser-final-fix/0.3.3，前端/Rust与实际更新在既有公开更新验证模式下的0.3.3/public-update/0.3.3/artifacts/custom；后者frontend-unit.log已从共享output.log保留，Rust也在更新测试前保留。
 
 候选结果：Build-TauriDesktop.ps1 -Installer -Version 0.3.3已退出0，当前前端/Go/Worker/Rust正式包已生成；NSIS安装器74947424字节，SHA256 a19f1591a66a3d635de4df7681bc2da81c29ccea3ac5171b47567853d94665c3，更新签名428字节。安装器/签名附件名使用Video.Auto.Cut_0.3.3_x64-setup.exe及.sig，与latest.json URL一致。现有原生联合入口切换为build/desktop/app的0.3.3正式候选，9项全部通过，包括脚本保存、生成/二次修改、1.7秒实际成片、工程重开、后台/完整桌面重启同地址、旧会话恢复及端口争用恢复；测试窗口/后台已退出。此时尚未发布或执行本地安装更新。
+
+发行结果：提交ebbbbc7c894de0be92d5de40a2ca6be2659cc56f与v0.3.3标签已推送并用ls-remote核对，GitHub Release 431188087公开为latest。生产latest.json=0.3.3，清单签名与本地.sig一致，安装器/.sig HEAD均200；公开附件74947424/428/788字节。未改其他工作树与远程分支。
+
+实际安装：运行现有verify-tauri-updater.mjs --installed-update D:/Applications/VAC 0.3.3，原exe真实版本0.2.3、默认业务目录C:/Users/Kirig/AppData/Local/io.kiriukazurei.video-auto-cut/data、资产列表原为空。生产更新器完整下载74947424字节并验签，操作其原生安装确认。旧Go/Worker退出后NSIS解压时间超过观察器原120秒上限，首轮runner失败；UIAutomation确认NSIS仍响应并解压prismjs依赖，随后自动重启的新exe PID50964已经出现。不能将该失败删除或写成首轮全绿；它是测试等待窗口不足，未观测到安装失败。
+
+将既有观察器上限调整为600秒并支持--resume读取同次进度；没有重放下载/安装，也没有手动启动桌面。原更新测试根有其自动重启窗口，受管入口拒绝再次Prepare（空闲保护），故复用空闲的agent-ux-browser-final-fix根运行观察器，VAC_TEST_ROOT仍指向原证据目录。最终results.json同时保留previous_attempt_error、observation_resumed=true及passed/installed/auto_restarted/exited=true。最终输出在agent-ux-browser-final-fix/0.3.3/artifacts/custom/output.log；该目录native-candidate.log保留候选9项，mcp-unit.log保留MCP整包。原公开更新根的updater-first-attempt.log和summary保留原失败，不能用另一runner通过覆盖其历史。
+
+安装后验收：Tauri update_status与Windows文件/卸载注册均为0.3.3；真实原生窗口visible=true，截图installed-ready.png已目视检查“当前版本0.3.3/当前已是最新版本”，最近工程入口仍在。默认数据目录及空资产列表与安装前一致；三个Worker在线，更新检查up_to_date；mcp-endpoint.json迁移并固定原31525端口。独立对比已安装control-plane.exe与正式候选哈希一致，draw-runtime.mjs与当前源码哈希一致。测试正常关闭，desktop-session.json最终stopped，无遗留桌面进程。截图/最终JSON位于0.3.3/public-update/0.3.3/artifacts/custom/updater-installed。
+
+本轮没有回退测试、真实服务商模型调用、用户原工程重剪或人工观感代签；空资产列表一致不代表非空历史库/所有旧版本迁移均已验。后续提交仅包含测试观察恢复与文档，不改变v0.3.3产品二进制，不移动发行标签。

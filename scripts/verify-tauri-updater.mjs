@@ -10,6 +10,7 @@ import { CDP, sleep } from './tauri-cdp.mjs';
 // of the installed executable. Neither mode overrides the production feed.
 if (['--public-download', '--installed-update'].includes(process.argv[2])) {
   const installed = process.argv[2] === '--installed-update';
+  const resume = installed && process.argv[5] === '--resume';
   const root = testDirectory(installed ? 'updater-installed' : 'updater-public');
   const baseline = path.resolve(process.argv[3]);
   const expected = process.argv[4];
@@ -41,44 +42,56 @@ if (['--public-download', '--installed-update'].includes(process.argv[2])) {
     throw Error('Production updater timed out');
   };
   try {
-    const existing = JSON.parse(execFileSync('pwsh', ['-Command', "@(Get-CimInstance Win32_Process | Where-Object {$_.Name -eq 'video-auto-cut-desktop.exe'} | Select-Object ProcessId) | ConvertTo-Json -AsArray"], { encoding: 'utf8', windowsHide: true }) || '[]');
-    assert.equal(existing.length, 0, 'A user desktop instance is running; preserve it');
-    owned = spawn(application, [], { env, windowsHide: true, stdio: 'ignore' });
-    owned.on('error', error => { result.spawn_error = String(error); });
-    c = await CDP.connect(19342);
-    await c.wait('window.__TAURI__?.core');
-    await c.wait('document.querySelector("button")');
-    result.baseline = await c.invoke('update_status');
-    assert.notEqual(result.baseline.current_version, expected, 'Baseline must predate the requested update');
-    if (installed) {
-      beforeRuntime = await until(() => c.invoke('runtime_status'), value => ['ready','fault'].includes(value.status), 60000);
-      assert.equal(beforeRuntime.status,'ready',beforeRuntime.message);base=beforeRuntime.api_base_url;
-      beforeAssets=await request('/api/assets');
-      result.before={version:result.baseline.current_version,data_directory:beforeRuntime.data_directory,assets:beforeAssets};
+    if (resume) {
+      const previous=JSON.parse(await fs.readFile(path.join(root,'results.json')));
+      assert.equal(previous.expected_version,expected);assert(previous.downloaded?.ready_to_install);
+      Object.assign(result,previous,{passed:false,installed:false,previous_attempt_error:previous.error,observation_resumed:true});delete result.error;
+      beforeRuntime={data_directory:previous.before.data_directory};beforeAssets=previous.before.assets;
+      owned={pid:previous.window.pid,exitCode:0};
+    } else {
+      const existing = JSON.parse(execFileSync('pwsh', ['-Command', "@(Get-CimInstance Win32_Process | Where-Object {$_.Name -eq 'video-auto-cut-desktop.exe'} | Select-Object ProcessId) | ConvertTo-Json -AsArray"], { encoding: 'utf8', windowsHide: true }) || '[]');
+      assert.equal(existing.length, 0, 'A user desktop instance is running; preserve it');
+      owned = spawn(application, [], { env, windowsHide: true, stdio: 'ignore' });
+      owned.on('error', error => { result.spawn_error = String(error); });
+      c = await CDP.connect(19342);
+      await c.wait('window.__TAURI__?.core');
+      await c.wait('document.querySelector("button")');
+      result.baseline = await c.invoke('update_status');
+      assert.notEqual(result.baseline.current_version, expected, 'Baseline must predate the requested update');
+      if (installed) {
+        beforeRuntime = await until(() => c.invoke('runtime_status'), value => ['ready','fault'].includes(value.status), 60000);
+        assert.equal(beforeRuntime.status,'ready',beforeRuntime.message);base=beforeRuntime.api_base_url;
+        beforeAssets=await request('/api/assets');
+        result.before={version:result.baseline.current_version,data_directory:beforeRuntime.data_directory,assets:beforeAssets};
+      }
+      await c.invoke('check_update');
+      result.available = await c.invoke('update_status');
+      assert.equal(result.available.phase, 'available', result.available.message);
+      assert.equal(result.available.available_version, expected);
+      await c.ev("window.dispatchEvent(new Event('vac:check-updates'));true");
+      await c.ev("void window.__TAURI__.core.invoke('download_update').catch(e=>window.__publicDownloadError=String(e));true");
+      result.downloaded = await until(() => c.invoke('update_status'), value => ['downloaded', 'error'].includes(value.phase), 650000);
+      assert.equal(result.downloaded.phase, 'downloaded', result.downloaded.message);
+      assert.equal(result.downloaded.ready_to_install, true);
+      assert(result.downloaded.downloaded_bytes > 0);
+      await c.wait("document.body.innerText.includes('签名已验证')");
+      result.window = JSON.parse(execFileSync('pwsh', ['-File', 'scripts/Tauri-WindowProbe.ps1', '-DesktopPid', String(owned.pid), '-Action', 'inspect'], { encoding: 'utf8', windowsHide: true }));
+      assert.equal(result.window.visible, true);
+      await c.screenshot(path.join(root, 'downloaded.png'));
+      if (installed) {
+        const journal=JSON.parse(await fs.readFile(path.join(beforeRuntime.data_directory,'desktop-session.json')));
+        await fs.writeFile(path.join(root,'progress.json'),JSON.stringify(result,null,2));
+        await c.ev("void window.__TAURI__.core.invoke('install_update').catch(e=>window.__installedUpdateError=String(e));true");
+        await until(() => c.invoke('update_status'), value => value.phase==='awaiting_confirmation', 30000);
+        execFileSync('pwsh',['-File','scripts/Tauri-WindowProbe.ps1','-DesktopPid',String(owned.pid),'-Action','confirm','-DialogTitle','安装 Video Auto Cut 更新'],{encoding:'utf8',windowsHide:true});
+        await until(async()=>owned.exitCode!==null,Boolean,60000);c.close();c=undefined;
+        for(const pid of [journal.control_pid,...journal.workers.map(worker=>worker.pid)])assert.throws(()=>process.kill(pid,0),'Old backend must exit before installation');
+      }
     }
-    await c.invoke('check_update');
-    result.available = await c.invoke('update_status');
-    assert.equal(result.available.phase, 'available', result.available.message);
-    assert.equal(result.available.available_version, expected);
-    await c.ev("window.dispatchEvent(new Event('vac:check-updates'));true");
-    await c.ev("void window.__TAURI__.core.invoke('download_update').catch(e=>window.__publicDownloadError=String(e));true");
-    result.downloaded = await until(() => c.invoke('update_status'), value => ['downloaded', 'error'].includes(value.phase), 650000);
-    assert.equal(result.downloaded.phase, 'downloaded', result.downloaded.message);
-    assert.equal(result.downloaded.ready_to_install, true);
-    assert(result.downloaded.downloaded_bytes > 0);
-    await c.wait("document.body.innerText.includes('签名已验证')");
-    result.window = JSON.parse(execFileSync('pwsh', ['-File', 'scripts/Tauri-WindowProbe.ps1', '-DesktopPid', String(owned.pid), '-Action', 'inspect'], { encoding: 'utf8', windowsHide: true }));
-    assert.equal(result.window.visible, true);
-    await c.screenshot(path.join(root, 'downloaded.png'));
     if (installed) {
-      const journal=JSON.parse(await fs.readFile(path.join(beforeRuntime.data_directory,'desktop-session.json')));
-      await fs.writeFile(path.join(root,'progress.json'),JSON.stringify(result,null,2));
-      await c.ev("void window.__TAURI__.core.invoke('install_update').catch(e=>window.__installedUpdateError=String(e));true");
-      await until(() => c.invoke('update_status'), value => value.phase==='awaiting_confirmation', 30000);
-      execFileSync('pwsh',['-File','scripts/Tauri-WindowProbe.ps1','-DesktopPid',String(owned.pid),'-Action','confirm','-DialogTitle','安装 Video Auto Cut 更新'],{encoding:'utf8',windowsHide:true});
-      await until(async()=>owned.exitCode!==null,Boolean,60000);c.close();c=undefined;
-      for(const pid of [journal.control_pid,...journal.workers.map(worker=>worker.pid)])assert.throws(()=>process.kill(pid,0),'Old backend must exit before installation');
-      const relaunched=await until(async()=>processes().filter(row=>path.resolve(row.ExecutablePath||'').toLowerCase()===application.toLowerCase()),rows=>rows.length===1,120000);
+      // NSIS can spend several minutes extracting the Node runtime dependencies.
+      // A timed-out observer may resume without downloading or installing again.
+      const relaunched=await until(async()=>processes().filter(row=>path.resolve(row.ExecutablePath||'').toLowerCase()===application.toLowerCase()),rows=>rows.length===1,600000);
       updatedPid=relaunched[0].ProcessId;
       c=await CDP.connect(19342);await c.wait('window.__TAURI__?.core');
       result.updated=await c.invoke('update_status');assert.equal(result.updated.current_version,expected);
