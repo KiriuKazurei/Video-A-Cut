@@ -591,12 +591,22 @@ StorageRoot沿用.run-data/tests/agent-ux-browser-final-fix，VAC_VERIFY_AGENT_E
 
 未执行完整service/MCP整包、真实模型质量或人工体验验收；未替换安装版、更新远程、签名发行或修改业务AVP。连续音画播放、硬件解码、视频纹理直传与代理质量调度留第二步；本次不声称PR/达芬奇级全流程实时性能。功能/架构/接口合同同步，文档193 HTTP/17 IPC/167类型/30 SSE与本地链接及diff核验通过。
 
-### 2026-11-03 REL034：0.3.4正式发行与安装版更新（进行中）
+### 2026-11-03 REL034：0.3.4正式发行与安装版更新（完成）
 
-版本字段七处同步0.3.4；复用现有构建、签名、原生预览和生产更新器验证入口，不新增独立套件。0.3.4前端完整135项及样式检查通过（另基础webui子集65项），输出在`.run-data/tests/agent-ux-browser-final-fix/0.3.4/artifacts/{custom,webui}/output.log`。正式签名包构建、候选原生画面、远程发行及实际安装升级尚待本轮结果。
+版本字段七处同步0.3.4；复用现有构建、签名、原生预览和生产更新器验证入口，不新增独立套件。0.3.4前端完整135项及样式检查通过（另基础webui子集65项），输出在`.run-data/tests/agent-ux-browser-final-fix/0.3.4/artifacts/{custom,webui}/output.log`。正式签名包、候选原生画面、远程发行和实际安装升级结果见本节后续记录。
 
 按Prepare轮换三个已注册测试根，均先检查进程/标记/重解析点/跟踪文件，固定样本、业务数据及签名目录保留。相同根范围字节统计：agent-ux-build 281845773→589，释放281845184；agent-ux-browser-final-fix 847293112→606，释放847292506；0.3.3/public-update 153097259→435，释放153096824。旧结果提炼为各根archives/0.3.3.md，新测试统一写入入口产生的0.3.4目录，未清理未知根目录。
 
 Rust既有9项在0.3.4全部通过，输出agent-ux-build/0.3.4/artifacts/custom/output.log。首次错误指定--lib导致无library target而未运行用例；去掉该参数后重跑退出0，保留入口错误为已纠正。
 
 0.3.4正式Build-TauriDesktop.ps1 -Installer退出0，包含前端/Go/Rust release及NSIS签名。安装器74990924字节，签名428字节，公钥与生产更新器配置一致。正式app候选的VAC_VERIFY_PREVIEW=1原生4项通过；实际RTX3070/D3D11 WebGL2，1080p一分钟测试源冷帧3863ms、热缓存172ms、重复192ms、时间线位置编辑235ms，仅编译一次。画面顶层命中、橙色RGBA、加载提示高度、时间线无遮挡与离开释放均通过，native-preview.png已目视检查。证据在agent-ux-build/0.3.4/artifacts/custom/native-preview；测试窗口正常退出，未操作业务工程。以上不代表30fps连续音画或歌词项目的性能结论。
+
+源码提交c19099c26eac8b28389687cb5955babfd648cec3及轻量标签v0.3.4已原子推送到origin/codex/integrate-remote-20261029。安装器SHA256为523b094cd869657a787314599601d9d01f4cc011b9944135e0e52382a9ba97af。GitHub Release三附件上传中，尚未将发布可用性或安装升级记通过。
+
+正式Release432617795已公开，安装器与签名远程SHA256与本地一致。首轮公开检查清单所指带空格地址404、GitHub实际改名为点的安装器200；已据此修正New-TauriUpdateManifest.ps1的空格规范化，并只替换latest.json，原安装器/签名不变。API附件哈希核对通过，公开下载仍有旧CDN缓存，缓存刷新/生产更新器实际安装尚待。另PowerShell Invoke-WebRequest对octet-stream返回Byte[]，检查正文时需显式UTF8解码，不能直接ConvertFrom-Json误判字段。
+
+最终实际安装版验证通过：TestWorkspace custom、StorageRoot=.run-data/tests/0.3.3/public-update，执行`node scripts/verify-tauri-updater.mjs --installed-update D:/Applications/VAC 0.3.4`，使用原生产HTTPS地址，无测试端点覆盖。0.3.3检测0.3.4、完整下载74990924字节、密码学验签、所属原生安装确认、旧后台退出、NSIS安装、自动重启均成功；结果passed/installed/auto_restarted/exited均true。重启后窗口visible=true、版本0.3.4、三Worker在线；数据目录不变且安装前后资产列表一致（本次均空，业务工程未打开）；mcp-endpoint.json仍为31525，再查phase=up_to_date。证据`.run-data/tests/0.3.3/public-update/0.3.4/artifacts/custom/updater-installed/{results.json,progress.json,downloaded.png,installed-ready.png}`及父目录output.log；installed-ready.png已实际检查，最近工程Excute me仍可见。测试窗口正常退出后重新打开普通安装版供用户使用。
+
+公开清单命名修复已由实际生产更新器完整下载与安装证实，API最新附件哈希与本地修正清单一致。独立安装资源检查：控制面、runtime manifest、新GPU/缓存三模块与候选SHA256完全一致；桌面exe初次完整哈希不同，逐字节核实只有offset0xb63382..0xb63384的Tauri包类型UNK→NSS三字节差异，内存归一化后与候选完全一致，无其他字节变化。没有手工覆盖安装文件。发行标签c19099c保留；生成器脚本修复和最终记录作为后续源码提交推送，不需要重建相同应用二进制。
+
+本轮完成工程门禁、真实候选原生GPU及真实安装更新，未调用模型、未重新编辑业务工程、未验回退及连续实时音画，不将其写成通过。

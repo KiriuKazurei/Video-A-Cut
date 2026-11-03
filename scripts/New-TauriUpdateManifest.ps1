@@ -15,7 +15,8 @@ $signature=(Get-Content -LiteralPath $signatureFile -Raw).Trim()
 if(!$signature){throw 'Updater signature is empty'}
 [void][Convert]::FromBase64String($signature)
 $tag=[Uri]::EscapeDataString('v'+$Version)
-$filename=[Uri]::EscapeDataString($installerFile.Name)
+# GitHub replaces spaces in uploaded release asset names with periods.
+$filename=[Uri]::EscapeDataString($installerFile.Name.Replace(' ','.'))
 $manifest=[ordered]@{
   version=$Version;notes=$Notes;pub_date=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
   platforms=@{'windows-x86_64'=@{url="https://github.com/$Repository/releases/download/$tag/$filename";signature=$signature}}
