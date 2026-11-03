@@ -50,6 +50,7 @@ function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; s
 export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
  const [sourceOpen,setSourceOpen]=useState(false);
+ const [readyProgram,setReadyProgram]=useState('');
  const [sourceSeek,setSourceSeek]=useState<number|null>(null);
  useEffect(()=>{
   if(route.editingSection==='content'||route.scriptId)window.dispatchEvent(new Event('vac:open-script-dock'));
@@ -78,11 +79,16 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
      <strong>节目</strong>
      <Typography.Text ellipsis>{s?.name ?? '当前序列'}</Typography.Text>
      <Typography.Text type="secondary">{s?`${s.width}×${s.height} · ${fpsValue(s.fps).toFixed(3)}fps`:''}</Typography.Text>
+     {e.framePreviewDiagnostics&&<Typography.Text type="secondary" title={e.framePreviewDiagnostics.renderer||e.framePreviewDiagnostics.fallback_reason}>{e.framePreviewDiagnostics.backend==='cached-movie'?'缓存预览':e.framePreviewDiagnostics.backend==='webgl2'?(e.framePreviewDiagnostics.hardware_accelerated?'GPU 合成':'软件 WebGL'):'CPU 预览'}</Typography.Text>}
      {hasRange&&<Typography.Text type="secondary" className="program-inout-label">导出 {frameLabel(inFrame!,s!.fps)}–{frameLabel(outFrame!,s!.fps)}</Typography.Text>}
      {!sourceOpen&&<button type="button" className="source-monitor-badge" onClick={()=>setSourceOpen(true)} title="打开源监视器" aria-label={`打开源监视器：${sourceLabel}`}>源 · {sourceLabel}</button>}
     </div>
     <div className="program-monitor-row">
-     <div className="editor-monitor-screen">{e.previewURL?<video key={e.previewURL} ref={e.program} controls preload="metadata" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=e.head/fpsValue(s.fps);}} onTimeUpdate={event=>{if(s&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在更新当前轨道合成…':'把资源拖入时间线开始编辑'}/>}{e.previewLoading&&<div className="program-updating" role="status"><Spin size="small"/> 更新节目预览</div>}
+     <div className="editor-monitor-screen">
+      {e.previewURL&&<video className={`program-video${readyProgram===e.previewURL?'':' is-loading'}`} key={e.previewURL} ref={e.program} controls preload="auto" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=Math.min(e.head/fpsValue(s.fps),Math.max(0,event.currentTarget.duration-1/fpsValue(s.fps)));}} onLoadedData={event=>{if(!event.currentTarget.seeking)setReadyProgram(e.previewURL!);}} onSeeked={()=>setReadyProgram(e.previewURL!)} onTimeUpdate={event=>{if(s&&readyProgram===e.previewURL&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>}
+      {e.framePreviewURL&&(!e.previewURL||readyProgram!==e.previewURL)&&<img className="program-frame" src={e.framePreviewURL} alt="当前帧预览"/>}
+      {!e.previewURL&&!e.framePreviewURL&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在渲染当前帧…':'把资源拖入时间线开始编辑'}/>}
+      {e.previewLoading&&<div className={`program-updating${e.framePreviewURL?' has-frame':''}`} role="status"><Spin size="small"/> {e.framePreviewLoading?'正在渲染当前帧':e.framePreviewURL?'当前帧已显示 · 正在生成可播放预览':'正在生成可播放预览'}</div>}
       {hasRange&&s&&e.previewURL&&<div className="program-inout-overlay" aria-hidden="true"><span className="program-inout-in" style={{left:`${Math.min(100,Math.max(0,inFrame!/Math.max(1,outFrame!))*100)}%`}}/><span className="program-inout-out" style={{left:`${Math.min(100,Math.max(0,outFrame!/Math.max(outFrame!,inFrame!+1))*100)}%`}}/></div>}
      </div>
      <ProgramVu media={e.program}/>

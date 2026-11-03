@@ -122,17 +122,18 @@ type Clip struct {
 	FontSize    int     `json:"font_size,omitempty"`
 }
 type Track struct {
-	ID      string  `json:"id"`
-	Kind    string  `json:"kind"`
-	Name    string  `json:"name"`
-	Height  int     `json:"height"`
-	Locked  bool    `json:"locked"`
-	Muted   bool    `json:"muted"`
-	Hidden  bool    `json:"hidden"`
-	Solo    bool    `json:"solo"`
-	GroupID string  `json:"group_id,omitempty"`
-	GainDB  float64 `json:"gain_db"`
-	Clips   []Clip  `json:"clips"`
+	ID        string  `json:"id"`
+	Kind      string  `json:"kind"`
+	Name      string  `json:"name"`
+	Height    int     `json:"height"`
+	Locked    bool    `json:"locked"`
+	LockOwner string  `json:"lock_owner,omitempty"`
+	Muted     bool    `json:"muted"`
+	Hidden    bool    `json:"hidden"`
+	Solo      bool    `json:"solo"`
+	GroupID   string  `json:"group_id,omitempty"`
+	GainDB    float64 `json:"gain_db"`
+	Clips     []Clip  `json:"clips"`
 }
 type TrackGroup struct {
 	ID     string `json:"id"`
@@ -775,7 +776,34 @@ func expandSelection(s Sequence, ids []string, unlinked bool) map[string]bool {
 	}
 	return selected
 }
+
+// Agent reservations use the same persisted lock as the manual button. Only the
+// reserving task can write through its own lock; manual locks have no bypass.
 func (s *Sequence) Apply(d *AvpDocument, op Operation, origin Origin) error {
+	owned := map[string]bool{}
+	applied := false
+	if strings.HasPrefix(origin.Actor, "agent:") {
+		for i := range s.Tracks {
+			t := &s.Tracks[i]
+			if t.Locked && t.LockOwner == origin.Actor {
+				owned[t.ID] = true
+				t.Locked = false
+			}
+		}
+	}
+	defer func() {
+		for i := range s.Tracks {
+			t := &s.Tracks[i]
+			if owned[t.ID] && !(applied && op.Type == "track.update" && op.TrackID == t.ID && op.Locked != nil) {
+				t.Locked = true
+			}
+		}
+	}()
+	err := s.apply(d, op, origin)
+	applied = err == nil
+	return err
+}
+func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 	selected := expandSelection(*s, op.ClipIDs, op.Unlinked)
 	for _, t := range s.Tracks {
 		for _, c := range t.Clips {
@@ -868,7 +896,14 @@ func (s *Sequence) Apply(d *AvpDocument, op Operation, origin Origin) error {
 			t.Height = *op.Height
 		}
 		if op.Locked != nil {
+			if strings.HasPrefix(origin.Actor, "agent:") && t.Locked && t.LockOwner != origin.Actor {
+				return fmt.Errorf("轨道已由用户或其他Agent锁定")
+			}
 			t.Locked = *op.Locked
+			t.LockOwner = ""
+			if t.Locked {
+				t.LockOwner = origin.Actor
+			}
 		}
 		if op.Muted != nil {
 			t.Muted = *op.Muted
@@ -1011,6 +1046,10 @@ func (s *Sequence) Apply(d *AvpDocument, op Operation, origin Origin) error {
 			return fmt.Errorf("未选择片段")
 		}
 		delta := op.At - first.At
+		routes, e := s.moveTracks(op, selected, originalTrack)
+		if e != nil {
+			return e
+		}
 		moving := []struct {
 			track string
 			clip  Clip
@@ -1029,7 +1068,11 @@ func (s *Sequence) Apply(d *AvpDocument, op Operation, origin Origin) error {
 			})
 		}
 		if op.Mode == "insert" {
-			sourceTrack, _ := track(s, originalTrack)
+			rippleTrack := originalTrack
+			if target, ok := routes[originalTrack]; ok {
+				rippleTrack = target
+			}
+			sourceTrack, _ := track(s, rippleTrack)
 			span := int64(0)
 			for _, item := range moving {
 				span = max(span, item.clip.At+item.clip.Duration-first.At)
@@ -1040,16 +1083,19 @@ func (s *Sequence) Apply(d *AvpDocument, op Operation, origin Origin) error {
 		}
 		for _, m := range moving {
 			target := m.track
-			if m.track == originalTrack && op.TargetTrackID != "" {
-				target = op.TargetTrackID
+			if mapped, ok := routes[m.track]; ok {
+				target = mapped
 			}
 			t, e := track(s, target)
 			if e != nil {
 				return e
 			}
 			src, _ := track(s, m.track)
-			if t.Locked || t.Kind != src.Kind || t.GroupID != src.GroupID {
-				return fmt.Errorf("目标轨道类型不匹配或已锁定")
+			if t.Locked {
+				return fmt.Errorf("目标轨道已锁定")
+			}
+			if t.Kind != src.Kind {
+				return fmt.Errorf("目标轨道类型不匹配")
 			}
 			m.clip.At += delta
 			if m.clip.At < 0 {
@@ -1369,4 +1415,79 @@ func (s *Sequence) editMarker(d *AvpDocument, op Operation) error {
 		RenameMarkerReferences(d, m.ID, m.Notes)
 	}
 	return nil
+}
+
+// Map linked streams into the destination group as well as the dragged picture.
+// A group is a comparison scope, never an implicit edit lock.
+func (s *Sequence) moveTracks(op Operation, selected map[string]bool, originalID string) (map[string]string, error) {
+	routes := map[string]string{}
+	if op.TargetTrackID == "" {
+		return routes, nil
+	}
+	src, e := track(s, originalID)
+	if e != nil {
+		return nil, e
+	}
+	dst, e := track(s, op.TargetTrackID)
+	if e != nil {
+		return nil, e
+	}
+	if dst.Locked {
+		return nil, fmt.Errorf("目标轨道已锁定")
+	}
+	if dst.Kind != src.Kind {
+		return nil, fmt.Errorf("目标轨道类型不匹配")
+	}
+	routes[originalID] = dst.ID
+	if src.GroupID == dst.GroupID {
+		return routes, nil
+	}
+	sourceGroup, destGroup, kind := src.GroupID, dst.GroupID, src.Kind
+	rank := func(id, group, kind string) int {
+		n := 0
+		for _, t := range s.Tracks {
+			if t.GroupID == group && t.Kind == kind {
+				if t.ID == id {
+					return n
+				}
+				n++
+			}
+		}
+		return 0
+	}
+	sourceRank, destRank := rank(originalID, sourceGroup, kind), rank(dst.ID, destGroup, kind)
+	originalTracks := append([]Track(nil), s.Tracks...)
+	for _, t := range originalTracks {
+		chosen := false
+		for _, c := range t.Clips {
+			chosen = chosen || selected[c.ID]
+		}
+		if !chosen || t.ID == originalID {
+			continue
+		}
+		n := rank(t.ID, t.GroupID, t.Kind)
+		if t.Kind == kind {
+			n = destRank + n - sourceRank
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("目标轨道上方没有对应轨道")
+		}
+		ids := []string{}
+		for _, target := range s.Tracks {
+			if target.GroupID == destGroup && target.Kind == t.Kind {
+				ids = append(ids, target.ID)
+			}
+		}
+		for len(ids) <= n {
+			added := newTrack(t.Kind, destGroup)
+			s.Tracks = append(s.Tracks, added)
+			ids = append(ids, added.ID)
+		}
+		target, _ := track(s, ids[n])
+		if target.Locked {
+			return nil, fmt.Errorf("联动目标轨道已锁定")
+		}
+		routes[t.ID] = target.ID
+	}
+	return routes, nil
 }

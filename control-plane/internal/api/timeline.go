@@ -69,6 +69,19 @@ func (s *Server) sequenceMediaRoutes() {
 		v, e := s.svc.ImportSequenceSkillResult(r.Context(), r.PathValue("id"), r.PathValue("sequence"), req)
 		skillResponse(w, v, e)
 	})
+	s.mux.HandleFunc("POST /api/projects/{id}/sequences/{sequence}/preview/frame", func(w http.ResponseWriter, r *http.Request) {
+		var req service.SequenceFrameRequest
+		if e := decodeJSON(w, r, &req); e != nil {
+			writeServiceError(w, e)
+			return
+		}
+		v, e := s.svc.CreateSequenceFrame(r.Context(), r.PathValue("id"), r.PathValue("sequence"), req)
+		skillResponse(w, v, e)
+	})
+	s.mux.HandleFunc("DELETE /api/projects/{id}/sequences/{sequence}/preview/frame", func(w http.ResponseWriter, r *http.Request) {
+		e := s.svc.CloseSequenceFrame(r.PathValue("id"), r.URL.Query().Get("session"), r.PathValue("sequence"))
+		skillResponse(w, map[string]bool{"closed": e == nil}, e)
+	})
 	s.mux.HandleFunc("POST /api/projects/{id}/sequences/{sequence}/preview", func(w http.ResponseWriter, r *http.Request) {
 		var req service.SequencePreviewRequest
 		if e := decodeJSON(w, r, &req); e != nil {

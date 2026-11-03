@@ -28,11 +28,17 @@ import (
 
 // ExecuteSkillTool reserves a durable step before any billable or filesystem work.
 // Duplicate requests return the original result; incomplete work is never replayed.
-func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req skill.ToolRequest) (skill.Run, json.RawMessage, error) {
-	r, err := s.GetSkillRun(ctx, actor, id)
+func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req skill.ToolRequest) (r skill.Run, result json.RawMessage, err error) {
+	r, err = s.GetSkillRun(ctx, actor, id)
 	if err != nil {
 		return r, nil, err
 	}
+	dispatched := false
+	defer func() {
+		if (dispatched && err != nil) || r.State == "succeeded" || r.State == "cancelled" {
+			err = errors.Join(err, s.releaseTaskTrackLocks(ctx, r.ProjectID, r.SequenceID, r.ID))
+		}
+	}()
 	internalModel := req.Name == "agent.model" && r.Mode == "builtin_api" && isHumanActor(actor)
 	if req.IdempotencyKey == "" || len(req.IdempotencyKey) > 128 || (!internalModel && len(req.Arguments) > 128<<10) || (internalModel && len(req.Arguments) > 3<<20) || (!internalModel && !slices.Contains(skillTools, req.Name)) {
 		return r, nil, model.ErrArgument
@@ -142,6 +148,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	s.harnessMu.Unlock()
 	defer func() { s.harnessMu.Lock(); delete(s.harnessCancel, id); s.harnessMu.Unlock() }()
 	beforeTool := r
+	dispatched = true
 	result, toolErr := s.dispatchSkillTool(runCtx, &r, snap, req.Name, req.Arguments)
 	r.ElapsedMilliseconds += time.Since(started).Milliseconds()
 	if toolErr == nil {

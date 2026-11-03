@@ -298,6 +298,42 @@ const verifyAgentEdit = async runtime => {
   assert.equal(c.errors.length,0,'native WebView must have no page exceptions');
   report.mode='visible_tauri_live_mcp_script_edit_and_persistent_endpoint';
 };
+const verifySequencePreview = async () => {
+ await probe('resize',['-Width','1600','-Height','1000']);
+ const initial=await workspace();assert(!initial.document,'preview regression requires its isolated empty workspace');
+ const ws=await api('/api/workspace/new','POST',{path:path.join(out,'preview-'+pid+'.avp'),name:'GPU preview regression'});
+ const project=ws.document.project.id,sequence=ws.document.sequences[0].id,track=ws.document.sequences[0].tracks[0].id;
+ const source='import React from "react";import {useCurrentFrame} from "remotion";export default function Scene(){const f=useCurrentFrame();return <div style={{position:"absolute",inset:0,background:"#091521"}}><svg width="1920" height="1080"><text x="100" y="220" fill="#dceef8" fontSize="72">GPU PREVIEW</text><text x="100" y="320" fill="#83bbcb" fontSize="36">Frame {f} / 1800</text><rect x={100+(f*2)%1200} y="440" width="400" height="220" rx="36" fill="#ff9d45"/><circle cx="1500" cy="800" r={90+f%60} fill="#25b8ac"/></svg></div>;}';
+ const document={schema_version:1,canvas:{width:1920,height:1080,fps:{num:30,den:1}},duration_frames:1800,sources:[{id:'scene',engine:'remotion',source}],nodes:[{id:'scene',kind:'source',source_id:'scene',from:0,duration:1800}]};
+ const saved=await api(`/api/projects/${project}/draw-compositions`,'POST',{session:ws.id,expected_revision:ws.revision,idempotency_key:'preview-source',composition:{id:'preview',name:'GPU preview',document}});
+ const composition=saved.document.draw_compositions.find(c=>c.id==='preview');
+ let view=await api(`/api/projects/${project}/draw-compositions/preview/import`,'POST',{session:ws.id,content_version:composition.content_version,expected_revision:ws.document.sequences[0].revision,idempotency_key:'preview-import',sequence_id:sequence,source_mode:'snapshot',target_track_id:track,at:0});
+ const sample=async frame=>{const started=Date.now();const result=await api(`/api/projects/${project}/sequences/${sequence}/preview/frame`,'POST',{session:ws.id,expected_revision:view.sequence.revision,content_version:view.content_version,frame});return {...result,wall_ms:Date.now()-started};};
+ const cold=await sample(900),warm=await sample(901),repeat=await sample(901);
+ assert(cold.worker_pid>0);assert.equal(warm.worker_pid,cold.worker_pid);assert.equal(repeat.worker_pid,cold.worker_pid);
+ assert.equal(cold.diagnostics.backend,'webgl2',cold.diagnostics.fallback_reason);assert.equal(cold.diagnostics.hardware_accelerated,true,cold.diagnostics.renderer);
+ assert.equal(warm.diagnostics.host_loads,1);assert.equal(warm.diagnostics.source_compiles,1);assert(repeat.diagnostics.frame_cache_hits>0);
+ await record('native backend renders 1080p minute source through one persistent hardware GPU worker',{cold:{wall_ms:cold.wall_ms,...cold.diagnostics},warm:{wall_ms:warm.wall_ms,...warm.diagnostics},repeat:{wall_ms:repeat.wall_ms,...repeat.diagnostics}});
+ const clip=view.sequence.tracks.flatMap(t=>t.clips)[0];
+ view=await api(`/api/projects/${project}/sequences/${sequence}/commands`,'POST',{session:ws.id,expected_revision:view.sequence.revision,idempotency_key:'preview-position',label:'Move preview layer',operations:[{type:'clip.update',clip_ids:[clip.id],effects:{...clip.effects,x:40}}]});
+ const edited=await sample(901);assert.equal(edited.worker_pid,cold.worker_pid);assert.equal(edited.diagnostics.source_compiles,1);assert(edited.diagnostics.source_cache_hits>0);
+ await record('native timeline edit reuses unchanged drawing pixels and compilation',{wall_ms:edited.wall_ms,...edited.diagnostics});
+ await api('/api/workspace/state','PATCH',{session:ws.id,state:{workspace:'editing',active_sequence:sequence,sequence_states:{[sequence]:{head:901,zoom:60}}}});
+ await c.ev(`location.hash='/editing/import'`);
+ await c.wait(`(()=>{const image=document.querySelector('.program-frame');return image?.complete&&image.naturalWidth===1920&&document.querySelector('.program-monitor')?.innerText.includes('GPU 合成')})()`,45000);
+ const visible=JSON.parse(await probe('inspect'));assert(visible.visible&&visible.handle);
+ const geometry=await c.ev(`(()=>{const image=document.querySelector('.program-frame'),screen=document.querySelector('.program-monitor .editor-monitor-screen').getBoundingClientRect(),timeline=document.querySelector('.sequence-timeline').getBoundingClientRect(),r=image.getBoundingClientRect(),overlay=document.querySelector('.program-updating')?.getBoundingClientRect();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const context=canvas.getContext('2d');context.drawImage(image,0,0);return {screen:{width:screen.width,height:screen.height,bottom:screen.bottom},timeline:{top:timeline.top,height:timeline.height},frame:document.querySelector('.timeline-ruler>.track-heading')?.textContent,imageTopmost:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===image,overlayHeight:overlay?.height??0,orangePixel:[...context.getImageData(900,550,1,1).data]}})()`);
+ assert(geometry.screen.width>100&&geometry.screen.height>100);assert(geometry.timeline.top>=geometry.screen.bottom-2);
+ assert(geometry.imageTopmost&&geometry.overlayHeight<geometry.screen.height/4,'render progress obscures the current frame');assert(geometry.orangePixel[0]>220&&geometry.orangePixel[1]>140&&geometry.orangePixel[2]<120,'native monitor did not receive the expected GPU pixels');
+ await c.screenshot(path.join(out,'preview.png'));await probe('capture',['-FilePath',path.join(out,'native-preview.png')]);
+ await record('visible WebView monitor shows real GPU pixels without covering the timeline',geometry);
+ await c.ev(`location.hash='/resources'`);await c.wait(`!document.querySelector('.sequence-timeline')?.getClientRects().length`);
+ await until(async()=>JSON.parse(await run('C:/Program Files/PowerShell/7/pwsh.exe',['-Command',`[bool](Get-Process -Id ${cold.worker_pid} -ErrorAction SilentlyContinue) | ConvertTo-Json`])),alive=>alive===false,15000);
+ await record('leaving native editing releases the owned preview worker and browser');
+ await api('/api/workspace/close','POST',{decision:'discard',stop_tasks:true});
+ assert.equal(c.errors.length,0,'native WebView page exceptions');
+};
+
 const attachDesktop = async () => {
   const deadline=Date.now()+120000;let error;
   while(Date.now()<deadline){
@@ -312,6 +348,8 @@ const attachDesktop = async () => {
 };
 try {
   if (pidArg === 'launch') {
+    const running=JSON.parse(await run('C:/Program Files/PowerShell/7/pwsh.exe',['-Command',`@(Get-Process -Name video-auto-cut-desktop -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) | ConvertTo-Json -Compress`])||'[]');
+    assert(![].concat(running??[]).filter(Boolean).length,'An existing VAC desktop is running; isolated verification will not attach to or stop it');
     const executable=process.env.VAC_DESKTOP_EXECUTABLE;assert(executable,'VAC_DESKTOP_EXECUTABLE required');
     const config=path.resolve(process.argv[5]);const root=path.dirname(config);
     const stdout=await fs.open(path.join(root,'desktop.out.log'),'w'),stderr=await fs.open(path.join(root,'desktop.err.log'),'w');
@@ -320,7 +358,10 @@ try {
   c=await attachDesktop();
   await c.ev(`(()=>{window.__VAC_TEST_MESSAGES=[];new MutationObserver(()=>{for(const n of document.querySelectorAll('.ant-message-notice-content')){const text=n.textContent;if(!window.__VAC_TEST_MESSAGES.includes(text))window.__VAC_TEST_MESSAGES.push(text)}}).observe(document.body,{subtree:true,childList:true})})()`);
   const status=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(status.status,'ready',status.message);base=status.api_base_url;report.runtime=status;
-  if(process.env.VAC_VERIFY_AGENT_EDIT==='1'){
+  if(process.env.VAC_VERIFY_PREVIEW==='1'){
+    report.mode='visible_tauri_gpu_preview_real_go';
+    await verifySequencePreview();
+  }else if(process.env.VAC_VERIFY_AGENT_EDIT==='1'){
     const visible=JSON.parse(await probe('inspect'));assert(visible.visible&&visible.handle);
     await verifyAgentEdit(status);
   }else{

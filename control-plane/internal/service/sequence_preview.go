@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
@@ -34,6 +36,170 @@ type SequencePreview struct {
 	FPS            project.Rate    `json:"fps"`
 	ScopeGroup     string          `json:"scope_group"`
 }
+
+type SequenceFrameRequest struct {
+	Session          string `json:"session"`
+	ExpectedRevision uint64 `json:"expected_revision"`
+	ContentVersion   string `json:"content_version"`
+	Frame            int64  `json:"frame"`
+}
+type SequenceFramePreview struct {
+	ContentVersion string         `json:"content_version"`
+	Frame          int64          `json:"frame"`
+	Image          string         `json:"image"`
+	WorkerPID      int            `json:"worker_pid,omitempty"`
+	Diagnostics    map[string]any `json:"diagnostics,omitempty"`
+}
+
+func (s *Service) CloseSequenceFrame(projectID, session, sequenceID string) error {
+	if s.CurrentProjectID() != projectID || s.ProjectSessionID() != session {
+		return model.ErrConflict
+	}
+	return s.closePreviewProcess("sequence:" + session + ":" + sequenceID)
+}
+
+func (s *Service) persistentSequenceFrame(ctx context.Context, projectID, sequenceID string, view TimelineView, sources []sequenceSource, frame int64) (SequenceFramePreview, error) {
+	var result SequenceFramePreview
+	p, err := s.startPreviewProcess("sequence:"+view.Session+":"+sequenceID, drawingEnvironmentVersion(), "sequence-preview.mjs")
+	if err != nil {
+		return result, err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err = ctx.Err(); err != nil {
+		return result, err
+	}
+	requestID := newID("frame")
+	raw, err := json.Marshal(map[string]any{"request_id": requestID, "session": view.Session, "sequence": view.Sequence, "resources": sources, "frame": frame, "content_version": view.ContentVersion})
+	if err != nil {
+		return result, err
+	}
+	if _, err = p.input.Write(append(raw, '\n')); err != nil {
+		p.stop()
+		return result, err
+	}
+	// A cancelled HTTP seek may finish its one in-flight frame. Drain its reply
+	// before admitting the next request, keeping the compiled browser alive.
+	wait := time.NewTimer(45 * time.Second)
+	defer wait.Stop()
+	for {
+		select {
+		case <-wait.C:
+			p.stop()
+			return result, context.DeadlineExceeded
+		case raw, ok := <-p.responses:
+			if !ok {
+				return result, fmt.Errorf("节目预览进程退出: %w", model.ErrInvalidState)
+			}
+			var status struct {
+				OK        bool   `json:"ok"`
+				RequestID string `json:"request_id"`
+				Message   string `json:"message"`
+			}
+			if err = json.Unmarshal(raw, &status); err != nil {
+				return result, err
+			}
+			if status.RequestID != requestID {
+				continue
+			}
+			if !status.OK {
+				return result, fmt.Errorf("%s: %w", status.Message, model.ErrInvalidState)
+			}
+			if err = json.Unmarshal(raw, &result); err != nil {
+				return result, err
+			}
+			if result.Frame != frame || result.ContentVersion != view.ContentVersion || !strings.HasPrefix(result.Image, "data:image/png;base64,") {
+				return result, model.ErrConflict
+			}
+			return result, ctx.Err()
+		}
+	}
+}
+
+// Current-frame work reuses a sequence-owned worker and never waits behind the
+// full-movie render/export lock. Superseded HTTP results do not destroy its cache.
+func (s *Service) CreateSequenceFrame(ctx context.Context, projectID, sequenceID string, req SequenceFrameRequest) (SequenceFramePreview, error) {
+	var result SequenceFramePreview
+	if s.workspace == nil {
+		return result, model.ErrInvalidState
+	}
+	s.workspace.gate.RLock()
+	defer s.workspace.gate.RUnlock()
+	view, err := s.Timeline(ctx, projectID, sequenceID)
+	if err != nil {
+		return result, err
+	}
+	if req.Session != view.Session || req.ExpectedRevision != view.Sequence.Revision || req.ContentVersion != view.ContentVersion {
+		return result, model.ErrConflict
+	}
+	var end int64
+	for _, track := range sequenceTracks(view.Sequence) {
+		for _, clip := range track.Clips {
+			if clip.At+clip.Duration > end {
+				end = clip.At + clip.Duration
+			}
+		}
+	}
+	if req.Frame < 0 || req.Frame >= end {
+		return result, model.ErrArgument
+	}
+	sources, err := s.sequenceSources(ctx, projectID, view.Sequence)
+	if err != nil {
+		return result, err
+	}
+	output := ""
+	// Reopening an already rendered composition must not recompile its drawing
+	// sources just to show a still. Extract from the verified same-version movie.
+	cachedDir := s.sequencePreviewDir(projectID, sequenceID, view.ContentVersion)
+	var cached SequencePreview
+	metadata, cacheErr := os.ReadFile(filepath.Join(cachedDir, "program.json"))
+	cachedMovie := false
+	if cacheErr == nil && json.Unmarshal(metadata, &cached) == nil && cached.ContentVersion == view.ContentVersion {
+		digest, digestErr := sequenceFileDigest(filepath.Join(cachedDir, "program.mp4"))
+		cachedMovie = digestErr == nil && digest == cached.SHA256
+	}
+	if cachedMovie {
+		parent := filepath.Join(s.workspace.root, "sequence-frames")
+		if err = os.MkdirAll(parent, 0700); err != nil {
+			return result, err
+		}
+		output, err = os.MkdirTemp(parent, "frame-")
+		if err != nil {
+			return result, err
+		}
+		defer os.RemoveAll(output)
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(view.Sequence.FPS.Seconds(req.Frame), 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", filepath.Join(cachedDir, "program.mp4"), "-frames:v", "1", "-threads", "1", filepath.Join(output, "frame.png"))
+		configureMediaCommand(cmd)
+		cmd.Env = toolEnvironment()
+		if err = cmd.Run(); err != nil {
+			return result, err
+		}
+	} else {
+		result, err = s.persistentSequenceFrame(ctx, projectID, sequenceID, view, sources, req.Frame)
+		if err != nil {
+			return result, err
+		}
+	}
+	current, err := s.Timeline(ctx, projectID, sequenceID)
+	if err != nil {
+		return result, err
+	}
+	if current.Session != view.Session || current.ContentVersion != view.ContentVersion {
+		return result, model.ErrConflict
+	}
+	if _, err = s.sequenceSources(ctx, projectID, current.Sequence); err != nil {
+		return result, err
+	}
+	if cachedMovie {
+		raw, err := os.ReadFile(filepath.Join(output, "frame.png"))
+		if err != nil {
+			return result, err
+		}
+		result = SequenceFramePreview{ContentVersion: view.ContentVersion, Frame: req.Frame, Image: "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw), Diagnostics: map[string]any{"backend": "cached-movie"}}
+	}
+	return result, nil
+}
+
 type sequenceSource struct {
 	Draw     *project.DrawDocument `json:"draw_document,omitempty"`
 	Assets   []drawImageAsset      `json:"assets,omitempty"`

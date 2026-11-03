@@ -6,7 +6,7 @@ import { timelineApi } from './timelineApi';
 import { projectApi } from './projectApi';
 import { desktopCommand, isDesktop } from './desktop';
 import { errorText } from './components/ui';
-import { activeTracks, frameLabel, fpsValue, linkedSelection, mediaTime, omitsLinkedPartner, type TimelineOperation, type TimelineClip, type TimelineTrack, type TimelineView, type SequencePreview, type TimelineMarker } from './timelineContracts';
+import { activeTracks, frameLabel, fpsValue, linkedSelection, mediaTime, omitsLinkedPartner, type TimelineOperation, type TimelineClip, type TimelineTrack, type TimelineView, type SequencePreview, type TimelineMarker, type SequenceFrameDiagnostics } from './timelineContracts';
 
 interface EditorContext {
  active:boolean; projectId:string; sequenceId:string; view?:TimelineView; loading:boolean; error:string; pending:boolean;
@@ -16,7 +16,7 @@ interface EditorContext {
  marker:(kind?:'point'|'in'|'out',source?:boolean)=>void; addResource:(id:string,track?:string,at?:number,mode?:string)=>Promise<void>;
  copy:(cut?:boolean,ids?:string[])=>void; paste:()=>Promise<void>; remove:(ripple?:boolean)=>Promise<void>; split:()=>Promise<void>;
  program:RefObject<HTMLVideoElement|null>; source:RefObject<HTMLVideoElement|null>; play:()=>void;
- preview?:SequencePreview; previewURL?:string; previewLoading:boolean; previewError:string; refreshPreview:()=>void; exportVideo:()=>Promise<void>;
+ preview?:SequencePreview; previewURL?:string; framePreviewURL?:string; framePreviewDiagnostics?:SequenceFrameDiagnostics; framePreviewLoading:boolean; previewLoading:boolean; previewError:string; refreshPreview:()=>void; exportVideo:()=>Promise<void>;
  exportStatus:ExportStatus; dismissExport:()=>void;
 }
 export interface ExportStatus { active:boolean; percent:number; label:string; error:string }
@@ -54,16 +54,29 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  const setHead=(value:number,seek=true)=>{const frame=Math.max(0,Math.round(value));updatePosition({head:frame});if(seek && program.current && sequence)program.current.currentTime=frame/fpsValue(sequence.fps);};
  useEffect(()=>{
   stopEditorPlayers();setSelected([]);setSelectedTrack('');setError('');currentSequence.current=sequenceId;
-  return ()=>{stopEditorPlayers();void client.cancelQueries({queryKey:['timeline',session?.id,projectId,sequenceId]});void client.cancelQueries({queryKey:['sequence-preview',session?.id,projectId,sequenceId]});};
+  return ()=>{stopEditorPlayers();void client.cancelQueries({queryKey:['timeline',session?.id,projectId,sequenceId]});void client.cancelQueries({queryKey:['sequence-preview',session?.id,projectId,sequenceId]});void client.cancelQueries({queryKey:['sequence-frame',session?.id,projectId,sequenceId]});if(active&&session?.id&&sequenceId)void timelineApi.releaseFrame(projectId,sequenceId,session.id).catch(()=>{});};
  },[session?.id,sequenceId,active]);
  useEffect(()=>{const focus=(event:FocusEvent)=>{const target=event.target;if(target instanceof HTMLElement && !target.closest('.project-menu-bar,[role=menu]')) focused.current=!!target.closest('.sequence-timeline,.editor-monitor,.timeline-inspector');};document.addEventListener('focusin',focus);return()=>document.removeEventListener('focusin',focus);},[]);
  useEffect(()=>{setSettledVersion('');const timer=setTimeout(()=>setSettledVersion(view?.content_version ?? ''),350);return()=>clearTimeout(timer);},[view?.content_version]);
  const renderedTracks=sequence?activeTracks(sequence):[];
  const nonempty=renderedTracks.some(t=>t.clips.length);
  const previewKey=['sequence-preview',session?.id,projectId,sequenceId,view?.content_version];
- const previewQuery=useQuery({queryKey:previewKey,queryFn:({signal})=>timelineApi.preview(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version},signal),enabled:active && nonempty && !!settledVersion && settledVersion===view?.content_version,retry:1,staleTime:Infinity});
  const sourceUnavailable=renderedTracks.some(t=>t.clips.some(c=>!doc?.resources.some(r=>r.id===c.resource_id&&!r.changed&&!r.missing&&!r.removed)));
+ const identity=JSON.stringify([session?.id,projectId,sequenceId,view?.content_version]);
+ const end=Math.max(0,...renderedTracks.flatMap(t=>t.clips.map(c=>c.at+c.duration)));
+ const targetFrame=Math.min(Math.max(0,end-1),head);
+ const [frameTarget,setFrameTarget]=useState({identity:'',frame:0}),[movieAllowed,setMovieAllowed]=useState('');
+ useEffect(()=>{const timer=setTimeout(()=>setFrameTarget({identity,frame:targetFrame}),100);return()=>clearTimeout(timer);},[identity,targetFrame]);
+ const cachedMovie=client.getQueryData<SequencePreview>(previewKey);
+ const frameKey=['sequence-frame',session?.id,projectId,sequenceId,view?.content_version,frameTarget.frame];
+ const frameQuery=useQuery({queryKey:frameKey,queryFn:({signal})=>timelineApi.previewFrame(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version,frame:frameTarget.frame},signal),enabled:active&&nonempty&&!sourceUnavailable&&settledVersion===view?.content_version&&frameTarget.identity===identity&&cachedMovie?.content_version!==view?.content_version,retry:false,staleTime:Infinity,gcTime:0});
+ // Latch once per content version: scrubbing must not cancel/restart the movie.
+ // A failed still falls back to the established full-preview path.
+ useEffect(()=>{if(frameTarget.identity===identity&&(frameQuery.isSuccess||frameQuery.isError))setMovieAllowed(identity);},[identity,frameTarget.identity,frameQuery.isSuccess,frameQuery.isError]);
+ const previewQuery=useQuery({queryKey:previewKey,queryFn:({signal})=>timelineApi.preview(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version},signal),enabled:active&&nonempty&&!sourceUnavailable&&!!settledVersion&&settledVersion===view?.content_version&&(movieAllowed===identity||cachedMovie?.content_version===view?.content_version),retry:1,staleTime:Infinity});
  const preview=!sourceUnavailable&&previewQuery.data?.content_version===view?.content_version?previewQuery.data:undefined;
+ const framePreviewURL=!sourceUnavailable&&frameTarget.identity===identity&&frameQuery.data&&frameQuery.data.content_version===view?.content_version&&frameQuery.data.frame===targetFrame?frameQuery.data.image:undefined;
+ const framePreviewLoading=nonempty&&!preview&&(!framePreviewURL||frameQuery.isFetching)&&!frameQuery.isError;
  const select=(ids:string[],separate=false)=>{setSelected(sequence?linkedSelection(sequence,ids,separate):ids);const resource=sequence?.tracks.flatMap(t=>t.clips).find(c=>c.id===ids[0])?.resource_id;if(resource&&resource!==project.selectedId)void project.selectResource(resource);};
  const command=async(operations:TimelineOperation[],label:string)=>{
   if(!view || !session || busy.current)return;busy.current=true;setPending(true);setError('');const owner=sequenceId;
@@ -158,7 +171,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
   };
   window.addEventListener('keydown',onKey);window.addEventListener('vac:edit-command',onMenu);return()=>{window.removeEventListener('keydown',onKey);window.removeEventListener('vac:edit-command',onMenu);};
  });
- const value:EditorContext=useMemo(()=>({active,projectId,sequenceId,view,loading:query.isPending,error:error || (query.error?errorText(query.error):''),pending,selected,select,selectedTrack,setSelectedTrack,head,setHead,zoom,setZoom,snap,setSnap,tool,setTool,command,switchSequence,manageSequence,marker,addResource,copy,paste,remove,split,program,source,play,preview,previewURL:preview?timelineApi.previewURL(projectId,sequenceId,preview.content_version):undefined,previewLoading:nonempty && (!settledVersion || previewQuery.isFetching),previewError:sourceUnavailable?'源素材缺失或发生变化，请在资源管理重新定位或确认后更新预览。':previewQuery.error?errorText(previewQuery.error):'',refreshPreview:()=>{void client.invalidateQueries({queryKey:previewKey});},exportVideo,exportStatus,dismissExport}),[active,projectId,sequenceId,view,query.isPending,query.error,error,pending,selected,selectedTrack,head,zoom,snap,tool,preview,previewQuery.isFetching,previewQuery.error,settledVersion,sourceUnavailable,project,exportStatus]);
+ const value:EditorContext=useMemo(()=>({active,projectId,sequenceId,view,loading:query.isPending,error:error || (query.error?errorText(query.error):''),pending,selected,select,selectedTrack,setSelectedTrack,head,setHead,zoom,setZoom,snap,setSnap,tool,setTool,command,switchSequence,manageSequence,marker,addResource,copy,paste,remove,split,program,source,play,preview,framePreviewURL,framePreviewDiagnostics:framePreviewURL?frameQuery.data?.diagnostics:undefined,framePreviewLoading,previewURL:preview?timelineApi.previewURL(projectId,sequenceId,preview.content_version):undefined,previewLoading:nonempty && !sourceUnavailable && (!preview || previewQuery.isFetching) && !previewQuery.isError,previewError:sourceUnavailable?'源素材缺失或发生变化，请在资源管理重新定位或确认后更新预览。':previewQuery.error?errorText(previewQuery.error):'',refreshPreview:()=>{void client.invalidateQueries({queryKey:previewKey});void client.invalidateQueries({queryKey:frameKey});},exportVideo,exportStatus,dismissExport}),[active,projectId,sequenceId,view,query.isPending,query.error,error,pending,selected,selectedTrack,head,zoom,snap,tool,preview,framePreviewURL,frameQuery.data?.diagnostics,framePreviewLoading,previewQuery.isFetching,previewQuery.error,settledVersion,sourceUnavailable,project,exportStatus]);
  return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useSequenceEditor(){const context=useContext(Context);if(!context)throw Error('序列编辑器尚未初始化');return context;}

@@ -1,10 +1,10 @@
 # 测试维护说明
 
-更新：2026-11-01。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
+更新：2026-11-03。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前0.3.2。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前0.3.4。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
 
@@ -515,3 +515,88 @@ StorageRoot沿用.run-data/tests/agent-ux-browser-final-fix，VAC_VERIFY_AGENT_E
 安装后验收：Tauri update_status与Windows文件/卸载注册均为0.3.3；真实原生窗口visible=true，截图installed-ready.png已目视检查“当前版本0.3.3/当前已是最新版本”，最近工程入口仍在。默认数据目录及空资产列表与安装前一致；三个Worker在线，更新检查up_to_date；mcp-endpoint.json迁移并固定原31525端口。独立对比已安装control-plane.exe与正式候选哈希一致，draw-runtime.mjs与当前源码哈希一致。测试正常关闭，desktop-session.json最终stopped，无遗留桌面进程。截图/最终JSON位于0.3.3/public-update/0.3.3/artifacts/custom/updater-installed。
 
 本轮没有回退测试、真实服务商模型调用、用户原工程重剪或人工观感代签；空资产列表一致不代表非空历史库/所有旧版本迁移均已验。后续提交仅包含测试观察恢复与文档，不改变v0.3.3产品二进制，不移动发行标签。
+
+### 2026-11-02 QA-EDIT-INSTALLED01：生成后继续修改（实际安装版9项通过）
+
+用户指定验证“生成后继续修改”。源码/测试入口为整合工作树0a40537（仅新增本轮文档记录），实际执行D:/Applications/VAC/video-auto-cut-desktop.exe 0.3.3及安装目录的control-plane.exe/runtime，不使用开发版替代；现有verify-tauri-desktop.mjs的VAC_VERIFY_AGENT_EDIT=1模式、19339端口，仍经TestWorkspace custom与agent-ux-browser-final-fix根运行。复用native-agent-edit输出，将desktop.json指向安装版资源与隔离installed-data。用户默认业务目录及工程未改，没有重新构建、安装、调用真实服务商模型或发布。
+
+结果9/9、result=passed：原生右栏新建保存脚本→真实MCP读取→首次生成2秒MP4并检查/完成→target选择第一段→第一段1秒缩至0.7秒并更新其正文→重新渲染/检查/完成得到1.7秒新MP4。第二段与修改前深比较一致，人工视频/音频片段深比较一致，新旧产物哈希不同；ffprobe时长与AVP保存重开通过。独立读取本轮磁盘agent-edit-47284.avp确认AVP3、原人工30帧片段与新51帧产物仍在。
+
+后台和完整桌面重启均保持http://127.0.0.1:52216/mcp，同一回归客户端自动重新初始化；固定端口被占用时明确报错、不换址，释放后恢复。真实原生窗口与新截图已查看，节目监视器不遮挡时间线的边界断言通过，WebView无异常。最终installed-data/desktop-session.json为stopped，测试程序已正常退出。
+
+最新证据替换现有native-agent-edit同一入口的results.json、edited-program.mp4、agent-edit-desktop.png、native-agent-edit.png与desktop.json，数据为installed-data；该目录先前data为正式候选历史测试，与本轮安装版分开。父级custom/output.log为本轮9项输出；既有native-candidate.log与MCP/更新验证独立记录仍保留。不把合成测试素材与确定性MCP调用写成真实模型理解、用户原片重剪或人工观感通过。
+
+### 2026-11-03 MV-CONTINUE01：生产试用实际创作续接
+
+实际0.3.3安装版/当前Excute me工程，通过原生MCP读取歌词、序列及Skill合同；用户选择Remotion+TypeScript+SVG替代Motion Canvas。歌曲实际为OGG，源120–180秒制作60秒新片；41歌词提示点分镜基于工程中英歌词与旧LRC，未声称新增逐词转录。源码draw.save/check、实际preview/render与图帧检查后导入新轨组；timeline.edit将旧成片放0–60、新画面放60–120，原音频0–60接120–180，原有轨道深比较完全一致。
+
+任务skr_eaf2747efb3735f6结构化run.finish=succeeded，序列revision13；最终MP4 SHA256 a5598d165073fb1152d078389476623b0543692af726e0a823b27cca40ce55b9，27564291字节；基础video/audio均passed、issues为空。独立ffprobe确认1920×1080/30fps/3600帧/H.264+AAC 48kHz双声道/120.000秒。已查看新片1/7/30/58秒和成片编码59.9/60.1/90/119秒。AVP保存后dirty=false，源码规范化CRLF/LF后与交付TSX一致，1800帧（首轮逐字符断言仅因换行格式不同失败，核查确认不是源码内容差异）。工程未关闭重开，原磁盘版本已备份。
+
+这是业务制作，不是固定样本回归；产物在原根.run-data/development/creative/world-execute-120-180：120秒MP4、分镜说明、IllegalLove.tsx、cues.json、制作结果/成片核验及编码抽帧，源码亦保存在AVP。严格120–180秒使首尾歌词被区间边界截取；完整连续听校、逐词精度和审美由用户确认。没有产品改码、打包或发布。
+
+### 2026-11-03 TRACK-MIX01：轨道兼容与统一锁定（实现/工程与真实媒体通过）
+
+源码为当前整合工作树0a40537加本轮未提交修改。保留此前试用/创作文档改动；真实用户工程只读定位，未执行试验性拖动、保存或重开。截图对应序列revision17，各轨locked=false；顶部已渲MP4。复用project/timeline_test.go、service/project_draw_test.go与统一TestWorkspace custom，没有新增runner/固定媒体。
+
+红灯：跨轨组普通视频和绘制源移动均报旧“目标轨道类型不匹配或已锁定”；联动音轨同样失败；Agent持锁插入失败。随后指定轨道导入、取消/失败清理、旧版本请求误解锁、跨组插入错误波纹源组分别复现后修复，必要日志已保留。新模型Apply维持相同持久locked值，owner仅记录触发者；正常编辑/Agent指定轨道导入走同一模型，跨组联动音轨映射到目标轨组，真实类型/手动锁仍阻止操作。锁与owner不改变画面指纹。
+
+通过：模型整包（含绘制源/普通MP4、联动多音轨、目标波纹、手动/其他Agent锁及持锁插入/显式解锁）；服务定向61.389秒，包含TestDrawReservedTrackImport三种模式snapshot/follow/rendered的实际工程、真实30帧MP4渲染后持锁导入、幂等、解锁与指纹，以及取消/执行失败只释放本任务锁、CAS旧请求不误解锁；同时运行原真实媒体成片及绘制事务/CAS路径。API整包29.398秒、MCP整包125.487秒、Skill整包2.257秒通过；未重跑service全包，不借定向通过关闭整包性能问题。前端完整135项与样式通过，Build-TauriDesktop.ps1 -Debug退出0，包含类型/Vite/当前Go/Worker/Rust（Rust dev构建2m11s）；新调试版位于build/desktop/app-debug/video-auto-cut-desktop.exe。没有安装/替换正在试用的D盘版本。
+
+实际渲染首轮测试临时目录达270字符，Node mkdtemp ENOENT；缩短测试名称后实际MP4渲染/插入通过，未更改产品路径或扩大超时来掩盖断言失败。该失败保存在agent-ux-browser-final-fix/0.3.3/artifacts/custom/rendered-import-longpath-failed.log。该目录另有track-service-green.log与本轮output.log；红灯日志track-reserved-import-red.log/reservation-cleanup-red.log/reservation-stale-red.log。模型与API/MCP在agent-ux-build同版本custom/track-model-green.log、track-api-mcp-green.log及output.log，首轮track-mix-red.log和插入波纹红灯保留。前端单元在0.3.3/public-update/0.3.3/artifacts/custom/track-ui-unit.log，当前output.log为构建。文档18份647链接、191 HTTP/17 IPC/165类型/30 SSE和diff检查通过。
+
+原生窗口与锁按钮本轮未实际运行新构建验收，只有新构建/共用bool及事件链实现证据；不沿用旧安装截图冒充已验证新UI。尚未提交、推送或发布，本轮未改用户AVP或重启其桌面。
+
+### 2026-11-03 TRACK-MIX02：视频换视频轨、音频换音频轨
+
+用户澄清后收口为：保留video/audio类别，仅放开各自兼容轨道之间（含跨Agent轨组）的切换，不做音画同轨或自动抽音。产品移动/锁定实现沿用TRACK-MIX01的通用逻辑；在现有project/timeline_test.go补TestTimelineAudioMixingAndSharedReservation：音乐、配音、由视频生成的联动音频均验证同一锁状态下阻止人工插入、允许本任务插入、显式解锁与跨组换轨；拖动联动音频时4路声音和1路画面保持类型、源ID、落点与联动关系进入目标组。最终模型整包1.787秒通过，生成物沿用agent-ux-build/0.3.3/artifacts/custom/output.log。
+
+范围讨论阶段曾探索视频文件直接投音轨抽音（有临时模型红灯/服务导出记录），用户澄清后已撤回对应产品代码和临时服务测试，保留严格类型边界；这些早期日志不属于当前需求的失败或通过证据。当前音频用例通过实际从视频轨插入生成联动音轨，再移动音频实例，不冒称直接把视频文件投到音轨已支持。仅更新功能/Skill合同与既有模型覆盖；未改用户工程、更新安装版或发布，新原生界面交互仍待验。
+
+### 2026-11-03 PREVIEW-FIRST01：当前帧优先、随后整段预览
+
+源码为整合工作树0a40537加未提交修改，应用仍为0.3.3。复用TestWorkspace custom及既有sequence.test.mjs、draw.test.mjs、project_media_test.go、API project_test.go和review_shortcuts_smoke.mjs；无新runner/独立套件/固定媒体。原根、业务AVP、安装版均未改动。功能合同见功能文档第8节，接口为POST sequences/{sequence}/preview/frame，仍检查会话/序列修订/内容版本/资源状态。
+
+旧监视器等待整段MP4、绘制整场PNG及基础检查后才播放。新增单帧路径只寻当前源帧，复用sequenceGraph效果/字幕；100ms播放头防抖，取消旧请求，按当前版本及帧显示，整段请求只在首帧完成或失败后启动，不随拖动重启，视频定位就绪后接管。已有同版且SHA有效的MP4直接取帧；临时输出短路径且请求后清理，合成器版本写入内容指纹，旧合成缓存不冒充新规则。
+
+红灯已保留：Node缺少当前帧入口、Go缺少接口、浏览器未请求保存的第45帧；新增移动画面同帧比较发现局部效果PTS小数舍入，修为FPS滤镜后的整数帧定位；浏览器视频接管夹具漏匹配query version后按真实URL修正。Go末轮真实Remotion补验命中随机端口10080，Chromium报ERR_UNSAFE_PORT；改绘制服务共用高位49152–65535本机端口并重试占用，不放开浏览器网络策略，网络/弹窗阻断回归仍通过。HTTP首轮TestAutoIdempotencyKeyLengthCountsBytesNotRunes返回500，独立重跑与整包重跑均通过，原因尚未查明，不把偶发故障写成已修复。
+
+通过：序列真实媒体14项，覆盖音轨索引/速度、实际叠加、局部效果/转场/字幕、绘制RGBA及异FPS、基础黑屏/静音检查；单帧与成片对应像素比较包含源入点、1.5倍速与分段末帧。前端135项与样式通过，TypeScript/Vite构建通过；Chrome17组检查含保存播放头先显示静帧、整段请求顺序、晚到旧帧丢弃、拖动不重启整段、实际fixture视频就绪后接管，无页面异常。HTTP整包重跑37.174秒通过；Go真实MP4/Remotion当前帧、缓存MP4复用、旧版本/越界拒绝与临时目录清理最终11.016秒通过。端口修复后序列14项最终37.404秒通过；HyperFrames/Remotion原生绘制两项实际30帧/像素/缓存回归50.522秒通过，网络/弹窗阻断1项通过。内容指纹变更后时间线撤销/标记/绘制导入定向16.141秒通过。未重跑完整service/MCP套件，不用定向结果关闭历史整包性能问题。
+
+证据沿用当前工作树.run-data/tests中的三个已登记根：agent-ux-build/0.3.3/artifacts为Node媒体与端口回归，custom/sequence/drawing-source/verification.json保存透明像素及单帧/整段耗时；agent-ux-browser-final-fix/0.3.3/artifacts保存preview-service-*.log、preview-api-failed.log、preview-api-focused.log、preview-api-full-green.log、preview-web-unit.log、preview-unsafe-port-failed.log及最终custom/output.log；0.3.3/public-update/0.3.3/artifacts保存preview-browser-red.log、preview-handoff-fixture-failed.log、preview-browser-17-green.log、preview-web-build.log及浏览器review-smokes日志。构建已有use-client/npm提示保留，不作为失败。文档检查192 HTTP/17 IPC/166类型/30 SSE、18份650链接及diff检查通过。
+
+性能数值仅针对320×180、0.8秒输出/24帧绘制测试源：最终一轮单帧3.015秒、整段5.430秒，含独立编译/浏览器冷启动；不同重跑存在波动，不推算业务一分钟工程，不宣称实时。当前未打包/替换用户安装版或验证其窗口、未运行用户工程性能测试、未调用真实模型或发布；人工手感仍待用户体验。
+
+### 2026-11-03 PREVIEW-ENGINE01：常驻、局部缓存与第一步GPU合成
+
+当前整合工作树0a40537加未提交改动，应用仍0.3.3。用户确认先规划再执行第一步，并将GPU提前。复用Node sequence/draw、Go project_media/draw_images/API project、前端unit与review_shortcuts_smoke、原生verify-tauri-desktop；无新独立runner、固定媒体或模型服务调用。新预览模块属于产品代码，测试仍归原套件。
+
+实现范围：每活动序列常驻Worker/共享浏览器，最多4个绘制宿主；64MiB PNG字节LRU、源键局部失效、前后2秒/每侧最多60帧单路预取及新请求抢占。sequenceGraph输出统一有效层/效果计划，GPU执行裁切/缩放/位置/层叠/黑白淡出/溶解；字幕复用ASS，普通视频仍FFmpeg取帧，无GPU时CPU后端。响应记录真实renderer/硬件标记和缓存/编译计数，回退不得保留硬件使用标记。取消单次寻帧保留编译环境，离开/切换/关闭释放所属进程及私有缓存；绘制与节目进程类型键隔离。正式导出沿用完整路径及质量检查。
+
+| 覆盖与入口 | 本轮结果 |
+| --- | --- |
+| timeline-cli `npm test -- --test-concurrency=1`，通过TestWorkspace custom执行 | 全部99项通过，289.292秒；双引擎实际渲染、RGBA/时钟/图片、媒体/字幕/导出、网络/进程取消及新GPU/缓存均覆盖。后续仅诊断标记收口，最终WebGL/CPU/导出对比定向27.530秒通过 |
+| 前端 `npm run test:unit`、类型/Vite/样式 | 135项通过；加载提示最终CSS经样式、18组浏览器与原生可见验证，不用原135项替代后续视觉检查 |
+| service `TestSequenceCurrentFrame`、`TestPreviewLifetime`、`TestUnifiedPreviewNormalizes*`、`TestNativeAgentSharesDesktopPreview`、`TestDrawProgressCannotCrossProjectSwitch` | 最终39.392秒通过；真实MP4/Remotion当前帧、同PID、取消保温、释放/重建/目录回收、特殊ID不跨类型释放、原绘制草稿/图片/工程隔离及交付覆盖 |
+| `go test ./internal/api -count=1 -timeout=240s` | 最终整包29.796秒通过，含真实frame PNG、越界/旧版本、释放端点及会话拒绝 |
+| `review_shortcuts_smoke.mjs` | 18组通过；实际后端标签、保存播放头、迟到帧、背景请求不重启、遮挡命中、离开释放、实际fixture视频接管及原快捷键 |
+| `Build-TauriDesktop.ps1 -Debug`与`VAC_VERIFY_PREVIEW=1`既有原生入口 | 最终构建通过；Node诊断资源另同步并以SHA核对。隔离Tauri/真实Go/GPU 4项通过，PNG橙色像素[255,157,69,255]、图片顶层命中、加载条高度、时间线无遮挡均断言，原生截图已目视检查，测试窗口正常退出 |
+
+原生复跑方法：TestWorkspace custom设置VAC_DESKTOP_EXECUTABLE为build/desktop/app-debug/video-auto-cut-desktop.exe、VAC_VERIFY_PREVIEW=1；执行`node scripts/verify-tauri-desktop.mjs 19349 launch <版本化native-preview目录> <该目录desktop.json>`，配置使用当前调试control-plane/runtime及独立data目录。入口拒绝接管其他VAC实例，不动用户工程。四项分别验证一分钟1080p源的常驻硬件GPU、位置编辑复用源像素、实际窗口画面及布局、离开释放。
+
+性能证据：最终原生RTX3070 Laptop/ANGLE Direct3D11，1920×1080/30fps/1800帧构图的第900/901帧寻址，冷启动HTTP整次3686ms、预取命中后173ms、位置修改195ms；Node合成耗时与HTTP整次分列在results.json。重复帧及后续帧含缓存/预取命中，不能写成无缓存解码速度、30fps实时播放或完整一分钟导出耗时。另一Node一分钟测试源验证源码只编译一次、位置编辑不重编译、改源码仅增量编译、改为原生HyperFrames仍复用宿主、附近预取/过期队列取消及有界字节缓存；像素对照覆盖GPU/CPU/实际MP4、黑白fade alpha和24/30/12fps透明叠加。
+
+保留红灯：缺常驻入口及Go WorkerPID、GPU标签未接线；RGBA黑fade同时降低alpha导致GPU过亮，按实际PNG修复shader。原生首轮自动4项虽通过，独立截图发现旧全屏加载遮罩盖住已加载图片；`results-before-visual-review.json`、`native-preview-obscured.png`与`visual-review-failed.json`保留失败，新增遮挡/像素断言后角落状态条通过。旧生命周期测试名过长导致mkdtemp ENOENT，仅缩短为TestPreviewLifetime后重验，测试职责未删除。最后复现特殊构图ID释放错误命名空间，按draw/sequence类型隔离后通过。自动审批服务额度曾阻止最后两项命令启动，用户继续后重新审批执行通过，不记作测试已运行或安全判定拒绝。
+
+证据：agent-ux-build/0.3.3/artifacts内preview-engine-node-all-green.log、preview-engine-api-final-green.log、custom/output.log及custom/sequence/persistent-verification.json、gpu-verification.json；agent-ux-browser-final-fix/0.3.3/artifacts内preview-engine-service-green.log、lifetime-longpath-failed.log、lifetime-green.log、namespace-red.log及custom/output.log（带preview-engine前缀）；0.3.3/public-update/0.3.3/artifacts内preview-engine-browser-final-green.log、overlay-red.log、namespace-build-green.log及custom/native-preview/results.json、preview.png、native-preview.png。生成物仍由当前版本测试根管理，未清理其他数据。
+
+未执行完整service/MCP整包、真实模型质量或人工体验验收；未替换安装版、更新远程、签名发行或修改业务AVP。连续音画播放、硬件解码、视频纹理直传与代理质量调度留第二步；本次不声称PR/达芬奇级全流程实时性能。功能/架构/接口合同同步，文档193 HTTP/17 IPC/167类型/30 SSE与本地链接及diff核验通过。
+
+### 2026-11-03 REL034：0.3.4正式发行与安装版更新（进行中）
+
+版本字段七处同步0.3.4；复用现有构建、签名、原生预览和生产更新器验证入口，不新增独立套件。0.3.4前端完整135项及样式检查通过（另基础webui子集65项），输出在`.run-data/tests/agent-ux-browser-final-fix/0.3.4/artifacts/{custom,webui}/output.log`。正式签名包构建、候选原生画面、远程发行及实际安装升级尚待本轮结果。
+
+按Prepare轮换三个已注册测试根，均先检查进程/标记/重解析点/跟踪文件，固定样本、业务数据及签名目录保留。相同根范围字节统计：agent-ux-build 281845773→589，释放281845184；agent-ux-browser-final-fix 847293112→606，释放847292506；0.3.3/public-update 153097259→435，释放153096824。旧结果提炼为各根archives/0.3.3.md，新测试统一写入入口产生的0.3.4目录，未清理未知根目录。
+
+Rust既有9项在0.3.4全部通过，输出agent-ux-build/0.3.4/artifacts/custom/output.log。首次错误指定--lib导致无library target而未运行用例；去掉该参数后重跑退出0，保留入口错误为已纠正。
+
+0.3.4正式Build-TauriDesktop.ps1 -Installer退出0，包含前端/Go/Rust release及NSIS签名。安装器74990924字节，签名428字节，公钥与生产更新器配置一致。正式app候选的VAC_VERIFY_PREVIEW=1原生4项通过；实际RTX3070/D3D11 WebGL2，1080p一分钟测试源冷帧3863ms、热缓存172ms、重复192ms、时间线位置编辑235ms，仅编译一次。画面顶层命中、橙色RGBA、加载提示高度、时间线无遮挡与离开释放均通过，native-preview.png已目视检查。证据在agent-ux-build/0.3.4/artifacts/custom/native-preview；测试窗口正常退出，未操作业务工程。以上不代表30fps连续音画或歌词项目的性能结论。

@@ -30,8 +30,8 @@
     "tool_count": 19,
     "inner_tool_count": 25
   },
-  "registered_route_count": 190,
-  "expanded_endpoint_count": 191,
+  "registered_route_count": 192,
+  "expanded_endpoint_count": 193,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -5779,7 +5779,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/timeline.go",
-        "line": 72
+        "line": 85
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5808,7 +5808,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/timeline.go",
-        "line": 90
+        "line": 103
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5817,7 +5817,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 16
+          "line": 18
         }
       ],
       "frontend_calls": [],
@@ -5837,7 +5837,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/timeline.go",
-        "line": 81
+        "line": 94
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5846,7 +5846,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 14
+          "line": 16
         }
       ],
       "frontend_calls": [],
@@ -5875,7 +5875,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 15
+          "line": 17
         }
       ],
       "frontend_calls": [],
@@ -5904,7 +5904,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 17
+          "line": 19
         }
       ],
       "frontend_calls": [],
@@ -5933,7 +5933,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 18
+          "line": 20
         }
       ],
       "frontend_calls": [],
@@ -5953,7 +5953,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/timeline.go",
-        "line": 99
+        "line": 112
       },
       "frontend_status": "sdk_only",
       "frontend_status_label": "仅 SDK，页面未接入",
@@ -5962,7 +5962,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 19
+          "line": 21
         }
       ],
       "frontend_calls": [],
@@ -5982,7 +5982,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/timeline.go",
-        "line": 117
+        "line": 130
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5991,7 +5991,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 21
+          "line": 23
         }
       ],
       "frontend_calls": [],
@@ -6035,7 +6035,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/timeline.go",
-        "line": 108
+        "line": 121
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -6044,7 +6044,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/timelineApi.ts",
-          "line": 20
+          "line": 22
         }
       ],
       "frontend_calls": [],
@@ -6640,6 +6640,74 @@
       "frontend_status": "page_integrated",
       "behavior": "进程内只读状态；no-store，不返回会话header、Token或调用参数，不改工程",
       "frontend_gap": ""
+    },
+    {
+      "id": "TL-15",
+      "group": "统一多轨编辑与标记",
+      "method": "POST",
+      "path": "/api/projects/{id}/sequences/{sequence}/preview/frame",
+      "frontend_function": "timelineApi.previewFrame",
+      "frontend_ui": "统一编辑器 / 序列 / 属性 / 脚本补全",
+      "request": "session,expected_revision,content_version,frame（整数帧）；可选 AbortSignal",
+      "success_response": "SequenceFramePreview",
+      "behavior": "当前帧优先：常驻浏览器、源/合成帧LRU与附近预取、共享片段计划的WebGL2合成，返回GPU诊断；不支持时CPU回退，同版有效MP4直接取帧",
+      "usage": "当前工程、当前会话；实现接线与真实验收分开记录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/timeline.go",
+        "line": 72
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/timelineApi.ts",
+          "line": 14
+        }
+      ],
+      "frontend_calls": [
+        {
+          "line": 72,
+          "file": "webui/src/sequenceEditor.tsx"
+        }
+      ],
+      "lifecycle": "current_project_only"
+    },
+    {
+      "id": "TL-16",
+      "group": "统一多轨编辑与标记",
+      "method": "DELETE",
+      "path": "/api/projects/{id}/sequences/{sequence}/preview/frame",
+      "frontend_function": "timelineApi.releaseFrame",
+      "frontend_ui": "统一编辑器 / 序列 / 属性 / 脚本补全",
+      "request": "query session；离开编辑器或切换序列释放所属预览Worker",
+      "success_response": "{closed:boolean}",
+      "behavior": "校验当前工程/会话后停止该序列常驻预览、GPU浏览器和预取，释放内存缓存及私有临时文件；不停止正式导出",
+      "usage": "当前工程、当前会话；实现接线与真实验收分开记录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/timeline.go",
+        "line": 81
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/timelineApi.ts",
+          "line": 15
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/sequenceEditor.tsx",
+          "line": 57
+        }
+      ],
+      "lifecycle": "current_project_only"
     }
   ],
   "routes_source_sha256": "adcb918dcc3281a9a6b04a04e8286e37c6f4326ef6effc8e96fc4d1db604d64e",
@@ -6663,7 +6731,7 @@
     "control-plane/internal/api/skill.go": "c675cb099572b63c9224e795bfbfc7066a35604f4fe155bad87e6fae6d95e140",
     "control-plane/internal/api/skill_editing.go": "d1a3945a023c2e21611232b119c2f8f49c59d96a54f2c1608ae3dee18c0d8e31",
     "control-plane/internal/api/project.go": "aead2e50864355c0e9b57859b3a8d00189a11e774bdb0131ec02dbd9975d1cba",
-    "control-plane/internal/api/timeline.go": "f4f1f8cdf176ab4253c2a79442bc21c0e7185308ea1dabe91d2be414086037c0",
+    "control-plane/internal/api/timeline.go": "c431fa68ead1d4c98344bccec11fa900ad6d71764216dba4fb0f84207aebea64",
     "control-plane/internal/api/draw.go": "812774438986eb74d100c2582a52275ab756541ccf657f1d8e725e52fc74bd88",
     "control-plane/internal/api/runtime.go": "c71d9b91548845cc4bfba82e778c0a3a9dbcbc5a38c833daa7da5418690f9a8d"
   },
@@ -6695,7 +6763,7 @@
     "verified_date": "2026-11-01",
     "method": "本轮校对移除验收/人工确认后的接线；静态接线与原生/模型质量分别记录，兼容SDK不描述为当前页面。",
     "counts": {
-      "page_integrated": 159,
+      "page_integrated": 161,
       "sdk_only": 13,
       "retired_in_workspace": 9,
       "not_wrapped": 10

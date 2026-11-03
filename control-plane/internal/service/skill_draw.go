@@ -80,6 +80,8 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		return respond(v)
 	}
 	var action struct {
+		TargetTrackID    string `json:"target_track_id,omitempty"`
+		At               int64  `json:"at,omitempty"`
 		Format           string `json:"format,omitempty"`
 		SourceMode       string `json:"source_mode,omitempty"`
 		RequestID        string `json:"request_id,omitempty"`
@@ -127,7 +129,7 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		if action.SequenceID != r.SequenceID {
 			return nil, model.ErrForbidden
 		}
-		v, e := s.ImportDrawComposition(ctx, "agent:"+r.ID, r.ProjectID, c.ID, DrawImportRequest{Session: action.Session, ContentVersion: action.ContentVersion, ExpectedRevision: action.ExpectedRevision, IdempotencyKey: action.IdempotencyKey, SequenceID: action.SequenceID, SourceMode: action.SourceMode})
+		v, e := s.ImportDrawComposition(ctx, "agent:"+r.ID, r.ProjectID, c.ID, DrawImportRequest{Session: action.Session, ContentVersion: action.ContentVersion, ExpectedRevision: action.ExpectedRevision, IdempotencyKey: action.IdempotencyKey, SequenceID: action.SequenceID, SourceMode: action.SourceMode, TargetTrackID: action.TargetTrackID, At: action.At})
 		if e != nil {
 			return nil, e
 		}

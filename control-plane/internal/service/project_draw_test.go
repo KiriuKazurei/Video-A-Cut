@@ -455,3 +455,146 @@ func TestDrawBuiltinSourceCAS(t *testing.T) {
 		t.Fatalf("builtin source flow: %v %v %+v", list, e, run)
 	}
 }
+
+func TestDrawReservedTrackImport(t *testing.T) {
+	for _, mode := range []string{"snapshot", "follow", "rendered"} {
+		t.Run(mode, func(t *testing.T) {
+			svc, root := avpWorkspaceFixture(t)
+			ctx := t.Context()
+			view, e := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "reserved.avp"), Name: "Reserved"})
+			if e != nil {
+				t.Fatal(e)
+			}
+			doc := project.DrawDocument{SchemaVersion: 1, Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}}, DurationFrames: 30, Preset: "auto", Sources: []project.DrawSource{}, Nodes: []project.DrawNode{{ID: "text", Kind: "text", Text: "Editable source", Duration: 30}}}
+			view, e = svc.SaveDrawComposition(ctx, view.Document.Project.ID, service.DrawSaveRequest{Session: view.ID, ExpectedRevision: view.Revision, IdempotencyKey: "source", Composition: project.DrawComposition{ID: "scene", Name: "Scene", Document: &doc}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			pid := view.Document.Project.ID
+			seq := view.Document.Sequences[0]
+			trackID := seq.Tracks[0].ID
+			c := view.Document.DrawCompositions[0]
+			before, e := svc.Timeline(ctx, pid, seq.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			locked := true
+			held, e := svc.TimelineCommand(ctx, "agent:render", pid, seq.ID, project.Command{Session: view.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "reserve", Operations: []project.Operation{{Type: "track.update", TrackID: trackID, Locked: &locked}}})
+			if e != nil {
+				t.Fatal(e)
+			}
+
+			if mode == "rendered" {
+				repo, e := filepath.Abs("../../..")
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = svc.ConfigureTTS("python", filepath.Join(repo, "workers", "python")); e != nil {
+					t.Fatal(e)
+				}
+				t.Cleanup(svc.CloseTTS)
+				movie, e := svc.RenderDrawComposition(ctx, pid, c.ID, service.DrawActionRequest{Session: view.ID, ContentVersion: c.ContentVersion})
+				if e != nil {
+					t.Fatal(e)
+				}
+				if movie.Frames != 30 || movie.Size == 0 {
+					t.Fatal("actual drawing movie missing")
+				}
+			}
+			if held.ContentVersion != before.ContentVersion {
+				t.Fatal("lock-only update invalidated rendered content")
+			}
+			raw, _ := json.Marshal(map[string]any{"session": view.ID, "content_version": c.ContentVersion, "expected_revision": held.Sequence.Revision, "idempotency_key": "attach", "sequence_id": seq.ID, "source_mode": mode, "target_track_id": trackID, "at": 30})
+			var req service.DrawImportRequest
+			if e = json.Unmarshal(raw, &req); e != nil {
+				t.Fatal(e)
+			}
+			attached, e := svc.ImportDrawComposition(ctx, "agent:render", pid, c.ID, req)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if len(attached.Sequence.Tracks) != len(seq.Tracks) || !attached.Sequence.Tracks[0].Locked || len(attached.Sequence.Tracks[0].Clips) != 1 || attached.Sequence.Tracks[0].Clips[0].At != 30 {
+				t.Fatal("source was not inserted into the reserved video track while still locked")
+			}
+			replay, e := svc.ImportDrawComposition(ctx, "agent:render", pid, c.ID, req)
+			if e != nil || len(replay.Sequence.Tracks[0].Clips) != 1 {
+				t.Fatalf("import replay duplicated insert: %v", e)
+			}
+			locked = false
+			released, e := svc.TimelineCommand(ctx, "agent:render", pid, seq.ID, project.Command{Session: view.ID, ExpectedRevision: attached.Sequence.Revision, IdempotencyKey: "release", Operations: []project.Operation{{Type: "track.update", TrackID: trackID, Locked: &locked}}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if released.Sequence.Tracks[0].Locked {
+				t.Fatal("reservation did not release")
+			}
+		})
+	}
+}
+
+func TestDrawingAgentReservationCleanup(t *testing.T) {
+	for _, action := range []string{"cancel", "tool_failure"} {
+		t.Run(action, func(t *testing.T) {
+			svc, root := avpWorkspaceFixture(t)
+			ctx := t.Context()
+			if e := svc.ConfigureSkillHarness(ctx); e != nil {
+				t.Fatal(e)
+			}
+			v, e := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "cleanup.avp"), Name: "Cleanup"})
+			if e != nil {
+				t.Fatal(e)
+			}
+			pid, seq := v.Document.Project.ID, v.Document.Sequences[0]
+			visible, e := svc.ProjectVisibleSet(ctx, pid)
+			if e != nil {
+				t.Fatal(e)
+			}
+			run, e := svc.CreateSkillRun(ctx, "agent:worker", skill.RunRequest{ProjectID: pid, SequenceID: seq.ID, SkillID: "vac-draw-remotion", Mode: "external_mcp", Strategy: "draw", VisibleSHA: visible.SHA, Goal: "render insertion", IdempotencyKey: "cleanup"})
+			if e != nil {
+				t.Fatal(e)
+			}
+			lock := true
+			args, _ := json.Marshal(map[string]any{"sequence_id": seq.ID, "command": project.Command{Session: v.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "lock", Operations: []project.Operation{{Type: "track.update", TrackID: seq.Tracks[0].ID, Locked: &lock}}}})
+			run, _, e = svc.ExecuteSkillTool(ctx, "agent:worker", run.ID, skill.ToolRequest{Name: "timeline.edit", ExpectedVersion: run.Version, IdempotencyKey: "lock", Arguments: args})
+			if e != nil {
+				t.Fatal(e)
+			}
+			held, e := svc.Timeline(ctx, pid, seq.ID)
+			if e != nil || !held.Sequence.Tracks[0].Locked {
+				t.Fatal("Agent reservation missing")
+			}
+
+			_, _, stale := svc.ExecuteSkillTool(ctx, "agent:worker", run.ID, skill.ToolRequest{Name: "timeline.read", ExpectedVersion: run.Version - 1, IdempotencyKey: "stale-request", Arguments: json.RawMessage(`{}`)})
+			if !errors.Is(stale, model.ErrConflict) {
+				t.Fatal("expected stale request conflict")
+			}
+			stillHeld, _ := svc.Timeline(ctx, pid, seq.ID)
+			if !stillHeld.Sequence.Tracks[0].Locked {
+				t.Fatal("a stale request released an active reservation")
+			}
+			// A manual lock on another track must survive either exit path.
+			_, e = svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: v.ID, ExpectedRevision: held.Sequence.Revision, IdempotencyKey: "manual", Operations: []project.Operation{{Type: "track.update", TrackID: seq.Tracks[1].ID, Locked: &lock}}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if action == "cancel" {
+				_, e = svc.UpdateSkillRun(ctx, "agent:worker", run.ID, "cancel", run.Version)
+				if e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				_, _, e = svc.ExecuteSkillTool(ctx, "agent:worker", run.ID, skill.ToolRequest{Name: "draw.check", ExpectedVersion: run.Version, IdempotencyKey: "missing", Arguments: json.RawMessage(`{"composition_id":"missing","session":"missing","content_version":"missing"}`)})
+				if e == nil {
+					t.Fatal("expected failed tool")
+				}
+			}
+			after, e := svc.Timeline(ctx, pid, seq.ID)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if after.Sequence.Tracks[0].Locked || !after.Sequence.Tracks[1].Locked {
+				t.Fatal("Agent reservation stuck or manual lock released")
+			}
+		})
+	}
+}

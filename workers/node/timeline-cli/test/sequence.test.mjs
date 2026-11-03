@@ -64,15 +64,104 @@ test('cross dissolve refuses missing handles instead of silently changing edit d
  const resources=[{id:'r',kind:'video',path:join(process.cwd(),'example.mp4'),metadata:{duration:.8,streams:[{index:0,codec_type:'video'}]}}];assert.throws(()=>sequenceGraph(s,resources),/源尾部/);
 });
 
+test('current frame matches movie effects without rendering preceding frames',{timeout:120000},async()=>{
+ const {renderSequenceFrame}=await import('../src/sequence.mjs');
+ assert.equal(typeof renderSequenceFrame,'function','current-frame renderer must exist');
+ const {root,resources}=await realFixture(),s=seq();
+ s.tracks=[{id:'v',kind:'video',clips:[{...clip('red'),duration:30,source_out:{value:48000,scale:48000}},{...clip('blue'),resource_id:'blue',at:30,duration:30,source_out:{value:48000,scale:48000},effects:{...effects(),transition:12,fade_out:9}}]}];
+ const movie=join(root,'frame-ref');await renderSequence({sequence:s,resources,output_dir:movie,content_version:'frame-ref'});
+ for(const frame of [0,30,36,45,57]){
+  const output=join(root,'still-'+frame);const report=await renderSequenceFrame({sequence:s,resources,frame,output_dir:output,content_version:'frame-ref'});
+  assert.equal(report.frame,frame);assert.equal(report.content_version,'frame-ref');
+  const actual=await pixelStat(join(output,'frame.png'),0),expected=await pixelStat(join(movie,'program.mp4'),frame/30);
+  for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(actual[key]-expected[key])<9,`frame ${frame} ${key}: ${actual[key]} vs ${expected[key]}`);
+ }
+ const graph=sequenceGraph(s,resources,{frame:57});assert.equal(graph.frames,1);assert(graph.args.includes('-ss'));assert(!graph.filters.some(f=>f.includes('amix')));
+ await assert.rejects(()=>renderSequenceFrame({sequence:s,resources,frame:60,output_dir:join(root,'invalid')}),/帧/);
+ const moving=join(root,'moving.mp4');await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','testsrc2=s=320x180:r=30:d=2','-c:v','libx264','-threads','1',moving]);
+ const source={...resources[0],path:moving,sha256:await sequenceFileHash(moving)};
+ const timed=seq();timed.tracks=[{id:'v',kind:'video',clips:[{...clip('moving'),duration:30,speed:1.5,source_in:{value:2,scale:30},source_out:{value:47,scale:30},effects:{...effects(),from_frame:5,to_frame:25,scale:.8,fade_in:5,fade_out:5}}]},{id:'s',kind:'subtitle',clips:[{...clip('caption'),at:9,duration:12,text:'Current frame'}]}];
+ const reference=join(root,'moving-ref');await renderSequence({sequence:timed,resources:[source],output_dir:reference,content_version:'moving'});
+ for(const frame of [3,9,17,29]){
+  const output=join(root,'moving-'+frame);await renderSequenceFrame({sequence:timed,resources:[source],frame,output_dir:output,content_version:'moving'});
+  const actual=await pixelStat(join(output,'frame.png'),0),expected=await pixelStat(join(reference,'program.mp4'),frame/30);
+  for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(actual[key]-expected[key])<12,`moving frame ${frame} ${key}: ${actual[key]} vs ${expected[key]}`);
+ }
+});
+
+test('persistent preview reuses source frames across effect edits and recompiles only changed drawing source',{timeout:120000},async()=>{
+ const module=await import('../src/sequence-frame-session.mjs').catch(()=>({}));assert.equal(typeof module.createSequenceFrameSession,'function','persistent frame session is required');
+ const {root,resources}=await realFixture(),s=seq();
+ s.width=1920;s.height=1080;
+ const drawing={id:'draw',kind:'video',sha256:'drawing-v1',metadata:{duration:60,streams:[{index:0,codec_type:'video'}]},draw_document:{schema_version:1,canvas:{width:320,height:180,fps:{num:30,den:1}},duration_frames:1800,sources:[{id:'r',engine:'remotion',source:'import React from "react";import {useCurrentFrame} from "remotion";export default ()=> <div style={{position:"absolute",left:useCurrentFrame()%120,top:20,width:60,height:60,background:"blue"}}/>;'}],nodes:[{id:'r',kind:'source',source_id:'r',from:0,duration:1800}]},assets:[]};
+ s.tracks=[{id:'v',kind:'video',clips:[{...clip('drawing'),resource_id:'draw',duration:1800,source_out:{value:60,scale:1}}]}];
+ drawing.draw_document.canvas.width=1920;drawing.draw_document.canvas.height=1080;
+ const session=await module.createSequenceFrameSession({output_dir:join(root,'persistent'),cache_bytes:2*1024*1024,prefetch_frames:2});
+ try{
+  const request={sequence:s,resources:[...resources,drawing],frame:900,content_version:'v1'};
+  const cold=await session.render(request),warm=await session.render({...request,frame:901});
+  assert.equal(cold.frame,900);assert.equal(warm.frame,901);assert.equal(warm.diagnostics.host_loads,1);assert.equal(warm.diagnostics.source_compiles,1);
+  const repeat=await session.render({...request,frame:901});assert(repeat.diagnostics.frame_cache_hits>0);
+  const changed=structuredClone(s);changed.tracks[0].clips[0].effects.x=20;
+  const edited=await session.render({...request,sequence:changed,frame:901,content_version:'v2'});assert(edited.diagnostics.source_cache_hits>0);assert.equal(edited.diagnostics.source_compiles,1);
+  const updated=structuredClone(drawing);updated.sha256='drawing-v2';updated.draw_document.sources[0].source=updated.draw_document.sources[0].source.replace('blue','red');
+  const revised=await session.render({...request,resources:[...resources,updated],frame:901,content_version:'v3'});assert.equal(revised.diagnostics.source_compiles,2);assert.notEqual(revised.image,edited.image);
+  assert(revised.diagnostics.cache_bytes<=2*1024*1024);
+  const changedRequest={...request,resources:[...resources,updated],frame:901,content_version:'v3'};
+  await session.prefetch(changedRequest);const renders=session.diagnostics().source_renders;
+  const prefetched=await session.render({...changedRequest,frame:902});assert(prefetched.diagnostics.frame_cache_hits>revised.diagnostics.frame_cache_hits);assert.equal(prefetched.diagnostics.source_renders,renders);
+  const obsolete=session.prefetch(changedRequest),foreground=session.render({...changedRequest,frame:200});await obsolete;assert.equal((await foreground).frame,200);
+  assert(session.diagnostics().prefetched_frames>=4);
+  const html=structuredClone(updated);html.sha256='html-v1';html.draw_document.sources[0]={id:'r',engine:'hyperframes',source:'<!doctype html><html><head><style>body{margin:0;background:transparent}#root{position:relative;width:1920px;height:1080px}#box{position:absolute;top:20px;width:60px;height:60px;background:lime}</style></head><body><div id="root" data-composition-id="r" data-width="1920" data-height="1080" data-duration="60"><div id="box"></div></div><script>const tl=gsap.timeline({paused:true});tl.to("#box",{x:120,duration:60,ease:"none"});window.__timelines={r:tl};</script></body></html>'};
+  const native=await session.render({...request,resources:[...resources,html],frame:900,content_version:'html'});assert.equal(native.diagnostics.host_loads,1);
+  const htmlPath=join(root,'persistent-hyperframes.png');await writeFile(htmlPath,Buffer.from(native.image.split(',')[1],'base64'));const green=await pixelStat(htmlPath,0,75,35);assert(green.YAVG>100&&green.UAVG<90&&green.VAVG<90,'native HyperFrames clock must share the persistent GPU browser');
+  await writeFile(join(root,'persistent-verification.json'),JSON.stringify({cold:cold.diagnostics,warm:warm.diagnostics,edited:edited.diagnostics,revised:revised.diagnostics},null,2));
+ }finally{await session.close();}
+ await assert.rejects(()=>session.render({sequence:s,resources:[],frame:0}),/closed|关闭/i);
+});
+
+test('WebGL preview agrees with CPU transforms fades dissolves and captions',{timeout:120000},async()=>{
+ const {createSequenceFrameSession}=await import('../src/sequence-frame-session.mjs'),{root,resources}=await realFixture();
+ const gpu=await createSequenceFrameSession({output_dir:join(root,'gpu-effects'),prefetch_frames:0});
+ const cpu=await createSequenceFrameSession({output_dir:join(root,'cpu-effects'),prefetch_frames:0,backend:'cpu'});
+ const s=seq(),full=(id,resource='r')=>({...clip(id),resource_id:resource,duration:30,source_out:{value:1,scale:1}});
+ s.tracks=[{id:'v',kind:'video',clips:[full('red'),{...full('blue','blue'),at:30,effects:{...effects(),transition:12,fade_out:9,scale:.7,x:10,crop_left:.1}}]},{id:'s',kind:'subtitle',clips:[{...full('caption'),at:30,text:'GPU / CPU'}]}];
+ try{
+  const reference=join(root,'gpu-export-ref');await renderSequence({sequence:s,resources,output_dir:reference,content_version:'gpu-compare'});
+  for(const frame of [0,30,36,45,57]){
+   const input={sequence:s,resources,frame,content_version:'gpu-compare'};
+   const actual=await gpu.render(input),expected=await cpu.render(input);assert.equal(actual.diagnostics.backend,'webgl2',actual.diagnostics.fallback_reason);assert.equal(expected.diagnostics.backend,'cpu-ffmpeg');
+   const g=join(root,'gpu-'+frame+'.png'),c=join(root,'cpu-'+frame+'.png');await writeFile(g,Buffer.from(actual.image.split(',')[1],'base64'));await writeFile(c,Buffer.from(expected.image.split(',')[1],'base64'));
+   for(const [x,y] of [[150,50],[0,0],[150,120]]){const a=await pixelStat(g,0,x,y),b=await pixelStat(c,0,x,y),movie=await pixelStat(join(reference,'program.mp4'),frame/30,x,y);for(const key of ['YAVG','UAVG','VAVG']){assert(Math.abs(a[key]-b[key])<12,`frame ${frame} (${x},${y}) ${key}: GPU ${a[key]} CPU ${b[key]}`);assert(Math.abs(a[key]-movie[key])<12,`GPU frame ${frame} differs from exported ${key}`);}}
+  }
+  const white=structuredClone(s);white.tracks[0].clips[1].effects.fade_color='white';
+  const w=await gpu.render({sequence:white,resources,frame:57,content_version:'white'}),wCPU=await cpu.render({sequence:white,resources,frame:57,content_version:'white'});
+  const wp=join(root,'gpu-white.png'),cp=join(root,'cpu-white.png');await writeFile(wp,Buffer.from(w.image.split(',')[1],'base64'));await writeFile(cp,Buffer.from(wCPU.image.split(',')[1],'base64'));
+  const whiteGPU=await pixelStat(wp,0,150,50),whiteCPU=await pixelStat(cp,0,150,50);for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(whiteGPU[key]-whiteCPU[key])<12,'white fade must preserve the CPU alpha rule');
+  await writeFile(join(root,'gpu-verification.json'),JSON.stringify(gpu.diagnostics(),null,2));
+ }finally{await gpu.close();await cpu.close();}
+});
+
 test('editable drawing FrameSource composites alpha with footage and sound on the shared sequence clock',{timeout:120000},async()=>{
  const {root,resources}=await realFixture(),s=seq();
  const drawing={id:'draw',name:'Editable source',kind:'video',sha256:'snapshot-1',metadata:{duration:1,streams:[{index:0,codec_type:'video'}]},draw_document:{schema_version:1,canvas:{width:320,height:180,fps:{num:24,den:1}},duration_frames:24,preset:'auto',sources:[{id:'react',engine:'remotion',canvas:{width:320,height:180,fps:{num:12,den:1}},duration_frames:12,source:'import React from "react";import {useCurrentFrame,useVideoConfig} from "remotion";export default function Scene(){const f=useCurrentFrame(),c=useVideoConfig();return <div style={{position:"absolute",left:50+f*4,top:40,width:80,height:50,background:c.fps===12?"rgba(0,0,255,.5)":"lime"}}/>;}'}],nodes:[{id:'react',kind:'source',source_id:'react',from:0,duration:24}]},assets:[]};
  s.tracks=[{id:'base',kind:'video',clips:[clip('base')]},{id:'drawing',kind:'video',clips:[{...clip('drawing'),resource_id:'draw'}]},{id:'tone',kind:'audio',clips:[clip('audio',2)]}];
- const output=join(root,'drawing-source'),report=await renderSequence({sequence:s,resources:[...resources,drawing],output_dir:output,content_version:'drawing-source'});
+ const {renderSequenceFrame}=await import('../src/sequence.mjs'),{renderDrawSourceFrame}=await import('../src/unified-draw.mjs');
+ const stillOutput=join(root,'drawing-still'),requested=[],started=performance.now();
+ await renderSequenceFrame({sequence:s,resources:[...resources,drawing],frame:12,output_dir:stillOutput,content_version:'drawing-source'},{drawFrame:async input=>{requested.push(input.frame);return renderDrawSourceFrame(input);}});
+ const stillMs=performance.now()-started;assert.deepEqual(requested,[9],'seek a single rational-clock drawing frame');
+ const movieStarted=performance.now(),output=join(root,'drawing-source'),report=await renderSequence({sequence:s,resources:[...resources,drawing],output_dir:output,content_version:'drawing-source'}),movieMs=performance.now()-movieStarted;
  const center=await pixelStat(join(output,'program.mp4'),.4,75,55),outside=await pixelStat(join(output,'program.mp4'),.4,230,55),audio=await audioStat(join(output,'program.mp4'),'lavfi.astats.Overall.RMS_level',.1,.4);
  assert(center.UAVG>165&&center.VAVG>165,'half-alpha blue source must blend with red footage');assert(outside.VAVG>220&&outside.UAVG<110,'transparent drawing area must preserve footage');assert(audio>-45,'existing sound must survive the drawing FrameSource');assert.equal(report.frames,24);
  const snapshot=JSON.parse(await readFile(join(output,'sequence.json'),'utf8'));assert(snapshot.resources.some(r=>r.draw_document),'editable source snapshot must remain distinguishable from flattened video');
- await writeFile(join(output,'verification.json'),JSON.stringify({report,center,outside,audio,independent_source_fps:12,drawing_fps:24,sequence_fps:30},null,2));
+ const still=await pixelStat(join(stillOutput,'frame.png'),0,75,55);for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(still[key]-center[key])<9,`drawing ${key} differs from movie`);
+ const {createSequenceFrameSession}=await import('../src/sequence-frame-session.mjs');const gpu=await createSequenceFrameSession({output_dir:join(root,'drawing-gpu'),prefetch_frames:0});
+ try{
+  const result=await gpu.render({sequence:s,resources:[...resources,drawing],frame:12,content_version:'drawing-source'}),path=join(root,'drawing-gpu.png');await writeFile(path,Buffer.from(result.image.split(',')[1],'base64'));
+  const pixels=await pixelStat(path,0,75,55);for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(pixels[key]-center[key])<9,'GPU must blend real drawing alpha with footage');
+  await gpu.render({sequence:s,resources:[...resources,drawing],frame:10,content_version:'drawing-source'});const repeated=await gpu.render({sequence:s,resources:[...resources,drawing],frame:11,content_version:'drawing-source'});assert(repeated.diagnostics.source_cache_hits>0,'rational source clocks must reuse the same source frame');
+ }finally{await gpu.close();}
+ await writeFile(join(output,'verification.json'),JSON.stringify({report,center,outside,audio,still,still_ms:stillMs,movie_ms:movieMs,independent_source_fps:12,drawing_fps:24,sequence_fps:30},null,2));
 });
 
 test('program exposes FFmpeg basic inspection for an audible visible sequence',{timeout:120000},async()=>{

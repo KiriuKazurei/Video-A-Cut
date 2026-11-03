@@ -2,6 +2,7 @@ package project
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -337,5 +338,216 @@ func TestGainKeyframesRoundTripAndSliceRemap(t *testing.T) {
 	}
 	if err = d.Validate(); err == nil {
 		t.Fatal("unsorted keyframes must be rejected by Validate")
+	}
+}
+
+func TestTimelineCrossGroupMoveMixesDrawingAndVideo(t *testing.T) {
+	for _, drawing := range []bool{false, true} {
+		t.Run(fmt.Sprint(drawing), func(t *testing.T) {
+			d := timelineFixture()
+			s := &d.Sequences[0]
+			s.Configured = true
+			s.FPS = Rate{30, 1}
+			r := Resource{ID: "visual", Kind: "video", Out: 2, Metadata: map[string]any{"duration": 2, "streams": []map[string]any{{"index": 0, "codec_type": "video"}}}}
+			if drawing {
+				r.Draw = &DrawSourceReference{CompositionID: "scene", Mode: "snapshot"}
+			}
+			d.Resources = append(d.Resources, r)
+			s.Groups = append(s.Groups, TrackGroup{ID: "agent-group"})
+			s.Tracks = append(s.Tracks, newTrack("video", "agent-group"))
+			src := s.Tracks[len(s.Tracks)-1].ID
+			dst := s.Tracks[0].ID
+			if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: src, ResourceID: r.ID}, Origin{Actor: "agent:run"}); err != nil {
+				t.Fatal(err)
+			}
+			clip := s.Tracks[len(s.Tracks)-1].Clips[0]
+			if err := s.Apply(&d, Operation{Type: "clip.move", ClipIDs: []string{clip.ID}, TargetTrackID: dst, At: 90}, Origin{Actor: "human:window"}); err != nil {
+				t.Fatal(err)
+			}
+			if len(s.Tracks[0].Clips) != 1 || s.Tracks[0].Clips[0].ResourceID != r.ID || s.Tracks[0].Clips[0].At != 90 {
+				t.Fatal("drawing/video was not moved intact")
+			}
+		})
+	}
+}
+func TestTimelineCrossGroupMoveKeepsLinkedAudioInDestinationGroup(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.Groups = append(s.Groups, TrackGroup{ID: "g"})
+	s.Tracks = append(s.Tracks, newTrack("video", "g"))
+	src := s.Tracks[len(s.Tracks)-1].ID
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: src, ResourceID: "r"}, Origin{}); err != nil {
+		t.Fatal(err)
+	}
+	var id, link string
+	for _, tr := range s.Tracks {
+		if tr.ID == src {
+			id = tr.Clips[0].ID
+			link = tr.Clips[0].LinkID
+		}
+	}
+	if err := s.Apply(&d, Operation{Type: "clip.move", ClipIDs: []string{id}, TargetTrackID: s.Tracks[0].ID, At: 120}, Origin{Actor: "human:window"}); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, tr := range s.Tracks {
+		for _, c := range tr.Clips {
+			if c.LinkID == link {
+				count++
+				if tr.GroupID != "" || c.At != 120 {
+					t.Fatalf("linked clip left behind: %+v", tr)
+				}
+			}
+		}
+	}
+	if count != 5 {
+		t.Fatalf("linked stream count %d", count)
+	}
+}
+func TestTimelineAgentReservationUsesSharedLock(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	trackID := s.Tracks[0].ID
+	agent := Origin{Actor: "agent:render-task"}
+	human := Origin{Actor: "human:window"}
+	if err := s.Apply(&d, Operation{Type: "track.update", TrackID: trackID, Locked: ptr(true)}, agent); err != nil {
+		t.Fatal(err)
+	}
+	if !s.Tracks[0].Locked {
+		t.Fatal("Agent lock must be the displayed track lock")
+	}
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: trackID, ResourceID: "r"}, Origin{Actor: "agent:other-task"}); err == nil {
+		t.Fatal("other task entered reservation")
+	}
+	if err := s.Apply(&d, Operation{Type: "track.update", TrackID: trackID, Locked: ptr(false)}, Origin{Actor: "agent:other-task"}); err == nil {
+		t.Fatal("other task released reservation")
+	}
+
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: trackID, ResourceID: "r"}, human); err == nil {
+		t.Fatal("human edit entered reserved track")
+	}
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: trackID, ResourceID: "r"}, agent); err != nil {
+		t.Fatalf("lock owner must insert before unlocking: %v", err)
+	}
+	if !s.Tracks[0].Locked {
+		t.Fatal("insertion prematurely unlocked track")
+	}
+	if err := s.Apply(&d, Operation{Type: "track.update", TrackID: trackID, Locked: ptr(false)}, agent); err != nil {
+		t.Fatal(err)
+	}
+	if s.Tracks[0].Locked {
+		t.Fatal("Agent did not release displayed lock")
+	}
+	if err := s.Apply(&d, Operation{Type: "track.update", TrackID: trackID, Locked: ptr(true)}, human); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Apply(&d, Operation{Type: "track.update", TrackID: trackID, Locked: ptr(false)}, agent); err == nil {
+		t.Fatal("Agent released manual lock")
+	}
+}
+
+func TestTimelineCrossGroupInsertRipplesDestinationOnly(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.Configured = true
+	s.FPS = Rate{30, 1}
+	d.Resources = append(d.Resources, Resource{ID: "silent", Kind: "video", Out: 1, Metadata: map[string]any{"duration": 1, "streams": []map[string]any{{"index": 0, "codec_type": "video"}}}})
+	s.Groups = append(s.Groups, TrackGroup{ID: "g"})
+	s.Tracks = append(s.Tracks, newTrack("video", "g"))
+	source := s.Tracks[len(s.Tracks)-1].ID
+	for _, op := range []Operation{{Type: "clip.insert", TrackID: source, ResourceID: "silent"}, {Type: "clip.insert", TrackID: source, ResourceID: "silent", At: 90}, {Type: "clip.insert", TrackID: s.Tracks[0].ID, ResourceID: "silent", At: 90}} {
+		if e := s.Apply(&d, op, Origin{}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	src, _ := track(s, source)
+	id := src.Clips[0].ID
+	if e := s.Apply(&d, Operation{Type: "clip.move", ClipIDs: []string{id}, TargetTrackID: s.Tracks[0].ID, At: 30, Mode: "insert"}, Origin{Actor: "human:window"}); e != nil {
+		t.Fatal(e)
+	}
+	src, _ = track(s, source)
+	if src.Clips[0].At != 90 {
+		t.Fatal("insert rippled the source comparison group")
+	}
+	found := false
+	for _, c := range s.Tracks[0].Clips {
+		if c.ID != id && c.At == 120 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("destination did not ripple")
+	}
+}
+
+func TestTimelineAudioMixingAndSharedReservation(t *testing.T) {
+	for _, kind := range []string{"music", "voice", "linked-video-audio"} {
+		t.Run(kind, func(t *testing.T) {
+			d := timelineFixture()
+			s := &d.Sequences[0]
+			s.Configured = true
+			s.FPS = Rate{30, 1}
+			resourceID := "r"
+			if kind != "linked-video-audio" {
+				resourceID = kind
+				d.Resources = append(d.Resources, Resource{ID: kind, Name: kind, Kind: "audio", Out: 2, Metadata: map[string]any{"duration": 2, "streams": []map[string]any{{"index": 0, "codec_type": "audio"}}}})
+			}
+			s.Groups = append(s.Groups, TrackGroup{ID: "agent-audio"})
+			s.Tracks = append(s.Tracks, newTrack("audio", "agent-audio"))
+			sourceID := s.Tracks[len(s.Tracks)-1].ID
+			targetID := s.Tracks[3].ID
+			agent := Origin{Actor: "agent:audio-render"}
+			human := Origin{Actor: "human:window"}
+			if e := s.Apply(&d, Operation{Type: "track.update", TrackID: sourceID, Locked: ptr(true)}, agent); e != nil {
+				t.Fatal(e)
+			}
+			if kind == "linked-video-audio" {
+				s.Tracks = append(s.Tracks, newTrack("video", "agent-audio"))
+				videoID := s.Tracks[len(s.Tracks)-1].ID
+				if e := s.Apply(&d, Operation{Type: "clip.insert", TrackID: videoID, ResourceID: resourceID}, agent); e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				if e := s.Apply(&d, Operation{Type: "clip.insert", TrackID: sourceID, ResourceID: resourceID}, human); e == nil {
+					t.Fatal("audio reservation accepted human insert")
+				}
+				if e := s.Apply(&d, Operation{Type: "clip.insert", TrackID: sourceID, ResourceID: resourceID}, agent); e != nil {
+					t.Fatal(e)
+				}
+			}
+			src, _ := track(s, sourceID)
+			if !src.Locked {
+				t.Fatal("audio insertion cleared lock")
+			}
+			clip := src.Clips[0]
+			if e := s.Apply(&d, Operation{Type: "track.update", TrackID: sourceID, Locked: ptr(false)}, agent); e != nil {
+				t.Fatal(e)
+			}
+			if e := s.Apply(&d, Operation{Type: "clip.move", ClipIDs: []string{clip.ID}, TargetTrackID: targetID, At: 120}, human); e != nil {
+				t.Fatal(e)
+			}
+			audio, picture := 0, 0
+			for _, tr := range s.Tracks {
+				for _, c := range tr.Clips {
+					if c.LinkID == clip.LinkID {
+						if tr.Kind == "audio" {
+							audio++
+						} else if tr.Kind == "video" {
+							picture++
+						}
+						if tr.GroupID != "" || c.At != 120 || c.ResourceID != resourceID {
+							t.Fatal("linked mapping changed group/time/resource")
+						}
+					}
+				}
+			}
+			expectedAudio, expectedVideo := 1, 0
+			if kind == "linked-video-audio" {
+				expectedAudio, expectedVideo = 4, 1
+			}
+			if audio != expectedAudio || picture != expectedVideo {
+				t.Fatalf("audio/video count %d/%d, want %d/%d", audio, picture, expectedAudio, expectedVideo)
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 // Existing keyboard browser suite updated for the unified editor. API writes are
 // recorded local fixtures; authoritative editing/rendering is covered in Go/native.
 import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
 const base=process.argv[2]??'http://127.0.0.1:8816';
 const {chromium}=await import(process.env.PLAYWRIGHT_CORE??'playwright-core');
 let page;
@@ -12,6 +13,22 @@ try {
  page=await context.newPage();const errors=[],writes=[],approvals=[];page.on('pageerror',error=>errors.push(String(error)));
  let view,number=0;
  const ok=text=>console.log(`ok ${++number} ${text}`);
+ const frameRequests=[],movieRequests=[],releasedPreviews=[];
+ let releaseFrame,releaseMovie;const firstFrame=new Promise(resolve=>{releaseFrame=resolve;}),movieFinished=new Promise(resolve=>{releaseMovie=resolve;});
+ const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4F8AAAAASUVORK5CYII=';
+ await page.route(/\/sequences\/seq-review\/preview\/frame(?:\?|$)/,async route=>{
+  if(route.request().method()==='DELETE'){releasedPreviews.push(route.request().url());return route.fulfill({json:{closed:true}});}
+  const body=route.request().postDataJSON();frameRequests.push(body);
+  if(frameRequests.length===1)await firstFrame;
+  if(body.frame===46)await new Promise(resolve=>setTimeout(resolve,500));
+  await route.fulfill({json:{content_version:'browser-fixture',frame:body.frame,image:png+'#'+body.frame,diagnostics:{backend:'webgl2',hardware_accelerated:true,renderer:'browser fixture GPU'}}}).catch(()=>{});
+ });
+ await page.route(/\/sequences\/seq-review\/preview(?:\?|$)/,async route=>{
+  if(route.request().method()==='GET')return route.fulfill({path:fileURLToPath(new URL('../workers/node/timeline-cli/fixtures/media/clip_01.mp4',import.meta.url)),contentType:'video/mp4'});
+  movieRequests.push(route.request().postDataJSON());
+  // Hold the movie response so the monitor must display the current still.
+  await movieFinished;await route.fulfill({json:{content_version:'browser-fixture',frames:180,duration:6,width:1920,height:1080,fps:{num:30,den:1}}}).catch(()=>{});
+ });
  await page.route('**/api/projects/review-project/sequences/seq-review',async route=>{
   if(!view)view=await (await route.fetch()).json();await route.fulfill({json:view});
  });
@@ -24,7 +41,20 @@ try {
  const press=async key=>{await page.keyboard.press(key);await page.waitForTimeout(200);};
  const cancel=async()=>{await page.locator('.ant-modal-confirm:visible').waitFor();await page.locator('.ant-modal-confirm:visible .ant-btn').filter({hasText:'取消'}).click();await page.locator('.ant-modal-confirm:visible').waitFor({state:'hidden'});};
  const command=async key=>{const count=writes.length;await press(key);for(let i=0;i<100&&writes.length===count;i++)await page.waitForTimeout(20);assert.equal(writes.length,count+1);return writes.at(-1);};
- await load();assert.equal(await page.locator('.timeline-row').count(),6);assert.equal(await page.locator('.workflow-panel:visible').count(),0);assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');await page.reload();await clip.waitFor();assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');ok('unified editor restores a saved nonzero playhead on load and reload with six tracks');
+ await load();for(let i=0;i<150&&!frameRequests.length;i++)await page.waitForTimeout(20);
+ assert.equal(frameRequests[0]?.frame,45,'request the saved playhead before the movie');assert.equal(movieRequests.length,0,'movie must wait for the first frame');releaseFrame();
+ await page.getByRole('img',{name:'当前帧预览',exact:true}).waitFor();for(let i=0;i<100&&!movieRequests.length;i++)await page.waitForTimeout(20);
+ assert.equal(movieRequests.length,1);assert.equal(await page.getByRole('img',{name:'当前帧预览',exact:true}).isVisible(),true);assert.equal(await page.getByText('GPU 合成',{exact:true}).count(),1);ok('current playhead and actual preview backend appear while the full movie is still rendering');
+ const exposed=await page.getByRole('img',{name:'当前帧预览',exact:true}).evaluate(image=>{const r=image.getBoundingClientRect(),status=image.parentElement.querySelector('.program-updating')?.getBoundingClientRect();return {topmost:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===image,statusHeight:status?.height??0,imageHeight:r.height};});
+ assert(exposed.topmost&&exposed.statusHeight<exposed.imageHeight/4,'background movie progress must not cover the current frame');ok('background progress leaves the current frame exposed');
+ await page.getByRole('button',{name:'节目前进一帧',exact:true}).click();
+ for(let i=0;i<100&&!frameRequests.some(r=>r.frame===46);i++)await page.waitForTimeout(20);
+ await page.getByRole('button',{name:'节目前进一帧',exact:true}).click();
+ const still=page.getByRole('img',{name:'当前帧预览',exact:true});await still.waitFor();
+ for(let i=0;i<100&&!(await still.getAttribute('src'))?.endsWith('#47');i++)await page.waitForTimeout(20);
+ await page.waitForTimeout(550);assert((await still.getAttribute('src')).endsWith('#47'),'late old frame replaced the latest playhead');assert.equal(movieRequests.length,1,'seeking restarted the movie');
+ await page.getByRole('button',{name:'节目时间码',exact:true}).click();await page.getByRole('textbox',{name:'节目时间码',exact:true}).fill('1.5');await page.getByRole('textbox',{name:'节目时间码',exact:true}).press('Enter');ok('late seek results are discarded without restarting the background movie');
+ assert.equal(await page.locator('.timeline-row').count(),6);assert.equal(await page.locator('.workflow-panel:visible').count(),0);assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');await page.reload();await clip.waitFor();assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');ok('unified editor restores a saved nonzero playhead on load and reload with six tracks');
  assert.equal(await clip.evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(62, 111, 176)');assert.match(await page.locator('[data-clip-id="clip-3"]').innerText(),/流 1/);ok('ordinary video and audio use theme blue and show actual stream identity');
  await clip.focus();await press('Enter');assert.equal(await clip.getAttribute('aria-pressed'),'true');assert.equal(await page.locator('[data-clip-id="clip-3"]').getAttribute('aria-pressed'),'true');ok('keyboard clip selection includes its linked sound');
  await press('c');assert.equal(await page.getByRole('button',{name:'剃刀工具 C',exact:true}).getAttribute('aria-pressed'),'true');assert.equal(approvals.length,0);ok('C selects the razor without legacy approval');
@@ -37,6 +67,10 @@ try {
  await clip.click({button:'right'});await page.getByRole('menuitem',{name:/在播放头分割/}).waitFor();const n=writes.length;await page.getByRole('menuitem',{name:/在播放头分割/}).click();await page.waitForTimeout(250);assert.equal(writes.length,n+1);assert.equal(writes.at(-1).operations[0].type,'clip.split');ok('context menu uses the same split command');
  await clip.focus();await press('Control+c');const pasted=await command('Control+v');assert.equal(pasted.operations.length,2);assert(pasted.operations.every(op=>op.type==='clip.paste'));ok('copy and paste dispatch video and sound as one command');
  await clip.focus();assert.equal((await command('Control+z')).operations[0].type,'history.undo');assert.equal((await command('Control+Shift+z')).operations[0].type,'history.redo');ok('undo and redo stay in the focused sequence');
- await timeline.focus();await press('?');await page.locator('.ant-modal:visible').waitFor();assert.match(await page.locator('.ant-modal:visible').getByRole('row').filter({hasText:'剃刀切开'}).innerText(),/C[\s\S]*Delete[\s\S]*波纹闭合/);const prior=writes.length;await press('Control+k');assert.equal(writes.length,prior);await page.locator('.ant-modal:visible .ant-modal-close').click();await page.locator('.ant-modal:visible').waitFor({state:'hidden'});await page.evaluate(()=>location.hash='/resources');await page.locator('.sequence-timeline:visible').waitFor({state:'hidden'});assert.equal(await page.locator('.source-monitor video').count(),0);await press('Control+k');assert.equal(writes.length,prior);assert.deepEqual(errors,[]);assert.equal(approvals.length,0);ok('help and hidden editor suppress stale commands and hidden source media without page errors');
+ await timeline.focus();await press('?');await page.locator('.ant-modal:visible').waitFor();assert.match(await page.locator('.ant-modal:visible').getByRole('row').filter({hasText:'剃刀切开'}).innerText(),/C[\s\S]*Delete[\s\S]*波纹闭合/);const prior=writes.length;await press('Control+k');assert.equal(writes.length,prior);await page.locator('.ant-modal:visible .ant-modal-close').click();await page.locator('.ant-modal:visible').waitFor({state:'hidden'});const priorReleases=releasedPreviews.length;await page.evaluate(()=>location.hash='/resources');await page.locator('.sequence-timeline:visible').waitFor({state:'hidden'});assert.equal(await page.locator('.source-monitor video').count(),0);await press('Control+k');assert.equal(writes.length,prior);assert.deepEqual(errors,[]);assert.equal(approvals.length,0);assert(releasedPreviews.length>priorReleases&&releasedPreviews.some(url=>url.includes('session=review-session')),'leaving the editor must release the owned preview worker');ok('help and hidden editor suppress stale commands and release owned preview resources');
+ await page.evaluate(()=>location.hash='/editing/import');await timeline.waitFor();releaseMovie();
+ const video=page.getByLabel('节目播放器',{exact:true});await video.waitFor();
+ await page.waitForFunction(()=>{const v=document.querySelector('video[aria-label="节目播放器"]');return v&&!v.classList.contains('is-loading')&&v.readyState>=2;});
+ assert.equal(await page.getByRole('img',{name:'当前帧预览',exact:true}).count(),0);assert.deepEqual(errors,[]);ok('completed movie replaces the still after its target frame is ready');
  console.log(`unified editor browser smoke passed (${number} groups)`);
 } catch(error) {console.error('Browser failure state',await page?.evaluate(()=>({body:document.body.innerText.slice(-4000),url:location.href})).catch(()=>undefined));throw error;} finally {await browser.close();}

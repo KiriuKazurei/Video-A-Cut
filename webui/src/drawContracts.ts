@@ -56,7 +56,7 @@ export interface DrawSaveRequest {
 }
 export interface DrawActionRequest {session:string;content_version:string}
 export type DrawOutputFormat='mp4'|'webm-alpha'|'prores4444';
-export interface DrawImportRequest extends DrawActionRequest {sequence_id:string;expected_revision:number;idempotency_key:string;source_mode?:'snapshot'|'follow'|'rendered'}
+export interface DrawImportRequest extends DrawActionRequest {target_track_id?:string;at?:number;sequence_id:string;expected_revision:number;idempotency_key:string;source_mode?:'snapshot'|'follow'|'rendered'}
 export interface DrawDeepLink {project?:string;run?:string;slot?:string;engine?:DrawEngine;focus?:DrawFocus}
 export function isDrawEngine(value:string|null|undefined):value is DrawEngine{return value==='hyperframes'||value==='remotion'||value==='unified';}
 export function isDrawFocus(value:string|null|undefined):value is DrawFocus{return !!value&&(DRAW_FOCUSES as readonly string[]).includes(value);}

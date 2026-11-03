@@ -43,6 +43,8 @@ type DrawRender struct {
 	RuntimeVersion     string  `json:"runtime_version"`
 }
 type DrawImportRequest struct {
+	TargetTrackID    string `json:"target_track_id,omitempty"`
+	At               int64  `json:"at,omitempty"`
 	SourceMode       string `json:"source_mode,omitempty"`
 	Session          string `json:"session"`
 	ContentVersion   string `json:"content_version"`
@@ -592,14 +594,27 @@ func (s *Service) ImportDrawComposition(ctx context.Context, actor, projectID, i
 	if strings.HasPrefix(actor, "agent:") {
 		origin.RunID = strings.TrimPrefix(actor, "agent:")
 	}
-	group := newID("grp")
-	seq.Groups = append(seq.Groups, project.TrackGroup{ID: group, Name: "绘制 · " + c.Name, Origin: origin})
-	if err = seq.Apply(draft, project.Operation{Type: "track.add", Kind: "video", GroupID: group, Name: c.Name}, origin); err != nil {
-		return TimelineView{}, err
+	if req.At < 0 {
+		return TimelineView{}, model.ErrArgument
 	}
-	track := seq.Tracks[len(seq.Tracks)-1].ID
-	if err = seq.Apply(draft, project.Operation{Type: "clip.insert", TrackID: track, ResourceID: resource.ID, At: 0}, origin); err != nil {
-		return TimelineView{}, err
+	target := req.TargetTrackID
+	group := ""
+	if target == "" {
+		group = newID("grp")
+		seq.Groups = append(seq.Groups, project.TrackGroup{ID: group, Name: "绘制 · " + c.Name, Origin: origin})
+		if err = seq.Apply(draft, project.Operation{Type: "track.add", Kind: "video", GroupID: group, Name: c.Name}, origin); err != nil {
+			return TimelineView{}, err
+		}
+		target = seq.Tracks[len(seq.Tracks)-1].ID
+	} else {
+		found := slices.IndexFunc(seq.Tracks, func(t project.Track) bool { return t.ID == target })
+		if found < 0 {
+			return TimelineView{}, model.ErrNotFound
+		}
+		group = seq.Tracks[found].GroupID
+	}
+	if err = seq.Apply(draft, project.Operation{Type: "clip.insert", TrackID: target, ResourceID: resource.ID, At: req.At}, origin); err != nil {
+		return TimelineView{}, fmt.Errorf("%v: %w", err, model.ErrArgument)
 	}
 	seq.ScopeGroup = group
 	seq.Revision++

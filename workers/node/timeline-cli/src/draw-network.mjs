@@ -1,3 +1,20 @@
+import {randomInt} from 'node:crypto';
+
+// Windows may allocate low ephemeral ports (including Chromium-blocked 10080).
+// Use the high dynamic range and retry collisions, without relaxing browser policy.
+export async function listenDrawServer(server) {
+ for(let attempt=0;attempt<32;attempt++){
+  try{
+   await new Promise((done,fail)=>{
+    const listening=()=>{server.off('error',failed);done();};
+    const failed=error=>{server.off('listening',listening);fail(error);};
+    server.once('error',failed);server.once('listening',listening);
+    server.listen(randomInt(49152,65536),'127.0.0.1');
+   });return;
+  }catch(error){if(error.code!=='EADDRINUSE'||attempt===31)throw error;}
+ }
+}
+
 // Browser-only code runs in a fresh profile. Only the renderer's own origin is reachable.
 const policy="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts allow-same-origin";
 const local = url => ['127.0.0.1','localhost','[::1]'].includes(new URL(url).hostname);

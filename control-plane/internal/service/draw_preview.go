@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -43,6 +44,7 @@ type DrawNodeBounds struct {
 	Height float64 `json:"height"`
 }
 type drawFrameProcess struct {
+	directory   string
 	environment string
 	mu          sync.Mutex
 	stop        context.CancelFunc
@@ -65,7 +67,9 @@ func (s *Service) CloseDrawPreview(projectID, session, id string) error {
 	if s.CurrentProjectID() != projectID || s.ProjectSessionID() != session {
 		return model.ErrConflict
 	}
-	key := session + ":" + id
+	return s.closePreviewProcess("draw:" + session + ":" + id)
+}
+func (s *Service) closePreviewProcess(key string) error {
 	s.drawMu.Lock()
 	p := s.drawFrames[key]
 	delete(s.drawFrames, key)
@@ -77,6 +81,9 @@ func (s *Service) CloseDrawPreview(projectID, session, id string) error {
 	return nil
 }
 func (s *Service) startDrawPreview(key, environment string) (*drawFrameProcess, error) {
+	return s.startPreviewProcess("draw:"+key, environment, "draw-preview.mjs")
+}
+func (s *Service) startPreviewProcess(key, environment, worker string) (*drawFrameProcess, error) {
 	s.drawMu.Lock()
 	defer s.drawMu.Unlock()
 	if p := s.drawFrames[key]; p != nil {
@@ -96,7 +103,26 @@ func (s *Service) startDrawPreview(key, environment string) (*drawFrameProcess, 
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "workers", "node", "timeline-cli", "src", "draw-preview.mjs"))
+	directory := ""
+	if worker == "sequence-preview.mjs" {
+		parent := filepath.Join(s.workspace.root, "sequence-previews")
+		if e = os.MkdirAll(parent, 0700); e != nil {
+			cancel()
+			return nil, e
+		}
+		directory, e = os.MkdirTemp(parent, "worker-")
+		if e != nil {
+			cancel()
+			return nil, e
+		}
+	}
+	started := false
+	defer func() {
+		if !started && directory != "" {
+			_ = os.RemoveAll(directory)
+		}
+	}()
+	cmd := exec.CommandContext(ctx, "node", filepath.Join(root, "workers", "node", "timeline-cli", "src", worker), directory)
 	cmd.Dir = filepath.Join(root, "workers", "node", "timeline-cli")
 	cmd.Env = toolEnvironment()
 	configureMediaCommand(cmd)
@@ -117,13 +143,17 @@ func (s *Service) startDrawPreview(key, environment string) (*drawFrameProcess, 
 		in.Close()
 		return nil, e
 	}
-	p := &drawFrameProcess{stop: cancel, input: in, responses: make(chan []byte, 1), done: make(chan struct{}), environment: environment}
+	started = true
+	p := &drawFrameProcess{stop: cancel, input: in, responses: make(chan []byte, 1), done: make(chan struct{}), environment: environment, directory: directory}
 	if s.drawFrames == nil {
 		s.drawFrames = map[string]*drawFrameProcess{}
 	}
 	s.drawFrames[key] = p
 	go func() {
 		defer close(p.done)
+		if directory != "" {
+			defer os.RemoveAll(directory)
+		}
 		defer close(p.responses)
 		defer in.Close()
 		defer cancel()

@@ -75,8 +75,9 @@ test('browser runtime blocks computed external requests and popups before source
  let externalHits=0,browser;
  const external=createServer((req,res)=>{externalHits++;res.setHeader('Access-Control-Allow-Origin','*');res.end('outside');});
  const owned=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><body>Owned render document</body></html>');});
- const listen=server=>new Promise((done,fail)=>{server.once('error',fail);server.listen(0,'127.0.0.1',done);});
- await listen(external);await listen(owned);
+ const {listenDrawServer}=await import('../src/draw-network.mjs');assert.equal(typeof listenDrawServer,'function');
+ await listenDrawServer(external);await listenDrawServer(owned);
+ assert(owned.address().port>=49152&&owned.address().port<=65535,'drawing origin must avoid browser-restricted low ports such as 10080');
  try{
   browser=await puppeteer.launch({executablePath:drawBrowser(),headless:true});
   const page=await guardPage(await browser.newPage());

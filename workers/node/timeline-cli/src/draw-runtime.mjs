@@ -10,7 +10,7 @@ import {homedir} from 'node:os';
 import {transform} from 'esbuild';
 import {parse} from 'acorn';
 import {runTool,probeMedia} from './media.mjs';
-import {guardRemotion} from './draw-network.mjs';
+import {guardRemotion,listenDrawServer} from './draw-network.mjs';
 import {imageLayers,isImageReference,checkedImageAssets,prepareImages,installImages,hyperframesImageSource,remotionImageEntry} from './draw-images.mjs';
 const require=createRequire(import.meta.url), runtimeRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export const drawVersions={hyperframes:'0.8.193',remotion:'4.0.538'};
@@ -116,7 +116,7 @@ async function staticServer(directory){
    res.setHeader('Content-Type',({html:'text/html',js:'application/javascript',css:'text/css',json:'application/json',woff2:'font/woff2',png:'image/png'})[extension]??'application/octet-stream');res.end(data);
   }catch{res.statusCode=404;res.end();}
  });
- await new Promise((done,fail)=>{server.once('error',fail);server.listen(0,'127.0.0.1',done);});
+ await listenDrawServer(server);
  return {url:'http://127.0.0.1:'+server.address().port,close:()=>new Promise(done=>server.close(done))};
 }
 async function renderRemotion(c,stage,browserPath,prepared){

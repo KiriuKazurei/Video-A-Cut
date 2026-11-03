@@ -1,7 +1,7 @@
 import { request } from './api';
 import { apiURL } from './runtimeUrl';
 import type { ProjectSession } from './projectContracts';
-import type { ReferenceCandidate, ScriptReference, TimelineOperation, TimelineView, SequencePreview } from './timelineContracts';
+import type { ReferenceCandidate, ScriptReference, TimelineOperation, TimelineView, SequencePreview, SequenceFramePreview } from './timelineContracts';
 import type { LoudnessEnvelope } from './loudness';
 const id = encodeURIComponent;
 const body = (value: unknown): RequestInit => ({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
@@ -11,6 +11,8 @@ export const timelineApi = {
  manage: (project: string,value: {session:string;expected_revision:number;idempotency_key:string;action:string;sequence_id?:string;name?:string}) => request<ProjectSession>(`/api/projects/${id(project)}/sequences`,body(value)),
  command: (project:string,sequence:string,value:{session:string;expected_revision:number;idempotency_key:string;label:string;operations:TimelineOperation[]}) => request<TimelineView>(`${base(project,sequence)}/commands`,body(value)),
  preview: (project:string,sequence:string,value:{session:string;expected_revision:number;content_version:string},signal?:AbortSignal) => request<SequencePreview>(`${base(project,sequence)}/preview`,{...body(value),signal}),
+ previewFrame: (project:string,sequence:string,value:{session:string;expected_revision:number;content_version:string;frame:number},signal?:AbortSignal) => request<SequenceFramePreview>(`${base(project,sequence)}/preview/frame`,{...body(value),signal}),
+ releaseFrame: (project:string,sequence:string,session:string) => request<{closed:boolean}>(`${base(project,sequence)}/preview/frame?session=${id(session)}`,{method:'DELETE',keepalive:true}),
  export: (project:string,sequence:string,value:{session:string;expected_revision:number;content_version:string;path:string}) => request<SequencePreview>(`${base(project,sequence)}/export`,body(value)),
  importResult:(project:string,sequence:string,value:{session:string;expected_revision:number;idempotency_key:string;run_id:string;artifact_id:string;checkpoint_id?:string})=>request<TimelineView>(`${base(project,sequence)}/skill-results`,body(value)),
  previewURL: (project:string,sequence:string,version:string) => apiURL(`${base(project,sequence)}/preview?version=${id(version)}`),

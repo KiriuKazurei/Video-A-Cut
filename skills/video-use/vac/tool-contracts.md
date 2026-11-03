@@ -84,6 +84,12 @@ diagnostic, refresh context, correct the request and use a NEW idempotency key.
 They never require a human recovery click. Do not repeat unchanged failed work.
 Actual dependency failures can be resumed by the owning Agent after repair.
 
+Track compatibility and temporary render reservations:
+- Video tracks accept ordinary movies, rendered drawings and editable drawing sources. Audio clips can move between compatible audio tracks across groups, including music, narration and linked movie audio; video and audio track types remain distinct. Comparison group membership is not a lock. Cross-group clip.move carries linked audio into matching destination audio tracks; insert mode ripples only the destination group.
+- Only explicit track.update {track_id,locked:true/false} changes the lock. This is the same track.locked value used by the manual lock button. lock_owner records the triggering actor; it is not a second lock. An Agent can write into its own task reservation, but cannot acquire/release a manual or another task's lock. The human may explicitly unlock through the button.
+- Before rendering into an existing video track: timeline.read, explicitly reserve it with timeline.edit/track.update locked:true, then draw.render; refresh the sequence revision and draw.import with target_track_id and at (integer sequence frames), then timeline.edit/track.update locked:false. Do not reserve an unrelated track or leave a reservation after insertion. Missing target_track_id retains the default new-group import; a target accepts rendered, snapshot and follow modes.
+- A real tool execution failure, cancellation or completion releases only this task's remaining reservations through track.update. Stale/conflicting requests do not unlock ongoing work. Re-read the current lock/revision before retrying; never clear a user's lock to force an insert.
+
 timeline.edit operations use the discriminant field "type", for example
 {"type":"track.add","kind":"audio","name":"Music","group_id":"grp_current"}.
 Read the returned generated track ID before a subsequent clip.insert.
@@ -178,7 +184,7 @@ Existing wall-clock budgets cover bundling, rendering and export.
 | draw.check | {session,composition_id,content_version} | {valid,checks,engine,runtime_version,content_version}; syntax, module and timebase errors fail the step. |
 | draw.render | {session,composition_id,content_version} | {render,artifact}; actual local MP4, verified size/frame count/fps/duration/SHA, registered as a run artifact. |
 | draw.get_frame | {session,composition_id,content_version,frame} | {frame,artifact}; integer zero-based frame in the current verified render, bounded by the run frame budget. Read artifacts.get {id:artifact.id} for a native MCP image. |
-| draw.import | {session,composition_id,content_version,sequence_id,expected_revision,idempotency_key} | TimelineView; expected_revision is sequence.revision. Adds the verified render as a current-project resource and an independent Agent track group at frame 0 on run.sequence_id. Replay uses the SAME key. |
+| draw.import | {session,composition_id,content_version,sequence_id,expected_revision,idempotency_key,target_track_id?,at?} | TimelineView; expected_revision is sequence.revision. Adds the resource to target_track_id at the specified sequence-frame at (default 0); without a target creates an independent Agent track group on run.sequence_id. Replay uses the SAME key. |
 
 HyperFrames source is a complete inline HTML document. Give its root an id,
 data-composition-id, data-width, data-height and data-duration matching the spec.

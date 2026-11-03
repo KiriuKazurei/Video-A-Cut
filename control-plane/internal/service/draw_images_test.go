@@ -16,7 +16,8 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
 
-func TestUnifiedPreviewDraftIsolationAndOwnedLifetime(t *testing.T) {
+// Keep the temporary-directory component short for Windows native draw tools.
+func TestPreviewLifetime(t *testing.T) {
 	svc, root := avpWorkspaceFixture(t)
 	repo, e := filepath.Abs("../../..")
 	if e != nil {

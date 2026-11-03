@@ -5,7 +5,7 @@ export interface EditOrigin { actor: string; run_id?: string; artifact_id?: stri
 export interface GainKeyframe { t: number; db: number }
 export interface ClipEffects { gain_db: number; gain_keyframes?: GainKeyframe[]; fade_in: number; fade_out: number; fade_color?: 'black' | 'white' | ''; scale: number; x: number; y: number; crop_left: number; crop_right: number; crop_top: number; crop_bottom: number; transition: number; from_frame?: number; to_frame?: number }
 export interface TimelineClip { id: string; resource_id: string; name: string; stream_index: number; at: number; duration: number; source_in: MediaTime; source_out: MediaTime; speed: number; link_id?: string; origin: EditOrigin; effects: ClipEffects; text?: string; font?: string; font_size?: number }
-export interface TimelineTrack { id: string; name: string; kind: 'video' | 'audio' | 'subtitle'; height: number; locked: boolean; muted: boolean; hidden: boolean; solo: boolean; group_id?: string; gain_db: number; clips: TimelineClip[] }
+export interface TimelineTrack { id: string; name: string; kind: 'video' | 'audio' | 'subtitle'; height: number; locked: boolean; lock_owner?: string; muted: boolean; hidden: boolean; solo: boolean; group_id?: string; gain_db: number; clips: TimelineClip[] }
 export interface TimelineSequence { id: string; revision: number; name: string; width: number; height: number; fps: FrameRate; sample_rate: number; configured: boolean; tracks: TimelineTrack[]; markers: TimelineMarker[]; groups: { id: string; name: string; origin: EditOrigin }[]; scope_group?: string; history_cursor: number }
 export interface ScriptReference { id: string; name: string; kind: string; target_id: string; resource_id?: string; sequence_id?: string; clip_id?: string; start: number; end: number; unresolved: boolean }
 export interface ReferenceCandidate extends ScriptReference { owner: string; frame?: number; source_time?: MediaTime; fps: FrameRate; in?: number; out?: number }
@@ -13,6 +13,8 @@ export interface TimelineOperation { type: string; track_id?: string; target_tra
 export interface TimelineView { session: string; project_revision: number; sequence: TimelineSequence; history: { id: string; label: string; actor: string; applied: boolean }[]; content_version: string }
 export interface BasicQuality { sha256?: string; status: 'passed' | 'failed' | 'not_checked'; audio_status: string; video_status: string; issues: { kind: string; start: number; end: number }[] }
 export interface SequencePreview { basic_quality?: BasicQuality; content_version: string; sha256: string; duration: number; frames: number; width: number; height: number; fps: FrameRate; scope_group: string }
+export interface SequenceFrameDiagnostics { backend:'webgl2'|'cpu-ffmpeg'|'cached-movie'; hardware_accelerated?:boolean; renderer?:string; fallback_reason?:string; elapsed_ms?:number; frame_cache_hits?:number; source_cache_hits?:number; cache_bytes?:number }
+export interface SequenceFramePreview { content_version:string; frame:number; image:string; worker_pid?:number; diagnostics?:SequenceFrameDiagnostics }
 export const fpsValue = (rate: FrameRate) => rate.num / rate.den;
 export const timeSeconds = (time: MediaTime) => time.value / time.scale;
 export const frameSeconds = (frame: number, rate: FrameRate) => frame / fpsValue(rate);

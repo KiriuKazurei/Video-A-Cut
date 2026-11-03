@@ -1,18 +1,179 @@
 package service_test
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
+
+func TestSequenceCurrentFrame(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	wd, _ := os.Getwd()
+	if err := svc.ConfigureTTS("python", filepath.Join(wd, "..", "..", "..", "workers", "python")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(svc.CloseTTS)
+	path := filepath.Join(root, "red.mp4")
+	mediaTool(t, "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=320x180:r=30:d=2", "-c:v", "libx264", "-threads", "1", path)
+	ctx := t.Context()
+	session, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "frame.avp"), Name: "Frame"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := session.Document.Project.ID
+	session, err = svc.ImportProjectResource(ctx, pid, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := session.Document.Sequences[0]
+	view, err := svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: session.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "insert", Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: session.Document.Resources[0].ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := service.SequenceFrameRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion, Frame: 45}
+	frame, err := svc.CreateSequenceFrame(ctx, pid, seq.ID, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame.WorkerPID == 0 {
+		t.Fatal("current-frame worker must persist between seeks")
+	}
+	firstPID := frame.WorkerPID
+	req.Frame = 46
+	warm, err := svc.CreateSequenceFrame(ctx, pid, seq.ID, req)
+	if err != nil || warm.WorkerPID != firstPID {
+		t.Fatal("seek restarted frame worker", err)
+	}
+	if err = svc.CloseDrawPreview(pid, session.ID, "sequence:"+seq.ID); err != nil {
+		t.Fatal(err)
+	}
+	warm, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req)
+	if err != nil || warm.WorkerPID != firstPID {
+		t.Fatal("drawing preview release crossed the sequence worker namespace", err)
+	}
+	req.Frame = 45
+	raw, err := base64.StdEncoding.DecodeString(frame.Image[len("data:image/png;base64,"):])
+	if err != nil {
+		t.Fatal(err)
+	}
+	im, err := png.Decode(bytes.NewReader(raw))
+	if err != nil || im.Bounds().Dx() != view.Sequence.Width || frame.Frame != 45 || frame.ContentVersion != view.ContentVersion {
+		t.Fatal("invalid frame", err)
+	}
+	r, g, b, _ := im.At(view.Sequence.Width/2, view.Sequence.Height/2).RGBA()
+	if r < 50000 || g > 5000 || b > 5000 {
+		t.Fatal("wrong frame color", r, g, b)
+	}
+	if err = filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.Name() == "program.mp4" || (info.IsDir() && strings.HasPrefix(info.Name(), "frame-")) {
+			t.Errorf("still request left a movie or temporary frame directory: %s", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req.Frame = -1
+	if _, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req); !errors.Is(err, model.ErrArgument) {
+		t.Fatal("negative frame accepted", err)
+	}
+	req.Frame = 45
+	req.ContentVersion = "stale"
+	if _, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req); !errors.Is(err, model.ErrConflict) {
+		t.Fatal("stale frame accepted", err)
+	}
+	if _, err = svc.CreateSequencePreview(ctx, pid, seq.ID, service.SequencePreviewRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	cachedPath, err := svc.SequencePreviewPath(ctx, pid, seq.ID, view.ContentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(cachedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.ContentVersion = view.ContentVersion
+	if frame, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req); err != nil || frame.Frame != 45 {
+		t.Fatal("cached movie frame", err)
+	}
+	after, err := os.Stat(cachedPath)
+	if err != nil || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("still rerendered the cached movie", err)
+	}
+
+	current, err := svc.ProjectWorkspace(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := project.DrawDocument{SchemaVersion: 1, Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 24, Den: 1}}, DurationFrames: 240, Sources: []project.DrawSource{{ID: "react", Engine: "remotion", Source: `import React from 'react'; export default ()=> <div style={{position:'absolute',inset:0,background:'blue'}}/>;`}}, Nodes: []project.DrawNode{{ID: "scene", Kind: "source", SourceID: "react", Duration: 240}}}
+	current, err = svc.SaveDrawComposition(ctx, pid, service.DrawSaveRequest{Session: current.ID, ExpectedRevision: current.Revision, IdempotencyKey: "draw", Composition: project.DrawComposition{ID: "still", Name: "Still", Document: &doc}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := current.Document.DrawCompositions[0]
+	view, err = svc.ImportDrawComposition(ctx, "human:window", pid, c.ID, service.DrawImportRequest{Session: current.ID, ContentVersion: c.ContentVersion, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "draw-import", SequenceID: seq.ID, SourceMode: "snapshot", TargetTrackID: seq.Tracks[0].ID, At: 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, service.SequenceFrameRequest{Session: current.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion, Frame: 75})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = base64.StdEncoding.DecodeString(strings.TrimPrefix(frame.Image, "data:image/png;base64,"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	im, err = png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, _ = im.At(160, 90).RGBA()
+	if b < 50000 || r > 5000 || g > 5000 {
+		t.Fatal("drawing frame missing", r, g, b)
+	}
+	if frame.WorkerPID != firstPID {
+		t.Fatal("adding a drawing restarted the sequence worker")
+	}
+	seek := service.SequenceFrameRequest{Session: current.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion, Frame: 76}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err = svc.CreateSequenceFrame(cancelled, pid, seq.ID, seek); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled seek", err)
+	}
+	warm, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, seek)
+	if err != nil || warm.WorkerPID != firstPID {
+		t.Fatal("cancelled seek destroyed warm worker", err)
+	}
+	if err = svc.CloseSequenceFrame(pid, current.ID, seq.ID); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "workspace", "sequence-previews"))
+	if err != nil || len(entries) != 0 {
+		t.Fatal("released worker retained output", err)
+	}
+	warm, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, seek)
+	if err != nil || warm.WorkerPID == firstPID {
+		t.Fatal("released worker was reused", err)
+	}
+	if err = svc.CloseSequenceFrame(pid, current.ID, seq.ID); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func mediaTool(t *testing.T, name string, args ...string) {
 	t.Helper()

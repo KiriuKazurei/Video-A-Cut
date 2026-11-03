@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {createServer} from 'node:http';
 import {build} from 'esbuild';
 import puppeteer from 'puppeteer-core';
-import {guardPage} from './draw-network.mjs';
+import {guardPage,listenDrawServer} from './draw-network.mjs';
 import {prepareImages} from './draw-images.mjs';
 import {runTool,probeMedia} from './media.mjs';
 import {drawFrameContext} from './draw-time.mjs';
@@ -71,7 +71,7 @@ addEventListener('message',async event=>{
   return source.replace(/<head([^>]*)>/i,(_,attributes)=>`<head${attributes}>${bootstrap}`).replace(/<\/body>/i,()=>bridge+'</body>');
 }
 /** Owned, persistent frame adapter. Caller must close; it never downloads a browser. */
-export async function openUnifiedDraw({document,assets=[],output_dir,browser_path,on_state=()=>{}}) {
+export async function openUnifiedDraw({document,assets=[],output_dir,browser_path,browser:sharedBrowser,on_state=()=>{}}) {
   on_state('compiling');
   await validateUnified(document);
   const root=resolve(output_dir);await mkdir(root,{recursive:true});
@@ -115,14 +115,16 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
     const bundle=await build({entryPoints:[join(directory,'unified-scene.jsx')],bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
     await writeFile(join(root,'scene.js'),bundle.outputFiles[0].contents);
     server=createServer(async(req,res)=>{try{if(req.method!=='GET'){res.statusCode=405;res.end();return;}if(imageFiles.has(req.url)){res.setHeader('Content-Type','image/png');res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Cache-Control','public,max-age=31536000,immutable');res.end(await readFile(imageFiles.get(req.url)));}else if(req.url==='/scene.js'){res.setHeader('Content-Type','application/javascript');res.end(await readFile(join(root,'scene.js')));}else if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><head><style>html,body{margin:0;background:transparent;overflow:hidden}</style></head><body><div id="root"></div><script src="/scene.js"></script></body></html>');}else{res.statusCode=404;res.end();}}catch{res.statusCode=500;res.end();}});
-    await new Promise((done,fail)=>{server.once('error',fail);server.listen(0,'127.0.0.1',done);});
+    await listenDrawServer(server);
     origin='http://127.0.0.1:'+server.address().port;
     for(const id of Object.keys(images))images[id]=origin+images[id];await compile(document);
     const {drawBrowser}=await import('./draw-runtime.mjs');
-    browser=await puppeteer.launch({executablePath:browser_path??drawBrowser('unified'),headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--force-color-profile=srgb']});
-    browser.on('disconnected',()=>trace('disconnected'));
-    browser.process()?.on('exit',(code,signal)=>trace('browser-exit',JSON.stringify({code,signal})));
-    browser.process()?.stderr?.on('data',chunk=>trace('browser-stderr',String(chunk).slice(-1600)));
+    browser=sharedBrowser??await puppeteer.launch({executablePath:browser_path??drawBrowser('unified'),headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--force-color-profile=srgb']});
+    if(!sharedBrowser){
+      browser.on('disconnected',()=>trace('disconnected'));
+      browser.process()?.on('exit',(code,signal)=>trace('browser-exit',JSON.stringify({code,signal})));
+      browser.process()?.stderr?.on('data',chunk=>trace('browser-stderr',String(chunk).slice(-1600)));
+    }
     page=await guardPage(await browser.newPage(),{origin});
     page.on('close',()=>trace('page-closed'));page.on('error',error=>trace('page-crashed',error.message));
     page.on('pageerror',error=>process.stderr.write('[unified browser] '+error.message+'\n'));
@@ -130,7 +132,7 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
     await page.setViewport({width:document.canvas.width,height:document.canvas.height,deviceScaleFactor:1});
     await page.goto(origin,{waitUntil:'load'});await page.waitForFunction('window.vacReady===true');
     for(const [id,source] of reactSources)await install(id,source.code);
-  }catch(error){try{await browser?.close();}finally{server?.close();}throw error;}
+  }catch(error){try{if(sharedBrowser)await page?.close();else await browser?.close();}finally{server?.close();}throw error;}
   const enqueue=action=>{const result=serial.then(()=>{if(closed)throw Error('Frame adapter disposed');return action();});serial=result.catch(()=>{});return result;};
   return {
     diagnostics:()=>({source_compiles:Object.fromEntries(compileCounts),host_loads:1,asset_transport:'owned-http',resource_manifest_bytes:Buffer.byteLength(JSON.stringify({assets:images,html})),browser_connected:browser.connected,page_closed:page.isClosed(),lifecycle}),
@@ -152,7 +154,7 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
       return {frame:request.frame,revision:request.revision,request_id:request.request_id,session:request.session,content_version:request.content_version,png,geometry,engines,...(engines.includes('hyperframes')?{hyperframes_protocol:'native-player-renderSeek'}:{})};
     }),
     update:d=>enqueue(async()=>{await validateUnified(d);await compile(d);await page.setViewport({width:d.canvas.width,height:d.canvas.height,deviceScaleFactor:1});currentDocument=structuredClone(d);}),
-    close:async()=>{await serial;closed=true;trace('dispose');try{await browser.close();}finally{await new Promise(done=>server.close(done));}}
+    close:async()=>{await serial;closed=true;trace('dispose');try{if(sharedBrowser)await page.close();else await browser.close();}finally{await new Promise(done=>server.close(done));}}
   };
 }
 

@@ -549,6 +549,7 @@ func (s *Service) UpdateSkillRun(ctx context.Context, actor, id, action string, 
 				cancel()
 			}
 			s.harnessMu.Unlock()
+			err = s.releaseTaskTrackLocks(ctx, r.ProjectID, r.SequenceID, r.ID)
 		}
 		s.publish("skill.run.changed", r)
 	}

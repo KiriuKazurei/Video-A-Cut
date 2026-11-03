@@ -6,7 +6,7 @@ import { resolve, join, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runTool, probeMedia } from './media.mjs';
-import { renderSequence, waveform, selectedTracks } from './sequence.mjs';
+import { renderSequence, renderSequenceFrame, waveform, selectedTracks } from './sequence.mjs';
 import { inspectBasicQuality, sequenceExpectations } from './basic-quality.mjs';
 import { loudness } from './loudness.mjs';
 import { installedFonts, resolveFonts } from './fonts.mjs';
@@ -171,7 +171,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       for await (const chunk of process.stdin) { bytes += chunk.length; if (bytes > 4 * 1024 * 1024) throw new Error('request too large'); chunks.push(chunk); }
       const raw = Buffer.concat(chunks).toString('utf8');
       const operation=process.argv[2],input=JSON.parse(raw);
-      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='draw-source-frame' ? (await import('./unified-draw.mjs')).renderDrawSourceFrame(input) : operation==='draw-check' ? (await import('./draw-runtime.mjs')).checkDraw(input) : operation==='draw-render' ? (await import('./draw-runtime.mjs')).renderDraw(input) : operation==='quality-sequence' ? inspectBasicQuality({...input,...sequenceExpectations(input.sequence,input.resources,selectedTracks(input.sequence))}).then(basic_quality=>({basic_quality})) : operation==='sequence' ? renderSequence(input) : operation==='waveform' ? waveform(input) : operation==='loudness' ? loudness(input) : renderScript(input)) }));
+      process.stdout.write(JSON.stringify({ ok: true, ...await (operation==='draw-source-frame' ? (await import('./unified-draw.mjs')).renderDrawSourceFrame(input) : operation==='draw-check' ? (await import('./draw-runtime.mjs')).checkDraw(input) : operation==='draw-render' ? (await import('./draw-runtime.mjs')).renderDraw(input) : operation==='quality-sequence' ? inspectBasicQuality({...input,...sequenceExpectations(input.sequence,input.resources,selectedTracks(input.sequence))}).then(basic_quality=>({basic_quality})) : operation==='sequence-frame' ? renderSequenceFrame(input) : operation==='sequence' ? renderSequence(input) : operation==='waveform' ? waveform(input) : operation==='loudness' ? loudness(input) : renderScript(input)) }));
     }
   } catch (e) { process.stdout.write(JSON.stringify({ ok: false, message: e.message })); process.exitCode = 1; }
 }

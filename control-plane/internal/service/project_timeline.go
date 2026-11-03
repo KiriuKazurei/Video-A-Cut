@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
@@ -62,6 +64,7 @@ func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) stri
 		t.Name = ""
 		t.Height = 0
 		t.Locked = false
+		t.LockOwner = ""
 		for j := range t.Clips {
 			c := &t.Clips[j]
 			c.Name = ""
@@ -82,9 +85,11 @@ func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) stri
 		}
 	}
 	if usesDrawing {
-		return skillHash(map[string]any{"state": state, "sources": sources, "drawing_environment": drawingEnvironmentVersion()})
+		return skillHash(map[string]any{"state": state, "sources": sources, "compositor": "sequence-integer-pts-v2", "drawing_environment": drawingEnvironmentVersion()})
 	}
-	return skillHash(map[string]any{"state": state, "sources": sources})
+	// Integer-frame placement fixes effect-boundary rounding. Do not reuse a
+	// movie produced by the previous compositor for the new current-frame view.
+	return skillHash(map[string]any{"state": state, "sources": sources, "compositor": "sequence-integer-pts-v2"})
 }
 func sequenceIndex(d *project.AvpDocument, id string) int {
 	return slices.IndexFunc(d.Sequences, func(s project.Sequence) bool { return s.ID == id })
@@ -455,4 +460,38 @@ type FrameModificationResult struct {
 	Enabled   bool              `json:"enabled"`
 	Resource  *project.Resource `json:"resource,omitempty"`
 	RequestID string            `json:"request_id,omitempty"`
+}
+
+// Release only reservations made by this task. Re-read after a concurrent manual
+// toggle, so task completion never clears a newer manual or another Agent lock.
+func (s *Service) releaseTaskTrackLocks(ctx context.Context, projectID, sequenceID, runID string) error {
+	if !s.WorkspaceEnabled() || sequenceID == "" || runID == "" {
+		return nil
+	}
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	for attempt := 0; attempt < 3; attempt++ {
+		view, err := s.Timeline(cleanup, projectID, sequenceID)
+		if errors.Is(err, model.ErrNotFound) || errors.Is(err, model.ErrInvalidState) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		ops := []project.Operation{}
+		unlocked := false
+		for _, t := range view.Sequence.Tracks {
+			if t.Locked && t.LockOwner == "agent:"+runID {
+				ops = append(ops, project.Operation{Type: "track.update", TrackID: t.ID, Locked: &unlocked})
+			}
+		}
+		if len(ops) == 0 {
+			return nil
+		}
+		_, err = s.TimelineCommand(cleanup, "agent:"+runID, projectID, sequenceID, project.Command{Session: view.Session, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: newID("unlock"), Label: "Agent结束渲染插入，释放轨道", Operations: ops})
+		if !errors.Is(err, model.ErrConflict) {
+			return err
+		}
+	}
+	return model.ErrConflict
 }

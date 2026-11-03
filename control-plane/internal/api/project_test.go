@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,86 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
+
+func TestSequenceFrameHTTP(t *testing.T) {
+	srv := newServer(t)
+	ctx := t.Context()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "delivery"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.ConfigureDeliveryRoot(filepath.Join(root, "delivery")); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.svc.ConfigureProjectWorkspace(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.svc.CloseProjectWorkspace)
+	wd, _ := os.Getwd()
+	if err := srv.svc.ConfigureTTS("python", filepath.Join(wd, "..", "..", "..", "workers", "python")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.svc.CloseTTS)
+	session, err := srv.svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "frame.avp"), Name: "Frame"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := session.Document.Project.ID
+	// Reuse the maintained media fixture rather than generating another video.
+	session, err = srv.svc.ImportProjectResource(ctx, pid, filepath.Join(wd, "..", "..", "..", "workers", "node", "timeline-cli", "fixtures", "media", "clip_01.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := session.Document.Sequences[0]
+	view, err := srv.svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: session.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "frame", Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: session.Document.Resources[0].ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := service.SequenceFrameRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion, Frame: 1}
+	call := func(value service.SequenceFrameRequest) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(value)
+		r := localRequest("POST", "/api/projects/"+pid+"/sequences/"+seq.ID+"/preview/frame", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-VAC-Project-Session", session.ID)
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, r)
+		return w
+	}
+	w := call(req)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var result service.SequenceFramePreview
+	if err = json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(result.Image, "data:image/png;base64,"))
+	if err != nil || len(raw) < 8 || string(raw[:8]) != "\x89PNG\r\n\x1a\n" || result.Frame != 1 || result.ContentVersion != view.ContentVersion {
+		t.Fatal("invalid PNG response", err)
+	}
+	req.Frame = -1
+	if w = call(req); w.Code != 400 {
+		t.Fatal("invalid frame", w.Code, w.Body.String())
+	}
+	req.Frame = 1
+	req.ContentVersion = "stale"
+	if w = call(req); w.Code != 409 {
+		t.Fatal("stale frame", w.Code, w.Body.String())
+	}
+	closeFrame := func(sessionID string) *httptest.ResponseRecorder {
+		r := localRequest("DELETE", "/api/projects/"+pid+"/sequences/"+seq.ID+"/preview/frame?session="+sessionID, nil)
+		r.Header.Set("X-VAC-Project-Session", session.ID)
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, r)
+		return w
+	}
+	if w = closeFrame("stale"); w.Code != 409 {
+		t.Fatal("foreign preview release", w.Code, w.Body.String())
+	}
+	if w = closeFrame(session.ID); w.Code != 200 {
+		t.Fatal("preview release", w.Code, w.Body.String())
+	}
+}
 
 func TestProjectHTTPRangeAndIsolation(t *testing.T) {
 	srv := newServer(t)
