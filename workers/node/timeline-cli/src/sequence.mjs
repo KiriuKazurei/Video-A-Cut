@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { runTool, probeMedia } from './media.mjs';
 import { inspectBasicQuality, sequenceExpectations } from './basic-quality.mjs';
@@ -47,7 +47,7 @@ const tempo = speed => { const filters = []; while (speed > 2) { filters.push('a
 
 // The same immutable graph is used for the program monitor and final export.
 // Inputs contain only current-project resources resolved by Go.
-export function sequenceGraph(sequence, resources, {frame}={}) {
+export function sequenceGraph(sequence, resources, {frame,window}={}) {
  const still=frame!==undefined;
  const fps = sequence.fps.num / sequence.fps.den, rate = `${sequence.fps.num}/${sequence.fps.den}`;
  if (!(fps > 0 && fps <= 240) || !(sequence.width > 0 && sequence.height > 0)) throw Error('序列参数无效');
@@ -56,8 +56,10 @@ export function sequenceGraph(sequence, resources, {frame}={}) {
  if (frames < 1) throw Error('当前轨道范围没有可渲染内容');
  if(still&&(!Number.isSafeInteger(frame)||frame<0||frame>=frames))throw Error('预览帧超出序列范围');
  const duration = frames / fps, args = [], filters = [], cues = [], audio = [], frameLayers=[];
+ if(window&&(!Number.isSafeInteger(window.start)||!Number.isSafeInteger(window.end)||window.start<0||window.end>frames||window.end<=window.start))throw Error('预览分段范围无效');
  let canvas = 'base', inputIndex = 0, layer = 0;
  filters.push(`color=c=black:s=${sequence.width}x${sequence.height}:r=${rate}:d=${n(duration)},format=rgba[base]`);
+ if(window)filters[0]=`color=c=black:s=${sequence.width}x${sequence.height}:r=${rate}:d=${n((window.end-window.start)/fps)},format=rgba,setpts=PTS+${window.start}[base]`;
  if(still){filters[0]=`color=c=black:s=${sequence.width}x${sequence.height}:r=${rate}:d=${n(1/fps)},format=rgba,setpts=PTS+${frame}[base]`;}
  for (const track of tracks) {
   if(still&&track.kind==='audio')continue;
@@ -66,6 +68,7 @@ export function sequenceGraph(sequence, resources, {frame}={}) {
    const clip = ordered[ci], resource = resources.find(r => r.id === clip.resource_id);
    const nextClip=ordered[ci+1],tailFrames=nextClip&&nextClip.at===clip.at+clip.duration?(nextClip.effects.transition||0):0;
    if(still&&(frame<clip.at||frame>=clip.at+clip.duration+tailFrames))continue;
+   if(window&&(clip.at>=window.end||clip.at+clip.duration+tailFrames<=window.start))continue;
    if (!resource || !isAbsolute(resource.path) || /^[a-z]+:\/\//i.test(resource.path)) throw Error('片段资源缺失或不属于当前工程');
    if (!(clip.duration > 0 && clip.speed > 0) || clip.at < 0) throw Error('片段时间无效');
    const e = clip.effects, len = clip.duration / fps, at = clip.at / fps;
@@ -76,9 +79,11 @@ export function sequenceGraph(sequence, resources, {frame}={}) {
    if (transition && (!ci || ordered[ci - 1].at + ordered[ci - 1].duration !== clip.at)) throw Error('交叉溶解需要前一个相邻片段');
    const tail = next && next.at === clip.at + clip.duration ? (next.effects.transition || 0) / fps : 0;
    if (tail && resource.kind !== 'image' && seconds(clip.source_out) + tail * clip.speed > Number(resource.metadata.duration) + 1e-6) throw Error('交叉溶解的前片段没有足够的源尾部，请缩短源出点');
-   if (resource.draw_document) args.push('-framerate',`${resource.draw_document.canvas.fps.num}/${resource.draw_document.canvas.fps.den}`,'-start_number','0');
+   const seek=window&&track.kind==='video'&&resource.kind!=='image'&&!resource.draw_document?seconds(clip.source_in)+Math.max(0,window.start-clip.at)/fps*clip.speed:0;
+   if (resource.draw_document) {const rate=resource.draw_document.canvas.fps.num/resource.draw_document.canvas.fps.den;args.push('-itsoffset',n((resource.draw_start_frame||0)/rate),'-framerate',String(rate/(resource.draw_frame_step||1)),'-start_number',String((resource.draw_start_frame||0)/(resource.draw_frame_step||1)));}
    else if (resource.kind === 'image') args.push('-loop','1','-framerate',rate);
    else if(still)args.push('-ss',n(seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed));
+   else if(seek)args.push('-ss',n(seek));
    args.push('-i',resource.path); const source = `${inputIndex++}:${clip.stream_index}`;
    if (track.kind === 'audio') {
     const label = `audio${audio.length}`;
@@ -93,7 +98,9 @@ export function sequenceGraph(sequence, resources, {frame}={}) {
    }
    const from = e.from_frame ?? 0, to = e.to_frame ?? clip.duration;
    const parts = [[0,from,false],[from,to,true],[to,clip.duration + Math.round(tail*fps),false]].filter(([a,b]) => b > a);
-   for (const [start,end,affected] of parts) {
+   for (const [partStart,partEnd,affected] of parts) {
+    const start=window?Math.max(partStart,window.start-clip.at):partStart,end=window?Math.min(partEnd,window.end-clip.at):partEnd;
+    if(end<=start)continue;
     if(still&&(frame<clip.at+start||frame>=clip.at+end))continue;
     const fx = affected ? e : {scale:1,x:0,y:0,crop_left:0,crop_right:0,crop_top:0,crop_bottom:0};
     const name = `video${layer}`, output = `composite${layer++}`;
@@ -106,31 +113,32 @@ export function sequenceGraph(sequence, resources, {frame}={}) {
      const fadeOut=affected&&e.fade_out?Math.max(0,Math.min(1,(span-elapsed)/Math.min(e.fade_out,span))):1;
      frameLayers.push({clip_id:clip.id,resource_id:clip.resource_id,stream_index:clip.stream_index,source_time:seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed,width,height,x:fx.x||0,y:fx.y||0,crop:[left,top,right,bottom],brightness:fadeIn*fadeOut,fade_color:e.fade_color==='white'?1:0,opacity:transition&&start===0?Math.min(1,(frame-clip.at)/(transition*fps)):1});
     }
-    const timing=still?`trim=duration=${n(Math.max(2/fps,2/fps*clip.speed))},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate},setpts=PTS+${frame-clip.at-start}`:`trim=start=${n(seconds(clip.source_in) + start/fps*clip.speed)}:end=${n(seconds(clip.source_in) + end/fps*clip.speed)},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate}`;
+    const timing=still?`trim=duration=${n(Math.max(2/fps,2/fps*clip.speed))},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate},setpts=PTS+${frame-clip.at-start}`:`trim=start=${n(seconds(clip.source_in) + start/fps*clip.speed-seek)}:end=${n(seconds(clip.source_in) + end/fps*clip.speed-seek)},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate}`;
     let chain = `[${source}]${timing},crop=w='iw*${n(1-left-right)}':h='ih*${n(1-top-bottom)}':x='iw*${n(left)}':y='ih*${n(top)}',scale=w=${width}:h=${height}:force_original_aspect_ratio=decrease,setsar=1,format=rgba`;
     // FFmpeg treats a zero fade start as the first input PTS. A seeked still
     // already has a clip-local PTS, so retain the original zero-time origin.
-    const fadeOrigin=still?0.000001:0;
-    if (affected && e.fade_in) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(Math.min(e.fade_in,end-start)/fps)}:color=${e.fade_color || 'black'}`;
-    if (affected && e.fade_out) chain += `,fade=t=out:st=${n(Math.max(fadeOrigin,(end-start-e.fade_out)/fps))}:d=${n(Math.min(e.fade_out,end-start)/fps)}:color=${e.fade_color || 'black'}`;
-    if (transition && start === 0) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(transition)}:alpha=1`;
-    chain += still?`,setpts=PTS-STARTPTS+${frame}[${name}]`:`,setpts=PTS+${clip.at+start}[${name}]`;
+    if(window)chain+=`,setpts=PTS+${start-partStart}`;
+    const fadeOrigin=still||window?0.000001:0;
+    if (affected && e.fade_in) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(Math.min(e.fade_in,partEnd-partStart)/fps)}:color=${e.fade_color || 'black'}`;
+    if (affected && e.fade_out) chain += `,fade=t=out:st=${n(Math.max(fadeOrigin,(partEnd-partStart-e.fade_out)/fps))}:d=${n(Math.min(e.fade_out,partEnd-partStart)/fps)}:color=${e.fade_color || 'black'}`;
+    if (transition && partStart === 0) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(transition)}:alpha=1`;
+    chain += still?`,setpts=PTS-STARTPTS+${frame}[${name}]`:window?`,setpts=PTS-STARTPTS+${clip.at+start}[${name}]`:`,setpts=PTS+${clip.at+start}[${name}]`;
     filters.push(chain,`[${canvas}][${name}]overlay=x='(W-w)/2+${n(fx.x || 0)}':y='(H-h)/2+${n(fx.y || 0)}':eof_action=pass:enable='gte(t,${n(at+start/fps)})*lt(t,${n(at+end/fps)})'[${output}]`);canvas=output;
    }
   }
  }
  if(!still){filters.push(`anullsrc=r=${sequence.sample_rate}:cl=stereo,atrim=duration=${n(duration)}[silence]`);
  filters.push(`[silence]${audio.map(a=>`[${a}]`).join('')}amix=inputs=${audio.length+1}:normalize=0:duration=first,alimiter=limit=0.95:level=0,atrim=duration=${n(duration)}[mix]`);}
- return {args,filters,canvas,cues,frameLayers,frames:still?1:frames,duration:still?1/fps:duration,rate,tracks};
+ return {args,filters,canvas,cues,frameLayers,frames:still?1:window?window.end-window.start:frames,duration:still?1/fps:window?(window.end-window.start)/fps:duration,rate,tracks};
 }
 
-async function subtitleFile(output, cues, sequence) {
+async function subtitleFile(output, cues, sequence,scale=1) {
  if (!cues.length) return undefined;
  const catalogue = await installedFonts(), fonts = catalogue.map(f=>f.family), defaultFont = ['Microsoft YaHei','Noto Sans CJK SC','Arial'].find(f=>fonts.includes(f)) || fonts[0];
  if (!defaultFont) throw Error('没有可用的本地字幕字体');
  let ass = `[Script Info]\nScriptType: v4.00+\nPlayResX: ${sequence.width}\nPlayResY: ${sequence.height}\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\n`;
  const records=[];
- for (const [i,c] of cues.entries()) {const font=c.font || defaultFont;if (!fonts.includes(font)) throw Error(`字体不可用：${font}`);records.push(...await resolveFonts([font]));ass += `Style: P${i},${font},${c.size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,0,2,40,40,36,1\n`;}
+ for (const [i,c] of cues.entries()) {const font=c.font || defaultFont;if (!fonts.includes(font)) throw Error(`字体不可用：${font}`);records.push(...await resolveFonts([font]));ass += `Style: P${i},${font},${c.size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,${2*scale},0,2,${Math.round(40*scale)},${Math.round(40*scale)},${Math.round(36*scale)},1\n`;}
  ass+='\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n';
  cues.forEach((c,i)=>{ass+=`Dialogue: ${i},${assTime(Math.round(c.start*100))},${assTime(Math.round(c.end*100))},P${i},,0,0,0,,${assText(c.text)}\n`;});
  const path=join(output,'subtitles.ass');await writeFile(path,ass,'utf8');return {path,fonts:records.map(({family,sha256})=>({family,sha256}))};
@@ -177,29 +185,33 @@ export async function renderSequenceFrame(input,{run=runTool,drawFrame}={}) {
  return {content_version:input.content_version,frame,sha256:await sequenceFileHash(final),width:sequence.width,height:sequence.height};
 }
 
-export async function renderSequence(input,{run=runTool,probe=probeMedia}={}) {
- const {sequence,output_dir:output,content_version:version}=input;
+export async function renderSequence(input,{run=runTool,probe=probeMedia,prepareDrawFrames}={}) {
+ const {output_dir:output,content_version:version,window,preview=false}=input;
+ const sequence=structuredClone(input.sequence);let previewScale=1;
+ if(preview&&sequence.width>960){const factor=960/sequence.width;previewScale=factor;sequence.width=960;sequence.height=Math.max(2,Math.round(sequence.height*factor/2)*2);for(const t of sequence.tracks)for(const c of t.clips){c.effects.x*=factor;c.effects.y*=factor;if(t.kind==='subtitle'||c.font_size)c.font_size=Math.max(1,Math.round((c.font_size||36)*factor));}}
+ sequenceGraph(sequence,input.resources.map(r=>r.draw_document?{...r,path:join(output,'draw.png')}:r),{window});
  const resources=[];
  for(const r of input.resources){
-  if(r.draw_document){const {prepareDrawFrameSource}=await import('./unified-draw.mjs');const directory=join(output,'draw-sources',createHash('sha256').update(r.id+':'+r.sha256).digest('hex'));const path=await prepareDrawFrameSource({document:r.draw_document,assets:r.assets,output_dir:directory});resources.push({...r,path});}
+  if(r.draw_document){const {prepareDrawFrameSource}=await import('./unified-draw.mjs');const directory=join(output,'draw-sources',createHash('sha256').update(r.id+':'+r.sha256).digest('hex'));let from=0,to=r.draw_document.duration_frames;if(window){const ranges=selectedTracks(sequence).flatMap(t=>t.clips).filter(c=>c.resource_id===r.id&&c.at<window.end&&c.at+c.duration+Math.max(0,...selectedTracks(sequence).flatMap(t=>t.clips.map(c=>c.effects.transition||0)))>window.start);if(!ranges.length)continue;const fps=sequence.fps.num/sequence.fps.den,sourceFPS=r.draw_document.canvas.fps.num/r.draw_document.canvas.fps.den;from=Math.max(0,Math.floor(Math.min(...ranges.map(c=>seconds(c.source_in)+Math.max(0,window.start-c.at)/fps*c.speed))*sourceFPS));to=Math.min(to,Math.ceil(Math.max(...ranges.map(c=>seconds(c.source_in)+(window.end-c.at)/fps*c.speed))*sourceFPS)+2);}const step=preview?Math.max(1,Math.ceil(r.draw_document.canvas.fps.num/r.draw_document.canvas.fps.den/8)):1;from=Math.floor(from/step)*step;const path=await (prepareDrawFrames??prepareDrawFrameSource)({frame_step:step,resource_id:r.id,document:r.draw_document,assets:r.assets,output_dir:directory,from_frame:from,to_frame:to,scale:preview?Math.min(1,sequence.width/r.draw_document.canvas.width):1});resources.push({...r,path,draw_start_frame:from,draw_frame_step:step});}
   else resources.push(r);
  }
- const graph=sequenceGraph(sequence,resources);await mkdir(output,{recursive:true});
+ const graph=sequenceGraph(sequence,resources,{window});await mkdir(output,{recursive:true});
  for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`源素材发生变化：${r.name}`);}
- const subtitles=await subtitleFile(output,graph.cues,sequence);
+ const subtitles=await subtitleFile(output,graph.cues,sequence,previewScale);
  const filters=[...graph.filters];let video=graph.canvas;
  if (subtitles){filters.push(`[${video}]ass=filename='${filterPath(subtitles.path)}'[subtitled]`);video='subtitled';}
+ let mix='mix';if(window){filters.push(`[${video}]setpts=PTS-STARTPTS[windowvideo]`,`[mix]atrim=start=${n(window.start/(sequence.fps.num/sequence.fps.den))}:end=${n(window.end/(sequence.fps.num/sequence.fps.den))},asetpts=PTS-STARTPTS[windowmix]`);video='windowvideo';mix='windowmix';}
  const temporary=join(output,'rendering.mp4'),final=join(output,'program.mp4');
- await run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y',...graph.args,'-filter_complex_threads','1','-filter_complex',filters.join(';'),'-map',`[${video}]`,'-map','[mix]','-frames:v',String(graph.frames),'-t',n(graph.duration),'-c:v','libx264','-preset','veryfast','-crf','20','-threads','2','-pix_fmt','yuv420p','-c:a','aac','-ar',String(sequence.sample_rate),'-movflags','+faststart',temporary],{timeoutMs:360_000});
+ await run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y',...graph.args,'-filter_complex_threads','1','-filter_complex',filters.join(';'),'-map',`[${video}]`,'-map',`[${mix}]`,'-frames:v',String(graph.frames),'-t',n(graph.duration),'-c:v','libx264','-preset',preview?'ultrafast':'veryfast','-crf',preview?'25':'20',...(preview?['-profile:v','main','-level:v','3.1','-bf','0','-g',String(Math.ceil(sequence.fps.num/sequence.fps.den*2))]:[]),'-threads','2','-pix_fmt','yuv420p','-c:a','aac','-ar',String(sequence.sample_rate),'-movflags',preview?'+frag_keyframe+empty_moov+default_base_moof':'+faststart',temporary],{timeoutMs:360_000});
  const media=await probe(temporary);if (!media.video || !media.audio || Math.abs(media.duration-graph.duration)>2/(sequence.fps.num/sequence.fps.den)) throw Error('节目输出验证失败');
  const sha256=await sequenceFileHash(temporary);
  for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`渲染期间源素材发生变化：${r.name}`);}
  await rename(temporary,final);
- const basic_quality=await inspectBasicQuality({path:final,sha256,duration:graph.duration,...sequenceExpectations(sequence,resources,selectedTracks(sequence))},{run});
+ const basic_quality=preview?{sha256,status:'not_checked',audio_status:'not_checked',video_status:'not_checked',issues:[]}:await inspectBasicQuality({path:final,sha256,duration:graph.duration,...sequenceExpectations(sequence,resources,selectedTracks(sequence))},{run});
  const report={schema_version:2,content_version:version,sha256,basic_quality,frames:graph.frames,duration:graph.duration,width:sequence.width,height:sequence.height,fps:sequence.fps,scope_group:sequence.scope_group || '',fonts:subtitles?.fonts || []};
 
  await writeFile(join(output,'sequence.json'),JSON.stringify({schema_version:2,sequence,resources:resources.map(({path,assets,...r})=>({...r,...(assets?{assets:assets.map(({path,...asset})=>asset)}:{})}))},null,2));
- await writeFile(join(output,'program.json'),JSON.stringify(report,null,2));return report;
+ await writeFile(join(output,'program.json'),JSON.stringify(report,null,2));if(preview)await rm(join(output,'draw-sources'),{recursive:true,force:true});return report;
 }
 
 export async function waveform(input,{run=runTool}={}) {

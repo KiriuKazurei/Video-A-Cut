@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
-import {sequenceGraph,renderSequenceFrame,renderSequenceCaptionFrame,selectedTracks} from './sequence.mjs';
+import {sequenceGraph,renderSequence,renderSequenceFrame,renderSequenceCaptionFrame,selectedTracks} from './sequence.mjs';
 import {runTool} from './media.mjs';
 import {openUnifiedDraw} from './unified-draw.mjs';
 import {openSequenceGPU} from './sequence-gpu.mjs';
@@ -19,6 +19,20 @@ export async function createSequenceFrameSession({output_dir:root,cache_bytes=64
  const ensureGPU=async()=>{if(gpuStarted)return;gpuStarted=true;try{gpu=await openSequenceGPU({backend,browser_path});Object.assign(capabilities,gpu.capabilities);}catch(error){capabilities.reason=error.message;}};
  const diagnostics=()=>({...stats,cache_bytes:bytes,cache_limit_bytes:cache_bytes,hosts:hosts.size,backend:capabilities.available?'webgl2':'cpu-ffmpeg',renderer:capabilities.renderer,hardware_accelerated:capabilities.available&&capabilities.hardware_accelerated,fallback_reason:capabilities.reason});
  const queue=action=>{const next=serial.then(()=>{if(closed)throw Error('Preview session closed');return action();});serial=next.catch(()=>{});return next;};
+ const drawingHost=async r=>{
+  const assets=hash(r.assets??[]),document=hash(r.draw_document);let entry=hosts.get(r.id);
+  if(entry&&entry.assets!==assets){await entry.host.close();await rm(entry.directory,{recursive:true,force:true});hosts.delete(r.id);entry=undefined;}
+  if(!entry){
+   if(hosts.size>=4){const first=hosts.keys().next().value,old=hosts.get(first);await old.host.close();await rm(old.directory,{recursive:true,force:true});hosts.delete(first);}
+   const directory=join(root,'host-'+hash(r.id).slice(0,8));
+   entry={host:await openUnifiedDraw({document:r.draw_document,assets:r.assets,output_dir:directory,browser:gpu?.browser,browser_path}),assets,document,directory};hosts.set(r.id,entry);stats.host_loads++;
+   stats.source_compiles+=Object.values(entry.host.diagnostics().source_compiles).reduce((a,b)=>a+b,0);
+  }else{
+   hosts.delete(r.id);hosts.set(r.id,entry);
+   if(entry.document!==document){const before=Object.values(entry.host.diagnostics().source_compiles).reduce((a,b)=>a+b,0);await entry.host.update(r.draw_document);stats.source_compiles+=Object.values(entry.host.diagnostics().source_compiles).reduce((a,b)=>a+b,0)-before;entry.document=document;}
+  }
+  return entry;
+ };
  const render=async input=>{
   const started=performance.now(),{sequence,frame,resources}=input;
   // Graph is also the authoritative selection/effect interpreter for export.
@@ -35,17 +49,7 @@ export async function createSequenceFrameSession({output_dir:root,cache_bytes=64
    if(source)stats.source_cache_hits++;
    else{
     if(r.draw_document){
-     const assets=hash(r.assets??[]),document=hash(r.draw_document);let entry=hosts.get(r.id);
-     if(entry&&entry.assets!==assets){await entry.host.close();await rm(entry.directory,{recursive:true,force:true});hosts.delete(r.id);entry=undefined;}
-     if(!entry){
-      if(hosts.size>=4){const first=hosts.keys().next().value,old=hosts.get(first);await old.host.close();await rm(old.directory,{recursive:true,force:true});hosts.delete(first);}
-      const directory=join(root,'host-'+hash(r.id).slice(0,8));
-      entry={host:await openUnifiedDraw({document:r.draw_document,assets:r.assets,output_dir:directory,browser:gpu?.browser,browser_path}),assets,document,directory};hosts.set(r.id,entry);stats.host_loads++;
-      stats.source_compiles+=Object.values(entry.host.diagnostics().source_compiles).reduce((a,b)=>a+b,0);
-     }else{
-      hosts.delete(r.id);hosts.set(r.id,entry);
-      if(entry.document!==document){const before=Object.values(entry.host.diagnostics().source_compiles).reduce((a,b)=>a+b,0);await entry.host.update(r.draw_document);stats.source_compiles+=Object.values(entry.host.diagnostics().source_compiles).reduce((a,b)=>a+b,0)-before;entry.document=document;}
-     }
+     const entry=await drawingHost(r);
      const d=r.draw_document,sourceFrame=Math.min(d.duration_frames-1,Math.max(0,Math.floor(layer.source_time*d.canvas.fps.num/d.canvas.fps.den+1e-7)));
      source=(await entry.host.seek({frame:sourceFrame,request_id:'sequence-frame'})).png;
     }else if(r.kind==='image')source=await readFile(r.path);
@@ -71,6 +75,15 @@ export async function createSequenceFrameSession({output_dir:root,cache_bytes=64
  };
  return {
   render:input=>{generation++;return queue(()=>render(input));},diagnostics,
+  renderSegment:input=>{generation++;return queue(async()=>{await ensureGPU();return renderSequence(input,{prepareDrawFrames:async options=>{
+   const r=input.resources.find(r=>r.id===options.resource_id),entry=await drawingHost(r);await mkdir(options.output_dir,{recursive:true});
+   for(let frame=options.from_frame;frame<options.to_frame;frame+=options.frame_step??1){
+    const key='segment-source:'+hash({id:r.id,doc:r.draw_document,assets:r.assets,scale:options.scale,frame});let png=get(key);
+    if(!png){png=(await entry.host.seek({frame,scale:options.scale,request_id:'segment-'+frame})).png;put(key,png);}
+    await writeFile(join(options.output_dir,String(frame/(options.frame_step??1)).padStart(6,'0')+'.png'),png);
+   }
+   return join(options.output_dir,'%06d.png');
+  }});});},
   cancelPrefetch:()=>{generation++;},
   prefetch:async input=>{
    const current=++generation,fps=input.sequence.fps.num/input.sequence.fps.den,end=Math.max(0,...selectedTracks(input.sequence).flatMap(t=>t.clips.map(c=>c.at+c.duration)));

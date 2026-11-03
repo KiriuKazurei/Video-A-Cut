@@ -610,3 +610,37 @@ Rust既有9项在0.3.4全部通过，输出agent-ux-build/0.3.4/artifacts/custom
 公开清单命名修复已由实际生产更新器完整下载与安装证实，API最新附件哈希与本地修正清单一致。独立安装资源检查：控制面、runtime manifest、新GPU/缓存三模块与候选SHA256完全一致；桌面exe初次完整哈希不同，逐字节核实只有offset0xb63382..0xb63384的Tauri包类型UNK→NSS三字节差异，内存归一化后与候选完全一致，无其他字节变化。没有手工覆盖安装文件。发行标签c19099c保留；生成器脚本修复和最终记录作为后续源码提交推送，不需要重建相同应用二进制。
 
 本轮完成工程门禁、真实候选原生GPU及真实安装更新，未调用模型、未重新编辑业务工程、未验回退及连续实时音画，不将其写成通过。
+
+### 2026-11-03 PLAY034：0.3.4真实工程首次播放等待排查（排查完成，性能问题未修）
+
+复用verify-tauri-desktop.mjs原生入口，增加VAC_VERIFY_PLAYBACK_PROJECT可选分支。只允许无既有桌面实例时启动测试拥有的窗口、要求独立空workspace，只读打开指定业务AVP；实际点击播放并核对时间前进，关闭时discard测试UI编辑，并核对业务文件SHA256不变。不新增独立runner，不改安装程序或产品播放逻辑。
+
+使用D:/Applications/VAC原0.3.4（资源和控制面均来自安装目录），TestWorkspace custom、StorageRoot=.run-data/tests/agent-ux-build。两轮输出为0.3.4/artifacts/custom/native-playback-baseline和native-playback-cached，后者复用前者的独立data目录，WebView profile/报告另存。启动参数为19349 launch <输出目录> <desktop.json>，环境VAC_DESKTOP_EXECUTABLE指向安装exe、VAC_VERIFY_PLAYBACK_PROJECT指向用户Excute me.avp。
+
+冷缓存：当前帧HTTP8046ms；随后整段POST已发起，FFmpeg处理120秒1920x1080/30fps序列，POST130189ms；约145830ms可播放，video.readyState=4、播放按钮启用，静帧被视频接管。点击后时间9.633333→11.077393秒且paused=false。跨进程热缓存：约9967ms可播放，帧HTTP1980ms、整段POST1566ms，没有再次耗时合成；点击后9.633333→11.091559秒且paused=false。两轮各2项断言通过、results.result=passed，业务AVP哈希均不变、测试拥有的窗口均退出；playing.png已实际检查。没有改写用户默认数据目录的缓存，结果不意味着该目录已完成缓存准备。
+
+根因证据：0.3.4的sequenceContentVersion新增compositor=sequence-integer-pts-v2，淘汰旧合成缓存，避免复用旧时间基输出；用户缓存新版本目录e1d9f...只有未完成rendering.mp4。单帧完成后前端确实发出完整预览请求；播放按钮依赖整段preview元数据返回，GPU后端仅加速当前帧，不加速该CPU全段渲染。未复现完成后无法接管或缓存永远不加载。首次可播放约2分26秒仍属已确认P1性能/体验问题，本轮只定位并补足真实播放覆盖，未声称修复；后续应评估播放头附近分段可播放缓存/渐进就绪，验收应测首个可播放片段与连续音画，而非仅静帧。
+
+### 2026-11-03～04 PLAY-OPT01：混合播放与局部分段优化（开发候选定向验收完成，完整service仍红）
+
+最终结果（未提交工作区、未发布0.3.4调试候选）：nfinal原生5组通过，3381ms首次可播（200ms轮询粒度），唯一preview请求为playback计划992ms，没有整段渲染。0→62.093061秒正常墙钟速率、58.27/60秒切点、独立音轨/VU及75秒寻址通过，最大采样偏差23.44ms，AVP哈希不变；对照同口径旧安装版145830ms，减少约97.68%等待。该数字为本机同一业务工程单次最终测量，不推广为所有工程保证。nsproxy8long原生5组通过：30.033333→46.037637秒用16083ms，跨8个约2秒窗口持续播放，实际GPU像素、复用和离开释放通过；冷GPU帧3897ms、热/重复159ms是独立API帧指标，不冒充复杂端到端首次可播5秒。2秒简单首播目标尚未达到。
+
+两次早期原生候选启动未就绪（nf3 setup underlying handle、nf4空白WebView），根因未确认，不据最终通过宣称已修启动问题；固定调试端口与其他进程出站端口冲突后改由空闲端口启动，未终止用户进程。最终Debug构建通过；五个修改的Node运行时文件与候选哈希逐一一致，Go二进制与runtime清单匹配。最终候选及所有截图/JSON在agent-ux-browser-final-fix/0.3.4/artifacts/custom/{nfinal,nsproxy8long}，测试完成窗口已退出。未重写安装版或业务AVP，未调用外部模型、提交、推送或发布。人类手感及其他工程仍待试用；扩展service全包失败保持下述记录。
+
+最终代理档位复验：nsproxy短跨段5项通过，30.033333→33.026686秒用3072ms，GPU冷帧4015ms、宿主/源像素复用、可见像素和退出释放均通过。但拉长nsproxylong后30.033333→46.050063秒用20352ms，未过≥90%墙钟门禁，因此不接受仅短测。当前代理改为最高960宽/8fps源码采样，缓存renderer升为bounded-preview-v3-540p-source8-main31；24fps源码步长3回归先红后绿，最终Node相关4项25.041秒通过。最新Go预览/内容指纹/字体/工作区定向16.655秒通过。完整Debug构建通过，候选再同步最新Go及sequence.mjs并核对SHA一致；安装版及业务AVP保持不变。nsproxy8long及最新业务候选的结果随后记录。
+
+2026-11-04后续证据：nf7最终直播放5组通过，约6085ms首次可播，playback计划30ms且没有完整preview POST；从0连续播放至62.069841秒且墙钟速率≥95%，58.27/60秒切点、独立音轨/VU及75秒寻址通过，最大采样音画偏差12.505ms，业务AVP哈希保持。nfast约4098ms、nf2约6043ms和nf6约7127ms只说明就绪耗时，后续检查失败，不能代替nf7连续播放证据。先前过严的音画同步会频繁暂停，随后发现React延迟位置回流又触发seek；当前显式用户seek和媒体上报分开，禁止UI反馈驱动反复寻址。隐藏编辑器不重建播放器，离开时释放媒体与VU上下文。
+
+nsfinal因夹具切资源页后未使用返回的新工程revision导致409，夹具已修。nsfinal2/3的GPU冷/热帧、效果修改复用和可见像素通过，但分段推进约3.02秒用了8.334秒，不能称流畅。当前加入预览源码最高12fps时间采样（成片仍用序列FPS和原音频），与最高1280宽共同作为代理画质；精确静帧和正式导出不降采样。新增既有FrameSource回归先红（缺frame_step）后绿，确认24fps源码步长2、起点对齐、22帧窗口和30fps输出、透明叠加与原音频正确。Node相关4项27.563秒及去掉多余双RAF后相关3项24.127秒通过，复用原sequence/draw用例。最新完整前端137项/样式、类型与18文档/662链接/196HTTP/17IPC/170类型/30SSE通过。
+
+扩展Go service/API整包：API32.113秒通过；service失败，记录service-api-full-failure.log（同agent-ux-build/0.3.4/artifacts/custom）。包含auto_hardening快照rename Access denied、delivery_variant暂存mkdtemp ENOENT、loudness5400秒PCM样本No space left on device，最终TestSkillProjectRequiresFreshConfirmation/Windows EvalSymlinks处600秒超时。未据此修改无关模块，未将历史失败写成新播放逻辑回归或通过；当时E盘仅约829MB可用。针对本次改动的预览/内容指纹/工作区单独复验，完整套件仍需在足够磁盘及稳定Windows目录环境复核。本轮未删除业务或测试文件腾空间。
+
+复用sequence/draw Node、service project_media、API整包、前端desktop unit、review_shortcuts_smoke与verify-tauri-desktop原生入口，不新增独立套件或固定媒体。保留业务AVP/安装版；调试候选在build/desktop/app-debug，正式发行仍0.3.4。功能合同第8节随新路径更新。
+
+阶段结果：分段测试先红（旧实现60帧而非请求18帧），随后发现转场中段未延续透明度，修复后与全段对应像素/音频一致。Node sequence/draw现有33项328.31秒通过；后续常驻分段复用2项17.625秒通过。前端新增直播放半开切点/源偏移和MSE窗口推进/后退检查，最新完整137项/样式/类型通过。首次调试构建通过；第二轮MSE修复调试构建通过。
+
+第一轮真实业务工程直播放：native-playback-fast原生4项通过，约12216ms可播，唯一preview请求为playback计划（2258ms），没有整段渲染请求；原生点击实际播放、58.27/60秒换源及75秒寻址通过，最大采样偏差0.01018秒，AVP SHA不变。原生输出在agent-ux-browser-final-fix/0.3.4/artifacts/custom/native-playback-fast。此后发现每次读取资源/时间线会克隆全部AVP历史，已缩小只读快照，等待新候选实测，不把12秒记成达到2秒目标。
+
+原生分段首轮自动通过但证据不足：只播放到1.932979秒，未跨首段边界且初始画面为0而非30秒；保留native-playback-segments。加强定位/跨段断言后native-playback-segments-warm失败，截图暴露MSE窗口起点等于旧终点导致异常（appendWindowStart=2而旧end=2），并发现外部播放头改变未调用播放器seek；已修窗口更新顺序和播放头同步，补前端单元。分段源码准备改用同一常驻宿主，避免每段冷编译。native-playback-segments-fixed正在验证，不能用旧首轮结果宣称连续播放通过。
+
+Go service定向55.133秒通过，覆盖当前帧/取消释放/共享原生Agent/绘制生命周期及快照隔离；包含真实绘制两秒分段、缓存命中、后方编辑保留前段缓存、旧版本URL拒绝。扩充用例后首次仍用旧seek版本导致Conflict，更新测试请求后通过，产品校验保持。上述运行使用原有TestWorkspace custom，所有生成物在注册测试根的0.3.4目录；未清理失败证据。HTTP整包、最终原生、文档合同同步仍待本轮结果。

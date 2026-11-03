@@ -15,6 +15,9 @@ export interface BasicQuality { sha256?: string; status: 'passed' | 'failed' | '
 export interface SequencePreview { basic_quality?: BasicQuality; content_version: string; sha256: string; duration: number; frames: number; width: number; height: number; fps: FrameRate; scope_group: string }
 export interface SequenceFrameDiagnostics { backend:'webgl2'|'cpu-ffmpeg'|'cached-movie'; hardware_accelerated?:boolean; renderer?:string; fallback_reason?:string; elapsed_ms?:number; frame_cache_hits?:number; source_cache_hits?:number; cache_bytes?:number }
 export interface SequenceFramePreview { content_version:string; frame:number; image:string; worker_pid?:number; diagnostics?:SequenceFrameDiagnostics }
+export interface PlaybackClip { id:string; resource_id:string; at:number; duration:number; source_in:number }
+export interface SequencePlayback { mode:'direct'|'segments'|'cached'; content_version:string; frames:number; fps:FrameRate; segment_frames:number; video:PlaybackClip[]; audio:PlaybackClip[] }
+export interface SequenceSegment extends SequencePreview { key:string; start_frame:number; cached:boolean }
 export const fpsValue = (rate: FrameRate) => rate.num / rate.den;
 export const timeSeconds = (time: MediaTime) => time.value / time.scale;
 export const frameSeconds = (frame: number, rate: FrameRate) => frame / fpsValue(rate);

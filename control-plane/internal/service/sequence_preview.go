@@ -58,8 +58,8 @@ func (s *Service) CloseSequenceFrame(projectID, session, sequenceID string) erro
 	return s.closePreviewProcess("sequence:" + session + ":" + sequenceID)
 }
 
-func (s *Service) persistentSequenceFrame(ctx context.Context, projectID, sequenceID string, view TimelineView, sources []sequenceSource, frame int64) (SequenceFramePreview, error) {
-	var result SequenceFramePreview
+func (s *Service) sequencePreviewRequest(ctx context.Context, sequenceID string, view TimelineView, payload map[string]any) ([]byte, error) {
+	var result []byte
 	p, err := s.startPreviewProcess("sequence:"+view.Session+":"+sequenceID, drawingEnvironmentVersion(), "sequence-preview.mjs")
 	if err != nil {
 		return result, err
@@ -70,7 +70,8 @@ func (s *Service) persistentSequenceFrame(ctx context.Context, projectID, sequen
 		return result, err
 	}
 	requestID := newID("frame")
-	raw, err := json.Marshal(map[string]any{"request_id": requestID, "session": view.Session, "sequence": view.Sequence, "resources": sources, "frame": frame, "content_version": view.ContentVersion})
+	payload["request_id"] = requestID
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return result, err
 	}
@@ -80,7 +81,11 @@ func (s *Service) persistentSequenceFrame(ctx context.Context, projectID, sequen
 	}
 	// A cancelled HTTP seek may finish its one in-flight frame. Drain its reply
 	// before admitting the next request, keeping the compiled browser alive.
-	wait := time.NewTimer(45 * time.Second)
+	timeout := 45 * time.Second
+	if payload["operation"] == "segment" {
+		timeout = 90 * time.Second
+	}
+	wait := time.NewTimer(timeout)
 	defer wait.Stop()
 	for {
 		select {
@@ -105,15 +110,25 @@ func (s *Service) persistentSequenceFrame(ctx context.Context, projectID, sequen
 			if !status.OK {
 				return result, fmt.Errorf("%s: %w", status.Message, model.ErrInvalidState)
 			}
-			if err = json.Unmarshal(raw, &result); err != nil {
-				return result, err
-			}
-			if result.Frame != frame || result.ContentVersion != view.ContentVersion || !strings.HasPrefix(result.Image, "data:image/png;base64,") {
-				return result, model.ErrConflict
-			}
+			result = raw
 			return result, ctx.Err()
 		}
 	}
+}
+
+func (s *Service) persistentSequenceFrame(ctx context.Context, projectID, sequenceID string, view TimelineView, sources []sequenceSource, frame int64) (SequenceFramePreview, error) {
+	var result SequenceFramePreview
+	raw, err := s.sequencePreviewRequest(ctx, sequenceID, view, map[string]any{"session": view.Session, "sequence": view.Sequence, "resources": sources, "frame": frame, "content_version": view.ContentVersion})
+	if err != nil {
+		return result, err
+	}
+	if err = json.Unmarshal(raw, &result); err != nil {
+		return result, err
+	}
+	if result.Frame != frame || result.ContentVersion != view.ContentVersion || !strings.HasPrefix(result.Image, "data:image/png;base64,") {
+		return result, model.ErrConflict
+	}
+	return result, nil
 }
 
 // Current-frame work reuses a sequence-owned worker and never waits behind the

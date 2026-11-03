@@ -11,9 +11,9 @@ try{
   try{
    if(Buffer.byteLength(line)>8*1024*1024)throw Error('Preview request too large');
    request=JSON.parse(line);session??=await createSequenceFrameSession({output_dir:process.argv[2]});
-   const result=await session.render(request);
+   const result=request.operation==='segment'?await session.renderSegment(request):await session.render(request);
    process.stdout.write(JSON.stringify({...result,request_id:request.request_id,worker_pid:process.pid,ok:true})+'\n');
-   void session.prefetch(request).catch(()=>{});
+   if(request.operation!=='segment')void session.prefetch(request).catch(()=>{});
   }catch(error){process.stdout.write(JSON.stringify({ok:false,request_id:request?.request_id,message:error.message})+'\n');}
   finally{idle();}
  }

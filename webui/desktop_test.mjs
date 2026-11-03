@@ -7,6 +7,20 @@ import { createWorkflowPreview } from './src/previewContext.ts';
 import { currentMcpURL, mcpConnectionConfig, mcpInstallCommand } from './src/mcpConnection.ts';
 import * as presence from './src/externalAgentStatus.ts';
 import { EXPORT_SECTIONS, parseWorkspaceHash } from './src/navigation.ts';
+import { playbackClipAt, playbackSourceTime, setSegmentWindow } from './src/programPlayback.ts';
+
+test('segment append windows can advance to the preceding end and seek backwards',()=>{
+ let start=0,end=2,offset=0;
+ const buffer={get timestampOffset(){return offset;},set timestampOffset(v){offset=v;},get appendWindowStart(){return start;},set appendWindowStart(v){assert(v<end);start=v;},get appendWindowEnd(){return end;},set appendWindowEnd(v){assert(v>start);end=v;}};
+ setSegmentWindow(buffer,2,4);assert.equal(start,2);assert.equal(end,4);assert.equal(offset,2);
+ setSegmentWindow(buffer,0,2);assert.equal(start,0);assert.equal(end,2);
+});
+
+test('direct playback uses half-open timeline cuts and exact source offsets',()=>{
+ const clips=[{id:'a',resource_id:'a',at:0,duration:1748,source_in:0},{id:'b',resource_id:'a',at:1748,duration:52,source_in:1748/30},{id:'c',resource_id:'b',at:1800,duration:1800,source_in:0}];
+ assert.equal(playbackClipAt(clips,1747)?.id,'a');assert.equal(playbackClipAt(clips,1748)?.id,'b');assert.equal(playbackClipAt(clips,1800)?.id,'c');assert.equal(playbackClipAt(clips,3600),undefined);
+ assert(Math.abs(playbackSourceTime(clips[1],59,30)-59)<1e-9);assert.equal(playbackSourceTime(clips[2],61,30),1);
+});
 
 test('retired acceptance page resolves to the editing workspace',()=>{
   assert.equal(EXPORT_SECTIONS.some(section=>section.id==='acceptance'),false);

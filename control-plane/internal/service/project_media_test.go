@@ -43,6 +43,10 @@ func TestSequenceCurrentFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := service.SequenceFrameRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion, Frame: 45}
+	plan, err := svc.SequencePlaybackPlan(ctx, pid, seq.ID, service.SequencePreviewRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion})
+	if err != nil || plan.Mode != "direct" || len(plan.Video) != 1 || len(plan.Audio) != 0 || plan.Video[0].ResourceID != session.Document.Resources[0].ID {
+		t.Fatalf("simple source playback must not render a movie: %+v %v", plan, err)
+	}
 	frame, err := svc.CreateSequenceFrame(ctx, pid, seq.ID, req)
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +119,10 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil || !before.ModTime().Equal(after.ModTime()) {
 		t.Fatal("still rerendered the cached movie", err)
 	}
+	plan, err = svc.SequencePlaybackPlan(ctx, pid, seq.ID, service.SequencePreviewRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion})
+	if err != nil || plan.Mode != "cached" {
+		t.Fatalf("verified movie was not preferred: %+v %v", plan, err)
+	}
 
 	current, err := svc.ProjectWorkspace(ctx)
 	if err != nil {
@@ -159,6 +167,30 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil || warm.WorkerPID != firstPID {
 		t.Fatal("cancelled seek destroyed warm worker", err)
 	}
+	segmentReq := service.SequenceSegmentRequest{SequencePreviewRequest: service.SequencePreviewRequest{Session: current.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion}, StartFrame: 76}
+	part, err := svc.CreateSequenceSegment(ctx, pid, seq.ID, segmentReq)
+	if err != nil || part.Frames != 60 || part.StartFrame != 60 || part.Cached {
+		t.Fatalf("bounded drawing segment: %+v %v", part, err)
+	}
+	if cached, err := svc.CreateSequenceSegment(ctx, pid, seq.ID, segmentReq); err != nil || !cached.Cached || cached.Key != part.Key {
+		t.Fatalf("segment cache not reused: %+v %v", cached, err)
+	}
+	oldVersion := view.ContentVersion
+	view, err = svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: current.ID, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "later-segment", Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: session.Document.Resources[0].ID, At: 600}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segmentReq.ExpectedRevision = view.Sequence.Revision
+	segmentReq.ContentVersion = view.ContentVersion
+	if cached, err := svc.CreateSequenceSegment(ctx, pid, seq.ID, segmentReq); err != nil || !cached.Cached || cached.Key != part.Key {
+		t.Fatalf("unrelated later edit invalidated earlier segment: %+v %v", cached, err)
+	}
+	if _, err := svc.SequenceSegmentPath(ctx, pid, seq.ID, oldVersion, part.Key); !errors.Is(err, model.ErrConflict) {
+		t.Fatal("stale segment URL accepted", err)
+	}
+	if _, err := svc.SequenceSegmentPath(ctx, pid, seq.ID, view.ContentVersion, part.Key); err != nil {
+		t.Fatal("reused segment unavailable to current version", err)
+	}
 	if err = svc.CloseSequenceFrame(pid, current.ID, seq.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -166,6 +198,8 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatal("released worker retained output", err)
 	}
+	seek.ExpectedRevision = view.Sequence.Revision
+	seek.ContentVersion = view.ContentVersion
 	warm, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, seek)
 	if err != nil || warm.WorkerPID == firstPID {
 		t.Fatal("released worker was reused", err)

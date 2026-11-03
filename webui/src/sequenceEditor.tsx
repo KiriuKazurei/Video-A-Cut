@@ -3,12 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Checkbox, Input, Space } from 'antd';
 import { useProjectWorkspace } from './projectWorkspace';
 import { timelineApi } from './timelineApi';
+import type { ProgramPlayer } from './programPlayback';
 import { projectApi } from './projectApi';
 import { desktopCommand, isDesktop } from './desktop';
 import { errorText } from './components/ui';
-import { activeTracks, frameLabel, fpsValue, linkedSelection, mediaTime, omitsLinkedPartner, type TimelineOperation, type TimelineClip, type TimelineTrack, type TimelineView, type SequencePreview, type TimelineMarker, type SequenceFrameDiagnostics } from './timelineContracts';
+import { activeTracks, frameLabel, fpsValue, linkedSelection, mediaTime, omitsLinkedPartner, type TimelineOperation, type TimelineClip, type TimelineTrack, type TimelineView, type SequencePreview, type TimelineMarker, type SequenceFrameDiagnostics, type SequencePlayback } from './timelineContracts';
 
 interface EditorContext {
+ playback:RefObject<ProgramPlayer|null>; playbackPlan?:SequencePlayback; playbackReady:boolean; playbackMeter:HTMLMediaElement|null; setPlaybackMeter:(media:HTMLMediaElement|null)=>void; setPlaybackReady:(value:boolean)=>void; playbackError:(error:unknown)=>void; playbackAttempt:number;
  active:boolean; projectId:string; sequenceId:string; view?:TimelineView; loading:boolean; error:string; pending:boolean;
  selected:string[]; select:(ids:string[],separate?:boolean)=>void; selectedTrack:string; setSelectedTrack:(id:string)=>void;
  head:number; setHead:(frame:number,seek?:boolean)=>void; zoom:number; setZoom:(value:number)=>void; snap:boolean; setSnap:(value:boolean)=>void; tool:'select'|'razor'; setTool:(tool:'select'|'razor')=>void;
@@ -46,12 +48,14 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  useEffect(()=>()=>stopExportTimer(),[]);
  const dismissExport=()=>{stopExportTimer();setExportStatus(idleExport);};
  const busy=useRef(false),currentSequence=useRef(sequenceId),clipboard=useRef<ClipboardTrack[]>([]),clipboardRate=useRef(30);
+ const playback=useRef<ProgramPlayer|null>(null);
+ const [playbackReady,setPlaybackReady]=useState(false),[playbackMeter,setPlaybackMeter]=useState<HTMLMediaElement|null>(null),[fallbackVersion,setFallbackVersion]=useState(''),[legacyVersion,setLegacyVersion]=useState(''),[playbackAttempt,setPlaybackAttempt]=useState(0);
  const program=useRef<HTMLVideoElement>(null),source=useRef<HTMLVideoElement>(null),focused=useRef(false);
- const stopEditorPlayers=()=>{program.current?.pause();source.current?.pause();};
+ const stopEditorPlayers=()=>{playback.current?.pause();program.current?.pause();source.current?.pause();};
  const headRate=useRef({session:session?.id,id:sequenceId,rate:sequence?fpsValue(sequence.fps):0});
  useEffect(()=>{const rate=sequence?fpsValue(sequence.fps):0,previous=headRate.current;if(previous.session===session?.id&&previous.id===sequenceId&&previous.rate>0&&rate>0&&rate!==previous.rate)updatePosition({head:Math.round(head*rate/previous.rate)});headRate.current={session:session?.id,id:sequenceId,rate};},[session?.id,sequenceId,sequence?.fps.num,sequence?.fps.den]);
  useEffect(()=>{clipboard.current=[];setWantedSequence('');},[session?.id]);
- const setHead=(value:number,seek=true)=>{const frame=Math.max(0,Math.round(value));updatePosition({head:frame});if(seek && program.current && sequence)program.current.currentTime=frame/fpsValue(sequence.fps);};
+ const setHead=(value:number,seek=true)=>{const frame=Math.max(0,Math.round(value));updatePosition({head:frame});if(seek&&sequence){if(playback.current)playback.current.seek(frame/fpsValue(sequence.fps));else if(program.current)program.current.currentTime=frame/fpsValue(sequence.fps);}};
  useEffect(()=>{
   stopEditorPlayers();setSelected([]);setSelectedTrack('');setError('');currentSequence.current=sequenceId;
   return ()=>{stopEditorPlayers();void client.cancelQueries({queryKey:['timeline',session?.id,projectId,sequenceId]});void client.cancelQueries({queryKey:['sequence-preview',session?.id,projectId,sequenceId]});void client.cancelQueries({queryKey:['sequence-frame',session?.id,projectId,sequenceId]});if(active&&session?.id&&sequenceId)void timelineApi.releaseFrame(projectId,sequenceId,session.id).catch(()=>{});};
@@ -67,20 +71,26 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  const targetFrame=Math.min(Math.max(0,end-1),head);
  const [frameTarget,setFrameTarget]=useState({identity:'',frame:0}),[movieAllowed,setMovieAllowed]=useState('');
  useEffect(()=>{const timer=setTimeout(()=>setFrameTarget({identity,frame:targetFrame}),100);return()=>clearTimeout(timer);},[identity,targetFrame]);
+ const playbackQuery=useQuery({queryKey:['sequence-playback',session?.id,projectId,sequenceId,view?.content_version],queryFn:({signal})=>timelineApi.playback(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version},signal),enabled:active&&nonempty&&!sourceUnavailable&&!!settledVersion&&settledVersion===view?.content_version,retry:1,staleTime:Infinity});
+ const rawPlan=active&&!sourceUnavailable&&legacyVersion!==identity&&playbackQuery.data?.content_version===view?.content_version?playbackQuery.data:undefined;
+ const playbackPlan=rawPlan&&fallbackVersion===identity?{...rawPlan,mode:'segments' as const}:rawPlan;
+ const playbackError=(reason:unknown)=>{if(playbackPlan&&playbackPlan.mode!=='segments'){setFallbackVersion(identity);setPlaybackReady(false);}else{setLegacyVersion(identity);void message.warning('已改用完整视频预览，首次加载可能较慢。');}};
+ useEffect(()=>{setPlaybackReady(false);setPlaybackMeter(null);},[identity,playbackPlan?.mode,playbackAttempt]);
+ const legacyPreview=playbackQuery.isError||legacyVersion===identity;
  const cachedMovie=client.getQueryData<SequencePreview>(previewKey);
  const frameKey=['sequence-frame',session?.id,projectId,sequenceId,view?.content_version,frameTarget.frame];
- const frameQuery=useQuery({queryKey:frameKey,queryFn:({signal})=>timelineApi.previewFrame(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version,frame:frameTarget.frame},signal),enabled:active&&nonempty&&!sourceUnavailable&&settledVersion===view?.content_version&&frameTarget.identity===identity&&cachedMovie?.content_version!==view?.content_version,retry:false,staleTime:Infinity,gcTime:0});
+ const frameQuery=useQuery({queryKey:frameKey,queryFn:({signal})=>timelineApi.previewFrame(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version,frame:frameTarget.frame},signal),enabled:active&&nonempty&&!sourceUnavailable&&(legacyPreview||playbackPlan?.mode==='segments')&&!playbackReady&&settledVersion===view?.content_version&&frameTarget.identity===identity&&cachedMovie?.content_version!==view?.content_version,retry:false,staleTime:Infinity,gcTime:0});
  // Latch once per content version: scrubbing must not cancel/restart the movie.
  // A failed still falls back to the established full-preview path.
  useEffect(()=>{if(frameTarget.identity===identity&&(frameQuery.isSuccess||frameQuery.isError))setMovieAllowed(identity);},[identity,frameTarget.identity,frameQuery.isSuccess,frameQuery.isError]);
- const previewQuery=useQuery({queryKey:previewKey,queryFn:({signal})=>timelineApi.preview(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version},signal),enabled:active&&nonempty&&!sourceUnavailable&&!!settledVersion&&settledVersion===view?.content_version&&(movieAllowed===identity||cachedMovie?.content_version===view?.content_version),retry:1,staleTime:Infinity});
- const preview=!sourceUnavailable&&previewQuery.data?.content_version===view?.content_version?previewQuery.data:undefined;
- const framePreviewURL=!sourceUnavailable&&frameTarget.identity===identity&&frameQuery.data&&frameQuery.data.content_version===view?.content_version&&frameQuery.data.frame===targetFrame?frameQuery.data.image:undefined;
+ const previewQuery=useQuery({queryKey:previewKey,queryFn:({signal})=>timelineApi.preview(projectId,sequenceId,{session:session!.id,expected_revision:view!.sequence.revision,content_version:view!.content_version},signal),enabled:active&&nonempty&&!sourceUnavailable&&legacyPreview&&!!settledVersion&&settledVersion===view?.content_version&&(movieAllowed===identity||cachedMovie?.content_version===view?.content_version),retry:1,staleTime:Infinity});
+ const preview=active&&!sourceUnavailable&&previewQuery.data?.content_version===view?.content_version?previewQuery.data:undefined;
+ const framePreviewURL=active&&!sourceUnavailable&&frameTarget.identity===identity&&frameQuery.data&&frameQuery.data.content_version===view?.content_version&&frameQuery.data.frame===targetFrame?frameQuery.data.image:undefined;
  const framePreviewLoading=nonempty&&!preview&&(!framePreviewURL||frameQuery.isFetching)&&!frameQuery.isError;
  const select=(ids:string[],separate=false)=>{setSelected(sequence?linkedSelection(sequence,ids,separate):ids);const resource=sequence?.tracks.flatMap(t=>t.clips).find(c=>c.id===ids[0])?.resource_id;if(resource&&resource!==project.selectedId)void project.selectResource(resource);};
  const command=async(operations:TimelineOperation[],label:string)=>{
   if(!view || !session || busy.current)return;busy.current=true;setPending(true);setError('');const owner=sequenceId;
-  try{await project.flushEditors();program.current?.pause();const next=await timelineApi.command(projectId,owner,{session:session.id,expected_revision:view.sequence.revision,idempotency_key:crypto.randomUUID(),label,operations});if(currentSequence.current===owner){client.setQueryData(key,next);await project.refresh();void client.invalidateQueries({queryKey:['script-workbench']});void client.invalidateQueries({queryKey:['script-view']});void client.invalidateQueries({queryKey:['reference-directory']});}}
+  try{await project.flushEditors();stopEditorPlayers();const next=await timelineApi.command(projectId,owner,{session:session.id,expected_revision:view.sequence.revision,idempotency_key:crypto.randomUUID(),label,operations});if(currentSequence.current===owner){client.setQueryData(key,next);await project.refresh();void client.invalidateQueries({queryKey:['script-workbench']});void client.invalidateQueries({queryKey:['script-view']});void client.invalidateQueries({queryKey:['reference-directory']});}}
   catch(reason){setError(errorText(reason));void query.refetch();throw reason;}
   finally{busy.current=false;setPending(false);}
  };
@@ -126,7 +136,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  };
  const remove=(ripple=true)=>command([{type:'clip.delete',clip_ids:selected,mode:ripple?'ripple':'delete',unlinked:!!sequence&&omitsLinkedPartner(sequence,selected)}],ripple?'波纹删除':'删除留空隙');
  const split=()=>{const ids=selected.length?selected:sequence?.tracks.flatMap(t=>t.clips).filter(c=>c.at<head&&c.at+c.duration>head).map(c=>c.id);return command([{type:'clip.split',clip_ids:ids,at:head,unlinked:!!sequence&&!!ids&&omitsLinkedPartner(sequence,ids)}],'分割片段');};
- const play=()=>{const media=program.current;if(!media || !preview)return;if(media.paused)void media.play().catch(reason=>setError(errorText(reason)));else media.pause();};
+ const play=()=>{if(playback.current){playback.current.toggle();return;}const media=program.current;if(!media || (!preview&&playbackPlan?.mode!=='cached'))return;if(media.paused)void media.play().catch(reason=>setError(errorText(reason)));else media.pause();};
  const exportVideo=async()=>{
   try{
    if(!view || !session || exportStatus.active)return;
@@ -171,7 +181,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
   };
   window.addEventListener('keydown',onKey);window.addEventListener('vac:edit-command',onMenu);return()=>{window.removeEventListener('keydown',onKey);window.removeEventListener('vac:edit-command',onMenu);};
  });
- const value:EditorContext=useMemo(()=>({active,projectId,sequenceId,view,loading:query.isPending,error:error || (query.error?errorText(query.error):''),pending,selected,select,selectedTrack,setSelectedTrack,head,setHead,zoom,setZoom,snap,setSnap,tool,setTool,command,switchSequence,manageSequence,marker,addResource,copy,paste,remove,split,program,source,play,preview,framePreviewURL,framePreviewDiagnostics:framePreviewURL?frameQuery.data?.diagnostics:undefined,framePreviewLoading,previewURL:preview?timelineApi.previewURL(projectId,sequenceId,preview.content_version):undefined,previewLoading:nonempty && !sourceUnavailable && (!preview || previewQuery.isFetching) && !previewQuery.isError,previewError:sourceUnavailable?'源素材缺失或发生变化，请在资源管理重新定位或确认后更新预览。':previewQuery.error?errorText(previewQuery.error):'',refreshPreview:()=>{void client.invalidateQueries({queryKey:previewKey});void client.invalidateQueries({queryKey:frameKey});},exportVideo,exportStatus,dismissExport}),[active,projectId,sequenceId,view,query.isPending,query.error,error,pending,selected,selectedTrack,head,zoom,snap,tool,preview,framePreviewURL,frameQuery.data?.diagnostics,framePreviewLoading,previewQuery.isFetching,previewQuery.error,settledVersion,sourceUnavailable,project,exportStatus]);
+ const value:EditorContext=useMemo(()=>({playback,playbackPlan,playbackReady,playbackMeter,setPlaybackMeter,setPlaybackReady,playbackError,playbackAttempt,active,projectId,sequenceId,view,loading:query.isPending,error:error || (query.error?errorText(query.error):''),pending,selected,select,selectedTrack,setSelectedTrack,head,setHead,zoom,setZoom,snap,setSnap,tool,setTool,command,switchSequence,manageSequence,marker,addResource,copy,paste,remove,split,program,source,play,preview,framePreviewURL,framePreviewDiagnostics:framePreviewURL?frameQuery.data?.diagnostics:undefined,framePreviewLoading,previewURL:playbackPlan?.mode==='cached'?timelineApi.previewURL(projectId,sequenceId,playbackPlan.content_version):preview?timelineApi.previewURL(projectId,sequenceId,preview.content_version):undefined,previewLoading:nonempty&&!sourceUnavailable&&(playbackPlan?!playbackReady:!preview&&!previewQuery.isError),previewError:sourceUnavailable?'源素材缺失或发生变化，请在资源管理重新定位或确认后更新预览。':previewQuery.error?errorText(previewQuery.error):'',refreshPreview:()=>{setError('');setLegacyVersion('');setFallbackVersion('');setPlaybackAttempt(value=>value+1);void playbackQuery.refetch();void client.invalidateQueries({queryKey:previewKey});void client.invalidateQueries({queryKey:frameKey});},exportVideo,exportStatus,dismissExport}),[playbackPlan,playbackReady,playbackMeter,playbackAttempt,active,projectId,sequenceId,view,query.isPending,query.error,error,pending,selected,selectedTrack,head,zoom,snap,tool,preview,framePreviewURL,frameQuery.data?.diagnostics,framePreviewLoading,previewQuery.isFetching,previewQuery.error,settledVersion,sourceUnavailable,project,exportStatus]);
  return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useSequenceEditor(){const context=useContext(Context);if(!context)throw Error('序列编辑器尚未初始化');return context;}

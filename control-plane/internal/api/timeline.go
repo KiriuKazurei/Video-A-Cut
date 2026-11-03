@@ -69,6 +69,35 @@ func (s *Server) sequenceMediaRoutes() {
 		v, e := s.svc.ImportSequenceSkillResult(r.Context(), r.PathValue("id"), r.PathValue("sequence"), req)
 		skillResponse(w, v, e)
 	})
+	s.mux.HandleFunc("POST /api/projects/{id}/sequences/{sequence}/preview/playback", func(w http.ResponseWriter, r *http.Request) {
+		var req service.SequencePreviewRequest
+		if e := decodeJSON(w, r, &req); e != nil {
+			writeServiceError(w, e)
+			return
+		}
+		v, e := s.svc.SequencePlaybackPlan(r.Context(), r.PathValue("id"), r.PathValue("sequence"), req)
+		skillResponse(w, v, e)
+	})
+	s.mux.HandleFunc("POST /api/projects/{id}/sequences/{sequence}/preview/segment", func(w http.ResponseWriter, r *http.Request) {
+		var req service.SequenceSegmentRequest
+		if e := decodeJSON(w, r, &req); e != nil {
+			writeServiceError(w, e)
+			return
+		}
+		v, e := s.svc.CreateSequenceSegment(r.Context(), r.PathValue("id"), r.PathValue("sequence"), req)
+		skillResponse(w, v, e)
+	})
+	s.mux.HandleFunc("GET /api/projects/{id}/sequences/{sequence}/preview/segment", func(w http.ResponseWriter, r *http.Request) {
+		path, e := s.svc.SequenceSegmentPath(r.Context(), r.PathValue("id"), r.PathValue("sequence"), r.URL.Query().Get("version"), r.URL.Query().Get("key"))
+		if e != nil {
+			writeServiceError(w, e)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "video/mp4")
+		http.ServeFile(w, r, path)
+	})
+
 	s.mux.HandleFunc("POST /api/projects/{id}/sequences/{sequence}/preview/frame", func(w http.ResponseWriter, r *http.Request) {
 		var req service.SequenceFrameRequest
 		if e := decodeJSON(w, r, &req); e != nil {

@@ -9,7 +9,35 @@ import (
 	"testing"
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 )
+
+func TestSequenceVersionTracksOnlyRenderedSources(t *testing.T) {
+	var doc project.AvpDocument
+	var seq project.Sequence
+	if err := json.Unmarshal([]byte(`{"resources":[{"id":"visible","source":{"sha256":"a"}},{"id":"hidden","source":{"sha256":"b"}}]}`), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(`{"scope_group":"active","tracks":[{"id":"v","kind":"video","group_id":"active","clips":[{"id":"c","resource_id":"visible","duration":30}]},{"id":"h","kind":"video","group_id":"active","hidden":true,"clips":[{"id":"d","resource_id":"hidden","duration":60}]},{"id":"outside","kind":"video","group_id":"other","clips":[{"id":"e","resource_id":"hidden","duration":90}]}]}`), &seq); err != nil {
+		t.Fatal(err)
+	}
+	before := sequenceContentVersion(&doc, seq)
+	doc.Resources[1].Source.SHA256 = "hidden-changed"
+	seq.Tracks[1].Clips[0].Duration++
+	seq.Tracks[2].Clips[0].Duration++
+	if got := sequenceContentVersion(&doc, seq); got != before {
+		t.Fatal("hidden or out-of-scope media invalidated the rendered sequence")
+	}
+	doc.Resources[0].Source.SHA256 = "visible-changed"
+	if got := sequenceContentVersion(&doc, seq); got == before {
+		t.Fatal("visible source changes did not invalidate the rendered sequence")
+	}
+	doc.Resources[0].Source.SHA256 = "a"
+	seq.Tracks[1].Hidden = false
+	if got := sequenceContentVersion(&doc, seq); got == before {
+		t.Fatal("revealing a track did not invalidate the rendered sequence")
+	}
+}
 
 func TestDrawArgumentsIdentifyUnsupportedImageField(t *testing.T) {
 	var request DrawSaveRequest

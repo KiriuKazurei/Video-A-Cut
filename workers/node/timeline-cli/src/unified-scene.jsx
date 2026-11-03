@@ -130,7 +130,9 @@ window.vacSeek=async snapshot=>{
     await Promise.race([ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Layers did not complete requested frame: '+expected.join(','))),15000);})]);
     await document.fonts.ready;
     await Promise.all([...document.images].map(image=>image.decode()));
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    // All active layers acknowledged their layout and assets above. The host
+    // screenshot flushes paint; another pair of display ticks per source frame
+    // only throttles deterministic batch rendering to the monitor cadence.
     return [...document.querySelectorAll('[data-vac-node]')].map(element=>{const b=element.getBoundingClientRect();return {id:element.dataset.vacNode,x:b.x,y:b.y,width:b.width,height:b.height};});
   } finally {clearTimeout(timer);pending.delete(key);}
 };

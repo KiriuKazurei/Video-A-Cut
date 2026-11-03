@@ -57,7 +57,7 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
   const operation = useRef(false);
   const operationDone = useRef<Promise<void>>(Promise.resolve());
   const exitRequested = useRef(false);
-  const workspace = useQuery({ queryKey: ['project-workspace'], queryFn: ({ signal }) => projectApi.workspace(signal), staleTime: 0, refetchInterval: busy ? false : 2000 });
+  const workspace = useQuery({ queryKey: ['project-workspace'], queryFn: async ({ signal }) => {const next=await projectApi.workspace(signal);if(!signal.aborted)setProjectSession(next.id);return next;}, staleTime: 0, refetchInterval: busy ? false : 2000 });
   const session = workspace.data;
   useEffect(() => {
     if (!session) return;

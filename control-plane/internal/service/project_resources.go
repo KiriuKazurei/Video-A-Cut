@@ -55,13 +55,13 @@ func (s *Service) ProjectResources(projectID string) ([]project.Resource, error)
 	if w.document == nil || w.document.Project.ID != projectID {
 		return nil, model.ErrNotFound
 	}
-	copy := cloneProject(w.document)
+	copy := cloneProject(&project.AvpDocument{Resources: w.document.Resources})
 	for i := range copy.Resources {
 		r := &copy.Resources[i]
 		if r.Draw == nil || r.Draw.Mode != "follow" {
 			continue
 		}
-		for _, c := range copy.DrawCompositions {
+		for _, c := range w.document.DrawCompositions {
 			if c.ID == r.Draw.CompositionID {
 				r.Source.SHA256 = c.ContentVersion
 				r.Metadata["width"] = c.Width
@@ -90,15 +90,38 @@ func refreshResourceAvailability(resources []project.Resource) {
 }
 
 func (s *Service) ProjectResource(projectID, id string) (project.Resource, error) {
-	list, err := s.ProjectResources(projectID)
-	if err != nil {
-		return project.Resource{}, err
+	w := s.workspace
+	if w == nil {
+		return project.Resource{}, model.ErrInvalidState
 	}
-	for _, r := range list {
-		if r.ID == id {
-			return r, nil
+	w.mu.Lock()
+	if w.document == nil || w.document.Project.ID != projectID {
+		w.mu.Unlock()
+		return project.Resource{}, model.ErrNotFound
+	}
+	for _, source := range w.document.Resources {
+		if source.ID != id {
+			continue
 		}
+		copy := cloneProject(&project.AvpDocument{Resources: []project.Resource{source}})
+		r := copy.Resources[0]
+		if r.Draw != nil && r.Draw.Mode == "follow" {
+			for _, c := range w.document.DrawCompositions {
+				if c.ID == r.Draw.CompositionID {
+					r.Source.SHA256 = c.ContentVersion
+					r.Metadata["width"] = c.Width
+					r.Metadata["height"] = c.Height
+					r.Metadata["duration"] = c.FPS.Seconds(c.DurationFrames)
+					r.Out = c.FPS.Seconds(c.DurationFrames)
+				}
+			}
+		}
+		w.mu.Unlock()
+		resources := []project.Resource{r}
+		refreshResourceAvailability(resources)
+		return resources[0], nil
 	}
+	w.mu.Unlock()
 	return project.Resource{}, model.ErrNotFound
 }
 

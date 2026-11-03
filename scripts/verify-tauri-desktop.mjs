@@ -298,11 +298,56 @@ const verifyAgentEdit = async runtime => {
   assert.equal(c.errors.length,0,'native WebView must have no page exceptions');
   report.mode='visible_tauri_live_mcp_script_edit_and_persistent_endpoint';
 };
+const verifyProjectPlayback = async () => {
+ const projectFile=path.resolve(process.env.VAC_VERIFY_PLAYBACK_PROJECT);
+ const digest=async()=>createHash('sha256').update(await fs.readFile(projectFile)).digest('hex');
+ const before=await digest();assert(!(await workspace()).document,'playback regression requires an isolated empty workspace');
+ await c.ev(`(()=>{const original=window.fetch;window.__previewRequests=[];window.__projectConflicts=[];window.fetch=async(...args)=>{const url=String(args[0]),entry={url,start:Date.now()};if(url.includes('/preview'))window.__previewRequests.push(entry);try{const r=await original(...args);entry.status=r.status;entry.elapsed=Date.now()-entry.start;if(r.status===409)window.__projectConflicts.push(entry);return r;}catch(e){entry.error=String(e);throw e;}}})()`);
+ const opened=await api('/api/workspace/open','POST',{path:projectFile});
+ await c.ev(`location.hash='/editing/import'`);
+ const started=Date.now();let state;
+ for(let i=0;i<(process.env.VAC_VERIFY_PLAYBACK_FAST==='1'?2100:420);i++){
+  state=await c.ev(`(()=>{const v=document.querySelector('.program-video'),b=[...document.querySelectorAll('button')].find(n=>n.textContent.trim()==='播放 / 暂停');return {still:!!document.querySelector('.program-frame'),video:!!v,ready:v?.readyState,time:v?.currentTime,duration:v?.duration,playDisabled:b?.disabled,status:document.querySelector('.program-updating')?.textContent,error:document.querySelector('.program-monitor .ant-alert')?.textContent,requests:window.__previewRequests};})()`);
+  await fs.writeFile(path.join(out,'playback-progress.json'),JSON.stringify({elapsed_ms:Date.now()-started,...state},null,2));
+  if(state.video&&state.ready>=2&&!state.playDisabled)break;
+  if(state.error)throw Error(state.error);
+  await sleep(process.env.VAC_VERIFY_PLAYBACK_FAST==='1'?200:1000);
+ }
+ assert(state.video&&state.ready>=2&&!state.playDisabled,'playable movie never became ready: '+JSON.stringify(state));
+ await record('real project reaches a playable movie after current-frame preview',{elapsed_ms:Date.now()-started,...state});
+ if(process.env.VAC_VERIFY_PLAYBACK_FAST==='1'){
+  assert.equal(await c.ev(`document.querySelector('.program-playback')?.dataset.mode`),'direct');assert.deepEqual(await c.ev('window.__projectConflicts.filter(entry=>entry.url.includes('+JSON.stringify('/api/projects/'+opened.document.project.id+'/')+'))'),[],'initial current-project requests used a stale session');
+  assert(!state.requests.some(r=>/\/preview(?:\?|$)/.test(r.url)),'simple playback must not render the whole movie');
+  await record('simple project plays source media without requesting a full-movie render');
+ }
+ await click('播放 / 暂停');await sleep(1500);
+ const played=await c.ev(`(()=>{const v=document.querySelector('.program-video');return {time:v.currentTime,paused:v.paused,error:v.error?.message,meter:Number.parseFloat(document.querySelector('.program-vu-bar')?.style.height||'0')}})()`);
+ assert(!played.paused&&played.time>state.time+.5,JSON.stringify(played));
+ await c.screenshot(path.join(out,'playing.png'));await click('播放 / 暂停');
+ if(process.env.VAC_VERIFY_PLAYBACK_FAST==='1'){
+  assert(played.meter>2,'decoded audio did not reach the playback meter');await record('decoded source audio reaches the live output meter',{meter:played.meter});
+  const seek=async text=>{await c.ev(`document.querySelector('button[aria-label="节目时间码"]').click()`);await input('input[aria-label="节目时间码"]',text);await c.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});await c.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});await c.wait(`!document.querySelector('.program-updating')`,20000);};
+  await seek(process.env.VAC_VERIFY_PLAYBACK_LONG==='1'?'00:00:00:00':'00:00:57:00');await click('播放 / 暂停');
+  const samples=[];for(let i=0;i<(process.env.VAC_VERIFY_PLAYBACK_LONG==='1'?650:65);i++){samples.push(await c.ev(`(()=>{const p=document.querySelector('.program-playback'),v=document.querySelector('.program-video');return {wall:Date.now(),head:Number(p.dataset.playhead),playing:p.dataset.playing,drift:Number(p.dataset.avDrift),source:v?.currentSrc,seeking:v?.seeking,audio:[...p.querySelectorAll('audio')].filter(a=>!a.paused).length};})()`));await sleep(100);if(process.env.VAC_VERIFY_PLAYBACK_LONG==='1'&&samples.at(-1).head>62)break;}
+  await fs.writeFile(path.join(out,'cut-samples.json'),JSON.stringify(samples,null,2));
+  assert(samples.at(-1).head>62,'playback did not cross both real project cuts');
+  if(process.env.VAC_VERIFY_PLAYBACK_LONG==='1')assert(samples.at(-1).head-samples[0].head>=(samples.at(-1).wall-samples[0].wall)/1000*.95,'playback ran slower than the wall clock');
+  assert(new Set(samples.map(s=>s.source)).size>=2,'next source was not loaded');
+  const steady=samples.filter(s=>s.playing==='true'&&!s.seeking);assert(steady.every(s=>Math.abs(s.drift)<.08),'audio/video drift at cuts');assert(steady.some(s=>s.audio===1),'source audio never played');
+  await click('播放 / 暂停');await seek('00:01:15:00');
+  assert(Math.abs(await c.ev(`Number(document.querySelector('.program-playback').dataset.playhead)`)-75)<.1);
+  await record('preloaded source cuts at 58.27/60 seconds, independent audio and later seek stay aligned',{end:samples.at(-1),max_drift:Math.max(...steady.map(s=>Math.abs(s.drift)))});
+ }
+ await api('/api/workspace/close','POST',{decision:'discard',stop_tasks:true});
+ assert.equal(await digest(),before,'Business AVP must remain unchanged');
+ await record('native movie advances while playing and the business AVP remains unchanged',played);
+};
 const verifySequencePreview = async () => {
  await probe('resize',['-Width','1600','-Height','1000']);
  const initial=await workspace();assert(!initial.document,'preview regression requires its isolated empty workspace');
- const ws=await api('/api/workspace/new','POST',{path:path.join(out,'preview-'+pid+'.avp'),name:'GPU preview regression'});
+ let ws=await api('/api/workspace/new','POST',{path:path.join(out,'preview-'+pid+'.avp'),name:'GPU preview regression'});
  const project=ws.document.project.id,sequence=ws.document.sequences[0].id,track=ws.document.sequences[0].tracks[0].id;
+ ws=await api('/api/workspace/state','PATCH',{session:ws.id,state:{workspace:'resources'}});await c.ev(`location.hash='/resources'`);
  const source='import React from "react";import {useCurrentFrame} from "remotion";export default function Scene(){const f=useCurrentFrame();return <div style={{position:"absolute",inset:0,background:"#091521"}}><svg width="1920" height="1080"><text x="100" y="220" fill="#dceef8" fontSize="72">GPU PREVIEW</text><text x="100" y="320" fill="#83bbcb" fontSize="36">Frame {f} / 1800</text><rect x={100+(f*2)%1200} y="440" width="400" height="220" rx="36" fill="#ff9d45"/><circle cx="1500" cy="800" r={90+f%60} fill="#25b8ac"/></svg></div>;}';
  const document={schema_version:1,canvas:{width:1920,height:1080,fps:{num:30,den:1}},duration_frames:1800,sources:[{id:'scene',engine:'remotion',source}],nodes:[{id:'scene',kind:'source',source_id:'scene',from:0,duration:1800}]};
  const saved=await api(`/api/projects/${project}/draw-compositions`,'POST',{session:ws.id,expected_revision:ws.revision,idempotency_key:'preview-source',composition:{id:'preview',name:'GPU preview',document}});
@@ -319,16 +364,26 @@ const verifySequencePreview = async () => {
  const edited=await sample(901);assert.equal(edited.worker_pid,cold.worker_pid);assert.equal(edited.diagnostics.source_compiles,1);assert(edited.diagnostics.source_cache_hits>0);
  await record('native timeline edit reuses unchanged drawing pixels and compilation',{wall_ms:edited.wall_ms,...edited.diagnostics});
  await api('/api/workspace/state','PATCH',{session:ws.id,state:{workspace:'editing',active_sequence:sequence,sequence_states:{[sequence]:{head:901,zoom:60}}}});
+ await sleep(2500); // Let the ordinary workspace poll publish the fixture before activating its player.
  await c.ev(`location.hash='/editing/import'`);
- await c.wait(`(()=>{const image=document.querySelector('.program-frame');return image?.complete&&image.naturalWidth===1920&&document.querySelector('.program-monitor')?.innerText.includes('GPU 合成')})()`,45000);
+ await c.wait(`(()=>{const image=document.querySelector('.program-frame');return ((image?.complete&&image.naturalWidth===1920)||document.querySelector('.program-video')?.readyState>=2)&&(document.querySelector('.program-monitor')?.innerText.includes('GPU 合成')||document.querySelector('.program-monitor')?.innerText.includes('分段预览'))})()`,45000);
  const visible=JSON.parse(await probe('inspect'));assert(visible.visible&&visible.handle);
- const geometry=await c.ev(`(()=>{const image=document.querySelector('.program-frame'),screen=document.querySelector('.program-monitor .editor-monitor-screen').getBoundingClientRect(),timeline=document.querySelector('.sequence-timeline').getBoundingClientRect(),r=image.getBoundingClientRect(),overlay=document.querySelector('.program-updating')?.getBoundingClientRect();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const context=canvas.getContext('2d');context.drawImage(image,0,0);return {screen:{width:screen.width,height:screen.height,bottom:screen.bottom},timeline:{top:timeline.top,height:timeline.height},frame:document.querySelector('.timeline-ruler>.track-heading')?.textContent,imageTopmost:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===image,overlayHeight:overlay?.height??0,orangePixel:[...context.getImageData(900,550,1,1).data]}})()`);
+ const geometry=await c.ev(`(()=>{const image=document.querySelector('.program-frame')??document.querySelector('.program-video'),screen=document.querySelector('.program-monitor .editor-monitor-screen').getBoundingClientRect(),timeline=document.querySelector('.sequence-timeline').getBoundingClientRect(),r=image.getBoundingClientRect(),overlay=document.querySelector('.program-updating')?.getBoundingClientRect();const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1080;const context=canvas.getContext('2d');context.drawImage(image,0,0,1920,1080);return {screen:{width:screen.width,height:screen.height,bottom:screen.bottom},timeline:{top:timeline.top,height:timeline.height},frame:document.querySelector('.timeline-ruler>.track-heading')?.textContent,imageTopmost:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===image,overlayHeight:overlay?.height??0,orangePixel:[...context.getImageData(900,550,1,1).data]}})()`);
  assert(geometry.screen.width>100&&geometry.screen.height>100);assert(geometry.timeline.top>=geometry.screen.bottom-2);
  assert(geometry.imageTopmost&&geometry.overlayHeight<geometry.screen.height/4,'render progress obscures the current frame');assert(geometry.orangePixel[0]>220&&geometry.orangePixel[1]>140&&geometry.orangePixel[2]<120,'native monitor did not receive the expected GPU pixels');
  await c.screenshot(path.join(out,'preview.png'));await probe('capture',['-FilePath',path.join(out,'native-preview.png')]);
  await record('visible WebView monitor shows real GPU pixels without covering the timeline',geometry);
+ await c.wait(`(()=>{const v=document.querySelector('.program-video'),b=[...document.querySelectorAll('button')].find(n=>n.textContent.trim()==='播放 / 暂停');return v?.readyState>=2&&!b?.disabled;})()`,90000);
+ const movieStart=await c.ev(`document.querySelector('.program-video').currentTime`);
+ assert(movieStart>=30&&movieStart<30.1,'segment did not seek to the saved playhead: '+movieStart);
+ const segmentTarget=process.env.VAC_VERIFY_PLAYBACK_LONG==='1'?46:33;
+ const segmentPlayStart=Date.now();await click('播放 / 暂停');await c.wait(`document.querySelector('.program-video')?.currentTime>${segmentTarget}`,60000);
+ const playing=await c.ev(`(()=>{const v=document.querySelector('.program-video');return {time:v.currentTime,paused:v.paused,error:v.error?.message,mode:document.querySelector('.program-playback')?.dataset.mode}})()`);
+ playing.wall_ms=Date.now()-segmentPlayStart;await fs.writeFile(path.join(out,'segments-progress.json'),JSON.stringify({start:movieStart,...playing},null,2));assert(playing.time-movieStart>=playing.wall_ms/1000*.9,'segmented playback stalled at boundaries: '+JSON.stringify(playing));assert.equal(playing.mode,'segments');assert(!playing.paused&&playing.time>segmentTarget,JSON.stringify(playing));
+ await c.screenshot(path.join(out,'segments-playing.png'));await click('播放 / 暂停');await record('drawing preview plays across fMP4 boundaries without waiting for the full minute',playing);
  await c.ev(`location.hash='/resources'`);await c.wait(`!document.querySelector('.sequence-timeline')?.getClientRects().length`);
  await until(async()=>JSON.parse(await run('C:/Program Files/PowerShell/7/pwsh.exe',['-Command',`[bool](Get-Process -Id ${cold.worker_pid} -ErrorAction SilentlyContinue) | ConvertTo-Json`])),alive=>alive===false,15000);
+ assert.equal(await c.ev(`document.querySelectorAll('.program-playback video,.program-playback audio').length`),0,'hidden editor rebuilt owned media');
  await record('leaving native editing releases the owned preview worker and browser');
  await api('/api/workspace/close','POST',{decision:'discard',stop_tasks:true});
  assert.equal(c.errors.length,0,'native WebView page exceptions');
@@ -340,7 +395,7 @@ const attachDesktop = async () => {
     if(launched?.exitCode!==null&&launched?.exitCode!==undefined)throw Error('Desktop exited before bridge readiness: '+launched.exitCode);
     let candidate;
     try{
-      candidate=await CDP.connect(port);await candidate.wait('window.__TAURI__?.core',10000);
+      candidate=await CDP.connect(port);if(!report.startup_page){report.startup_page=await candidate.ev(`({url:location.href,title:document.title,text:document.body?.innerText.slice(0,1200),tauri:!!window.__TAURI__,internals:!!window.__TAURI_INTERNALS__})`);await fs.writeFile(path.join(out,'startup-page.json'),JSON.stringify(report.startup_page,null,2));await candidate.screenshot(path.join(out,'startup-page.png'));}await candidate.wait('window.__TAURI__?.core',10000);
       assert.equal(await candidate.ev('location.origin'),'http://tauri.localhost');return candidate;
     }catch(reason){error=String(reason);candidate?.close();report.startup_retries=(report.startup_retries??0)+1;await sleep(250);}
   }
@@ -358,7 +413,10 @@ try {
   c=await attachDesktop();
   await c.ev(`(()=>{window.__VAC_TEST_MESSAGES=[];new MutationObserver(()=>{for(const n of document.querySelectorAll('.ant-message-notice-content')){const text=n.textContent;if(!window.__VAC_TEST_MESSAGES.includes(text))window.__VAC_TEST_MESSAGES.push(text)}}).observe(document.body,{subtree:true,childList:true})})()`);
   const status=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(status.status,'ready',status.message);base=status.api_base_url;report.runtime=status;
-  if(process.env.VAC_VERIFY_PREVIEW==='1'){
+  if(process.env.VAC_VERIFY_PLAYBACK_PROJECT){
+    report.mode='visible_tauri_real_project_playback';
+    await verifyProjectPlayback();
+  }else if(process.env.VAC_VERIFY_PREVIEW==='1'){
     report.mode='visible_tauri_gpu_preview_real_go';
     await verifySequencePreview();
   }else if(process.env.VAC_VERIFY_AGENT_EDIT==='1'){

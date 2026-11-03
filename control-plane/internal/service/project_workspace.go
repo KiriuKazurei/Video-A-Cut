@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -232,7 +233,23 @@ func (s *Service) ProjectWorkspace(ctx context.Context) (project.Session, error)
 		return project.Session{}, model.ErrInvalidState
 	}
 	w.mu.Lock()
-	view := project.Session{ID: w.session, Path: w.path, Dirty: w.dirty, Revision: w.revision, Document: cloneProject(w.document), Recent: append([]project.Recent{}, w.recent...), Recoveries: []project.Recovery{}}
+	var document *project.AvpDocument
+	if w.document != nil {
+		snapshot := *w.document
+		snapshot.Runtime = nil
+		snapshot.FileReferences = nil
+		snapshot.Sequences = slices.Clone(snapshot.Sequences)
+		for i := range snapshot.Sequences {
+			snapshot.Sequences[i].History = nil
+			snapshot.Sequences[i].HistoryCursor = 0
+		}
+		snapshot.Scripts = slices.Clone(snapshot.Scripts)
+		for i := range snapshot.Scripts {
+			snapshot.Scripts[i].Revisions = nil
+		}
+		document = cloneProject(&snapshot)
+	}
+	view := project.Session{ID: w.session, Path: w.path, Dirty: w.dirty, Revision: w.revision, Document: document, Recent: append([]project.Recent{}, w.recent...), Recoveries: []project.Recovery{}}
 	w.mu.Unlock()
 	if view.Document != nil {
 		refreshResourceAvailability(view.Document.Resources)

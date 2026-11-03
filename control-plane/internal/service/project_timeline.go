@@ -51,7 +51,12 @@ func timelineView(doc *project.AvpDocument, seq project.Sequence, session string
 }
 func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) string {
 	// UI state, marker labels and undo history do not change picture or sound.
-	raw, _ := json.Marshal(seq.SequenceState)
+	selected := seq.SequenceState
+	selected.Tracks = slices.DeleteFunc(sequenceTracks(seq), func(t project.Track) bool { return len(t.Clips) == 0 })
+	// Hidden and out-of-scope sources do not participate in this render. In
+	// particular, an inactive drawing must not initialize the font environment
+	// or invalidate an otherwise reusable source-video playback plan.
+	raw, _ := json.Marshal(selected)
 	var state project.SequenceState
 	_ = json.Unmarshal(raw, &state)
 	state.Name = ""
@@ -109,8 +114,11 @@ func (s *Service) Timeline(ctx context.Context, projectID, sequenceID string) (T
 	if i < 0 {
 		return TimelineView{}, model.ErrNotFound
 	}
-	doc := cloneProject(w.document)
-	return timelineView(doc, doc.Sequences[i], w.session, w.revision), nil
+	view := timelineView(w.document, w.document.Sequences[i], w.session, w.revision)
+	raw, _ := json.Marshal(view)
+	var copy TimelineView
+	_ = json.Unmarshal(raw, &copy)
+	return copy, nil
 }
 func (s *Service) ReferenceDirectory(projectID, sequenceID string) ([]project.ReferenceCandidate, error) {
 	w := s.workspace

@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
 /** Compact program-side VU — gain feedback beside the preview, not a mixer. */
-export function ProgramVu({ media }: { media: RefObject<HTMLVideoElement | null> }) {
+export function ProgramVu({ media,element }: { media: RefObject<HTMLVideoElement | null>;element?:HTMLMediaElement|null }) {
   const [level, setLevel] = useState(0);
   const raf = useRef(0);
   const graph = useRef<{ ctx: AudioContext; analyser: AnalyserNode; source?: MediaElementAudioSourceNode } | null>(null);
+  const graphs=useRef(new Map<HTMLMediaElement,NonNullable<typeof graph.current>>());
+  useEffect(()=>()=>{for(const value of graphs.current.values())void value.ctx.close();graphs.current.clear();},[]);
   useEffect(() => {
-    const el = media.current;
-    if (!el) return;
+    const el = element??media.current;
+    for(const [node,value] of graphs.current){if(!node.isConnected){void value.ctx.close();graphs.current.delete(node);}}
+    if(!el){graph.current=null;return;}
+    graph.current=graphs.current.get(el)??null;
     let cancelled = false;
     const ensure = async () => {
       try {
@@ -20,6 +24,7 @@ export function ProgramVu({ media }: { media: RefObject<HTMLVideoElement | null>
           source.connect(analyser);
           analyser.connect(ctx.destination);
           graph.current = { ctx, analyser, source };
+          graphs.current.set(el,graph.current);
         }
         if (graph.current.ctx.state === 'suspended') await graph.current.ctx.resume();
       } catch {
@@ -50,7 +55,7 @@ export function ProgramVu({ media }: { media: RefObject<HTMLVideoElement | null>
       if (raf.current) cancelAnimationFrame(raf.current);
       raf.current = 0;
     };
-  }, [media]);
+  }, [media,element]);
   const h = Math.max(2, Math.round(level * 100));
   return (
     <div className="program-vu" aria-hidden="true" title="节目电平">

@@ -6,6 +6,7 @@ import type { Asset, WorkflowRun } from '../types';
 import type { RouteState } from '../navigation';
 import type { RunSelection } from '../components/WorkflowPanel';
 import { SequenceTimeline } from '../components/SequenceTimeline';
+import { ProgramPlayback } from '../components/ProgramPlayback';
 import { ProgramVu } from '../components/ProgramVu';
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
@@ -37,7 +38,8 @@ function SourceMonitor({ onCollapse, seekTo, onSeeked }:{ onCollapse:()=>void; s
   <div className="editor-monitor-title"><strong>源</strong><Typography.Text ellipsis>{r?.name ?? '选择工程资源'}</Typography.Text>
    <Tooltip title="收起源监视器"><Button type="text" size="small" icon={<CloseOutlined/>} aria-label="收起源监视器" onClick={onCollapse}/></Tooltip>
   </div>
-  <div className="editor-monitor-screen">{!r?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧资源管理选择素材"/>:r.missing||r.removed?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="源文件待重新关联"/>:r.kind==='video'||r.kind==='audio'?<video key={`${r.id}-${proxy}`} ref={e.source} data-resource-id={r.id} controls preload="metadata" src={url} aria-label="源素材播放器" onError={fallback} onTimeUpdate={event=>setSourceTime(event.currentTarget.currentTime)} onLoadedMetadata={event=>setSourceTime(event.currentTarget.currentTime)}/>:r.kind==='image'?<img alt={r.name} src={url} onError={fallback}/>:<pre className="source-text-preview">{text.data ?? (text.isError?'内容读取失败':'正在读取…')}</pre>}</div>
+  <div className="editor-monitor-screen">
+      {e.playbackPlan&&e.playbackPlan.mode!=='cached'&&<ProgramPlayback/>}{!r?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="从左侧资源管理选择素材"/>:r.missing||r.removed?<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="源文件待重新关联"/>:r.kind==='video'||r.kind==='audio'?<video key={`${r.id}-${proxy}`} ref={e.source} data-resource-id={r.id} controls preload="metadata" src={url} aria-label="源素材播放器" onError={fallback} onTimeUpdate={event=>setSourceTime(event.currentTarget.currentTime)} onLoadedMetadata={event=>setSourceTime(event.currentTarget.currentTime)}/>:r.kind==='image'?<img alt={r.name} src={url} onError={fallback}/>:<pre className="source-text-preview">{text.data ?? (text.isError?'内容读取失败':'正在读取…')}</pre>}</div>
   {proxyError&&<Alert type="warning" message={proxyError}/>}
   <Flex gap={6} className="editor-monitor-controls" wrap align="center">
    {e.view?.sequence&&(r?.kind==='video'||r?.kind==='audio')&&<TimecodeField label="源时间码" frame={Math.max(0,Math.round(sourceTime*fpsValue(e.view.sequence.fps)))} rate={e.view.sequence.fps} onSeek={frame=>{const rate=e.view?.sequence?.fps;if(!rate)return;const media=e.source.current;const seconds=frame/fpsValue(rate);if(media){try{media.currentTime=seconds;}catch{/* ignore */}}setSourceTime(seconds);}}/>}
@@ -79,28 +81,30 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
      <strong>节目</strong>
      <Typography.Text ellipsis>{s?.name ?? '当前序列'}</Typography.Text>
      <Typography.Text type="secondary">{s?`${s.width}×${s.height} · ${fpsValue(s.fps).toFixed(3)}fps`:''}</Typography.Text>
-     {e.framePreviewDiagnostics&&<Typography.Text type="secondary" title={e.framePreviewDiagnostics.renderer||e.framePreviewDiagnostics.fallback_reason}>{e.framePreviewDiagnostics.backend==='cached-movie'?'缓存预览':e.framePreviewDiagnostics.backend==='webgl2'?(e.framePreviewDiagnostics.hardware_accelerated?'GPU 合成':'软件 WebGL'):'CPU 预览'}</Typography.Text>}
+     {e.playbackPlan&&<Typography.Text type="secondary">{e.playbackPlan.mode==='direct'?'源视频直播放':e.playbackPlan.mode==='cached'?'缓存预览':'分段预览 · 代理画质'}</Typography.Text>}
+     {!e.playbackPlan&&e.framePreviewDiagnostics&&<Typography.Text type="secondary" title={e.framePreviewDiagnostics.renderer||e.framePreviewDiagnostics.fallback_reason}>{e.framePreviewDiagnostics.backend==='cached-movie'?'缓存预览':e.framePreviewDiagnostics.backend==='webgl2'?(e.framePreviewDiagnostics.hardware_accelerated?'GPU 合成':'软件 WebGL'):'CPU 预览'}</Typography.Text>}
      {hasRange&&<Typography.Text type="secondary" className="program-inout-label">导出 {frameLabel(inFrame!,s!.fps)}–{frameLabel(outFrame!,s!.fps)}</Typography.Text>}
      {!sourceOpen&&<button type="button" className="source-monitor-badge" onClick={()=>setSourceOpen(true)} title="打开源监视器" aria-label={`打开源监视器：${sourceLabel}`}>源 · {sourceLabel}</button>}
     </div>
     <div className="program-monitor-row">
      <div className="editor-monitor-screen">
-      {e.previewURL&&<video className={`program-video${readyProgram===e.previewURL?'':' is-loading'}`} key={e.previewURL} ref={e.program} controls preload="auto" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=Math.min(e.head/fpsValue(s.fps),Math.max(0,event.currentTarget.duration-1/fpsValue(s.fps)));}} onLoadedData={event=>{if(!event.currentTarget.seeking)setReadyProgram(e.previewURL!);}} onSeeked={()=>setReadyProgram(e.previewURL!)} onTimeUpdate={event=>{if(s&&readyProgram===e.previewURL&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>}
-      {e.framePreviewURL&&(!e.previewURL||readyProgram!==e.previewURL)&&<img className="program-frame" src={e.framePreviewURL} alt="当前帧预览"/>}
-      {!e.previewURL&&!e.framePreviewURL&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在渲染当前帧…':'把资源拖入时间线开始编辑'}/>}
-      {e.previewLoading&&<div className={`program-updating${e.framePreviewURL?' has-frame':''}`} role="status"><Spin size="small"/> {e.framePreviewLoading?'正在渲染当前帧':e.framePreviewURL?'当前帧已显示 · 正在生成可播放预览':'正在生成可播放预览'}</div>}
+      {e.playbackPlan&&e.playbackPlan.mode!=='cached'&&<ProgramPlayback/>}
+      {e.previewURL&&<video className={`program-video${readyProgram===e.previewURL?'':' is-loading'}`} key={e.previewURL} ref={e.program} crossOrigin="anonymous" controls preload="auto" src={e.previewURL} aria-label="节目播放器" onLoadedMetadata={event=>{if(s)event.currentTarget.currentTime=Math.min(e.head/fpsValue(s.fps),Math.max(0,event.currentTarget.duration-1/fpsValue(s.fps)));}} onLoadedData={event=>{if(!event.currentTarget.seeking){setReadyProgram(e.previewURL!);e.setPlaybackReady(true);}}} onSeeked={()=>{setReadyProgram(e.previewURL!);e.setPlaybackReady(true);}} onError={()=>e.playbackError(Error('缓存预览无法解码'))} onTimeUpdate={event=>{if(s&&readyProgram===e.previewURL&&event.currentTarget.readyState>=1&&!event.currentTarget.seeking)e.setHead(Math.round(event.currentTarget.currentTime*fpsValue(s.fps)),false);}}/>}
+      {e.framePreviewURL&&!e.playbackReady&&(!e.previewURL||readyProgram!==e.previewURL)&&<img className="program-frame" src={e.framePreviewURL} alt="当前帧预览"/>}
+      {!e.previewURL&&!e.framePreviewURL&&!e.playbackPlan&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={e.previewLoading?'正在渲染当前帧…':'把资源拖入时间线开始编辑'}/>}
+      {e.previewLoading&&<div className={`program-updating${e.framePreviewURL?' has-frame':''}`} role="status"><Spin size="small"/> {e.playbackPlan?.mode==='direct'?'正在准备源视频':e.playbackPlan?.mode==='segments'?'正在准备当前位置的可播放预览':e.playbackPlan?.mode==='cached'?'正在加载缓存预览':e.framePreviewLoading?'正在渲染当前帧':e.framePreviewURL?'当前帧已显示 · 正在生成可播放预览':'正在生成可播放预览'}</div>}
       {hasRange&&s&&e.previewURL&&<div className="program-inout-overlay" aria-hidden="true"><span className="program-inout-in" style={{left:`${Math.min(100,Math.max(0,inFrame!/Math.max(1,outFrame!))*100)}%`}}/><span className="program-inout-out" style={{left:`${Math.min(100,Math.max(0,outFrame!/Math.max(outFrame!,inFrame!+1))*100)}%`}}/></div>}
      </div>
-     <ProgramVu media={e.program}/>
+     <ProgramVu media={e.program} element={e.playbackMeter}/>
     </div>
     <Flex gap={6} align="center" className="editor-monitor-controls" wrap>
      <Button size="small" icon={<StepBackwardOutlined/>} aria-label="节目后退一帧" onClick={()=>e.setHead(e.head-1)}/>
-     <Button size="small" icon={<PlayCircleOutlined/>} onClick={e.play} disabled={!e.preview}>播放 / 暂停</Button>
+     <Button size="small" icon={<PlayCircleOutlined/>} onClick={e.play} disabled={!e.playbackReady&&!e.preview}>播放 / 暂停</Button>
      <Button size="small" icon={<StepForwardOutlined/>} aria-label="节目前进一帧" onClick={()=>e.setHead(e.head+1)}/>
      {s?<TimecodeField label="节目时间码" frame={e.head} rate={s.fps} onSeek={frame=>e.setHead(frame)}/>:<Typography.Text code>--:--:--:--</Typography.Text>}
      <Button size="small" onClick={()=>e.marker('in')}>入点 I</Button>
      <Button size="small" onClick={()=>e.marker('out')}>出点 O</Button>
-     <Button size="small" icon={<ExportOutlined/>} disabled={!e.preview||e.pending||e.exportStatus.active} onClick={()=>void e.exportVideo().catch(()=>{})}>导出当前范围</Button>
+     <Button size="small" icon={<ExportOutlined/>} disabled={!e.view||e.pending||e.exportStatus.active} onClick={()=>void e.exportVideo().catch(()=>{})}>导出当前范围</Button>
     </Flex>
     {e.previewError&&<Alert type="warning" message={e.previewError} action={<Button size="small" onClick={e.refreshPreview}>重试预览</Button>}/>}
    </section>

@@ -89,6 +89,17 @@ test('current frame matches movie effects without rendering preceding frames',{t
  }
 });
 
+test('bounded preview segments preserve absolute effects, transitions, audio and captions',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture(),s=seq();
+ s.tracks=[{id:'v',kind:'video',clips:[{...clip('red'),duration:30,source_out:{value:1,scale:1}},{...clip('blue'),resource_id:'blue',at:30,duration:30,source_out:{value:1,scale:1},effects:{...effects(),transition:12,fade_out:9}}]},{id:'a',kind:'audio',clips:[{...clip('audio',2),duration:60,source_out:{value:2,scale:1}}]}];
+ const reference=join(root,'segment-reference');await renderSequence({sequence:s,resources,output_dir:reference,content_version:'reference'});
+ const output=join(root,'segment-window');const result=await renderSequence({sequence:s,resources,output_dir:output,content_version:'window',window:{start:36,end:54},preview:true});
+ assert.equal(result.frames,18);assert(Math.abs(result.duration-.6)<.001);
+ for(const frame of [0,5,15]){const actual=await pixelStat(join(output,'program.mp4'),frame/30),expected=await pixelStat(join(reference,'program.mp4'),(frame+36)/30);for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(actual[key]-expected[key])<12,`${frame} ${key}: ${actual[key]} vs ${expected[key]}`);}
+ assert(await audioStat(join(output,'program.mp4'),'lavfi.astats.Overall.RMS_level',.05,.4)>-32);
+ await assert.rejects(()=>renderSequence({sequence:s,resources,output_dir:join(root,'invalid-window'),window:{start:60,end:61},preview:true}),/范围|window/);
+});
+
 test('persistent preview reuses source frames across effect edits and recompiles only changed drawing source',{timeout:120000},async()=>{
  const module=await import('../src/sequence-frame-session.mjs').catch(()=>({}));assert.equal(typeof module.createSequenceFrameSession,'function','persistent frame session is required');
  const {root,resources}=await realFixture(),s=seq();
@@ -102,6 +113,9 @@ test('persistent preview reuses source frames across effect edits and recompiles
   const cold=await session.render(request),warm=await session.render({...request,frame:901});
   assert.equal(cold.frame,900);assert.equal(warm.frame,901);assert.equal(warm.diagnostics.host_loads,1);assert.equal(warm.diagnostics.source_compiles,1);
   const repeat=await session.render({...request,frame:901});assert(repeat.diagnostics.frame_cache_hits>0);
+  assert.equal(typeof session.renderSegment,'function','segments must reuse the owned drawing host');
+  const segment=await session.renderSegment({...request,window:{start:900,end:906},preview:true,output_dir:join(root,'persistent-segment')});
+  assert.equal(segment.frames,6);assert.equal(session.diagnostics().source_compiles,1);assert.equal(session.diagnostics().host_loads,1);
   const changed=structuredClone(s);changed.tracks[0].clips[0].effects.x=20;
   const edited=await session.render({...request,sequence:changed,frame:901,content_version:'v2'});assert(edited.diagnostics.source_cache_hits>0);assert.equal(edited.diagnostics.source_compiles,1);
   const updated=structuredClone(drawing);updated.sha256='drawing-v2';updated.draw_document.sources[0].source=updated.draw_document.sources[0].source.replace('blue','red');
@@ -150,6 +164,9 @@ test('editable drawing FrameSource composites alpha with footage and sound on th
  const stillOutput=join(root,'drawing-still'),requested=[],started=performance.now();
  await renderSequenceFrame({sequence:s,resources:[...resources,drawing],frame:12,output_dir:stillOutput,content_version:'drawing-source'},{drawFrame:async input=>{requested.push(input.frame);return renderDrawSourceFrame(input);}});
  const stillMs=performance.now()-started;assert.deepEqual(requested,[9],'seek a single rational-clock drawing frame');
+ const {prepareDrawFrameSource}=await import('../src/unified-draw.mjs');
+ const proxyOutput=join(root,'drawing-proxy'),proxy=await renderSequence({sequence:s,resources:[...resources,drawing],window:{start:1,end:23},preview:true,output_dir:proxyOutput,content_version:'proxy'}, {prepareDrawFrames:options=>{assert.equal(options.frame_step,3,'preview source samples at most 8 fps without changing its clock');assert.equal(options.from_frame%options.frame_step,0);return prepareDrawFrameSource(options);}});
+ assert.equal(proxy.frames,22);assert.deepEqual(proxy.fps,s.fps);const proxyPixels=await pixelStat(join(proxyOutput,'program.mp4'),.3,75,55);assert(proxyPixels.UAVG>165&&proxyPixels.VAVG>165,'proxy must preserve composited source alpha');
  const movieStarted=performance.now(),output=join(root,'drawing-source'),report=await renderSequence({sequence:s,resources:[...resources,drawing],output_dir:output,content_version:'drawing-source'}),movieMs=performance.now()-movieStarted;
  const center=await pixelStat(join(output,'program.mp4'),.4,75,55),outside=await pixelStat(join(output,'program.mp4'),.4,230,55),audio=await audioStat(join(output,'program.mp4'),'lavfi.astats.Overall.RMS_level',.1,.4);
  assert(center.UAVG>165&&center.VAVG>165,'half-alpha blue source must blend with red footage');assert(outside.VAVG>220&&outside.UAVG<110,'transparent drawing area must preserve footage');assert(audio>-45,'existing sound must survive the drawing FrameSource');assert.equal(report.frames,24);

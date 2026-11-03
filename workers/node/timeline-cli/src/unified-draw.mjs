@@ -141,13 +141,14 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
       if(!Number.isInteger(request.frame)||request.frame<0||request.frame>=currentDocument.duration_frames)throw Error('Frame outside drawing');
       const key=(request.request_id??'frame')+':'+(++seekSerial);
       const scale=Math.min(1,Math.max(.1,request.scale??1));
-      await page.setViewport({width:Math.ceil(currentDocument.canvas.width*scale),height:Math.ceil(currentDocument.canvas.height*scale),deviceScaleFactor:1});
+      const width=Math.ceil(currentDocument.canvas.width*scale),height=Math.ceil(currentDocument.canvas.height*scale),viewport=page.viewport();
+      if(viewport?.width!==width||viewport?.height!==height)await page.setViewport({width,height,deviceScaleFactor:1});
       await page.evaluate(scale=>{const root=document.getElementById('root');root.style.transform=`scale(${scale})`;root.style.transformOrigin='top left';},scale);
       const displayDocument={...currentDocument,sources:currentDocument.sources.map(({source,...s})=>s),asset_bindings:undefined};
       const bounds=await page.evaluate(snapshot=>window.vacSeek(snapshot),{document:displayDocument,frame:request.frame,key,...(resourcesDirty?{resources:{assets:images,html}}:{})});
       resourcesDirty=false;
       const geometry=bounds.map(b=>({...b,x:b.x/scale,y:b.y/scale,width:b.width/scale,height:b.height/scale}));
-      const png=Buffer.from(await page.screenshot({type:'png',omitBackground:true}));
+      const png=Buffer.from(await page.screenshot({type:'png',omitBackground:true,optimizeForSpeed:true,captureBeyondViewport:false}));
       const times=new Map(),active=n=>drawFrameContext(currentDocument,n.id,request.frame,times).active;
       const used=new Set(currentDocument.nodes.filter(n=>active(n)&&n.kind==='source').map(n=>n.source_id));
       const engines=[...new Set(currentDocument.sources.filter(s=>used.has(s.id)).map(s=>s.engine))].sort();
@@ -170,7 +171,7 @@ export async function renderUnifiedDraw(input) {
     host=await openUnifiedDraw({document:d,assets:input.assets,output_dir:stage});
     for(let frame=0;frame<d.duration_frames;frame++){
       const result=await host.seek({frame,revision:c.revision,content_version:c.content_version,request_id:'export-'+frame});
-      await writeFile(join(stage,String(frame).padStart(6,'0')+'.png'),result.png);
+      await writeFile(join(stage,String(frame/frame_step).padStart(6,'0')+'.png'),result.png);
     }
     await host.close();host=null;
     const codec=format==='mp4'?['-c:v','libx264','-crf','18','-pix_fmt','yuv420p','-movflags','+faststart']:format==='webm-alpha'?['-c:v','libvpx-vp9','-pix_fmt','yuva420p','-auto-alt-ref','0','-crf','18','-b:v','0']:['-c:v','prores_ks','-profile:v','4','-pix_fmt','yuva444p10le'];
@@ -190,13 +191,13 @@ export async function renderUnifiedDraw(input) {
 /** FrameSource used by sequence composition: editable source -> lossless RGBA
  * frames, with its own rational source clock. Final sequence encoding happens
  * once after footage, audio, subtitles and drawing pixels are composed. */
-export async function prepareDrawFrameSource({document,assets=[],output_dir}) {
+export async function prepareDrawFrameSource({document,assets=[],output_dir,from_frame=0,to_frame=document.duration_frames,scale=1,frame_step=1}) {
   await mkdir(output_dir,{recursive:true});
   const host=await openUnifiedDraw({document,assets,output_dir});
   try{
-    for(let frame=0;frame<document.duration_frames;frame++){
-      const result=await host.seek({frame,request_id:'source-'+frame});
-      await writeFile(join(output_dir,String(frame).padStart(6,'0')+'.png'),result.png);
+    for(let frame=from_frame;frame<Math.min(to_frame,document.duration_frames);frame+=frame_step){
+      const result=await host.seek({frame,scale,request_id:'source-'+frame});
+      await writeFile(join(output_dir,String(frame/frame_step).padStart(6,'0')+'.png'),result.png);
     }
   }finally{await host.close();}
   return join(output_dir,'%06d.png');
