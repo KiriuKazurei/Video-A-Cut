@@ -118,7 +118,9 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 0.4.0当前检查：版本字段与锁文件一致；`TestSDKProtocolNegotiationAndCalls`通过（worker/desktop各4种协议，共8个子场景，0.695秒），日志为code-track/0.4.0/artifacts/custom/go-version/output.log。前端完整142项/样式、TypeScript、196 HTTP/17 IPC/170模型/30 SSE及18文档665链接通过，日志为code-ui/0.4.0/artifacts/custom/version-check/output.log；初次文档命令传入相对root导致路径误定位，修正绝对root后复验通过，relative-root-failed.log保留调用错误。未重跑完整Go/Node/Python、真实模型或0.4.0原生安装包。
 
-轮换前后统计范围相同（三个活动测试根），1229789502→3599字节，释放1229785903字节；只删除入口核验过的旧受管生成物，源码/样本/业务工程/开发依赖保留。新0.4.0检查随后重新产生缓存，不把轮换后3599字节当最终占用。提交和远程推送待执行。
+轮换前后统计范围相同（三个活动测试根），1229789502→3599字节，释放1229785903字节；只删除入口核验过的旧受管生成物，源码/样本/业务工程/开发依赖保留。新0.4.0检查随后重新产生缓存，不把轮换后3599字节当最终占用。
+
+实现提交ff636cac3576042976ae994ee04039c61649cb4e（83文件）已正常快进推送origin/codex/integrate-remote-20261029，远程HEAD与本地实现提交逐字一致；提交前差异空白检查通过。无测试输出、业务AVP、安装包或签名文件入库。本记录为随后的文档提交；0.4.0没有创建Release或更新用户安装版，旧Windows全量失败及未验范围保持开放。
 
 ## 前次审查与测试整理（2026-11-04 CODE-REVIEW，0.3.4）
 
