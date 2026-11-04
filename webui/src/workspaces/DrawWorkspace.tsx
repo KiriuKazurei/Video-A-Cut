@@ -18,7 +18,7 @@ import type {RouteState} from '../navigation';
 import {DRAW_ZONES,drawAgentStatus,drawDraftChanged,newDrawComposition,newDrawImage,unifiedComposition,reconcileDrawDraft,acceptDrawSave,type DrawComposition,type DrawDocument,type DrawNode,type DrawOutputFormat} from '../drawContracts';
 
 interface Props{route:RouteState;navigate:(state:Partial<RouteState>)=>void}
-const engineLabels={hyperframes:'HyperFrames',remotion:'Remotion'};
+const engineLabels={hyperframes:'HyperFrames',remotion:'Remotion',motion_canvas:'Motion Canvas'};
 const kindLabels={source:'画面',image:'图片',text:'文字',group:'组',mask:'遮罩',shape:'形状'};
 export function DrawWorkspace({route,navigate}:Props){
  const project=useProjectWorkspace(),editor=useSequenceEditor(),skills=useSkillWorkspace(),client=useQueryClient(),session=project.session;
@@ -133,7 +133,7 @@ export function DrawWorkspace({route,navigate}:Props){
  const drop=(event:DragEvent)=>{if(!event.dataTransfer.types.includes('application/x-vac-resource'))return;event.preventDefault();run('加入图片',async()=>{const data=JSON.parse(event.dataTransfer.getData('application/x-vac-resource'));if(data.project!==id||data.session!==session?.id)throw Error('图片来自其他工程或已失效会话');addImage(data.resource);});};
  const addText=()=>{const n:DrawNode={id:'text_'+crypto.randomUUID(),name:'文字',kind:'text',text:'输入文字',color:'#ffffff',font_size:48,from:0,duration:draft!.duration_frames,transform:{x:80,y:80,width:400,height:120},z:document!.nodes.length+1};patchDocument(d=>({...d,nodes:[...d.nodes,n]}));setNodeID(n.id);};
  const addShape=()=>{const n:DrawNode={id:'shape_'+crypto.randomUUID(),name:'形状',kind:'shape',shape:'rect',color:'#4C8DFF',from:0,duration:draft!.duration_frames,transform:{x:160,y:120,width:240,height:160},z:document!.nodes.length+1};patchDocument(d=>({...d,nodes:[...d.nodes,n]}));setNodeID(n.id);};
- const addSource=(engine:'hyperframes'|'remotion')=>{
+ const addSource=(engine:'hyperframes'|'remotion'|'motion_canvas')=>{
   const c=newDrawComposition(engine),sid='source_'+crypto.randomUUID(),nid='scene_'+crypto.randomUUID();
   patchDocument(d=>({...d,sources:[...d.sources,{id:sid,name:engineLabels[engine]+' 画面',engine,source:c.source,canvas:{width:c.width,height:c.height,fps:c.fps},duration_frames:c.duration_frames}],nodes:[...d.nodes,{id:nid,name:'画面',kind:'source',source_id:sid,from:0,duration:Math.min(d.duration_frames,c.duration_frames),transform:{x:0,y:0,width:640,height:360},z:d.nodes.length+1}]}));setNodeID(nid);setSourceID(sid);
  };
@@ -230,9 +230,9 @@ export function DrawWorkspace({route,navigate}:Props){
      <Select aria-label="视频导出格式" value={outputFormat} onChange={setOutputFormat} options={[{value:'mp4',label:'MP4 · 常规视频'},{value:'webm-alpha',label:'WebM · 透明背景'},{value:'prores4444',label:'ProRes 4444 · 透明背景'}]}/>
      <Typography.Text type="secondary">{document.explanation||'公共图层直接合成；HTML 动效与 React 组件按画面需要协作。'}</Typography.Text>
      <Select aria-label="Agent 执行方式" value={execution} onChange={setExecution} options={[{value:'auto',label:'自动使用已配置 Agent'},{value:'builtin',label:'内置服务商 Agent'},{value:'external',label:'外部 MCP Agent'}]}/>
-     <Space wrap><Button disabled={!canUse} onClick={()=>addSource('hyperframes')}>添加 HTML 画面</Button><Button disabled={!canUse} onClick={()=>addSource('remotion')}>添加 React 画面</Button></Space>
+     <Space wrap><Button disabled={!canUse} onClick={()=>addSource('hyperframes')}>添加 HTML 画面</Button><Button disabled={!canUse} onClick={()=>addSource('remotion')}>添加 React 画面</Button><Button disabled={!canUse} onClick={()=>addSource('motion_canvas')}>添加 Motion Canvas 画面</Button></Space>
      <Select aria-label="源码对象" value={source?.id} options={document.sources.map(s=>({value:s.id,label:(s.name||s.id)+' · '+engineLabels[s.engine]}))} onChange={setSourceID}/>
-     {source&&<><Typography.Text type="secondary">{source.reason||engineLabels[source.engine]}</Typography.Text><Select aria-label="强制指定源码引擎" disabled={!canUse} value={source.engine} options={[{value:'hyperframes',label:'HyperFrames · HTML / GSAP'},{value:'remotion',label:'Remotion · React'}]} onChange={engine=>patchDocument(d=>({...d,sources:d.sources.map(s=>s.id===source.id?{...s,engine}:s)}))}/><Typography.Text type="secondary">指定后须提供对应语言的源码；检查失败会明确提示。</Typography.Text><Input.TextArea disabled={!canUse} className="draw-source-editor" rows={22} aria-label="构图源码" value={source.source} spellCheck={false} onChange={e=>patchDocument(d=>({...d,sources:d.sources.map(s=>s.id===source.id?{...s,source:e.target.value}:s)}))}/></>}
+     {source&&<><Typography.Text type="secondary">{source.reason||engineLabels[source.engine]}</Typography.Text><Select aria-label="强制指定源码引擎" disabled={!canUse} value={source.engine} options={[{value:'hyperframes',label:'HyperFrames · HTML / GSAP'},{value:'remotion',label:'Remotion · React'},{value:'motion_canvas',label:'Motion Canvas · TypeScript'}]} onChange={engine=>patchDocument(d=>({...d,sources:d.sources.map(s=>s.id===source.id?{...s,engine}:s)}))}/><Typography.Text type="secondary">指定后须提供对应语言的源码；检查失败会明确提示。</Typography.Text><Input.TextArea disabled={!canUse} className="draw-source-editor" rows={22} aria-label="构图源码" value={source.source} spellCheck={false} onChange={e=>patchDocument(d=>({...d,sources:d.sources.map(s=>s.id===source.id?{...s,source:e.target.value}:s)}))}/></>}
      <Space wrap><Button disabled={!canUse} onClick={()=>run("加入跟随源",()=>importVideo("follow"))}>入轨并跟随源更新</Button><Button disabled={!canUse} onClick={()=>run("导入已渲染成片",()=>importVideo("rendered"))}>导入已渲染成片</Button></Space>
      <Button disabled={!canUse} onClick={()=>run('检查构图',async()=>{const c=await persist();const result=await drawApi.check(id,c.id,{session:session!.id,content_version:c.content_version});setNotice('检查通过：'+result.checks.join(' / '));})}>检查构图</Button>
     </Flex>}]}/>

@@ -1,3 +1,4 @@
+import {MotionSource} from './motion-canvas-scene.jsx';
 // Shared browser scene: preview and export use the same React/HyperFrames pixels.
 import React, {useLayoutEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
@@ -76,6 +77,7 @@ function Scene({document, frame, requestKey, assets, html}) {
     else if (node.kind === 'shape') child=<div style={{width:'100%',height:'100%',background:node.color??'white',borderRadius:node.shape==='ellipse'?'50%':0}}/>;
     else if (node.kind === 'group'||node.kind==='mask') child = document.nodes.filter(n=>n.parent_id===node.id).sort((a,b)=>(a.z??0)-(b.z??0)).map(render);
     else if (source?.engine === 'hyperframes') child = <HtmlLayer html={html[source.id]} frame={local} fps={clock.num/clock.den} id={node.id} requestKey={requestKey}/>;
+    else if(source?.engine==='motion_canvas') child=<MotionSource sourceId={source.id} frame={local} requestKey={requestKey} id={node.id} acknowledge={acknowledge}/>;
     else if (source?.engine === 'remotion') {
       const bindings=new Map((source.image_bindings??[]).map(im=>[im.id,{...im,src:assets[im.resource_id]}]));
       for(const im of document.nodes.filter(n=>n.kind==='image')){

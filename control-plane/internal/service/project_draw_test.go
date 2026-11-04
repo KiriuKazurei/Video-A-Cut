@@ -60,6 +60,177 @@ func TestNativeAgentCorrectsTimelineArgumentsWithoutHumanResume(t *testing.T) {
 	}
 }
 
+func TestCodeAgentCannotWriteOutsideCapturedTargets(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	if err := svc.ConfigureSkillHarness(ctx); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "code-scope.avp"), Name: "code"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := project.DrawComposition{ID: "source", Name: "source", Engine: "remotion", Source: "export default ()=>null", Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}, DurationFrames: 30}
+	doc := c.UnifiedDocument()
+	doc.Goal = "existing description"
+	c.Document = &doc
+	c.NormalizeDocument()
+	saved, err := svc.SaveDrawComposition(ctx, workspace.Document.Project.ID, service.DrawSaveRequest{Session: workspace.ID, ExpectedRevision: workspace.Revision, IdempotencyKey: "source", Composition: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c = saved.Document.DrawCompositions[0]
+	seq := saved.Document.Sequences[0]
+	timeline, err := svc.ImportDrawComposition(ctx, "human:window", saved.Document.Project.ID, c.ID, service.DrawImportRequest{Session: saved.ID, ContentVersion: c.ContentVersion, SequenceID: seq.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "import", SourceMode: "snapshot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var target project.Clip
+	for _, track := range timeline.Sequence.Tracks {
+		if track.Kind == "code" {
+			target = track.Clips[0]
+		}
+	}
+	visible, err := svc.ProjectVisibleSet(ctx, saved.Document.Project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := svc.CreateSkillRun(ctx, "human:window", skill.RunRequest{ProjectID: saved.Document.Project.ID, SequenceID: seq.ID, Flow: "custom", SkillID: "vac-draw-pipeline", Strategy: "draw", Mode: "external_mcp", VisibleSHA: visible.SHA, Goal: "change only captured source", CodeTargets: map[string]string{target.ID: target.Code.ContentVersion}, CodeAction: "regenerate", IdempotencyKey: "scoped"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextView, err := svc.SkillRunContext(ctx, "human:window", run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sources, ok := contextView["code_sources"].(map[string]project.DrawComposition); !ok || sources[target.ID].Source == "" && sources[target.ID].Document == nil {
+		t.Fatal("code source snapshot missing from Agent context")
+	}
+	args, _ := json.Marshal(map[string]any{"command": project.Command{Session: timeline.Session, ExpectedRevision: timeline.Sequence.Revision, IdempotencyKey: "escape", Operations: []project.Operation{{Type: "track.add", Kind: "audio"}}}})
+	_, _, err = svc.ExecuteSkillTool(ctx, "human:window", run.ID, skill.ToolRequest{Name: "timeline.edit", ExpectedVersion: run.Version, IdempotencyKey: "escape", Arguments: args})
+	if !errors.Is(err, model.ErrArgument) {
+		t.Fatalf("scope escape not rejected: %v", err)
+	}
+	current, err := svc.Timeline(ctx, saved.Document.Project.ID, seq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current.Sequence.Tracks) != len(timeline.Sequence.Tracks) {
+		t.Fatal("unrelated track was added")
+	}
+	// Use the same real service/runtime fixture to exercise partial delivery.
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.ConfigureTTS("python", filepath.Join(repo, "workers", "python")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(svc.CloseTTS)
+	var codeTrack string
+	for _, track := range current.Sequence.Tracks {
+		if track.Kind == "code" {
+			codeTrack = track.ID
+		}
+	}
+	current, err = svc.TimelineCommand(ctx, "human:window", saved.Document.Project.ID, seq.ID, project.Command{Session: current.Session, ExpectedRevision: current.Sequence.Revision, IdempotencyKey: "duplicate-code", Operations: []project.Operation{{Type: "clip.paste", TrackID: codeTrack, At: 30, Clips: []project.Clip{target}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var later project.Clip
+	for _, track := range current.Sequence.Tracks {
+		for _, clip := range track.Clips {
+			if track.ID == codeTrack && clip.ID != target.ID {
+				later = clip
+			}
+			if clip.ID == target.ID {
+				target = clip
+			}
+		}
+	}
+	batch, err := svc.CreateSkillRun(ctx, "human:window", skill.RunRequest{ProjectID: saved.Document.Project.ID, SequenceID: seq.ID, Flow: "custom", SkillID: "vac-draw-pipeline", Strategy: "draw", Mode: "external_mcp", VisibleSHA: visible.SHA, Goal: "regenerate two independent pictures", CodeTargets: map[string]string{target.ID: target.Code.ContentVersion, later.ID: later.Code.ContentVersion}, CodeAction: "regenerate", IdempotencyKey: "batch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	editRevision, historyCursor := current.Sequence.Revision, current.Sequence.HistoryCursor
+	current, err = svc.TimelineCommand(ctx, "human:window", saved.Document.Project.ID, seq.ID, project.Command{Session: current.Session, ExpectedRevision: editRevision, IdempotencyKey: "bind-code-job", Operations: []project.Operation{{Type: "code.job", ClipIDs: []string{target.ID}, CodeRunID: batch.ID, Unlinked: true}, {Type: "code.job", ClipIDs: []string{later.ID}, CodeRunID: batch.ID, Unlinked: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Sequence.Revision != editRevision || current.Sequence.HistoryCursor != historyCursor {
+		t.Fatal("task metadata changed the editing revision or undo history")
+	}
+	manual := "new manual description"
+	current, err = svc.TimelineCommand(ctx, "human:window", saved.Document.Project.ID, seq.ID, project.Command{Session: current.Session, ExpectedRevision: current.Sequence.Revision, IdempotencyKey: "concurrent-description", Operations: []project.Operation{{Type: "code.script", ClipIDs: []string{later.ID}, Description: &manual, CodeRevision: later.Code.Revision, Unlinked: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := func(id string, frames int64) project.CodeSegment {
+		return project.CodeSegment{Description: id, Composition: project.DrawComposition{ID: id, Name: id, Engine: "remotion", Source: `export default ()=><div style={{width:320,height:180,background:"green"}}/>;`, Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}, DurationFrames: frames}}
+	}
+	command := project.Command{Session: current.Session, ExpectedRevision: current.Sequence.Revision, IdempotencyKey: "apply-first", Operations: []project.Operation{{Type: "code.replace", ClipIDs: []string{target.ID}, CodeVersion: target.Code.ContentVersion, CodeSegments: []project.CodeSegment{part("green-first", 20), part("green-second", 25)}}}}
+	args, _ = json.Marshal(map[string]any{"command": command})
+	batch, _, err = svc.ExecuteSkillTool(ctx, "human:window", batch.ID, skill.ToolRequest{Name: "timeline.edit", ExpectedVersion: batch.Version, IdempotencyKey: "apply-first", Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err = svc.Timeline(ctx, saved.Document.Project.ID, seq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	for _, track := range current.Sequence.Tracks {
+		if track.ID == codeTrack {
+			count = len(track.Clips)
+		}
+		for _, clip := range track.Clips {
+			if clip.ID == later.ID && (clip.At != 45 || clip.Code.Description != manual || clip.ResourceID != later.ResourceID) {
+				t.Fatal("ripple changed the other target content")
+			}
+		}
+	}
+	if count != 3 {
+		t.Fatal("one-to-many replacement was not applied")
+	}
+	command.ExpectedRevision = current.Sequence.Revision
+	command.IdempotencyKey = "stale-later"
+	command.Operations = []project.Operation{{Type: "code.replace", ClipIDs: []string{later.ID}, CodeVersion: later.Code.ContentVersion, CodeSegments: []project.CodeSegment{part("stale-result", 30)}}}
+	args, _ = json.Marshal(map[string]any{"command": command})
+	batch, _, err = svc.ExecuteSkillTool(ctx, "human:window", batch.ID, skill.ToolRequest{Name: "timeline.edit", ExpectedVersion: batch.Version, IdempotencyKey: "stale-later", Arguments: args})
+	if !errors.Is(err, model.ErrArgument) || len(batch.CodeCandidates[later.ID]) == 0 {
+		t.Fatalf("stale result was not retained: %v", err)
+	}
+	batch, _, err = svc.ExecuteSkillTool(ctx, "human:window", batch.ID, skill.ToolRequest{Name: "run.finish", ExpectedVersion: batch.Version, IdempotencyKey: "finish-partial", Arguments: json.RawMessage(`{}`)})
+	if err != nil || batch.State != "succeeded" || len(batch.Artifacts) != 0 {
+		t.Fatalf("partial task incorrectly requires a full-film render: %v", err)
+	}
+	current, err = svc.Timeline(ctx, saved.Document.Project.ID, seq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := svc.TimelineCommand(ctx, "human:window", saved.Document.Project.ID, seq.ID, project.Command{Session: current.Session, ExpectedRevision: current.Sequence.Revision, IdempotencyKey: "undo-generated-picture", Operations: []project.Operation{{Type: "history.undo"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restoredCount int
+	for _, track := range restored.Sequence.Tracks {
+		if track.ID == codeTrack {
+			restoredCount = len(track.Clips)
+		}
+		for _, clip := range track.Clips {
+			if clip.ID == target.ID && clip.ResourceID != target.ResourceID {
+				t.Fatal("undo did not restore the original source")
+			}
+			if clip.ID == later.ID && (clip.At != 30 || clip.Code.Description != manual) {
+				t.Fatal("undo did not restore ripple while preserving the other manual description")
+			}
+		}
+	}
+	if restoredCount != 2 {
+		t.Fatal("one undo did not restore the full target replacement")
+	}
+}
+
 func TestNativeAgentSharesDesktopPreview(t *testing.T) {
 	svc, root := avpWorkspaceFixture(t)
 	ctx := t.Context()
@@ -472,6 +643,21 @@ func TestDrawReservedTrackImport(t *testing.T) {
 			}
 			pid := view.Document.Project.ID
 			seq := view.Document.Sequences[0]
+			if mode != "rendered" {
+				updated, e := svc.TimelineCommand(ctx, "human:window", view.Document.Project.ID, seq.ID, project.Command{Session: view.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "code-track", Operations: []project.Operation{{Type: "track.add", Kind: "code"}}})
+				if e != nil {
+					t.Fatal(e)
+				}
+				seq = updated.Sequence
+				last := len(seq.Tracks) - 1
+				seq.Tracks[0], seq.Tracks[last] = seq.Tracks[last], seq.Tracks[0]
+				order := 0
+				updated, e = svc.TimelineCommand(ctx, "human:window", view.Document.Project.ID, seq.ID, project.Command{Session: view.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "order-code-track", Operations: []project.Operation{{Type: "track.update", TrackID: seq.Tracks[0].ID, Order: &order}}})
+				if e != nil {
+					t.Fatal(e)
+				}
+				seq = updated.Sequence
+			}
 			trackID := seq.Tracks[0].ID
 			c := view.Document.DrawCompositions[0]
 			before, e := svc.Timeline(ctx, pid, seq.ID)

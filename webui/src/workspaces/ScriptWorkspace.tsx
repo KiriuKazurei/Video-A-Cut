@@ -1,3 +1,5 @@
+import {CodeClipWorkbench} from '../components/CodeClipWorkbench';
+import {useSequenceEditor} from '../sequenceEditor';
 import { useState } from 'react';
 import { Alert, Button, Empty, Select, Space, Typography } from 'antd';
 import { projectApi } from '../projectApi';
@@ -7,6 +9,7 @@ import { ScriptWorkbench } from '../components/ScriptWorkbench';
 
 export function ScriptWorkspace({ route, navigate, assetId, active, dock = false }: { route: RouteState; navigate: (route: Partial<RouteState>) => void; assetId?: string; active: boolean; dock?: boolean }) {
   const project = useProjectWorkspace();
+  const editor=useSequenceEditor(),hasCode=!!editor.view?.sequence.tracks.some(t=>t.kind==='code'&&t.clips.some(c=>editor.selected.includes(c.id)));
   const [creating,setCreating]=useState(false),[failure,setFailure]=useState('');
   const resources = project.session?.document?.resources ?? [];
   const scripts=project.session?.document?.scripts ?? [];
@@ -14,7 +17,8 @@ export function ScriptWorkspace({ route, navigate, assetId, active, dock = false
   const scriptAsset = resources.find(resource => resource.script_id === selected)?.asset_id
     ?? resources.find(resource => resource.asset_id)?.asset_id ?? (!project.session?.document?assetId:undefined);
   return <div className={`page-body script-workspace${dock ? " script-workspace-docked" : ""}`}>
-    <Space wrap className="script-workspace-heading">
+    <div hidden={!hasCode}><CodeClipWorkbench active={active} navigate={navigate}/></div>
+    <div hidden={hasCode}><Space wrap className="script-workspace-heading">
       <Typography.Title level={1}>脚本</Typography.Title>
       <Typography.Text type="secondary">保存创作要求，再交给 Agent 按脚本剪辑</Typography.Text>
       {scripts.length>0&&<Select aria-label="已保存脚本" value={selected} style={{minWidth:180}} onChange={scriptId=>void project.flushEditors().then(()=>navigate({workspace:'script',scriptId})).catch(e=>setFailure(String(e)))} options={scripts.map(script=>({value:script.id,label:script.title||'未命名脚本'}))}/>}
@@ -27,5 +31,6 @@ export function ScriptWorkspace({ route, navigate, assetId, active, dock = false
     {failure&&<Alert type="error" message={failure}/>}
     {scriptAsset ? <ScriptWorkbench key={scriptAsset} assetId={scriptAsset} selectedScriptId={selected} navigate={navigate} active={active} variant={dock ? "dock" : "page"} readOnly={creating} />
       : <Empty description={project.session?.document?'点击「新建脚本」开始，无需先导入素材':'请先新建或打开工程'}/>}
+    </div>
   </div>;
 }

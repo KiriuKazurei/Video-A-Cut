@@ -17,7 +17,18 @@ type DrawSourceReference struct {
 }
 
 // DrawDocument is portable editing state, independent of compiled frame caches.
+type DrawAudioBinding struct {
+	ResourceID     string  `json:"resource_id"`
+	ResourceSHA    string  `json:"resource_sha256,omitempty"`
+	AtFrame        int64   `json:"at_frame"`
+	DurationFrames int64   `json:"duration_frames"`
+	SourceIn       float64 `json:"source_in"`
+	StreamIndex    int     `json:"stream_index"`
+	GainDB         float64 `json:"gain_db"`
+}
+
 type DrawDocument struct {
+	AudioBindings  []DrawAudioBinding `json:"audio_bindings,omitempty"`
 	AssetBindings  []DrawAssetBinding `json:"asset_bindings,omitempty"`
 	SchemaVersion  int                `json:"schema_version"`
 	Canvas         DrawCanvas         `json:"canvas"`
@@ -131,6 +142,14 @@ type DrawRenderPlan struct {
 }
 
 func (d DrawDocument) Validate() error {
+	if len(d.AudioBindings) > 64 {
+		return fmt.Errorf("too many drawing audio bindings")
+	}
+	for _, a := range d.AudioBindings {
+		if !validID(a.ResourceID) || a.AtFrame < 0 || a.DurationFrames < 1 || a.AtFrame >= d.DurationFrames || a.DurationFrames > d.DurationFrames-a.AtFrame || !finite(a.SourceIn) || a.SourceIn < 0 || a.StreamIndex < 0 || !finite(a.GainDB) || a.GainDB < -96 || a.GainDB > 24 || (a.ResourceSHA != "" && len(a.ResourceSHA) != 64) {
+			return fmt.Errorf("invalid drawing audio binding")
+		}
+	}
 	if d.SchemaVersion != 1 || len(d.Nodes) > 128 || len(d.Sources) > 32 || d.DurationFrames < 1 || d.DurationFrames > 18000 || d.Canvas.Width < 16 || d.Canvas.Width > 3840 || d.Canvas.Height < 16 || d.Canvas.Height > 2160 || d.Canvas.Width%2 != 0 || d.Canvas.Height%2 != 0 || d.Canvas.FPS.Num < 1 || d.Canvas.FPS.Den < 1 || d.Canvas.FPS.Num > 1e9 || d.Canvas.FPS.Den > 1e9 || d.Canvas.FPS.Value() < 1 || d.Canvas.FPS.Value() > 120 || d.Canvas.FPS.Seconds(d.DurationFrames) > 300 {
 		return fmt.Errorf("invalid drawing document bounds")
 	}
@@ -142,7 +161,7 @@ func (d DrawDocument) Validate() error {
 	}
 	sources := map[string]DrawSource{}
 	for _, s := range d.Sources {
-		if !validID(s.ID) || sources[s.ID].ID != "" || (s.Engine != "hyperframes" && s.Engine != "remotion") || len(s.Source) == 0 || len(s.Source) > 96<<10 {
+		if !validID(s.ID) || sources[s.ID].ID != "" || (s.Engine != "hyperframes" && s.Engine != "remotion" && s.Engine != "motion_canvas") || len(s.Source) == 0 || len(s.Source) > 96<<10 {
 			return fmt.Errorf("invalid drawing source %q", s.ID)
 		}
 		sources[s.ID] = s
@@ -252,7 +271,7 @@ func (d DrawDocument) Validate() error {
 // Plan validates Agent-authored choices; it never silently rewrites source into
 // another engine. Common layers avoid starting an unnecessary second engine.
 func (d DrawDocument) Plan() (DrawRenderPlan, error) {
-	p := DrawRenderPlan{SchemaVersion: 1, PolicyVersion: "vac-unified-1", Nodes: []DrawPlanNode{}, Engines: []string{}, Alpha: "straight", ColorSpace: "srgb", RuntimeVersions: map[string]string{"hyperframes": "0.8.193", "remotion": "4.0.538", "adapter": "vac-unified-1"}, FrameEvaluations: d.DurationFrames * int64(len(d.Nodes)), FallbackPolicy: "explicit-error-no-unverified-fallback"}
+	p := DrawRenderPlan{SchemaVersion: 1, PolicyVersion: "vac-unified-1", Nodes: []DrawPlanNode{}, Engines: []string{}, Alpha: "straight", ColorSpace: "srgb", RuntimeVersions: map[string]string{"hyperframes": "0.8.193", "remotion": "4.0.538", "motion_canvas": "3.17.2", "adapter": "vac-unified-1"}, FrameEvaluations: d.DurationFrames * int64(len(d.Nodes)), FallbackPolicy: "explicit-error-no-unverified-fallback"}
 	if e := d.Validate(); e != nil {
 		return p, e
 	}

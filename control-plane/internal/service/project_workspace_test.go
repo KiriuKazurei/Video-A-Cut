@@ -35,6 +35,36 @@ func avpWorkspaceFixture(t *testing.T) (*service.Service, string) {
 	return svc, root
 }
 
+func TestCodeMigrationOpensWithoutRewritingFile(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	source := project.DrawComposition{ID: "legacy-source", Name: "source", Engine: "remotion", Source: "export default ()=>null", Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}, DurationFrames: 30, Revision: 1}
+	source.ContentVersion = source.ContentHash()
+	sequence := project.NewSequence("main")
+	sequence.Configured = true
+	sequence.Tracks[0].Clips = []project.Clip{{ID: "legacy-clip", ResourceID: "drawing", Name: "source", At: 0, Duration: 30, SourceIn: project.MediaTime(0), SourceOut: project.MediaTime(1), Speed: 1, Effects: project.Effects{Scale: 1}}}
+	document := project.AvpDocument{Format: "avp", SchemaVersion: 3, Project: project.Identity{ID: "legacy", Name: "legacy"}, Sequences: []project.Sequence{sequence}, Resources: []project.Resource{{ID: "drawing", Kind: "video", Name: "source", Source: project.Source{SHA256: source.ContentVersion}, Out: 1, Metadata: map[string]any{"duration": 1, "streams": []map[string]any{{"index": 0, "codec_type": "video"}}}, Draw: &project.DrawSourceReference{CompositionID: source.ID, Mode: "snapshot", Snapshot: source}}}}
+	path := filepath.Join(root, "legacy.avp")
+	if err := project.WriteAtomic(path, document); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := svc.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opened.Dirty || opened.Document.Sequences[0].Tracks[0].Kind != "code" || opened.Document.Sequences[0].Tracks[0].Clips[0].ID != "legacy-clip" {
+		t.Fatal("legacy source did not migrate as an unsaved edit")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("opening rewrote the user's AVP")
+	}
+}
+
 func TestProjectNewScriptPersistsWithoutMedia(t *testing.T) {
 	svc, root := avpWorkspaceFixture(t)
 	ctx := t.Context()

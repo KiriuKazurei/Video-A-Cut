@@ -65,7 +65,7 @@ $reader=(Get-Command Get-StorageEntries).ScriptBlock
   $script:checks++
 }
 function Invoke-Manager([string]$action,[string]$version,[string[]]$extra=@(),[switch]$Fail) {
-  $parameters=@('-NoProfile','-File',$manager,'-Action',$action,'-Version',$version,'-StorageRoot',$root)+$extra
+  $parameters=@('-File',$manager,'-Action',$action,'-Version',$version,'-StorageRoot',$root)+$extra
   $messages=& pwsh @parameters 2>&1
   $code=$LASTEXITCODE
   $script:lastManagerExitCode=$code
@@ -125,6 +125,13 @@ if($lastManagerExitCode -ne 7 -or $failureSummary.tests.custom.result -ne 'faile
 }
 $checks++
 Remove-Fixture $largeFixture
+Invoke-Manager Run '0.0.2' @('-Suite','custom','-TestName','go-core','-Executable','node','-ArgumentsJson','["-e","console.error(\"core failed\");process.exit(7)"]') -Fail
+Invoke-Manager Run '0.0.2' @('-Suite','custom','-TestName','frontend','-Executable','node','-ArgumentsJson','["-e","console.log(\"frontend passed\")"]')
+$named=Get-Content -LiteralPath (Join-Path $root '0.0.2/summary.json') -Raw | ConvertFrom-Json -AsHashtable
+if($named.tests['custom/go-core'].result -ne 'failed' -or $named.tests['custom/frontend'].result -ne 'passed' -or $named.tests['custom/frontend'].fixed_in){throw 'Unrelated commands overwrote or repaired another test result'}
+if((Get-Content -LiteralPath (Join-Path $root '0.0.2/artifacts/custom/go-core/output.log') -Raw) -notmatch 'core failed' -or (Get-Content -LiteralPath (Join-Path $root '0.0.2/artifacts/custom/frontend/output.log') -Raw) -notmatch 'frontend passed'){throw 'Named test logs collided'}
+Invoke-Manager Run '0.0.2' @('-Suite','custom','-TestName','../escape','-Executable','node','-ArgumentsJson','["-e","process.exit(0)"]') -Fail
+$checks++
 for($number=3;$number -le 5;$number++){Invoke-Manager Prepare "0.0.$number"}
 if(@(Get-ChildItem -LiteralPath (Join-Path $root 'archives') -File -Filter '*.md').Count -ne 3){throw 'Archive version limit not enforced'}
 $unmanaged=Join-Path $root 'unmanaged'

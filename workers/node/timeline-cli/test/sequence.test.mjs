@@ -2,13 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { sequenceGraph, selectedTracks, renderSequence, sequenceFileHash, waveform } from '../src/sequence.mjs';
+import { sequenceGraph, selectedTracks, renderSequence, renderSequenceFrame, sequenceFileHash, waveform } from '../src/sequence.mjs';
 import { runTool } from '../src/media.mjs';
 import { inspectBasicQuality, sequenceExpectations } from '../src/basic-quality.mjs';
 
 const effects = () => ({scale:1,x:0,y:0,crop_left:0,crop_right:0,crop_top:0,crop_bottom:0,fade_in:0,fade_out:0,transition:0,gain_db:0});
 const clip = (id,stream=0) => ({id,resource_id:'r',name:id,stream_index:stream,at:0,duration:24,source_in:{value:0,scale:48000},source_out:{value:38400,scale:48000},speed:1,effects:effects()});
 const seq = () => ({id:'s',width:320,height:180,fps:{num:30,den:1},sample_rate:48000,tracks:[],markers:[],groups:[]});
+
+test('code tracks compose pixels and parameter animation using video streams',()=>{
+ const s=seq();s.tracks=[{id:'code',kind:'code',clips:[{...clip('c'),effects:{...effects(),parameter_keyframes:[{kind:'移动',frame:0,duration:12,x:100,y:0},{kind:'旋转',frame:0,duration:12,value:90}]}}]}];
+ const resources=[{id:'r',kind:'video',path:join(process.cwd(),'drawing.png'),metadata:{duration:2,streams:[{index:0,codec_type:'video'}]}}];
+ const graph=sequenceGraph(s,resources,{frame:6});
+ assert.equal(graph.frameLayers[0].x,50);assert.equal(graph.frameLayers[0].rotation,45);
+ assert.match(graph.filters.join(';'),/rotate=/);
+});
+
+test('code audio follows its envelope independently of hidden pixels and mute',()=>{
+ const s=seq();s.tracks=[{id:'code',kind:'code',hidden:true,gain_db:-2,clips:[{...clip('c'),effects:{...effects(),gain_db:-6}}]}];
+ const resources=[{id:'r',kind:'video',path:join(process.cwd(),'drawing.png'),draw_document:{canvas:{fps:{num:30,den:1}},audio_bindings:[{resource_id:'sound',at_frame:0,duration_frames:24,source_in:0,stream_index:2,gain_db:-3}]},metadata:{streams:[{index:0,codec_type:'video'}]}},{id:'sound',kind:'audio',path:join(process.cwd(),'sound.wav'),metadata:{duration:2,streams:[{index:2,codec_type:'audio'}]}}];
+ const graph=sequenceGraph(s,resources);
+ assert.match(graph.filters.join(';'),/volume=-5dB,volume=-6dB/);assert.equal(graph.frameLayers.length,0);
+ s.tracks[0].muted=true;
+ assert.throws(()=>sequenceGraph(s,resources),/没有可渲染内容/);
+});
 let fixturePromise;
 function realFixture() {
  return fixturePromise ??= (async()=>{
@@ -27,6 +44,29 @@ async function pixelStat(path,at,x=150,y=80) {
  const text=await runTool('ffmpeg',['-v','error','-ss',String(at),'-i',path,'-frames:v','1','-vf',`crop=16:16:${x}:${y},signalstats,metadata=print:file=-`,'-f','null','-']);
  return Object.fromEntries(['YAVG','UAVG','VAVG'].map(key=>[key,Number(text.match(new RegExp(key+'=([\\d.]+)'))?.[1])]));
 }
+
+test('all code engines share still/movie transforms and declared source audio',{timeout:180000},async()=>{
+ const fixture=await realFixture();
+ const sources={
+  hyperframes:'<!doctype html><html><head><style>body{margin:0}#root{position:relative;width:320px;height:180px}#box{position:absolute;left:140px;top:70px;width:40px;height:40px;background:#ff8800}</style></head><body><div id="root" data-composition-id="root" data-width="320" data-height="180" data-duration="0.4"><div id="box"></div></div><script>const tl=gsap.timeline({paused:true});tl.to("#box",{x:0,duration:0.4});window.__timelines={root:tl};</script></body></html>',
+  remotion:'import React from "react";export default ()=> <div style={{position:"absolute",left:140,top:70,width:40,height:40,background:"#ff8800"}}/>;',
+  motion_canvas:'import {makeScene2D,Rect} from "@motion-canvas/2d";import {waitFor} from "@motion-canvas/core";export default makeScene2D(function* (view){view.add(<Rect width={40} height={40} fill="#ff8800"/>);yield* waitFor(0.4);});'
+ };
+ for(const [engine,source] of Object.entries(sources)){
+  const document={schema_version:1,canvas:{width:320,height:180,fps:{num:30,den:1}},duration_frames:12,sources:[{id:'source',engine,source}],nodes:[{id:'scene',kind:'source',source_id:'source',from:0,duration:12,transform:{x:0,y:0}}],audio_bindings:[{resource_id:'r',at_frame:0,duration_frames:12,source_in:0,stream_index:2,gain_db:0}]};
+  const sequence=seq(),visual={...clip('picture'),resource_id:'picture',duration:12,source_out:{value:400000000,scale:1e9},effects:{...effects(),gain_db:-12,parameter_keyframes:[{kind:'移动',frame:0,duration:12,x:80,y:0},{kind:'旋转',frame:0,duration:12,value:90}]}};
+  sequence.tracks=[{id:'base',kind:'video',clips:[{...clip('base'),duration:12,source_out:visual.source_out}]},{id:'code',kind:'code',clips:[visual]}];
+  const resources=[...fixture.resources,{id:'picture',kind:'video',name:engine,path:join(fixture.root,engine+'.source'),sha256:engine,draw_document:document,metadata:{duration:.4,streams:[{index:0,codec_type:'video'}]}}];
+  const output=join(fixture.root,'code-'+engine);
+  await renderSequence({sequence,resources,output_dir:output,content_version:'code-'+engine});
+  await renderSequenceFrame({sequence,resources,frame:6,output_dir:join(output,'still'),content_version:'code-'+engine});
+  const movie=join(output,'program.mp4'),a=await pixelStat(movie,.2,195,80),b=await pixelStat(join(output,'still','frame.png'),0,195,80);
+  for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(a[key]-b[key])<8,`${engine} ${key} still/movie mismatch: ${a[key]} ${b[key]}`);
+  const after=await audioStat(movie,'lavfi.astats.Overall.RMS_level',.1,.15);
+  // An audible sine at about -21 dBFS with the code clip at -12 dB must remain audible near -33 dBFS.
+  assert(Number.isFinite(after)&&after< -28&&after> -39,`${engine} code audio missing or ignored gain: ${after}`);
+ }
+});
 test('composition scopes mute/solo and keeps actual stream indices and tempo',()=>{
  const s=seq();s.tracks=[{id:'v',kind:'video',clips:[clip('v')]},{id:'a',kind:'audio',muted:true,clips:[clip('a',1)]},{id:'b',kind:'audio',clips:[{...clip('b',4),speed:2}]}];
  const graph=sequenceGraph(s,[{id:'r',kind:'video',path:join(process.cwd(),'example.mp4'),metadata:{duration:4,streams:[{index:0,codec_type:'video'},{index:1,codec_type:'audio'},{index:4,codec_type:'audio'}]}}]);

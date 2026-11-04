@@ -15,6 +15,15 @@ const html='<!doctype html><html><head><style>body{margin:0;background:#101820}#
 const react='import React from "react";import {AbsoluteFill,useCurrentFrame} from "remotion";export default function Scene(){const frame=useCurrentFrame();return <AbsoluteFill style={{background:"#101820"}}><div style={{position:"absolute",top:60,left:frame*6,width:40,height:40,background:"#ff8800"}}/><span style={{color:"white"}}>VAC draw</span></AbsoluteFill>}';
 export const composition=(engine='hyperframes')=>{const source=engine==='hyperframes'?html:react;return {id:'drawing',name:'Draw test',engine,source,width:320,height:180,fps:{num:30,den:1},duration_frames:30,revision:1,content_version:createHash('sha256').update(source).digest('hex')};};
 
+test('Motion Canvas source uses native scene animation and supports backwards seek',async()=>{
+ const {openUnifiedDraw}=await import('../src/unified-draw.mjs');
+ const source='import {makeScene2D,Rect} from "@motion-canvas/2d";import {createRef} from "@motion-canvas/core";export default makeScene2D(function* (view){const box=createRef();view.add(<Rect ref={box} width={40} height={40} fill="#ff8800" x={-100}/>);yield* box().position.x(100,1);});';
+ const c={...composition(),engine:'motion_canvas',source};
+ assert.equal((await checkDraw({composition:c,deterministic:true})).valid,true);
+ const host=await openUnifiedDraw({document:{schema_version:1,canvas:{width:320,height:180,fps:{num:30,den:1}},duration_frames:30,sources:[{id:'motion',engine:'motion_canvas',source}],nodes:[{id:'scene',kind:'source',source_id:'motion',from:0,duration:30,transform:{x:0,y:0,width:320,height:180}}]},output_dir:join(process.env.VAC_TEST_OUTPUT,'draw','motion-canvas')});
+ try {const a=await host.seek({frame:0}),b=await host.seek({frame:20}),back=await host.seek({frame:0});assert.notDeepEqual(a.png,b.png);assert.deepEqual(a.png,back.png);} finally {await host.close();}
+});
+
 test('imported JPEG prepares without transcoding the original and preserves literal percent filenames',async()=>{
  assert(process.env.VAC_TEST_OUTPUT,'Use TestWorkspace');
  const root=join(process.env.VAC_TEST_OUTPUT,'draw','image-compat');await mkdir(root,{recursive:true});

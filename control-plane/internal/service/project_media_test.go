@@ -128,13 +128,33 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := project.DrawDocument{SchemaVersion: 1, Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 24, Den: 1}}, DurationFrames: 240, Sources: []project.DrawSource{{ID: "react", Engine: "remotion", Source: `import React from 'react'; export default ()=> <div style={{position:'absolute',inset:0,background:'blue'}}/>;`}}, Nodes: []project.DrawNode{{ID: "scene", Kind: "source", SourceID: "react", Duration: 240}}}
+	audioPath := filepath.Join(root, "code-tone.wav")
+	mediaTool(t, "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=10", audioPath)
+	current, err = svc.ImportProjectResource(ctx, pid, audioPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audioID string
+	for _, resource := range current.Document.Resources {
+		if resource.Source.OriginalPath == audioPath {
+			audioID = resource.ID
+		}
+	}
+	if audioID == "" {
+		t.Fatal("audio fixture not imported")
+	}
+	doc := project.DrawDocument{SchemaVersion: 1, Goal: "蓝色画面及本条引用的声音", Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 24, Den: 1}}, DurationFrames: 240, Sources: []project.DrawSource{{ID: "react", Engine: "remotion", Source: `import React from 'react'; export default ()=> <div style={{position:'absolute',inset:0,background:'blue'}}/>;`}}, Nodes: []project.DrawNode{{ID: "scene", Kind: "source", SourceID: "react", Duration: 240}}, AudioBindings: []project.DrawAudioBinding{{ResourceID: audioID, DurationFrames: 240}}}
 	current, err = svc.SaveDrawComposition(ctx, pid, service.DrawSaveRequest{Session: current.ID, ExpectedRevision: current.Revision, IdempotencyKey: "draw", Composition: project.DrawComposition{ID: "still", Name: "Still", Document: &doc}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	c := current.Document.DrawCompositions[0]
-	view, err = svc.ImportDrawComposition(ctx, "human:window", pid, c.ID, service.DrawImportRequest{Session: current.ID, ContentVersion: c.ContentVersion, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "draw-import", SequenceID: seq.ID, SourceMode: "snapshot", TargetTrackID: seq.Tracks[0].ID, At: 60})
+	view, err = svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: current.ID, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "code-track", Operations: []project.Operation{{Type: "track.add", Kind: "code"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	codeTrackID := view.Sequence.Tracks[len(view.Sequence.Tracks)-1].ID
+	view, err = svc.ImportDrawComposition(ctx, "human:window", pid, c.ID, service.DrawImportRequest{Session: current.ID, ContentVersion: c.ContentVersion, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "draw-import", SequenceID: seq.ID, SourceMode: "snapshot", TargetTrackID: codeTrackID, At: 60})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,8 +192,26 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil || part.Frames != 60 || part.StartFrame != 60 || part.Cached {
 		t.Fatalf("bounded drawing segment: %+v %v", part, err)
 	}
+	segmentPath, err := svc.SequenceSegmentPath(ctx, pid, seq.ID, view.ContentVersion, part.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	levels, err := exec.Command("ffmpeg", "-hide_banner", "-i", segmentPath, "-af", "volumedetect", "-vn", "-f", "null", "-").CombinedOutput()
+	if err != nil || !strings.Contains(string(levels), "mean_volume:") || strings.Contains(string(levels), "mean_volume: -inf") {
+		t.Fatalf("code segment lost declared audio: %s %v", levels, err)
+	}
 	if cached, err := svc.CreateSequenceSegment(ctx, pid, seq.ID, segmentReq); err != nil || !cached.Cached || cached.Key != part.Key {
 		t.Fatalf("segment cache not reused: %+v %v", cached, err)
+	}
+	code := view.Sequence.Tracks[len(view.Sequence.Tracks)-1].Clips[0]
+	description := "只更新描述，保留同一源码与参数"
+	view, err = svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: current.ID, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "description-only", Operations: []project.Operation{{Type: "code.script", ClipIDs: []string{code.ID}, Description: &description, CodeRevision: code.Code.Revision, Unlinked: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segmentReq.ExpectedRevision, segmentReq.ContentVersion = view.Sequence.Revision, view.ContentVersion
+	if cached, err := svc.CreateSequenceSegment(ctx, pid, seq.ID, segmentReq); err != nil || !cached.Cached || cached.Key != part.Key {
+		t.Fatalf("description invalidated unchanged segment: %+v %v", cached, err)
 	}
 	oldVersion := view.ContentVersion
 	view, err = svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: current.ID, ExpectedRevision: view.Sequence.Revision, IdempotencyKey: "later-segment", Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: session.Document.Resources[0].ID, At: 600}}})

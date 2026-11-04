@@ -13,7 +13,7 @@ import {runTool,probeMedia} from './media.mjs';
 import {guardRemotion,listenDrawServer} from './draw-network.mjs';
 import {imageLayers,isImageReference,checkedImageAssets,prepareImages,installImages,hyperframesImageSource,remotionImageEntry} from './draw-images.mjs';
 const require=createRequire(import.meta.url), runtimeRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-export const drawVersions={hyperframes:'0.8.193',remotion:'4.0.538'};
+export const drawVersions={hyperframes:'0.8.193',remotion:'4.0.538',motion_canvas:'3.17.2'};
 export function drawBrowser(engine){
  const explicit=process.env.VAC_DRAW_BROWSER;
  if(explicit){if(!existsSync(explicit))throw Error('Configured draw browser does not exist: '+explicit);return explicit;}
@@ -33,12 +33,12 @@ export function drawBrowser(engine){
 }
 export function validateDraw(c){
  const fps=c.fps?.num/c.fps?.den;
- if(!['hyperframes','remotion'].includes(c.engine)||typeof c.source!=='string'||!c.source.length||Buffer.byteLength(c.source)>96*1024||
+ if(!['hyperframes','remotion','motion_canvas'].includes(c.engine)||typeof c.source!=='string'||!c.source.length||Buffer.byteLength(c.source)>96*1024||
  ![c.fps?.num,c.fps?.den].every(n=>Number.isInteger(n)&&n>0)||![c.width,c.height,c.duration_frames].every(Number.isInteger)||c.width<16||c.width>3840||c.height<16||c.height>2160||c.width%2||c.height%2||
  !Number.isFinite(fps)||fps<1||fps>120||c.duration_frames<1||c.duration_frames>18000||c.duration_frames/fps>300)throw Error('Invalid draw specification');
  return fps;
 }
-function auditScript(code,deterministic=false,imageIDs=[]){
+function auditScript(code,deterministic=false,imageIDs=[],engine='remotion'){
  const ast=parse(code,{ecmaVersion:'latest',sourceType:'module'});
  const names=new Set(),allowed=new Set(imageIDs);
  const findImageParams=node=>{
@@ -66,7 +66,7 @@ function auditScript(code,deterministic=false,imageIDs=[]){
   if(deterministic&&node.type==='MemberExpression'&&node.object?.name==='Math'&&(node.property?.name==='random'||node.property?.value==='random'))throw Error('Use deterministic seeded randomness instead of Math.random');
   if(node.type==='ImportExpression')throw Error('Dynamic imports are not allowed in draw source');
   if(node.type==='ImportDeclaration'){
-   if(!['react','remotion'].includes(node.source.value))throw Error('Only react and remotion imports are available');
+   if(!(engine==='motion_canvas'?['@motion-canvas/core','@motion-canvas/2d']:['react','remotion']).includes(node.source.value))throw Error('Only react and remotion imports are available');
    if(node.source.value==='remotion'&&node.specifiers.some(s=>s.type==='ImportNamespaceSpecifier'||['Audio','Video','OffthreadVideo'].includes(s.imported?.name)))throw Error('Use the editing timeline for external audio/video media');
   }
   if(node.type==='ExportAllDeclaration'||node.type==='ExportNamedDeclaration'&&node.source)throw Error('Source re-exports are not supported');
@@ -78,8 +78,8 @@ function auditScript(code,deterministic=false,imageIDs=[]){
 export async function checkDraw({composition:c,deterministic=false}){
  if(c.document){const {validateUnified}=await import('./unified-draw.mjs');await validateUnified(c.document);return {valid:true,engine:'unified',runtime_version:'vac-unified-1',content_version:c.content_version,checks:['source','graph','timebase','local-resources','shared-alpha']};}
  validateDraw(c);const imageIDs=imageLayers(c).map(image=>image.id);
- if(c.engine==='remotion'){
-  const js=await transform(c.source,{loader:'tsx',jsx:'automatic',target:'es2022',tsconfigRaw:{compilerOptions:{verbatimModuleSyntax:true}}});auditScript(js.code.replace(/from\s*["']react\/jsx-runtime["']/g,'from "react"'),deterministic,imageIDs);
+ if(c.engine==='remotion'||c.engine==='motion_canvas'){
+  const js=await transform(c.source,{loader:'tsx',jsx:'automatic',target:'es2022',tsconfigRaw:{compilerOptions:{verbatimModuleSyntax:true}}});auditScript(js.code.replace(/from\s*["']react\/jsx-runtime["']/g,c.engine==='motion_canvas'?'from "@motion-canvas/2d"':'from "react"'),deterministic,imageIDs,c.engine);
   if(!/export\s+default\b/.test(c.source))throw Error('Export one default React composition component');
  }else{
   if(!/<html\b/i.test(c.source)||!/<head\b/i.test(c.source)||!/<body\b/i.test(c.source))throw Error('HyperFrames requires a complete HTML document');
@@ -148,6 +148,8 @@ async function renderHyperframes(c,stage,browserPath,prepared){
  });
 }
 export async function renderDraw(input){
+ if(input.composition.engine==='motion_canvas'&&!input.composition.document){const c=input.composition;const {renderUnifiedDraw}=await import('./unified-draw.mjs');return renderUnifiedDraw({...input,composition:{...c,document:{schema_version:1,canvas:{width:c.width,height:c.height,fps:c.fps},duration_frames:c.duration_frames,sources:[{id:'source',engine:c.engine,source:c.source}],nodes:[{id:'scene',kind:'source',source_id:'source',from:0,duration:c.duration_frames,transform:{x:0,y:0}}]}}});}
+
  if(input.composition.document){const {renderUnifiedDraw}=await import('./unified-draw.mjs');return renderUnifiedDraw(input);}
  const c=input.composition;await checkDraw(input);
  const assets=await checkedImageAssets(input,digest);

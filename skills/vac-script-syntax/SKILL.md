@@ -55,3 +55,8 @@ The user permits effects and forced subtitles to be baked into video. Premiere X
 The current workbench render includes source audio, optional subtitles and configured per-segment TTS. Voice generation must use the configured provider and global service settings; never claim that speech was produced from a stored flag alone. The rendered Premiere media contains the resulting mix. See [the implementation guide](../../docs/架构与功能详解.md#scripts) and [interface contracts](../../docs/接口文档.md).
 
 When extending this language, update parser, highlighting, grammar examples and export together. Unsupported or malformed blocks must remain visible errors, never silently degrade into ordinary narration or unfulfilled promises.
+
+
+## Code-clip context extension
+
+The existing paragraph language above remains unchanged for ordinary scripts. A selected code clip uses an instance-bound description: blank lines do not create new clips. Its workbench additionally registers 音量、移动、旋转 named-parameter blocks, using the forms and exact time/units in [the tool contract](../video-use/vac/tool-contracts.md#代码条参数语法). The Go timeline parser owns validation and stores clip-local integer frames; the editor only formats sequence-time text and highlights known blocks. Parameter edits use code.script and take effect without an Agent run. Plain description changes require explicit regeneration; preserve original code until validated replacement succeeds. No extra human finalization or approval stage is added.

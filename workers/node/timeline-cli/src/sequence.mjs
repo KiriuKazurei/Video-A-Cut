@@ -1,3 +1,5 @@
+import {codeAudioTracks} from './code-audio.mjs';
+import {parameterValue,parameterExpression} from './code-parameters.mjs';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -41,8 +43,9 @@ export function selectedTracks(sequence) {
  const group = sequence.scope_group;
  const tracks = sequence.tracks.filter(t => !group || (group === 'original' ? !t.group_id : t.group_id === group));
  const solo = new Set(tracks.filter(t => t.solo).map(t => t.kind));
- return tracks.filter(t => !t.hidden && !(t.kind === 'audio' && t.muted) && (!solo.has(t.kind) || t.solo));
+ return tracks.filter(t => (!t.hidden || t.kind==='code'&&!t.muted) && !(t.kind === 'audio' && t.muted) && (!solo.has(t.kind) || t.solo));
 }
+export function visualNeighbors(tracks,track){return tracks.filter(t=>t.id===track.id||track.visual_group&&track.visual_group===t.visual_group).flatMap(t=>t.clips).sort((a,b)=>a.at-b.at);}
 const tempo = speed => { const filters = []; while (speed > 2) { filters.push('atempo=2'); speed /= 2; } while (speed < .5) { filters.push('atempo=0.5'); speed *= 2; } filters.push(`atempo=${n(speed)}`); return filters.join(','); };
 
 // The same immutable graph is used for the program monitor and final export.
@@ -51,7 +54,7 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
  const still=frame!==undefined;
  const fps = sequence.fps.num / sequence.fps.den, rate = `${sequence.fps.num}/${sequence.fps.den}`;
  if (!(fps > 0 && fps <= 240) || !(sequence.width > 0 && sequence.height > 0)) throw Error('序列参数无效');
- const tracks = selectedTracks(sequence), clips = tracks.flatMap(t => t.clips);
+ const chosen=selectedTracks(sequence);const tracks=[...chosen,...(still?[]:codeAudioTracks(sequence,resources,chosen))], clips=tracks.flatMap(t=>t.clips);
  const frames = Math.max(0, ...clips.map(c => c.at + c.duration));
  if (frames < 1) throw Error('当前轨道范围没有可渲染内容');
  if(still&&(!Number.isSafeInteger(frame)||frame<0||frame>=frames))throw Error('预览帧超出序列范围');
@@ -62,11 +65,11 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
  if(window)filters[0]=`color=c=black:s=${sequence.width}x${sequence.height}:r=${rate}:d=${n((window.end-window.start)/fps)},format=rgba,setpts=PTS+${window.start}[base]`;
  if(still){filters[0]=`color=c=black:s=${sequence.width}x${sequence.height}:r=${rate}:d=${n(1/fps)},format=rgba,setpts=PTS+${frame}[base]`;}
  for (const track of tracks) {
-  if(still&&track.kind==='audio')continue;
-  const ordered = [...track.clips].sort((a,b) => a.at - b.at);
+  if(still&&track.kind==='audio'||track.kind==='code'&&track.hidden)continue;
+  const ordered = [...track.clips].sort((a,b) => a.at - b.at),neighbors=visualNeighbors(tracks,track);
   for (let ci = 0; ci < ordered.length; ci++) {
    const clip = ordered[ci], resource = resources.find(r => r.id === clip.resource_id);
-   const nextClip=ordered[ci+1],tailFrames=nextClip&&nextClip.at===clip.at+clip.duration?(nextClip.effects.transition||0):0;
+   const ni=neighbors.findIndex(c=>c.id===clip.id),previous=neighbors[ni-1],nextClip=neighbors[ni+1],tailFrames=nextClip&&nextClip.at===clip.at+clip.duration?(nextClip.effects.transition||0):0;
    if(still&&(frame<clip.at||frame>=clip.at+clip.duration+tailFrames))continue;
    if(window&&(clip.at>=window.end||clip.at+clip.duration+tailFrames<=window.start))continue;
    if (!resource || !isAbsolute(resource.path) || /^[a-z]+:\/\//i.test(resource.path)) throw Error('片段资源缺失或不属于当前工程');
@@ -74,12 +77,12 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
    const e = clip.effects, len = clip.duration / fps, at = clip.at / fps;
    if (track.kind === 'subtitle') { cues.push({start: at,end: at + len,text: clip.text,font: clip.font,size: clip.font_size || 36}); continue; }
    const available = resource.metadata?.streams ?? [];
-   if (resource.kind !== 'image' && !available.some(s => s.index === clip.stream_index && s.codec_type === track.kind)) throw Error(`源流 ${clip.stream_index} 不属于 ${track.kind}`);
-   const next = ordered[ci + 1], transition = e.transition / fps;
-   if (transition && (!ci || ordered[ci - 1].at + ordered[ci - 1].duration !== clip.at)) throw Error('交叉溶解需要前一个相邻片段');
+   if (resource.kind !== 'image' && !available.some(s => s.index === clip.stream_index && s.codec_type === (track.kind==='code'?'video':track.kind))) throw Error(`源流 ${clip.stream_index} 不属于 ${track.kind}`);
+   const next = nextClip, transition = e.transition / fps;
+   if (transition && (!previous || previous.at + previous.duration !== clip.at)) throw Error('交叉溶解需要前一个相邻片段');
    const tail = next && next.at === clip.at + clip.duration ? (next.effects.transition || 0) / fps : 0;
    if (tail && resource.kind !== 'image' && seconds(clip.source_out) + tail * clip.speed > Number(resource.metadata.duration) + 1e-6) throw Error('交叉溶解的前片段没有足够的源尾部，请缩短源出点');
-   const seek=window&&track.kind==='video'&&resource.kind!=='image'&&!resource.draw_document?seconds(clip.source_in)+Math.max(0,window.start-clip.at)/fps*clip.speed:0;
+   const seek=window&&(track.kind==='video'||track.kind==='code')&&resource.kind!=='image'&&!resource.draw_document?seconds(clip.source_in)+Math.max(0,window.start-clip.at)/fps*clip.speed:0;
    if (resource.draw_document) {const rate=resource.draw_document.canvas.fps.num/resource.draw_document.canvas.fps.den;args.push('-itsoffset',n((resource.draw_start_frame||0)/rate),'-framerate',String(rate/(resource.draw_frame_step||1)),'-start_number',String((resource.draw_start_frame||0)/(resource.draw_frame_step||1)));}
    else if (resource.kind === 'image') args.push('-loop','1','-framerate',rate);
    else if(still)args.push('-ss',n(seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed));
@@ -111,10 +114,13 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
      const elapsed=frame-clip.at-start,span=end-start;
      const fadeIn=affected&&e.fade_in?Math.min(1,elapsed/Math.min(e.fade_in,span)):1;
      const fadeOut=affected&&e.fade_out?Math.max(0,Math.min(1,(span-elapsed)/Math.min(e.fade_out,span))):1;
-     frameLayers.push({clip_id:clip.id,resource_id:clip.resource_id,stream_index:clip.stream_index,source_time:seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed,width,height,x:fx.x||0,y:fx.y||0,crop:[left,top,right,bottom],brightness:fadeIn*fadeOut,fade_color:e.fade_color==='white'?1:0,opacity:transition&&start===0?Math.min(1,(frame-clip.at)/(transition*fps)):1});
+     frameLayers.push({clip_id:clip.id,resource_id:clip.resource_id,stream_index:clip.stream_index,source_time:seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed,width,height,x:parameterValue(fx,'移动','x',frame-clip.at,fx.x||0),y:parameterValue(fx,'移动','y',frame-clip.at,fx.y||0),rotation:parameterValue(fx,'旋转','value',frame-clip.at,fx.rotation||0),crop:[left,top,right,bottom],brightness:fadeIn*fadeOut,fade_color:e.fade_color==='white'?1:0,opacity:transition&&start===0?Math.min(1,(frame-clip.at)/(transition*fps)):1});
     }
     const timing=still?`trim=duration=${n(Math.max(2/fps,2/fps*clip.speed))},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate},setpts=PTS+${frame-clip.at-start}`:`trim=start=${n(seconds(clip.source_in) + start/fps*clip.speed-seek)}:end=${n(seconds(clip.source_in) + end/fps*clip.speed-seek)},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate}`;
     let chain = `[${source}]${timing},crop=w='iw*${n(1-left-right)}':h='ih*${n(1-top-bottom)}':x='iw*${n(left)}':y='ih*${n(top)}',scale=w=${width}:h=${height}:force_original_aspect_ratio=decrease,setsar=1,format=rgba`;
+    const clock=still?String(frame-clip.at):`(t*${fps}+${start})`;
+    const rotation=parameterExpression(fx,'旋转','value',clock,fx.rotation||0);
+    if(rotation!=='0')chain+=`,rotate='(${rotation})*PI/180':ow='ceil(hypot(iw,ih)/2)*2':oh='ceil(hypot(iw,ih)/2)*2':c=none`;
     // FFmpeg treats a zero fade start as the first input PTS. A seeked still
     // already has a clip-local PTS, so retain the original zero-time origin.
     if(window)chain+=`,setpts=PTS+${start-partStart}`;
@@ -123,7 +129,7 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
     if (affected && e.fade_out) chain += `,fade=t=out:st=${n(Math.max(fadeOrigin,(partEnd-partStart-e.fade_out)/fps))}:d=${n(Math.min(e.fade_out,partEnd-partStart)/fps)}:color=${e.fade_color || 'black'}`;
     if (transition && partStart === 0) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(transition)}:alpha=1`;
     chain += still?`,setpts=PTS-STARTPTS+${frame}[${name}]`:window?`,setpts=PTS-STARTPTS+${clip.at+start}[${name}]`:`,setpts=PTS+${clip.at+start}[${name}]`;
-    filters.push(chain,`[${canvas}][${name}]overlay=x='(W-w)/2+${n(fx.x || 0)}':y='(H-h)/2+${n(fx.y || 0)}':eof_action=pass:enable='gte(t,${n(at+start/fps)})*lt(t,${n(at+end/fps)})'[${output}]`);canvas=output;
+    filters.push(chain,`[${canvas}][${name}]overlay=x='(W-w)/2+${still?parameterValue(fx,'移动','x',frame-clip.at,fx.x||0):parameterExpression(fx,'移动','x',`((t-${at})*${fps})`,fx.x||0)}':y='(H-h)/2+${still?parameterValue(fx,'移动','y',frame-clip.at,fx.y||0):parameterExpression(fx,'移动','y',`((t-${at})*${fps})`,fx.y||0)}':eof_action=pass:enable='gte(t,${n(at+start/fps)})*lt(t,${n(at+end/fps)})'[${output}]`);canvas=output;
    }
   }
  }
@@ -162,10 +168,10 @@ export async function renderSequenceFrame(input,{run=runTool,drawFrame}={}) {
  await mkdir(output,{recursive:true});
  const resources=[...input.resources];
  for(const track of selectedTracks(sequence)){
-  if(track.kind!=='video')continue;
+  if(track.kind!=='video'&&track.kind!=='code')continue;
   const ordered=[...track.clips].sort((a,b)=>a.at-b.at);
   for(const [i,clip] of ordered.entries()){
-   const next=ordered[i+1],tail=next&&next.at===clip.at+clip.duration?(next.effects.transition||0):0;
+   const neighbors=visualNeighbors(selectedTracks(sequence),track),next=neighbors[neighbors.findIndex(c=>c.id===clip.id)+1],tail=next&&next.at===clip.at+clip.duration?(next.effects.transition||0):0;
    if(frame<clip.at||frame>=clip.at+clip.duration+tail)continue;
    const r=resources.find(r=>r.id===clip.resource_id);if(!r?.draw_document)continue;
    const doc=r.draw_document,sourceTime=seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed;

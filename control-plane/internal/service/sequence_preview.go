@@ -238,7 +238,7 @@ func sequenceTracks(seq project.Sequence) []project.Track {
 		}
 	}
 	return slices.DeleteFunc(tracks, func(t project.Track) bool {
-		return t.Hidden || (t.Kind == "audio" && t.Muted) || (solo[t.Kind] && !t.Solo)
+		return (t.Hidden && (t.Kind != "code" || t.Muted)) || (t.Kind == "audio" && t.Muted) || (solo[t.Kind] && !t.Solo)
 	})
 }
 func (s *Service) sequenceSources(ctx context.Context, projectID string, seq project.Sequence) ([]sequenceSource, error) {
@@ -249,6 +249,7 @@ func (s *Service) sequenceSources(ctx context.Context, projectID string, seq pro
 		}
 	}
 	out := []sequenceSource{}
+	audioSources := map[string]sequenceSource{}
 	for id := range ids {
 		r, e := s.ProjectResource(projectID, id)
 		if e != nil {
@@ -270,6 +271,16 @@ func (s *Service) sequenceSources(ctx context.Context, projectID string, seq pro
 				return nil, e
 			}
 			doc := c.UnifiedDocument()
+			for _, a := range doc.AudioBindings {
+				audio, e := s.ProjectResource(projectID, a.ResourceID)
+				if e != nil {
+					return nil, e
+				}
+				if audio.Missing || audio.Changed || audio.Removed || !slices.Contains(project.Streams(audio, "audio"), a.StreamIndex) || (a.ResourceSHA != "" && a.ResourceSHA != audio.Source.SHA256) {
+					return nil, model.ErrConflict
+				}
+				audioSources[a.ResourceID] = sequenceSource{ID: audio.ID, Name: audio.Name, Kind: audio.Kind, Path: audio.Source.OriginalPath, SHA256: audio.Source.SHA256, Metadata: audio.Metadata}
+			}
 			out = append(out, sequenceSource{ID: r.ID, Name: r.Name, Kind: "video", SHA256: c.ContentVersion, Metadata: map[string]any{"duration": c.FPS.Seconds(c.DurationFrames), "streams": []map[string]any{{"index": 0, "codec_type": "video"}}}, Draw: &doc, Assets: assets})
 			continue
 		}
@@ -286,6 +297,11 @@ func (s *Service) sequenceSources(ctx context.Context, projectID string, seq pro
 			}
 		}
 		out = append(out, sequenceSource{ID: r.ID, Name: r.Name, Kind: r.Kind, Path: path, SHA256: sha, Metadata: r.Metadata})
+	}
+	for id, a := range audioSources {
+		if !ids[id] {
+			out = append(out, a)
+		}
 	}
 	slices.SortFunc(out, func(a, b sequenceSource) int {
 		if a.ID < b.ID {

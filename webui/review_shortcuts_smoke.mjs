@@ -2,6 +2,7 @@
 // recorded local fixtures; authoritative editing/rendering is covered in Go/native.
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
+import {join} from 'node:path';
 const base=process.argv[2]??'http://127.0.0.1:8816';
 const {chromium}=await import(process.env.PLAYWRIGHT_CORE??'playwright-core');
 let page;
@@ -72,5 +73,50 @@ try {
  const video=page.getByLabel('节目播放器',{exact:true});await video.waitFor();
  await page.waitForFunction(()=>{const v=document.querySelector('video[aria-label="节目播放器"]');return v&&!v.classList.contains('is-loading')&&v.readyState>=2;});
  assert.equal(await page.getByRole('img',{name:'当前帧预览',exact:true}).count(),0);assert.deepEqual(errors,[]);ok('completed movie replaces the still after its target frame is ready');
+ // Exercise code clips through the same editor/workbench fixture, without a model call.
+ const workspace=await (await page.request.get(base+'/api/workspace')).json(),codeRuns=[],created=[];
+ const prototype=structuredClone(view.sequence.tracks[0].clips[0]);
+ const makeCode=(id,name,at)=>({...prototype,id,name,at,duration:60,link_id:undefined,source_out:{value:96000,scale:48000},code:{description:'原画面',generated_description:'原画面',revision:1,content_version:id+'-source',description_state:'ready'}});
+ view.sequence.tracks.push({id:'code-track',kind:'code',name:'代码画面',height:96,locked:false,hidden:false,muted:false,solo:false,gain_db:0,clips:[makeCode('code-late','后画面',90),makeCode('code-first','先画面',0)]});
+ workspace.document.sequences=[view.sequence];workspace.document.workspace.right_collapsed=false;
+ await page.route('**/api/workspace',route=>route.fulfill({json:workspace}));
+ await page.route('**/api/workspace/state',route=>route.fulfill({json:workspace}));
+ await page.route('**/api/projects/review-project/visible-set',route=>route.fulfill({json:{confirmed:true,sha256:'code-visible',media:[]}}));
+ await page.route(/\/api\/skill-runs(?:\?[^/]*)?$/,async route=>{
+  if(route.request().method()==='POST'){const request=route.request().postDataJSON();created.push(request);const run={...request,id:'code-run-'+created.length,state:'queued',version:1,owner:'human:window'};codeRuns.push(run);return route.fulfill({json:run});}
+  return route.fulfill({json:codeRuns});
+ });
+ await page.route('**/api/projects/review-project/sequences/seq-review/commands',async route=>{
+  const request=route.request().postDataJSON();writes.push(request);
+  for(const op of request.operations){const target=view.sequence.tracks.flatMap(t=>t.clips).find(c=>c.id===op.clip_ids?.[0]);
+   if(op.type==='code.script'){target.code.description=op.description.split('\n').filter(line=>!line.startsWith('{')).join('\n').trim();target.code.revision++;}
+   if(op.type==='code.job')target.code.run_id=op.code_run_id;
+  }
+  view.sequence.revision++;workspace.document.sequences=[view.sequence];await route.fulfill({json:view});
+ });
+ await page.reload();await page.locator('[data-clip-id="code-late"]').click();await page.locator('[data-clip-id="code-first"]').click({modifiers:['Control']});
+ const first=page.getByRole('textbox',{name:'代码条脚本 1 先画面',exact:true}),second=page.getByRole('textbox',{name:'代码条脚本 2 后画面',exact:true});
+ await first.waitFor();assert.match(await first.inputValue(),/时间:00:00:00:00/);assert.match(await second.inputValue(),/时间:00:00:03:00/);
+ const codeRow=await page.locator('[data-track-id="code-track"]').boundingBox(),scrollArea=await page.locator('.timeline-scroll').boundingBox();
+ assert(codeRow.y>=scrollArea.y&&codeRow.y+codeRow.height<=scrollArea.y+scrollArea.height,'opening the script dock must keep the selected code track in view');
+ assert.equal(await page.locator('[data-clip-id="code-first"] .clip-thumbnails img').count(),1);assert.equal(await page.locator('[data-clip-id="code-first"] .clip-gain-band').count(),1);
+ assert.notEqual(await page.locator('[data-clip-id="code-first"]').evaluate(n=>getComputedStyle(n).borderColor),await page.locator('[data-clip-id="code-late"]').evaluate(n=>getComputedStyle(n).borderColor));
+ for(const [id,title] of [['code-first','1 · 先画面'],['code-late','2 · 后画面']]){
+  const marker=page.locator(`[data-clip-id="${id}"] .clip-code-color`);
+  assert.equal(await marker.count(),1,'code identity must stay visible inside the white selection outline');
+  const stripe=await marker.boundingBox(),clipBox=await page.locator(`[data-clip-id="${id}"]`).boundingBox();
+  assert(stripe.width>=3&&stripe.height>20&&stripe.x>=clipBox.x+2,'selection must not cover the color stripe');
+  assert.equal(await marker.evaluate(n=>getComputedStyle(n).backgroundColor),await page.locator('.code-script-card').filter({hasText:title}).evaluate(n=>getComputedStyle(n).borderColor));
+ }
+ ok('code multiselection shows ordered, colored scripts with thumbnails and gain lines');
+ await first.fill((await first.inputValue()).replace('原画面','绿色背景'));
+ await page.waitForFunction(()=>document.body.innerText.includes('代码条脚本'));
+ await page.waitForTimeout(1100);assert(writes.some(w=>w.operations.some(op=>op.type==='code.script'&&op.clip_ids[0]==='code-first')));
+ assert.equal(created.length,0,'editing description must not start generation');
+ await page.getByRole('button',{name:'重新生成画面',exact:true}).click();
+ await page.waitForFunction(()=>document.body.innerText.includes('等待外部Agent处理'));
+ assert.equal(created.length,1);assert.deepEqual(Object.keys(created[0].code_targets),['code-first']);assert.equal(created[0].code_action,'regenerate');
+ assert.equal(second&&await second.inputValue(),'原画面\n{音量, 时间:00:00:03:00, 增益:0dB}');
+ assert.deepEqual(errors,[]);ok('autosave preserves other scripts and generation captures only changed code clips');
  console.log(`unified editor browser smoke passed (${number} groups)`);
-} catch(error) {console.error('Browser failure state',await page?.evaluate(()=>({body:document.body.innerText.slice(-4000),url:location.href})).catch(()=>undefined));throw error;} finally {await browser.close();}
+} catch(error) {console.error('Browser failure state',await page?.evaluate(()=>({body:document.body.innerText.slice(-4000),url:location.href})).catch(()=>undefined));throw error;} finally {if(page&&process.env.VAC_TEST_OUTPUT)await page.screenshot({path:join(process.env.VAC_TEST_OUTPUT,'code-track-ui.png')}).catch(()=>{});await browser.close();}

@@ -88,52 +88,56 @@ type GainKeyframe struct {
 	DB float64 `json:"db"`
 }
 type Effects struct {
-	GainDB        float64        `json:"gain_db"`
-	GainKeyframes []GainKeyframe `json:"gain_keyframes,omitempty"`
-	FadeIn        int64          `json:"fade_in"`
-	FadeOut       int64          `json:"fade_out"`
-	FadeColor     string         `json:"fade_color,omitempty"`
-	Scale         float64        `json:"scale"`
-	X             float64        `json:"x"`
-	Y             float64        `json:"y"`
-	CropLeft      float64        `json:"crop_left"`
-	CropRight     float64        `json:"crop_right"`
-	CropTop       float64        `json:"crop_top"`
-	CropBottom    float64        `json:"crop_bottom"`
-	Transition    int64          `json:"transition"`
-	FromFrame     *int64         `json:"from_frame,omitempty"`
-	ToFrame       *int64         `json:"to_frame,omitempty"`
+	Rotation           float64             `json:"rotation,omitempty"`
+	ParameterKeyframes []ParameterKeyframe `json:"parameter_keyframes,omitempty"`
+	GainDB             float64             `json:"gain_db"`
+	GainKeyframes      []GainKeyframe      `json:"gain_keyframes,omitempty"`
+	FadeIn             int64               `json:"fade_in"`
+	FadeOut            int64               `json:"fade_out"`
+	FadeColor          string              `json:"fade_color,omitempty"`
+	Scale              float64             `json:"scale"`
+	X                  float64             `json:"x"`
+	Y                  float64             `json:"y"`
+	CropLeft           float64             `json:"crop_left"`
+	CropRight          float64             `json:"crop_right"`
+	CropTop            float64             `json:"crop_top"`
+	CropBottom         float64             `json:"crop_bottom"`
+	Transition         int64               `json:"transition"`
+	FromFrame          *int64              `json:"from_frame,omitempty"`
+	ToFrame            *int64              `json:"to_frame,omitempty"`
 }
 type Clip struct {
-	ID          string  `json:"id"`
-	ResourceID  string  `json:"resource_id"`
-	Name        string  `json:"name"`
-	StreamIndex int     `json:"stream_index"`
-	At          int64   `json:"at"`
-	Duration    int64   `json:"duration"`
-	SourceIn    Time    `json:"source_in"`
-	SourceOut   Time    `json:"source_out"`
-	Speed       float64 `json:"speed"`
-	LinkID      string  `json:"link_id,omitempty"`
-	Origin      Origin  `json:"origin"`
-	Effects     Effects `json:"effects"`
-	Text        string  `json:"text,omitempty"`
-	Font        string  `json:"font,omitempty"`
-	FontSize    int     `json:"font_size,omitempty"`
+	Code        *CodeClip `json:"code,omitempty"`
+	ID          string    `json:"id"`
+	ResourceID  string    `json:"resource_id"`
+	Name        string    `json:"name"`
+	StreamIndex int       `json:"stream_index"`
+	At          int64     `json:"at"`
+	Duration    int64     `json:"duration"`
+	SourceIn    Time      `json:"source_in"`
+	SourceOut   Time      `json:"source_out"`
+	Speed       float64   `json:"speed"`
+	LinkID      string    `json:"link_id,omitempty"`
+	Origin      Origin    `json:"origin"`
+	Effects     Effects   `json:"effects"`
+	Text        string    `json:"text,omitempty"`
+	Font        string    `json:"font,omitempty"`
+	FontSize    int       `json:"font_size,omitempty"`
 }
 type Track struct {
-	ID        string  `json:"id"`
-	Kind      string  `json:"kind"`
-	Name      string  `json:"name"`
-	Height    int     `json:"height"`
-	Locked    bool    `json:"locked"`
-	LockOwner string  `json:"lock_owner,omitempty"`
-	Muted     bool    `json:"muted"`
-	Hidden    bool    `json:"hidden"`
-	Solo      bool    `json:"solo"`
-	GroupID   string  `json:"group_id,omitempty"`
-	GainDB    float64 `json:"gain_db"`
-	Clips     []Clip  `json:"clips"`
+	VisualGroup string  `json:"visual_group,omitempty"`
+	ID          string  `json:"id"`
+	Kind        string  `json:"kind"`
+	Name        string  `json:"name"`
+	Height      int     `json:"height"`
+	Locked      bool    `json:"locked"`
+	LockOwner   string  `json:"lock_owner,omitempty"`
+	Muted       bool    `json:"muted"`
+	Hidden      bool    `json:"hidden"`
+	Solo        bool    `json:"solo"`
+	GroupID     string  `json:"group_id,omitempty"`
+	GainDB      float64 `json:"gain_db"`
+	Clips       []Clip  `json:"clips"`
 }
 type TrackGroup struct {
 	ID     string `json:"id"`
@@ -214,7 +218,7 @@ func NewSequence(name string) Sequence {
 	return s
 }
 func newTrack(kind, group string) Track {
-	return Track{ID: TimelineID("trk"), Kind: kind, Name: map[string]string{"video": "视频", "audio": "音频", "subtitle": "字幕"}[kind], Height: 64, GroupID: group, Clips: []Clip{}}
+	return Track{ID: TimelineID("trk"), Kind: kind, Name: map[string]string{"video": "视频", "audio": "音频", "subtitle": "字幕", "code": "代码"}[kind], Height: 64, GroupID: group, Clips: []Clip{}}
 }
 func clone[T any](v T) T {
 	raw, _ := json.Marshal(v)
@@ -265,9 +269,14 @@ func (d *AvpDocument) Upgrade() {
 	}
 	for i := range d.Sequences {
 		normalizeSequenceState(&d.Sequences[i].SequenceState)
+		if migrateCodeTracks(&d.Sequences[i].SequenceState, d.Resources) {
+			d.Migrated = true
+		}
 		for j := range d.Sequences[i].History {
 			normalizeSequenceState(&d.Sequences[i].History[j].Before.State)
+			migrateCodeTracks(&d.Sequences[i].History[j].Before.State, d.Resources)
 			normalizeSequenceState(&d.Sequences[i].History[j].After.State)
+			migrateCodeTracks(&d.Sequences[i].History[j].After.State, d.Resources)
 		}
 	}
 }
@@ -306,7 +315,7 @@ func (s Sequence) Validate() error {
 		return fmt.Errorf("对照轨道组不存在")
 	}
 	for _, t := range s.Tracks {
-		if !validID(t.ID) || ids[t.ID] || (t.Kind != "video" && t.Kind != "audio" && t.Kind != "subtitle") || !finite(t.GainDB) || t.Height < 40 || t.Height > 300 {
+		if !validID(t.ID) || ids[t.ID] || (t.Kind != "video" && t.Kind != "audio" && t.Kind != "subtitle" && t.Kind != "code") || !finite(t.GainDB) || t.Height < 40 || t.Height > 300 {
 			return fmt.Errorf("无效的轨道")
 		}
 		ids[t.ID] = true
@@ -322,10 +331,13 @@ func (s Sequence) Validate() error {
 				return fmt.Errorf("源时间精度必须为正数")
 			}
 			e := c.Effects
-			for _, v := range []float64{e.GainDB, e.Scale, e.X, e.Y, e.CropLeft, e.CropRight, e.CropTop, e.CropBottom} {
+			for _, v := range []float64{e.Rotation, e.GainDB, e.Scale, e.X, e.Y, e.CropLeft, e.CropRight, e.CropTop, e.CropBottom} {
 				if !finite(v) {
 					return fmt.Errorf("无效的片段效果")
 				}
+			}
+			if err := validateParameterKeyframes(e.ParameterKeyframes, c.Duration); err != nil {
+				return err
 			}
 			if err := validateGainKeyframes(e.GainKeyframes); err != nil {
 				return err
@@ -380,36 +392,41 @@ func (s Sequence) Snapshot(d *AvpDocument) EditSnapshot {
 }
 
 type Operation struct {
-	Type          string   `json:"type"`
-	TrackID       string   `json:"track_id,omitempty"`
-	TargetTrackID string   `json:"target_track_id,omitempty"`
-	ClipIDs       []string `json:"clip_ids,omitempty"`
-	ResourceID    string   `json:"resource_id,omitempty"`
-	At            int64    `json:"at,omitempty"`
-	End           *int64   `json:"end,omitempty"`
-	SourceIn      *Time    `json:"source_in,omitempty"`
-	SourceOut     *Time    `json:"source_out,omitempty"`
-	Duration      *int64   `json:"duration,omitempty"`
-	Mode          string   `json:"mode,omitempty"`
-	Kind          string   `json:"kind,omitempty"`
-	Name          string   `json:"name,omitempty"`
-	Height        *int     `json:"height,omitempty"`
-	Order         *int     `json:"order,omitempty"`
-	Locked        *bool    `json:"locked,omitempty"`
-	Muted         *bool    `json:"muted,omitempty"`
-	Hidden        *bool    `json:"hidden,omitempty"`
-	Solo          *bool    `json:"solo,omitempty"`
-	GainDB        *float64 `json:"gain_db,omitempty"`
-	Speed         *float64 `json:"speed,omitempty"`
-	Effects       *Effects `json:"effects,omitempty"`
-	Marker        *Marker  `json:"marker,omitempty"`
-	MarkerID      string   `json:"marker_id,omitempty"`
-	GroupID       string   `json:"group_id,omitempty"`
-	Text          string   `json:"text,omitempty"`
-	Font          string   `json:"font,omitempty"`
-	FontSize      int      `json:"font_size,omitempty"`
-	Clips         []Clip   `json:"clips,omitempty"`
-	Unlinked      bool     `json:"unlinked,omitempty"`
+	CodeRunID     string        `json:"code_run_id,omitempty"`
+	CodeVersion   string        `json:"code_version,omitempty"`
+	CodeSegments  []CodeSegment `json:"code_segments,omitempty"`
+	Description   *string       `json:"description,omitempty"`
+	CodeRevision  uint64        `json:"code_revision,omitempty"`
+	Type          string        `json:"type"`
+	TrackID       string        `json:"track_id,omitempty"`
+	TargetTrackID string        `json:"target_track_id,omitempty"`
+	ClipIDs       []string      `json:"clip_ids,omitempty"`
+	ResourceID    string        `json:"resource_id,omitempty"`
+	At            int64         `json:"at,omitempty"`
+	End           *int64        `json:"end,omitempty"`
+	SourceIn      *Time         `json:"source_in,omitempty"`
+	SourceOut     *Time         `json:"source_out,omitempty"`
+	Duration      *int64        `json:"duration,omitempty"`
+	Mode          string        `json:"mode,omitempty"`
+	Kind          string        `json:"kind,omitempty"`
+	Name          string        `json:"name,omitempty"`
+	Height        *int          `json:"height,omitempty"`
+	Order         *int          `json:"order,omitempty"`
+	Locked        *bool         `json:"locked,omitempty"`
+	Muted         *bool         `json:"muted,omitempty"`
+	Hidden        *bool         `json:"hidden,omitempty"`
+	Solo          *bool         `json:"solo,omitempty"`
+	GainDB        *float64      `json:"gain_db,omitempty"`
+	Speed         *float64      `json:"speed,omitempty"`
+	Effects       *Effects      `json:"effects,omitempty"`
+	Marker        *Marker       `json:"marker,omitempty"`
+	MarkerID      string        `json:"marker_id,omitempty"`
+	GroupID       string        `json:"group_id,omitempty"`
+	Text          string        `json:"text,omitempty"`
+	Font          string        `json:"font,omitempty"`
+	FontSize      int           `json:"font_size,omitempty"`
+	Clips         []Clip        `json:"clips,omitempty"`
+	Unlinked      bool          `json:"unlinked,omitempty"`
 }
 type Command struct {
 	Session          string      `json:"session"`
@@ -455,6 +472,9 @@ func number(v any) float64 {
 	return 0
 }
 func Streams(r Resource, kind string) []int {
+	if kind == "code" {
+		kind = "video"
+	}
 	raw, _ := json.Marshal(r.Metadata["streams"])
 	var list []map[string]any
 	_ = json.Unmarshal(raw, &list)
@@ -597,7 +617,7 @@ func insertGap(s *Sequence, at, duration int64, group string) error {
 					return fmt.Errorf("插入涉及锁定轨道")
 				}
 				left, right := sliceClip(c, c.At, at, s.FPS), sliceClip(c, at, c.At+c.Duration, s.FPS)
-				right.ID = TimelineID("clip")
+				newClipIdentity(&right)
 				if c.LinkID != "" {
 					if links[c.LinkID] == "" {
 						links[c.LinkID] = TimelineID("link")
@@ -616,8 +636,11 @@ func insertGap(s *Sequence, at, duration int64, group string) error {
 func sliceClip(c Clip, from, to int64, fps Rate) Clip {
 	original := c.At
 	originalDuration := c.Duration
+	c.Code = clone(c.Code)
+	c.Effects.ParameterKeyframes = clone(c.Effects.ParameterKeyframes)
 	c.At = from
 	c.Duration = to - from
+	sliceParameters(&c, from-original)
 	in := Seconds(c.SourceIn)
 	c.SourceIn = timeAt(in+fps.Seconds(from-original)*c.Speed, c.SourceIn.Scale)
 	c.SourceOut = timeAt(in+fps.Seconds(to-original)*c.Speed, c.SourceOut.Scale)
@@ -746,7 +769,7 @@ func cutTrack(t *Track, at, end int64, fps Rate, except map[string]bool) error {
 		if c.At+c.Duration > end {
 			right := sliceClip(c, end, c.At+c.Duration, fps)
 			if c.At < at {
-				right.ID = TimelineID("clip")
+				newClipIdentity(&right)
 			}
 			out = append(out, right)
 		}
@@ -813,6 +836,29 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 		}
 	}
 	switch op.Type {
+	case "code.job":
+		if len(op.ClipIDs) != 1 || op.CodeRunID == "" {
+			return fmt.Errorf("代码任务缺少目标")
+		}
+		for i := range s.Tracks {
+			for j := range s.Tracks[i].Clips {
+				c := &s.Tracks[i].Clips[j]
+				if c.ID == op.ClipIDs[0] && s.Tracks[i].Kind == "code" {
+					if c.Code == nil {
+						c.Code = &CodeClip{Revision: 1}
+					}
+					c.Code.RunID = op.CodeRunID
+					c.Code.DescriptionState = "pending"
+					c.Code.DescriptionError = ""
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("代码条不存在")
+	case "code.replace":
+		return s.replaceCode(d, op, origin)
+	case "code.script":
+		return s.codeScript(op)
 	case "gap.close":
 		if op.At < 0 || op.Duration == nil || *op.Duration <= 0 {
 			return fmt.Errorf("闭合空隙需要合法的起点和时长")
@@ -866,7 +912,7 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 		}
 		s.ScopeGroup = op.GroupID
 	case "track.add":
-		if op.Kind != "video" && op.Kind != "audio" && op.Kind != "subtitle" {
+		if op.Kind != "video" && op.Kind != "audio" && op.Kind != "subtitle" && op.Kind != "code" {
 			return fmt.Errorf("轨道类型无效")
 		}
 		t := newTrack(op.Kind, op.GroupID)
@@ -939,14 +985,14 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 			if err != nil {
 				return err
 			}
-			if t.Kind == "audio" && len(Streams(*r, "audio")) == 0 || t.Kind == "video" && r.Kind != "video" && r.Kind != "image" {
+			if t.Kind != ResourceTrackKind(*r) && !(t.Kind == "audio" && len(Streams(*r, "audio")) > 0) {
 				return fmt.Errorf("粘贴轨道类型不匹配")
 			}
-			if (t.Kind == "audio" || t.Kind == "video") && r.Kind != "image" && !slices.Contains(Streams(*r, t.Kind), original.StreamIndex) {
+			if (t.Kind == "audio" || t.Kind == "video" || t.Kind == "code") && r.Kind != "image" && !slices.Contains(Streams(*r, t.Kind), original.StreamIndex) {
 				return fmt.Errorf("粘贴片段引用了不存在的源流")
 			}
 			c := clone(original)
-			c.ID = TimelineID("clip")
+			newClipIdentity(&c)
 			c.At += op.At
 			c.Origin = editedOrigin(c.Origin, origin)
 			if e = cutTrack(t, c.At, c.At+c.Duration, s.FPS, nil); e != nil {
@@ -1011,7 +1057,7 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 				if selected[c.ID] && op.At > c.At && op.At < c.At+c.Duration {
 					left := sliceClip(c, c.At, op.At, s.FPS)
 					right := sliceClip(c, op.At, c.At+c.Duration, s.FPS)
-					right.ID = TimelineID("clip")
+					newClipIdentity(&right)
 					if c.LinkID != "" {
 						if linkRight[c.LinkID] == "" {
 							linkRight[c.LinkID] = TimelineID("link")
@@ -1135,6 +1181,10 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 					original := *c
 					*c = sliceClip(original, start, end, s.FPS)
 				case "clip.update":
+					if c.Code != nil {
+						c.Code = clone(c.Code)
+						c.Code.Revision++
+					}
 					if op.Speed != nil {
 						if !finite(*op.Speed) || *op.Speed <= 0 {
 							return fmt.Errorf("速度必须为正数")
@@ -1258,7 +1308,7 @@ func (s *Sequence) insert(d *AvpDocument, op Operation, origin Origin) error {
 	if target.Locked {
 		return fmt.Errorf("目标轨道已锁定")
 	}
-	expected := map[string]string{"video": "video", "image": "video", "audio": "audio", "subtitle": "subtitle"}[r.Kind]
+	expected := ResourceTrackKind(*r)
 	if target.Kind != expected {
 		return fmt.Errorf("素材与轨道类型不匹配")
 	}
@@ -1271,7 +1321,18 @@ func (s *Sequence) insert(d *AvpDocument, op Operation, origin Origin) error {
 	targetID := target.ID
 	group := target.GroupID
 	makeClip := func(stream int) Clip {
-		return Clip{ID: TimelineID("clip"), ResourceID: r.ID, Name: r.Name, StreamIndex: stream, At: op.At, Duration: duration, SourceIn: SourceTime(*r, stream, start), SourceOut: SourceTime(*r, stream, end), Speed: 1, Origin: origin, Effects: Effects{Scale: 1}, Text: op.Text, Font: op.Font, FontSize: op.FontSize}
+		c := Clip{ID: TimelineID("clip"), ResourceID: r.ID, Name: r.Name, StreamIndex: stream, At: op.At, Duration: duration, SourceIn: SourceTime(*r, stream, start), SourceOut: SourceTime(*r, stream, end), Speed: 1, Origin: origin, Effects: Effects{Scale: 1}, Text: op.Text, Font: op.Font, FontSize: op.FontSize}
+		if r.Draw != nil {
+			c.Code = &CodeClip{Revision: 1, DescriptionState: "pending"}
+			if r.Draw.Snapshot.Document != nil {
+				c.Code.Description = r.Draw.Snapshot.Document.Goal
+				c.Code.GeneratedDescription = c.Code.Description
+				if c.Code.Description != "" {
+					c.Code.DescriptionState = "ready"
+				}
+			}
+		}
+		return c
 	}
 	link := TimelineID("link")
 	appendTo := func(id string, c Clip) error {
@@ -1303,7 +1364,7 @@ func (s *Sequence) insert(d *AvpDocument, op Operation, origin Origin) error {
 	if e = appendTo(targetID, makeClip(stream)); e != nil {
 		return e
 	}
-	if r.Kind == "video" {
+	if r.Kind == "video" && r.Draw == nil {
 		streams := Streams(*r, "audio")
 		if len(streams) > 0 {
 			return s.appendAudio(streams, "", group, makeClip, appendTo)

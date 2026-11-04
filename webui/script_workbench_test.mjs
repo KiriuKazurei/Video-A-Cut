@@ -1,5 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+test('code selection follows sequence time and ignores selected ordinary footage',async()=>{
+ const {selectedCodeClips,codeDescription}=await import('./src/codeClips.ts');
+ const clip=(id,at)=>({id,at,duration:300,code:{description:'画面',revision:1,generated_description:'画面'},effects:{gain_db:0,x:0,y:0,parameter_keyframes:[{kind:'旋转',frame:30,duration:30,value:90}]}});
+ const sequence={fps:{num:30,den:1},tracks:[{id:'a',kind:'code',clips:[clip('later',300)]},{id:'v',kind:'video',clips:[clip('video',0)]},{id:'b',kind:'code',clips:[clip('first',0)]}]};
+ assert.deepEqual(selectedCodeClips(sequence,['later','video','first']).map(x=>x.clip.id),['first','later']);
+ assert.match(codeDescription(sequence.tracks[0].clips[0],sequence.fps),/时间:00:00:11:00/);
+ sequence.tracks[0].clips[0].at=600;
+ assert.match(codeDescription(sequence.tracks[0].clips[0],sequence.fps),/时间:00:00:21:00/);
+});
+
+test('parameter directives highlight only inside the code workbench',()=>{
+ const source='{移动, 时间:00:00:01:00, x:100px, y:0px}';
+ assert.equal(scriptTokens(source,true)[0].kind,'directive');
+ assert.equal(scriptTokens(source)[0].kind,'invalid');
+ assert.equal(scriptTokens('{旋转, 时间:00:00:01',true)[0].kind,'invalid');
+});
+
+test('code colors survive inserting and removing other occurrences',async()=>{
+ const {codeClipColors}=await import('./src/codeClips.ts');
+ const sequence={tracks:[{kind:'code',clips:Array.from({length:30},(_,i)=>({id:`clip-${i}`}))}]};
+ const before=codeClipColors(sequence);
+ sequence.tracks[0].clips.unshift({id:'clip-000'});
+ const inserted=codeClipColors(sequence);
+ for(const [id,color] of Object.entries(before))assert.equal(inserted[id],color,id);
+ sequence.tracks[0].clips=sequence.tracks[0].clips.filter(c=>c.id!=='clip-1');
+ const removed=codeClipColors(sequence);
+ for(const [id,color] of Object.entries(before))if(id!=='clip-1')assert.equal(removed[id],color,id);
+ assert.equal(new Set(Object.values(before)).size,30);
+});
+
+test('moving a dirty code draft rebases parameter times while preserving quoted and escaped text',async()=>{
+ const {rebaseCodeDescription}=await import('./src/codeClips.ts');
+ const literal='显示\\{移动, 时间:00:00:01:00, x:1px, y:0px\\}\n{"字幕{旋转, 时间:00:00:01:00, 角度:30}"}';
+ const directive='{移动, 时间:00:00:02:00, x:20px, y:0px}';
+ assert.equal(rebaseCodeDescription(literal+'\n'+directive,30,{num:30,den:1}),literal+'\n'+directive.replace('00:00:02:00','00:00:03:00'));
+});
 import { scriptTokens, initialScriptSegment } from './src/scriptWorkbench.ts';
 import { applyAuthoringInsert, completionContext, filterFonts, filterParams, filterSnippets, invalidReplacements, paragraphTemplate } from './src/scriptAuthoring.ts';
 import { handleSSEEvent, REFRESH_DOMAINS, SUPPORTED_SSE_EVENTS } from './src/queryRefresh.ts';

@@ -142,7 +142,7 @@ func enrichReferenceCandidates(d *AvpDocument, out []ReferenceCandidate) []Refer
 				tracks := ActiveTracks(s)
 				for j := len(tracks) - 1; j >= 0; j-- {
 					t := tracks[j]
-					if t.Kind != "video" {
+					if t.Kind != "video" && t.Kind != "code" {
 						continue
 					}
 					for _, clip := range t.Clips {

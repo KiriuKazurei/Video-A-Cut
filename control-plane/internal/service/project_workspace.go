@@ -603,7 +603,7 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 	}
 	w.session = newID("session")
 	w.revision++
-	w.dirty = action == "recover"
+	w.dirty = action == "recover" || incoming != nil && incoming.Migrated
 	w.undo = nil
 	w.undoCursor = 0
 	w.timelineReceipts = nil
@@ -612,6 +612,9 @@ func (s *Service) ProjectFileCommand(ctx context.Context, action string, req Pro
 	s.publish("workspace.changed", map[string]any{"session_id": s.ProjectSessionID(), "project_id": s.CurrentProjectID()})
 	if incoming != nil {
 		s.reconcileSequenceResults(ctx, incoming.Project.ID, s.ProjectSessionID())
+		for _, seq := range incoming.Sequences {
+			s.scheduleCodeDescriptions(incoming.Project.ID, seq.ID)
+		}
 	}
 	return s.ProjectWorkspace(ctx)
 }

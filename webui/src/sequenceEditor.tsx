@@ -1,3 +1,4 @@
+import {mergeEffectChanges} from './gainEnvelope';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Checkbox, Input, Space } from 'antd';
@@ -87,10 +88,17 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  const preview=active&&!sourceUnavailable&&previewQuery.data?.content_version===view?.content_version?previewQuery.data:undefined;
  const framePreviewURL=active&&!sourceUnavailable&&frameTarget.identity===identity&&frameQuery.data&&frameQuery.data.content_version===view?.content_version&&frameQuery.data.frame===targetFrame?frameQuery.data.image:undefined;
  const framePreviewLoading=nonempty&&!preview&&(!framePreviewURL||frameQuery.isFetching)&&!frameQuery.isError;
- const select=(ids:string[],separate=false)=>{setSelected(sequence?linkedSelection(sequence,ids,separate):ids);const resource=sequence?.tracks.flatMap(t=>t.clips).find(c=>c.id===ids[0])?.resource_id;if(resource&&resource!==project.selectedId)void project.selectResource(resource);};
+ const select=(ids:string[],separate=false)=>{setSelected(sequence?linkedSelection(sequence,ids,separate):ids);const resource=sequence?.tracks.flatMap(t=>t.clips).find(c=>c.id===ids[0])?.resource_id;if(sequence?.tracks.some(t=>t.kind==='code'&&t.clips.some(c=>ids.includes(c.id))))window.dispatchEvent(new Event('vac:open-script-dock'));if(resource&&resource!==project.selectedId)void project.selectResource(resource);};
  const command=async(operations:TimelineOperation[],label:string)=>{
   if(!view || !session || busy.current)return;busy.current=true;setPending(true);setError('');const owner=sequenceId;
-  try{await project.flushEditors();stopEditorPlayers();const next=await timelineApi.command(projectId,owner,{session:session.id,expected_revision:view.sequence.revision,idempotency_key:crypto.randomUUID(),label,operations});if(currentSequence.current===owner){client.setQueryData(key,next);await project.refresh();void client.invalidateQueries({queryKey:['script-workbench']});void client.invalidateQueries({queryKey:['script-view']});void client.invalidateQueries({queryKey:['reference-directory']});}}
+  try{await project.flushEditors();stopEditorPlayers();const flushed=client.getQueryData<TimelineView>(key)??view;
+   const edits=flushed.sequence.revision===view.sequence.revision?operations:operations.map(operation=>{
+    if(!operation.effects||operation.clip_ids?.length!==1)return operation;
+    const before=view.sequence.tracks.flatMap(t=>t.clips).find(c=>c.id===operation.clip_ids![0]),current=flushed.sequence.tracks.flatMap(t=>t.clips).find(c=>c.id===operation.clip_ids![0]);
+    if(!before||!current||before.resource_id!==current.resource_id||before.duration!==current.duration||before.at!==current.at)throw Error('片段已改变，请核对后重试');
+    return {...operation,effects:mergeEffectChanges(before.effects,operation.effects,current.effects)};
+   });
+   const next=await timelineApi.command(projectId,owner,{session:session.id,expected_revision:flushed.sequence.revision,idempotency_key:crypto.randomUUID(),label,operations:edits});if(currentSequence.current===owner){client.setQueryData(key,next);await project.refresh();void client.invalidateQueries({queryKey:['script-workbench']});void client.invalidateQueries({queryKey:['script-view']});void client.invalidateQueries({queryKey:['reference-directory']});}}
   catch(reason){setError(errorText(reason));void query.refetch();throw reason;}
   finally{busy.current=false;setPending(false);}
  };
@@ -106,7 +114,7 @@ export function SequenceEditorProvider({active,children}:{active:boolean;childre
  };
  const addResource=async(id:string,track?:string,at=head,mode='overwrite')=>{
   if(!sequence)return;const resource=doc?.resources.find(r=>r.id===id);if(!resource)throw Error('资源不属于当前工程');
-  const kind=resource.kind==='audio'?'audio':resource.kind==='subtitle'?'subtitle':'video';
+  const kind=resource.draw_source?'code':resource.kind==='audio'?'audio':resource.kind==='subtitle'?'subtitle':'video';
   const target=track?sequence.tracks.find(t=>t.id===track):sequence.tracks.find(t=>t.id===selectedTrack&&t.kind===kind&&!t.locked) ?? sequence.tracks.find(t=>t.kind===kind && !t.locked && !t.group_id);
   if((!target&&kind!=='subtitle') || (target&&(target.kind!==kind||target.locked))) {const reason=Error('请选择匹配的未锁定轨道');setError(reason.message);throw reason;}
   await command([{type:'clip.insert',resource_id:id,track_id:target?.id,at,mode}],'拖入资源');

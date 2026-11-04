@@ -133,28 +133,7 @@ func Parse(source string) Document {
 }
 
 func directiveEnd(source string, start int) (int, error) {
-	quoted, escaped := false, false
-	for i := start + 1; i < len(source); i++ {
-		c := source[i]
-		if quoted {
-			if escaped {
-				escaped = false
-			} else if c == '\\' {
-				escaped = true
-			} else if c == '"' {
-				quoted = false
-			}
-			continue
-		}
-		if c == '"' {
-			quoted = true
-		} else if c == '{' {
-			return 0, fmt.Errorf("语法块不能嵌套")
-		} else if c == '}' {
-			return i, nil
-		}
-	}
-	return 0, fmt.Errorf("语法块缺少右花括号或字符串引号未闭合")
+	return project.ScriptDirectiveEnd(source, start)
 }
 
 func parseSubtitle(body string) (Subtitle, error) {

@@ -57,7 +57,7 @@ export interface ContentSummary {
   timeline: { media_id: string; start: number; end: number; description: string;
     confidence: 'high' | 'medium' | 'low'; frame_ids: string[] }[];
 }
-export interface SkillRun {
+export interface SkillRun {code_candidates?:Record<string,import("./timelineContracts").TimelineOperation>;code_targets?:Record<string,string>;code_action?:"describe"|"regenerate";
  strategy?: 'edit'|'draw';
 	progress?: {phase:'working'|'generating'|'checking'|'rendering';output_chars:number;started_at:string;updated_at:string};
 	edit_request?: SkillEditContext;
@@ -94,7 +94,7 @@ export interface SkillWorkbench {
   run: SkillRun; segments: SkillEditWindow[]; history: SkillHistory['cursor'];
   previews: { artifact: SkillArtifact; available: boolean; is_current: boolean; historical: boolean; checkpoint_id: string; exportable: boolean; preview_url?: string }[];
 }
-export interface SkillRunCreate {
+export interface SkillRunCreate {code_targets?:Record<string,string>;code_action?:"describe"|"regenerate";
  strategy?: 'edit'|'draw';
   sequence_id?: string;
   flow?: SkillFlow;

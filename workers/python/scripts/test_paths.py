@@ -22,7 +22,9 @@ def test_directory(name=''):
             continue
         if stat.S_ISLNK(entry.st_mode) or getattr(entry, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
             raise ValueError('Linked test output is not allowed')
-    version_root = STORAGE / base.relative_to(STORAGE).parts[0]
+    version_root = base
+    while version_root != STORAGE and not re.fullmatch(r'\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?', version_root.name):
+        version_root = version_root.parent
     if not re.fullmatch(r'\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?', version_root.name):
         raise ValueError('Invalid output version')
     marker = version_root / '.test-workspace.json'
@@ -35,7 +37,7 @@ def test_directory(name=''):
             raise ValueError('Unmarked test workspace')
         version_root.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps({'schema': 1, 'version': version_root.name}), encoding='utf-8')
-    base.mkdir(parents=True, exist_ok=True)
+    output.mkdir(parents=True, exist_ok=True)
     return output
 
 

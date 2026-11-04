@@ -1,5 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+test('a gain gesture preserves parameters committed by a pending script save',async()=>{
+ const {mergeEffectChanges}=await import('./src/gainEnvelope.ts');
+ const before={gain_db:0,scale:1,x:0,y:0},requested={...before,gain_db:-6};
+ const current={...before,parameter_keyframes:[{kind:'移动',frame:0,duration:30,x:100,y:0}]};
+ const merged=mergeEffectChanges(before,requested,current);
+ assert.equal(merged.gain_db,-6);assert.deepEqual(merged.parameter_keyframes,[{kind:'移动',frame:0,duration:30,x:100,y:0}]);
+});
 import {
   dbToY, yToDb, interpolateGain, insertKeyframe, deleteKeyframe, moveKeyframe,
   shiftGain, effectiveKeyframes, normalizeKeyframes, pixelGains, constantGainEffects,

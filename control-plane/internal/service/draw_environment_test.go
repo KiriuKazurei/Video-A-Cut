@@ -39,6 +39,27 @@ func TestSequenceVersionTracksOnlyRenderedSources(t *testing.T) {
 	}
 }
 
+func TestSegmentInputsKeepMigratedTransitionsAndCodeAudio(t *testing.T) {
+	seq := project.NewSequence("segment")
+	seq.Tracks = []project.Track{
+		{ID: "legacy-video", Kind: "video", VisualGroup: "legacy", Clips: []project.Clip{{ID: "before", ResourceID: "video", Duration: 60}}},
+		{ID: "legacy-code", Kind: "code", VisualGroup: "legacy", Clips: []project.Clip{{ID: "after", ResourceID: "code", At: 60, Duration: 60, Effects: project.Effects{Transition: 12}, Code: &project.CodeClip{Description: "画面"}}}},
+	}
+	sources := []sequenceSource{{ID: "video"}, {ID: "code", Draw: &project.DrawDocument{AudioBindings: []project.DrawAudioBinding{{ResourceID: "sound"}}}}, {ID: "sound", SHA256: "audio-v1"}, {ID: "unrelated"}}
+	key, selected := segmentInputs(seq, sources, 60, 120)
+	if len(selected) != 3 || selected[0].ID != "video" || selected[1].ID != "code" || selected[2].ID != "sound" {
+		t.Fatalf("transition/audio dependency dropped: %+v", selected)
+	}
+	seq.Tracks[1].Clips[0].Code.Description, seq.Tracks[1].Clips[0].Code.RunID = "new draft", "task"
+	if updated, _ := segmentInputs(seq, sources, 60, 120); updated != key {
+		t.Fatal("description/task metadata invalidated the pixel cache")
+	}
+	sources[2].SHA256 = "audio-v2"
+	if updated, _ := segmentInputs(seq, sources, 60, 120); updated == key {
+		t.Fatal("audio changes reused stale segment")
+	}
+}
+
 func TestDrawArgumentsIdentifyUnsupportedImageField(t *testing.T) {
 	var request DrawSaveRequest
 	err := decodeSkillArgs(json.RawMessage(`{"composition":{"document":{"images":[{"secret":"do-not-display"}]}}}`), &request)

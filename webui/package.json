@@ -1,7 +1,7 @@
 {
   "name": "@video-auto-cut/webui",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.4.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
@@ -14,8 +14,7 @@
     "lint:style": "node scripts/lint-style.mjs",
     "test:unit": "node --experimental-strip-types --test test_suite.mjs desktop_test.mjs tts_test.mjs loudness_test.mjs gain_envelope_test.mjs && node --experimental-strip-types --test pipeline_test.mjs evidence_summary_test.mjs tour_test.mjs auto_run_test.mjs visible_set_test.mjs script_workbench_test.mjs style_lint_test.mjs style_smoke_test.mjs draw_page_test.mjs && node scripts/lint-style.mjs",
     "test:pipeline": "node --experimental-strip-types --test pipeline_test.mjs",
-    "test:managed": "pwsh -NoProfile -File ../scripts/TestWorkspace.ps1 -Action Run -Suite webui",
-    "test:browser-tts": "echo 'Run: python3 /workspace/vac-demo/run_browser_tests.py tts' && python3 /workspace/vac-demo/run_browser_tests.py tts"
+    "test:managed": "pwsh -File ../scripts/TestWorkspace.ps1 -Action Run -Suite webui"
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",

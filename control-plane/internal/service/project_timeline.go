@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -42,11 +44,23 @@ type SequenceRequest struct {
 }
 
 func timelineView(doc *project.AvpDocument, seq project.Sequence, session string, revision uint64) TimelineView {
+	rawCopy, _ := json.Marshal(seq)
+	_ = json.Unmarshal(rawCopy, &seq)
 	history := []TimelineHistory{}
 	for i, h := range seq.History {
 		history = append(history, TimelineHistory{h.ID, h.Label, h.Actor, i < seq.HistoryCursor})
 	}
 	seq.History = nil
+	for i := range seq.Tracks {
+		for j := range seq.Tracks[i].Clips {
+			c := &seq.Tracks[i].Clips[j]
+			if c.Code != nil {
+				copy := *c.Code
+				c.Code = &copy
+				c.Code.ContentVersion = project.CodeTargetVersion(doc, *c)
+			}
+		}
+	}
 	return TimelineView{session, revision, seq, history, sequenceContentVersion(doc, seq)}
 }
 func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) string {
@@ -74,6 +88,7 @@ func sequenceContentVersion(doc *project.AvpDocument, seq project.Sequence) stri
 			c := &t.Clips[j]
 			c.Name = ""
 			c.Origin = project.Origin{}
+			c.Code = nil
 			for _, r := range doc.Resources {
 				if r.ID == c.ResourceID {
 					sources[r.ID] = project.ResourceContentVersion(r)
@@ -260,6 +275,42 @@ func (s *Service) TimelineCommand(ctx context.Context, actor, projectID, sequenc
 	if w == nil {
 		return TimelineView{}, model.ErrInvalidState
 	}
+	if req.IdempotencyKey == "" || len(req.IdempotencyKey) > 128 || len(req.Operations) == 0 || len(req.Operations) > 512 {
+		return TimelineView{}, model.ErrArgument
+	}
+	codeCount := 0
+	for _, op := range req.Operations {
+		codeCount += len(op.CodeSegments)
+	}
+	if codeCount > 32 {
+		return TimelineView{}, model.ErrArgument
+	}
+	for _, op := range req.Operations {
+		if op.Type == "code.replace" {
+			for _, seg := range op.CodeSegments {
+				c := seg.Composition
+				c.NormalizeDocument()
+				if err := c.Validate(); err != nil {
+					return TimelineView{}, fmt.Errorf("%v: %w", err, model.ErrArgument)
+				}
+				assets, err := s.drawImageAssets(ctx, projectID, c)
+				if err != nil {
+					return TimelineView{}, err
+				}
+				if _, err = s.scriptProcess(ctx, true, "draw-check", map[string]any{"composition": c, "assets": assets, "deterministic": true}); err != nil {
+					return TimelineView{}, fmt.Errorf("%v: %w", err, model.ErrArgument)
+				}
+				directory, err := s.harnessDirectory(filepath.Join("code-check", newID("candidate")))
+				if err != nil {
+					return TimelineView{}, err
+				}
+				defer os.RemoveAll(directory)
+				if _, err = s.scriptProcess(ctx, true, "draw-source-frame", map[string]any{"document": c.UnifiedDocument(), "assets": assets, "output_dir": directory, "frame": 0}); err != nil {
+					return TimelineView{}, fmt.Errorf("画面检查失败: %v: %w", err, model.ErrArgument)
+				}
+			}
+		}
+	}
 	if err := w.lockMutation(ctx); err != nil {
 		return TimelineView{}, err
 	}
@@ -294,6 +345,29 @@ func (s *Service) TimelineCommand(ctx context.Context, actor, projectID, sequenc
 	if len(w.timelineReceipts) >= 10000 {
 		w.mu.Unlock()
 		return TimelineView{}, fmt.Errorf("请保存并重新打开工程以继续编辑: %w", model.ErrInvalidState)
+	}
+	metadataOnly := true
+	for _, op := range req.Operations {
+		metadataOnly = metadataOnly && op.Type == "code.job"
+	}
+	if metadataOnly {
+		seq := &draft.Sequences[index]
+		for _, op := range req.Operations {
+			if err := seq.Apply(draft, op, project.Origin{Actor: actor}); err != nil {
+				w.mu.Unlock()
+				return TimelineView{}, fmt.Errorf("%v: %w", err, model.ErrArgument)
+			}
+		}
+		w.document = draft
+		w.dirty = true
+		view := timelineView(draft, *seq, w.session, w.revision)
+		if w.timelineReceipts == nil {
+			w.timelineReceipts = map[string]timelineReceipt{}
+		}
+		w.timelineReceipts[key] = timelineReceipt{hash, view}
+		w.mu.Unlock()
+		s.publish("workspace.timeline.changed", map[string]any{"project_id": projectID, "sequence_id": sequenceID, "revision": seq.Revision})
+		return view, nil
 	}
 	w.mu.Unlock()
 	if err := s.captureProjectScripts(ctx, draft); err != nil {
@@ -419,6 +493,12 @@ func (s *Service) TimelineCommand(ctx context.Context, actor, projectID, sequenc
 	w.timelineReceipts[key] = timelineReceipt{hash, view}
 	w.mu.Unlock()
 	s.publish("workspace.timeline.changed", map[string]any{"project_id": projectID, "sequence_id": sequenceID, "revision": seq.Revision, "content_version": view.ContentVersion})
+	for _, op := range req.Operations {
+		if op.Type == "clip.insert" || op.Type == "clip.paste" || op.Type == "clip.split" || op.Type == "gap.insert" || op.Type == "clip.move" {
+			s.scheduleCodeDescriptions(projectID, sequenceID)
+			break
+		}
+	}
 	return view, nil
 }
 

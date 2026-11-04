@@ -1,18 +1,170 @@
 # 测试维护说明
 
-更新：2026-11-03。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
+更新：2026-11-04。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前0.3.4。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前0.4.0。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
-`scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。前端完整单元用 npm run test:unit，内置 webui suite 只覆盖原基础子集，不把二者计数混用。
+`scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。`webui` 现在调用完整 `npm run test:unit`，同时执行样式检查；旧基础子集退出受管默认入口。保留 `pipeline` 作为有明确范围的定向入口。
 
-2026-10-29 当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 codex/integrate-remote-20261029，以 98ba0e0 合入 origin/agent/vu-skill@8511f2e，应用保持 0.3.2。原根和其他旧工作树保留不同源码与未提交内容，不能用旧根 HEAD 或端口健康证明当前代码。custom 的 WorkingDirectory 必须明确；摘要中 runner 所在仓库的 HEAD 与实际被测源码不同时，单独记录源码提交/改动和证据。
+当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，版本升级基准 `4496ace` 加代码轨、复审和版本改动，应用 `0.4.0`。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
+
+自定义检查使用稳定 `-TestName`，例如 `go-core`、`go-code-service`、`browser-editor`、`doc-contracts`。日志写入 `artifacts/custom/<TestName>/output.log`，summary按 `custom/<TestName>` 分开保存；不同检查互不覆盖，也不把无关检查的通过记成先前失败已修复。不按日期或每次重跑新建StorageRoot；同一检查重复使用同一名称。未命名旧custom结果保留溯源，不作为全套结论。
+
+### 维护索引
+
+| 能力 | 维护位置与入口 | 本轮处置 |
+| --- | --- | --- |
+| 工程、代码轨与整数帧编辑 | `project/timeline_test.go`、`project/draw_test.go`；Go既有包 | 保留迁移/锁/波纹/引用/独立源码；在原时间线文件补新条任务归属回归。 |
+| 参数语法、工作台与颜色 | `webui/script_workbench_test.mjs`、`gain_envelope_test.mjs`；`-Suite webui` | 保留增益/参数同步，补颜色稳定与草稿移动转义；完整单元列表由package.json唯一维护。 |
+| 局部Agent与真实服务 | `service/project_draw_test.go`、`project_workspace_test.go`、`project_media_test.go`、`draw_environment_test.go` | 保留冲突/部分成功/撤销/只读迁移；扩展既有分段用例检查实际声音、跨迁移轨转场与描述缓存。 |
+| 三引擎、像素与混音 | `workers/node/timeline-cli/test/{draw,sequence}.test.mjs`；`-Suite timeline` | 保留完整引擎取帧/寻址/透明/终渲；与Go真实服务覆盖不同边界，不因相同源码夹具而删除。 |
+| Agent模型上下文与Worker | `workers/python/tests/`；`-Suite python` | 保留现有套件，模型桩与真实质量分开；本轮路径辅助函数随命名StorageRoot联动。 |
+| 编辑器/工作台交互 | `webui/run-local-smokes.mjs` + `review_shortcuts_smoke.mjs` | 保留现有20组，复用生产构建与本机Chrome；不是原生窗口/真实模型验收。 |
+| 导出租约、恢复与资源归属 | `workers/node/export-worker/test/`；`-Suite exporter` | 保留职责独立的套件，不合并进timeline或服务桩。 |
+| 输出隔离与安全轮换 | `test-support/test-workspace.ps1`、`scripts/test-paths.mjs`、Python `scripts/test_paths.py`；`-Suite workspace` | 原套件补命名结果隔离/非法名称拒绝；保留标记、重解析点、进程、跟踪文件及失败转通过保护。 |
+
+退役：`webui` 的旧基础子集重复清单、指向不存在 `/workspace/vac-demo/run_browser_tests.py` 的 `test:browser-tts` 别名。TTS单元仍在完整webui套件，浏览器相关交互沿用现有Smoke/原生入口，未删除有效测试或样本。各npm受管别名与入口子PowerShell保留profile。未创建独立runner或固定媒体副本。
 
 不设固定容量上限，不按容量自动终止或清空 artifacts/cache；Measure 仅报告占用。版本变化后 Prepare 按规则提炼旧版本简档并轮换；同版本需要清空时显式 Clear，CacheOnly 保留 artifacts。每版本一份极简 Markdown，最多最近 3 版，未知修复版本/提交写未记录。
 
 任何清理先确认相关进程退出、目标属于明确测试根、目标/父链/子项无重解析点且无 Git 跟踪文件，PowerShell 使用 LiteralPath，并报告同口径前后占用。此条针对生成物；本轮用户单独授权的源文档删除按精确文档清单处理，不把它扩展到源码/固定样本。
+
+
+## 2. 常用工程检查
+
+Windows 使用系统 PowerShell 7、UTF-8 和已安装依赖，保持 profile 设置。以下从实际源码根执行：
+
+```powershell
+$sourceRoot = (Get-Location).Path
+$runner = Join-Path $sourceRoot 'scripts/TestWorkspace.ps1'
+$managed = @{Action='Run'; StorageRoot="$sourceRoot/.run-data/tests/code-track"}
+& $runner @managed -Suite webui
+& $runner @managed -Suite python
+& $runner @managed -Suite timeline
+& $runner @managed -Suite exporter
+& $runner @managed -Suite workspace
+& $runner @managed -Suite custom -TestName ui-types -Executable node -WorkingDirectory "$sourceRoot/webui" -Arguments @('node_modules/typescript/bin/tsc','--noEmit')
+& $runner @managed -Suite custom -TestName go-core -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./internal/project','./internal/scriptsyntax','./internal/skill','-count=1')
+& $runner @managed -Suite custom -TestName go-code-service -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./internal/service','-run','TestCode|TestSegmentInputs|TestSequenceVersion|TestDrawBuiltins|TestDrawingSourceAttachNeedsNoMovie|TestSequenceCurrentFrame|TestDrawReservedTrackImport|TestTimeline','-count=1','-timeout=240s')
+& $runner @managed -Suite custom -TestName go-vet -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('vet','./...')
+& $runner @managed -Suite custom -TestName rust-format -Executable cargo -WorkingDirectory "$sourceRoot/desktop" -Arguments @('fmt','--','--check')
+```
+
+完整Go用 `-Suite go`，或显式指定当前源码目录、包串行和超时：
+
+```powershell
+& $runner @managed -Suite custom -TestName go-all -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-count=1','-timeout=600s')
+```
+
+嵌套工作树路径较长，Windows目录/临时路径失败须保留原日志；如改用原根短路径runner，明确实际WorkingDirectory，不能误测旧根。Go vet可单独执行，不跳过原失败用例。按变更选择现有包/命名用例；不要在相同结果通过后无理由重复全包。同StorageRoot内串行运行以复用缓存；并发前端可继续使用现有code-ui根，不增加新根。正常失败保留退出码、摘要与日志。
+
+## 3. 文档与接口契约
+
+接口文档自动区域来自机器清单与真实 TypeScript AST。维护契约后显式生成，再运行现有检查：
+
+```powershell
+node scripts/update-interface-documentation.mjs --refresh-inventory --write
+& $runner @managed -Suite custom -TestName doc-contracts -Executable node -WorkingDirectory $sourceRoot -Arguments @('scripts/update-interface-documentation.mjs','--check')
+& $runner @managed -Suite custom -TestName doc-links -Executable python -WorkingDirectory $sourceRoot -Arguments @('-B','scripts/check-documentation.py','--root',$sourceRoot)
+& $runner @managed -Suite custom -TestName doc-workbench -Executable python -WorkingDirectory $sourceRoot -Arguments @('-B','scripts/verify-script-workbench-docs.py')
+```
+
+源 SHA 按 LF 规范化计算，兼容 Git autocrlf 而仍检测实际内容变动。刷新只定位真实路由、处理器、SDK 和页面调用，不自动推断参数语义。检查精确路由集合、源 SHA、处理器位置、17 项桌面 IPC、HTTP 请求/响应索引、类型/SDK 自动区域及本地链接。文档迁移更新原检查对象，不退役 Go/前端/Worker 覆盖。运行时 Skill 文档若变更，同步嵌入/目录副本和版本，并执行相应 MCP/服务契约回归。
+
+## 4. 媒体、MCP、浏览器及可见桌面入口
+
+| 入口 | 目的与前置 |
+|---|---|
+| Go service/API/MCP 现有包 | 工程往返/隔离、CAS/幂等、Worker 边界、预算/历史、真实 FFmpeg 和本机模型夹具 |
+| `workers/node/timeline-cli/test/` | 预览/ASS/脚本真实渲染、哈希和跨语言输入；复用固定 clip_01.mp4 |
+| `control-plane/internal/project/timeline_test.go`、`service/project_timeline_test.go` | 多序列 v1/v2、整数帧/源采样、链接/锁定/波纹、CAS/幂等/整体撤销、重名引用与改名事务；扩展既有 service Skill 用例检查异步完成归属和撤销后重开去重 |
+| `workers/node/timeline-cli/test/sequence.test.mjs` | 共用节目/导出合成，真实源流、保持音调、混音/波形、变换、效果作用范围、溶解素材余量及字幕；合成输入由本机 FFmpeg 确定性生成 |
+| `workers/node/export-worker/test/` | owned task、取消/租约、输入/回执、摘要负向、恢复和发布 |
+| `workers/python/tests/` | 模型协议/重定向、声音、脚本、导入隔离与恢复；默认不下载模型 |
+| `scripts/verify-vu-runtime.ps1` | 现有真实 Go/Worker/MCP 连续流程；先按当前源码重建程序及匹配 runtime 清单 |
+| `control-plane/internal/mcpserver/probe/main.go` | 官方 SDK 真实发现/调用；通过 managed custom 执行 go run -tags probe，内部 Worker 才显式给 token-env |
+| `scripts/verify-skill-ui-completion.mjs --real-flow` | 基于运行探针产出的受管数据库副本/媒体和生产前端检查交互，夹具与真实后端范围分别记录 |
+| `scripts/verify-tauri-desktop.mjs` | 可见 Tauri/WebView、原生文件框/菜单/剪贴板、媒体/脚本、关闭/保存、切换/重启；自己在管理器内部启动并退出 |
+| `scripts/verify-tauri-updater.mjs --public-download <已准备的旧版release目录> <当前版本>` | 通过统一 custom 入口运行；复制旧版桌面到独立测试目录，用正式 HTTPS 更新源检查/下载/验签并截取可安装状态，不执行安装；已有用户桌面实例时拒绝启动，停止并退出自身测试进程 |
+| `scripts/Test-TauriStateGuard.ps1` / `test-support/test-workspace.ps1` | 现有运行/清理/版本轮换守卫；通过对应 suite，不按本轮再复制独立测试 |
+
+生产 Vite 测试构建的 outDir 显式指向 VAC_TEST_OUTPUT 管理目录。浏览器使用已有 Playwright/本地Chrome，禁止Edge，不重新下载浏览器。没有真实窗口证据时，不把 CDP 端口、进程 Responding 或页面托管记为可见桌面通过。
+
+可见桌面既有调用形状如下；exe、生产前端、Go runtime 清单、desktop.json 和独立测试业务数据须先配套准备，不能把本机历史生成物当作 fresh checkout 自带资源：
+
+```powershell
+$env:VAC_DESKTOP_EXECUTABLE = '<已准备并核对版本的候选exe绝对路径>'
+$nativeRoot = '<当前版本目录下已准备的原生验收目录绝对路径>'
+& $runner @managed -Suite custom -TestName desktop-native -Executable node -WorkingDirectory $sourceRoot -Arguments @('scripts/verify-tauri-desktop.mjs','9223','launch',"$nativeRoot/ui","$nativeRoot/desktop.json")
+```
+
+Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的路径，避免 E: 被当 URL；测试数据根独立于源码资源根。测试应自己在管理器内部启动和退出，不预启窗口绕过在用进程守卫。正式打包仍使用 Build-TauriDesktop.ps1，不以测试 overlay 发行。
+
+统一编辑器的可见桌面检查已归入同一 `verify-tauri-desktop.mjs`：通过所属进程核验的 Win32 鼠标/键盘执行拖入、取消、移动、右键和快捷键，CDP 只读取坐标和状态；同时验证中文重名补全、绑定改名、实际 MCP 结构化编辑、节目/原生导出同哈希、紧凑布局和多序列保存重开。六类资源及工程隔离的原断言继续执行，旧双入口界面断言随产品更新。`VAC_DESKTOP_KEEP_FAILURE=1` 仅用于失败后保留窗口诊断，失败仍以非零状态退出。
+
+本轮维护前端 `script_workbench_test.mjs` 的稳定绑定/UTF-16/吸附/链接断言，更新 `test_suite.mjs` 的 SSE 查询领域；Python 在既有 `test_skill_runtime.py` 内检查序列、引用和工具契约传给模型。AI 画面修改接口默认 501，未调用服务商；确定性媒体检查不代表外部模型质量或人工观感通过。
+
+`webui/run-local-smokes.mjs` 服务生产构建，`review_shortcuts_smoke.mjs` 当前20组覆盖统一编辑器、播放接管、多选代码条、参数工作台及局部生成。写请求只记录到本机夹具，不当成真实Go编辑或模型验证。已不挂载的quickstart卡片检查退出默认入口，原源码保留溯源；不把旧CR03计数当当前结果。生产构建写入VAC_TEST_OUTPUT/ui-dist，浏览器运行前令VAC_DIST指向它，再从webui目录通过命名custom执行 `node run-local-smokes.mjs review_shortcuts_smoke.mjs`。
+
+本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
+
+## 0.4.0版本与源码推送（2026-11-04 VERSION040）
+
+按用户指令同步桌面tauri/Cargo/npm及前端npm清单和锁文件；MCP两种服务端及SDK探针也同步0.4.0，原0.3.3/0.3.4版本不一致已通过本轮协议复验关闭。此次推送包含此前代码轨和复审修复，不创建Release、不更新安装版。
+
+三个活动测试根code-track、code-track-go、code-ui通过统一Prepare轮换到0.4.0，0.3.4结果提炼到各自archives/0.3.4.md；下方0.3.4日志/截图路径仅为原始证据位置，版本轮换后已移除，不再声称可直接打开。完整旧Go失败、定向修复与未验边界保留在本说明和简档。0.4.0只报告实际重跑的检查，不把此前全套计数改写为新版全套通过。
+
+0.4.0当前检查：版本字段与锁文件一致；`TestSDKProtocolNegotiationAndCalls`通过（worker/desktop各4种协议，共8个子场景，0.695秒），日志为code-track/0.4.0/artifacts/custom/go-version/output.log。前端完整142项/样式、TypeScript、196 HTTP/17 IPC/170模型/30 SSE及18文档665链接通过，日志为code-ui/0.4.0/artifacts/custom/version-check/output.log；初次文档命令传入相对root导致路径误定位，修正绝对root后复验通过，relative-root-failed.log保留调用错误。未重跑完整Go/Node/Python、真实模型或0.4.0原生安装包。
+
+轮换前后统计范围相同（三个活动测试根），1229789502→3599字节，释放1229785903字节；只删除入口核验过的旧受管生成物，源码/样本/业务工程/开发依赖保留。新0.4.0检查随后重新产生缓存，不把轮换后3599字节当最终占用。提交和远程推送待执行。
+
+## 前次审查与测试整理（2026-11-04 CODE-REVIEW，0.3.4）
+
+源码为上述4496ace加未提交改动，版本0.3.4。本轮先审查代码轨、再维护原套件；没有新增独立测试体系。
+
+确认并修复：分段预览漏掉代码声音资源、迁移轨间的转场前条源尾部未入分段、描述/任务元数据误入分段缓存、新实例继承旧实例任务、颜色随其他条增删漂移、移动草稿误改转义及字幕内文字。截图另发现多选描边盖住身份色，增加条内色标，与脚本卡片一致。
+
+| 验证 | 当前结果与可复跑证据 |
+| --- | --- |
+| Go模型/语法/Skill | 三个完整包通过，code-track/0.3.4/artifacts/custom/go-core/output.log。 |
+| Go相关服务 | 最终35.109秒通过，含实际声音分段/同缓存复用、迁移转场依赖、局部生成/冲突/撤销与只读迁移；code-track当前版本artifacts/custom/go-code-service/output.log。转场查找按组建索引，避免长时间线平方扫描。 |
+| 前端完整单元 | 新的统一webui入口142/142（72+70）及样式通过；code-ui当前版本artifacts/webui/output.log。 |
+| 工作区治理 | 40项生命周期检查通过；code-track当前版本artifacts/workspace/output.log。包含新命名隔离、非法名称和Node/Python命名StorageRoot兼容。两条Storage scan警告为故意注入的错误保护夹具，不是运行失败。 |
+| Python全量 | 174项结束、3项按环境跳过，退出0；code-ui当前版本artifacts/python/output.log。此前WinError 5用例本轮通过，不宣称已经找到并修复该间歇文件系统问题。 |
+| Node完整媒体 | 104/104通过，107.458秒；code-track当前版本artifacts/timeline/output.log。 |
+| 最终界面 | 最终色标样式/类型/生产构建/Chrome20组通过；code-ui当前版本artifacts/custom/browser-editor/output.log和review-smokes/review_shortcuts_smoke.mjs.log。截图code-track-ui.png已复核；新增可见色标与文本卡片同色断言。 |
+| 文档合同 | 196 HTTP/17 IPC/170模型/30 SSE、18文档665链接及工作台8文档625本地链接通过；code-ui当前版本artifacts/custom/{doc-contracts,doc-links,doc-workbench}/output.log。差异空白检查通过。 |
+
+以上路径相对当前源码的`.run-data/tests/`。本轮通过命名日志整理当前证据，不删除固定媒体、测试源码、业务工程或旧全量失败。先前匿名custom摘要混有不同命令，仅作历史记录；当前结论按上表命名记录判断。红灯保留在code-track的custom/review-identity-red.log、custom/review-segment-red.log、workspace/review-names-red.log、workspace/review-paths-red.log，以及code-ui的custom/review-ui-red.log、custom/review-transition-red.log。code-track-go的custom/browser-color是修复前色标红灯，不作为修复后全套结论。
+
+Go完整套件本轮未重跑；原MCP版本不一致和Windows目录失败尚未关闭，见下方CODE-TRACK原验收。未执行真实外部模型质量、最新原生Tauri/安装包或人工听感验收；未提交、推送、发行或更新安装版。
+
+### 前次实现验收（保留范围，不替代本轮）
+
+### 2026-11-04 CODE-TRACK
+
+实际源码为当前整合工作树 `codex/integrate-remote-20261029`，基准 `4496ace` + 未提交改动，应用仍0.3.4。仅使用现有 project/scriptsyntax/skill/service、前端脚本/增益线、review_shortcuts_smoke、Node draw/sequence、Python skill_runtime 套件及共同夹具；没有新增独立runner或测试套件。原“源码混入视频轨”的断言改为源码进入代码轨；保留普通视频、MP4和旧格式覆盖，新增代码条的原文件不改写、独立生成、参数/声音/撤销覆盖。
+
+| 层次 | 本轮结果与证据 |
+| --- | --- |
+| 前端工程 | `npm run test:unit` 140/140；tsc、样式、生产构建通过。最终命令含单元→类型→构建→浏览器，记录在 `.run-data/tests/code-ui/0.3.4/artifacts/custom/output.log`。 |
+| 浏览器交互 | 既有 `run-local-smokes.mjs review_shortcuts_smoke.mjs` 20组通过；包含代码条缩略图与增益线、顺序与颜色、自动保存、只生成改动条及选中轨可见。该root下 `review-smokes/review_shortcuts_smoke.mjs.log` 和单张 `code-track-ui.png` 为当前证据；本机API夹具，不是实际模型运行。 |
+| Node真实媒体 | 完整timeline 104/104，通过三引擎实际浏览器帧/反向寻址及共同合成；记录在 `.run-data/tests/code-track/0.3.4/artifacts/timeline/output.log`。最后声音质量联动后，既有sequence文件20/20复验通过；包括三引擎单帧/电影像素和代码音量，未降低正式导出采样。 |
+| Go相关 | project、scriptsyntax、skill整包通过；service按 `TestCode\|TestTimeline\|TestDrawBuiltins\|TestDrawingSourceAttachNeedsNoMovie\|TestSequenceCurrentFrame\|TestDrawReservedTrackImport` 定向通过。真实服务调用Node首帧检查；覆盖一条变多条/波纹、任务状态不推进编辑修订、人工新描述不被覆盖、失败源码保留、一次撤销、旧AVP打开不写盘。最近整包输出在code-track当前版本custom/output.log，服务详细命令同下方复跑入口。 |
+| Python | 完整174项曾有1项 `test_stop_command_and_heartbeat_use_flat_fields` 的 WinError 5、3项跳过；失败记录保留在code-track当前版本python/output.log。受影响Agent上下文12项及该失败用例随后13/13定向通过；不把一次定向通过改写为完整套件重新通过。 |
+| 文档与合同 | `node scripts/update-interface-documentation.mjs` 与 `python -B scripts/check-documentation.py --root .` 通过：196 HTTP、17 IPC、170模型、30 SSE，18份文档665链接；差异空白检查通过。 |
+
+Go全量失败保留在 `.run-data/tests/code-track-go/0.3.4/artifacts/go/output.log`：`TestSDKProtocolNegotiationAndCalls` 的原MCP版本0.3.3/桌面0.3.4不一致；`TestTickConfirmsScenesApprovesNarrationAndIsIdempotent`、`TestRelaxedThresholdsAreRecordedInTheAuthorization` 的Windows目录rename拒绝访问；`TestVariantRejectsTamperedASSDespiteUpdatedManifestAndPassedReport` 的临时目录mkdtemp失败。本次联动失败（源码轨类型、后台任务修订竞争、Skill文档漂移）已修正并定向通过。首轮API幂等键500在随后API整包回归通过；首轮因编译期间增加源码而失败的service构建不算本轮最终验证。不得据此声称Go全量已通过。
+
+复跑仍走 `scripts/TestWorkspace.ps1 -Action Run`。Node用 `-Suite timeline`；Go相关包和前端完整单元用 `-Suite custom -Executable go|npm.cmd -Arguments ... -WorkingDirectory <实际源码目录>`，浏览器使用已有run-local-smokes并将VAC_DIST指向版本目录内构建。测试根通过 `-StorageRoot` 隔离在上述三个根：统一入口有目录锁，code-track与code-track-go还存在前缀占用识别，故前端使用code-ui；不绕过入口或清理未知目录。缓存、截图、临时媒体只在各自0.3.4目录，后续按既有版本轮换规则处理。
+
+真实外部模型质量、原生Tauri和安装包、人工视觉/听感仍未执行。未推送/发行、未更新安装版，未用业务AVP作为测试夹具。Motion Canvas依赖精确锁定3.17.2，复用已有浏览器与FFmpeg；桌面既有src/node_modules递归资源规则覆盖新运行时，未以静态资源检查替代实际安装包验证。
+
+## 5. 历史验证与失败溯源
+
+历史条目只解释当时源码和失败修复轨迹；其中部分输出已按版本规则清理，不能视为当前可用证据或可直接执行命令。当前维护入口与结果以上文为准。
 
 ### 2026-10-29 远程整合核查
 
@@ -87,83 +239,6 @@ Chrome既有设置套件最终10组通过、pageerror为空：手动启动才查
 当前整合工作树未提交源码、0.3.2，经现有受管入口：npm run check、完整68+66=134项及样式/生产构建通过；证据在本工作树 `.run-data/tests/agent-refresh03/0.3.2/artifacts/custom/output.log` 和 ui-dist。浏览器settings12组通过、pageerror为空；证据 `agent-refresh03-browser/0.3.2/artifacts/custom/review-smokes/`。旧实现用新时钟断言复现179秒内3次读取而失败，红灯在agent-refresh03-browser-red对应output/log；事件断言也取得缺少refetchType的红灯，修复后纳入完整套件。沿用已有runner/夹具，没有新增独立套件、依赖或媒体。
 
 当前用户Tauri dev保持运行，Vite日志记录hook/queryRefresh更新，UI文案同步3分钟频率；未重启后端、改MCP授权或重新发布。本次不重跑Go/API/MCP，因为未修改后端。此前5秒验收仅代表当时历史源码。
-## 2. 常用工程检查
-
-Windows 使用系统 PowerShell 7、UTF-8 和已安装依赖，保持 profile 设置。以下从实际源码根执行：
-
-```powershell
-$sourceRoot = (Get-Location).Path
-$runner = Join-Path $sourceRoot 'scripts/TestWorkspace.ps1'
-& $runner -Action Run -Suite python
-& $runner -Action Run -Suite timeline
-& $runner -Action Run -Suite exporter
-$npmCLI = Join-Path (Split-Path (Get-Command node).Source) 'node_modules/npm/bin/npm-cli.js'
-& $runner -Action Run -Suite custom -Executable node -WorkingDirectory "$sourceRoot/webui" -Arguments @($npmCLI,'run','test:unit')
-& $runner -Action Run -Suite custom -Executable node -WorkingDirectory "$sourceRoot/webui" -Arguments @('node_modules/typescript/bin/tsc','--noEmit')
-& $runner -Action Run -Suite custom -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('vet','./...')
-& $runner -Action Run -Suite custom -Executable cargo -WorkingDirectory "$sourceRoot/desktop" -Arguments @('fmt','--','--check')
-```
-
-一般路径可使用 -Suite go。当前嵌套工作树的 Go 全包使用原根的短版本化输出，避免 Windows 测试目录/FFmpeg/Node 路径过长，源码仍明确指向当前工作树：
-
-```powershell
-$managerRoot = 'E:/AI/Video Auto Cut'
-$sourceRoot = "$managerRoot/.run-data/worktrees/timeline-audio-viz"
-& "$managerRoot/scripts/TestWorkspace.ps1" -Action Run -Suite custom -Version '0.3.2' -Executable go -WorkingDirectory "$sourceRoot/control-plane" -Arguments @('test','./...','-p=1','-vet=off','-count=1','-timeout=600s')
-```
-
-Go vet 单独执行，不跳过原失败用例。按变更选择现有包/命名用例；不要在相同结果通过后无理由重复全包。并发入口须避免共享测试根、端口、数据库和管理锁。正常失败保留退出码、摘要与日志。
-
-## 3. 文档与接口契约
-
-接口文档自动区域来自机器清单与真实 TypeScript AST。维护契约后显式生成，再运行现有检查：
-
-```powershell
-node scripts/update-interface-documentation.mjs --refresh-inventory --write
-& $runner -Action Run -Suite custom -Executable node -WorkingDirectory $sourceRoot -Arguments @('scripts/update-interface-documentation.mjs','--check')
-& $runner -Action Run -Suite custom -Executable python -WorkingDirectory $sourceRoot -Arguments @('-B','scripts/check-documentation.py','--root',$sourceRoot)
-& $runner -Action Run -Suite custom -Executable python -WorkingDirectory $sourceRoot -Arguments @('-B','scripts/verify-script-workbench-docs.py')
-```
-
-源 SHA 按 LF 规范化计算，兼容 Git autocrlf 而仍检测实际内容变动。刷新只定位真实路由、处理器、SDK 和页面调用，不自动推断参数语义。检查精确路由集合、源 SHA、处理器位置、17 项桌面 IPC、HTTP 请求/响应索引、类型/SDK 自动区域及本地链接。文档迁移更新原检查对象，不退役 Go/前端/Worker 覆盖。运行时 Skill 文档若变更，同步嵌入/目录副本和版本，并执行相应 MCP/服务契约回归。
-
-## 4. 媒体、MCP、浏览器及可见桌面入口
-
-| 入口 | 目的与前置 |
-|---|---|
-| Go service/API/MCP 现有包 | 工程往返/隔离、CAS/幂等、Worker 边界、预算/历史、真实 FFmpeg 和本机模型夹具 |
-| `workers/node/timeline-cli/test/` | 预览/ASS/脚本真实渲染、哈希和跨语言输入；复用固定 clip_01.mp4 |
-| `control-plane/internal/project/timeline_test.go`、`service/project_timeline_test.go` | 多序列 v1/v2、整数帧/源采样、链接/锁定/波纹、CAS/幂等/整体撤销、重名引用与改名事务；扩展既有 service Skill 用例检查异步完成归属和撤销后重开去重 |
-| `workers/node/timeline-cli/test/sequence.test.mjs` | 共用节目/导出合成，真实源流、保持音调、混音/波形、变换、效果作用范围、溶解素材余量及字幕；合成输入由本机 FFmpeg 确定性生成 |
-| `workers/node/export-worker/test/` | owned task、取消/租约、输入/回执、摘要负向、恢复和发布 |
-| `workers/python/tests/` | 模型协议/重定向、声音、脚本、导入隔离与恢复；默认不下载模型 |
-| `scripts/verify-vu-runtime.ps1` | 现有真实 Go/Worker/MCP 连续流程；先按当前源码重建程序及匹配 runtime 清单 |
-| `control-plane/internal/mcpserver/probe/main.go` | 官方 SDK 真实发现/调用；通过 managed custom 执行 go run -tags probe，内部 Worker 才显式给 token-env |
-| `scripts/verify-skill-ui-completion.mjs --real-flow` | 基于运行探针产出的受管数据库副本/媒体和生产前端检查交互，夹具与真实后端范围分别记录 |
-| `scripts/verify-tauri-desktop.mjs` | 可见 Tauri/WebView、原生文件框/菜单/剪贴板、媒体/脚本、关闭/保存、切换/重启；自己在管理器内部启动并退出 |
-| `scripts/verify-tauri-updater.mjs --public-download <0.2.3-release目录> 0.3.2` | 通过统一 custom 入口运行；复制旧版桌面到独立测试目录，用正式 HTTPS 更新源检查/下载/验签并截取可安装状态，不执行安装；已有用户桌面实例时拒绝启动，停止并退出自身测试进程 |
-| `scripts/Test-TauriStateGuard.ps1` / `test-support/test-workspace.ps1` | 现有运行/清理/版本轮换守卫；通过对应 suite，不按本轮再复制独立测试 |
-
-生产 Vite 测试构建的 outDir 显式指向 VAC_TEST_OUTPUT 管理目录。浏览器使用已有 Playwright/本地Chrome，禁止Edge，不重新下载浏览器。没有真实窗口证据时，不把 CDP 端口、进程 Responding 或页面托管记为可见桌面通过。
-
-可见桌面既有调用形状如下；exe、生产前端、Go runtime 清单、desktop.json 和独立测试业务数据须先配套准备，不能把本机历史生成物当作 fresh checkout 自带资源：
-
-```powershell
-$env:VAC_DESKTOP_EXECUTABLE = "$managerRoot/.run-data/tests/0.2.4/cache/cargo/debug/video-auto-cut-desktop.exe"
-& $runner -Action Run -Suite custom -Executable node -WorkingDirectory $sourceRoot -Arguments @('scripts/verify-tauri-desktop.mjs','9223','launch',"$sourceRoot/.run-data/tests/0.2.4/artifacts/custom/desktop-native-ui","$sourceRoot/.run-data/tests/0.2.4/artifacts/custom/desktop-native/desktop.json")
-```
-
-Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的路径，避免 E: 被当 URL；测试数据根独立于源码资源根。测试应自己在管理器内部启动和退出，不预启窗口绕过在用进程守卫。正式打包仍使用 Build-TauriDesktop.ps1，不以测试 overlay 发行。
-
-统一编辑器的可见桌面检查已归入同一 `verify-tauri-desktop.mjs`：通过所属进程核验的 Win32 鼠标/键盘执行拖入、取消、移动、右键和快捷键，CDP 只读取坐标和状态；同时验证中文重名补全、绑定改名、实际 MCP 结构化编辑、节目/原生导出同哈希、紧凑布局和多序列保存重开。六类资源及工程隔离的原断言继续执行，旧双入口界面断言随产品更新。`VAC_DESKTOP_KEEP_FAILURE=1` 仅用于失败后保留窗口诊断，失败仍以非零状态退出。
-
-本轮维护前端 `script_workbench_test.mjs` 的稳定绑定/UTF-16/吸附/链接断言，更新 `test_suite.mjs` 的 SSE 查询领域；Python 在既有 `test_skill_runtime.py` 内检查序列、引用和工具契约传给模型。AI 画面修改接口默认 501，未调用服务商；确定性媒体检查不代表外部模型质量或人工观感通过。
-
-`webui/run-local-smokes.mjs` 继续服务生产构建，`review_shortcuts_smoke.mjs` 已更新为统一编辑器的 14 组路由夹具检查：链接选择、V/C、CAS 分割、输入/模态/隐藏页避让、标记/逐帧、右键、复制粘贴和序列历史。写请求只记录到本机夹具，不当成真实 Go 编辑验证。已不挂载的 quickstart 卡片检查退出当前默认入口，原测试源码保留溯源；当前任务启动由 Skill 前端/服务用例及原生窗口覆盖。旧 CR03 14/14 是旧候选结果，当前 14 组需另记实际结果。
-
-本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
-
-## 5. 最近适用结果
 
 ### 2026-10-25 DRAW02 图片素材（自动验收完成）
 
@@ -644,3 +719,11 @@ nsfinal因夹具切资源页后未使用返回的新工程revision导致409，�
 原生分段首轮自动通过但证据不足：只播放到1.932979秒，未跨首段边界且初始画面为0而非30秒；保留native-playback-segments。加强定位/跨段断言后native-playback-segments-warm失败，截图暴露MSE窗口起点等于旧终点导致异常（appendWindowStart=2而旧end=2），并发现外部播放头改变未调用播放器seek；已修窗口更新顺序和播放头同步，补前端单元。分段源码准备改用同一常驻宿主，避免每段冷编译。native-playback-segments-fixed正在验证，不能用旧首轮结果宣称连续播放通过。
 
 Go service定向55.133秒通过，覆盖当前帧/取消释放/共享原生Agent/绘制生命周期及快照隔离；包含真实绘制两秒分段、缓存命中、后方编辑保留前段缓存、旧版本URL拒绝。扩充用例后首次仍用旧seek版本导致Conflict，更新测试请求后通过，产品校验保持。上述运行使用原有TestWorkspace custom，所有生成物在注册测试根的0.3.4目录；未清理失败证据。HTTP整包、最终原生、文档合同同步仍待本轮结果。
+
+### 2026-11-04 用户授权的旧 run-data 清理
+
+已移除50个确定的可再生产物目录：原根与当前整合工作树的旧测试版本输出，以及整合工作树build/cache/go、build/desktop/{debug,release}/{deps,build,incremental,.fingerprint,examples}。测试根含历史自定义StorageRoot，统一入口会拒绝未知目录，故按既有标记/summary核验后集中提炼和定点清理；没有重新运行测试。原根archives保留0.2.2、0.3.1、0.3.2，整合工作树archives保留0.3.2、0.3.3、0.3.4，每版本一份；各轮failed/pending/passed及已记录fixed_in均保留，未知修复版本/提交写未记录，不将后续无关通过当成修复。
+
+清理前确认相关进程退出，逐目标核验绝对路径、父链/子项无重解析点及所属Git无跟踪文件，使用PowerShell Remove-Item -LiteralPath。清理前后原根与整合工作树Git状态完全一致。保留全部工作树及未提交修改、当前code-track测试输出、development/accepted-projects/accepted-fixtures、正常开发依赖、固定样本和恢复副本、debug/release可执行程序及runtime、app/app-debug、release/bundle和updates正式包、签名及发布元数据。未知用途的小型历史目录未清理。
+
+同口径原根.run-data文件逻辑大小21509796820→8620418254字节，减少12889378566字节（12.00 GiB）；E盘可用空间35639836672→46505267200字节，实际增加10865430528字节（10.12 GiB）。文件逻辑大小跳过重解析点目标，硬链接/文件系统分配导致其与磁盘释放值不同。本次旧测试明细路径已失效，结论以版本简档与本文历史边界为准；code-track当前证据仍可用。下次构建会重新生成已清除缓存，本次未新增产品验证或质量验收结论。

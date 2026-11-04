@@ -12,6 +12,203 @@ func timelineFixture() AvpDocument {
 	return AvpDocument{Format: "avp", SchemaVersion: 2, Project: Identity{ID: "p", Name: "test"}, Resources: []Resource{{ID: "r", Name: "source", Kind: "video", Out: 10, Metadata: map[string]any{"duration": 10, "width": 1920, "height": 1080, "avg_frame_rate": "30000/1001", "streams": []map[string]any{{"index": 0, "codec_type": "video"}, {"index": 2, "codec_type": "audio"}, {"index": 4, "codec_type": "audio"}, {"index": 5, "codec_type": "audio"}, {"index": 7, "codec_type": "audio"}}}}}, Sequences: []Sequence{NewSequence("main")}}
 }
 
+func TestCodeTrackAcceptsSourceAndRejectsRenderedVideo(t *testing.T) {
+	d := timelineFixture()
+	d.Resources[0].Draw = &DrawSourceReference{CompositionID: "scene", Mode: "snapshot"}
+	s := &d.Sequences[0]
+	if err := s.Apply(&d, Operation{Type: "track.add", Kind: "code"}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	id := s.Tracks[len(s.Tracks)-1].ID
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: id, ResourceID: "r"}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Tracks[len(s.Tracks)-1].Clips) != 1 {
+		t.Fatal("source did not enter code track")
+	}
+	d.Resources[0].Draw = nil
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: id, ResourceID: "r"}, Origin{Actor: "human"}); err == nil {
+		t.Fatal("rendered video entered code track")
+	}
+}
+
+func TestCodeMigrationPreservesMixedTrackOrderAndUndo(t *testing.T) {
+	d := timelineFixture()
+	d.Resources = append(d.Resources, Resource{ID: "drawing", Kind: "video", Draw: &DrawSourceReference{CompositionID: "scene", Mode: "snapshot"}})
+	s := &d.Sequences[0]
+	for i, id := range []string{"r", "drawing", "r"} {
+		s.Tracks[0].Clips = append(s.Tracks[0].Clips, Clip{ID: fmt.Sprint("c", i), ResourceID: id, At: int64(i * 30), Duration: 30})
+	}
+	s.Tracks[0].Locked = true
+	s.History = []EditRecord{{Before: s.Snapshot(&d), After: s.Snapshot(&d)}}
+	d.Upgrade()
+	if len(s.Tracks) != 8 || s.Tracks[0].Kind != "video" || s.Tracks[1].Kind != "code" || s.Tracks[2].Kind != "video" {
+		t.Fatalf("mixed source order lost: %+v", s.Tracks)
+	}
+	if !s.Tracks[1].Locked || s.Tracks[1].Clips[0].ID != "c1" {
+		t.Fatal("migration changed clip identity or lock")
+	}
+	if s.History[0].Before.State.Tracks[1].Kind != "code" {
+		t.Fatal("undo restores legacy video source track")
+	}
+	d.Upgrade()
+	if len(s.Tracks) != 8 {
+		t.Fatal("migration is not idempotent")
+	}
+}
+
+func TestCodeScriptUsesLocalFramesAndRejectsOutOfRange(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.FPS = Rate{30, 1}
+	s.Configured = true
+	c := Clip{ID: "code1", ResourceID: "r", At: 1800, Duration: 600, SourceIn: MediaTime(0), SourceOut: MediaTime(20), Speed: 1, Effects: Effects{Scale: 1}}
+	s.Tracks[0].Kind = "code"
+	s.Tracks[0].Clips = []Clip{c}
+	body := "红色画面\n{移动, 时间:00:01:10, x:100px, y:0px, 持续:2s}\n{旋转, 时间:00:01:12, 角度:30}"
+	if err := s.Apply(&d, Operation{Type: "code.script", ClipIDs: []string{"code1"}, Description: &body}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	c = s.Tracks[0].Clips[0]
+	if c.Code.Description != "红色画面" || len(c.Effects.ParameterKeyframes) != 2 || c.Effects.ParameterKeyframes[0].Frame != 300 {
+		t.Fatalf("bad script state: %+v", c)
+	}
+	bad := "{旋转, 时间:00:01:25, 角度:30}"
+	if err := s.Apply(&d, Operation{Type: "code.script", ClipIDs: []string{"code1"}, Description: &bad, CodeRevision: c.Code.Revision}, Origin{Actor: "human"}); err == nil {
+		t.Fatal("accepted out-of-clip instruction")
+	}
+}
+
+func TestCodeSplitPreservesTransformClockAndDescriptionIsolation(t *testing.T) {
+	c := Clip{ID: "original", At: 0, Duration: 60, SourceIn: MediaTime(0), SourceOut: MediaTime(2), Speed: 1, Effects: Effects{Scale: 1, ParameterKeyframes: []ParameterKeyframe{{Kind: "移动", Frame: 0, Duration: 60, X: 100}}}, Code: &CodeClip{Revision: 1, Description: "original"}}
+	left, right := sliceClip(c, 0, 30, Rate{30, 1}), sliceClip(c, 30, 60, Rate{30, 1})
+	x, _ := parameterAt(left.Effects, "移动", 15)
+	if x != 25 {
+		t.Fatalf("left animation retimed: %v", x)
+	}
+	x, _ = parameterAt(right.Effects, "移动", 15)
+	if x != 75 {
+		t.Fatalf("right animation retimed: %v", x)
+	}
+	right.Code.Description = "changed"
+	if left.Code.Description != "original" || c.Code.Description != "original" {
+		t.Fatal("split descriptions share mutable storage")
+	}
+}
+
+func TestCodeDirectivesRespectLiteralBracesAndSubtitleQuotes(t *testing.T) {
+	c := Clip{Duration: 60, Effects: Effects{Scale: 1}}
+	literal := `显示\{旋转\}和{"字幕包含{移动, 时间:00:00:00, x:20px, y:0px}"}`
+	text := literal + "\n{旋转, 时间:00:00:00, 角度:30}"
+	effects, body, err := ParseCodeDescription(text, c, Rate{30, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != literal || len(effects.ParameterKeyframes) != 1 || effects.ParameterKeyframes[0].Kind != "旋转" {
+		t.Fatalf("literal text executed as parameters: %s %+v", body, effects.ParameterKeyframes)
+	}
+}
+
+func TestCodeNewOccurrencesDoNotInheritAnotherTargetsJob(t *testing.T) {
+	for _, operation := range []string{"clip.split", "clip.paste", "gap.insert", "clip.insert"} {
+		t.Run(operation, func(t *testing.T) {
+			d := timelineFixture()
+			d.Resources[0].Draw = &DrawSourceReference{CompositionID: "scene", Mode: "snapshot"}
+			s := &d.Sequences[0]
+			s.Configured, s.FPS = true, Rate{30, 1}
+			s.Tracks[0].Kind = "code"
+			original := Clip{ID: "original", ResourceID: "r", Duration: 60, SourceIn: MediaTime(0), SourceOut: MediaTime(2), Speed: 1, Effects: Effects{Scale: 1}, Code: &CodeClip{Revision: 1, RunID: "original-job", DescriptionState: "pending", DescriptionError: "old failure", ContentVersion: "old-version"}}
+			s.Tracks[0].Clips = []Clip{original}
+			duration := int64(15)
+			op := Operation{Type: operation, TrackID: s.Tracks[0].ID, ClipIDs: []string{original.ID}, At: 30, Duration: &duration, Unlinked: true}
+			if operation == "clip.paste" {
+				op.At, op.Clips = 60, []Clip{original}
+			}
+			if operation == "clip.insert" {
+				op.ResourceID = "r"
+				op.Mode = "overwrite"
+			}
+			if err := s.Apply(&d, op, Origin{Actor: "human"}); err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, c := range s.Tracks[0].Clips {
+				if c.ID == original.ID {
+					continue
+				}
+				found = true
+				if c.Code == nil || c.Code.RunID != "" || c.Code.DescriptionError != "" || c.Code.ContentVersion != "" || c.Code.DescriptionState != "pending" {
+					t.Fatalf("new occurrence inherited old task: %+v", c.Code)
+				}
+			}
+			if !found {
+				t.Fatal("no new occurrence")
+			}
+		})
+	}
+}
+
+func TestCodeTrackMarkerRetainsSourceAnchor(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.Configured = true
+	s.FPS = Rate{30, 1}
+	s.Tracks[0].Kind = "code"
+	s.Tracks[0].Clips = []Clip{{ID: "code", ResourceID: "r", At: 60, Duration: 30, SourceIn: MediaTime(0), SourceOut: MediaTime(1), Speed: 1, Effects: Effects{Scale: 1}}}
+	s.Markers = []Marker{{ID: "anchor", Kind: "point", Notes: "画面", Frame: 75}}
+	for _, candidate := range ReferenceDirectory(&d, s.ID) {
+		if candidate.Kind == "sequence_marker" && candidate.TargetID == "anchor" {
+			if candidate.MediaID != "r" || candidate.AnchorTime == nil || Seconds(*candidate.AnchorTime) != .5 {
+				t.Fatal("code picture marker lost its source anchor")
+			}
+			return
+		}
+	}
+	t.Fatal("missing code marker")
+}
+
+func TestCodeReplacementIsLocalAndRippleConflictIsAtomic(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.Configured = true
+	s.FPS = Rate{30, 1}
+	s.Tracks[0].Kind = "code"
+	c := Clip{ID: "target", ResourceID: "r", Duration: 30, SourceIn: MediaTime(0), SourceOut: MediaTime(1), Speed: 1, Effects: Effects{Scale: 1}, Code: &CodeClip{Revision: 1, Description: "old"}}
+	other := c
+	other.ID = "other"
+	other.At = 30
+	other.Code = clone(c.Code)
+	s.Tracks[0].Clips = []Clip{c, other}
+	composition := DrawComposition{ID: "newscene", Name: "new", Engine: "remotion", Source: "export default ()=>null", Width: 320, Height: 180, FPS: Rate{30, 1}, DurationFrames: 60}
+	op := Operation{Type: "code.replace", ClipIDs: []string{c.ID}, CodeVersion: CodeTargetVersion(&d, c), CodeSegments: []CodeSegment{{Composition: composition, Description: "new"}}}
+	s.Tracks[0].Locked = true
+	if err := s.Apply(&d, op, Origin{Actor: "human"}); err == nil {
+		t.Fatal("locked replacement succeeded")
+	}
+	if s.Tracks[0].Clips[0].ResourceID != "r" || s.Tracks[0].Clips[1].At != 30 {
+		t.Fatal("failed replacement mutated sequence")
+	}
+	s.Tracks[0].Locked = false
+	if err := s.Apply(&d, op, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var target, untouched Clip
+	for _, v := range s.Tracks[0].Clips {
+		if v.ID == "target" {
+			target = v
+		} else {
+			untouched = v
+		}
+	}
+	if target.ResourceID == "r" || target.Duration != 60 || untouched.ResourceID != "r" || untouched.At != 60 || untouched.Code.Description != "old" {
+		t.Fatalf("nonlocal replacement %+v", s.Tracks[0].Clips)
+	}
+	if err := s.Apply(&d, op, Origin{Actor: "human"}); err == nil {
+		t.Fatal("stale target accepted")
+	}
+}
+
 func TestTimelineOpenNormalizesEmptyCollectionsAndUndoStates(t *testing.T) {
 	d := timelineFixture()
 	d.Sequences[0].Markers = nil
@@ -354,9 +551,10 @@ func TestTimelineCrossGroupMoveMixesDrawingAndVideo(t *testing.T) {
 			}
 			d.Resources = append(d.Resources, r)
 			s.Groups = append(s.Groups, TrackGroup{ID: "agent-group"})
-			s.Tracks = append(s.Tracks, newTrack("video", "agent-group"))
+			s.Tracks = append(s.Tracks, newTrack(ResourceTrackKind(r), "agent-group"))
 			src := s.Tracks[len(s.Tracks)-1].ID
 			dst := s.Tracks[0].ID
+			s.Tracks[0].Kind = ResourceTrackKind(r)
 			if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: src, ResourceID: r.ID}, Origin{Actor: "agent:run"}); err != nil {
 				t.Fatal(err)
 			}

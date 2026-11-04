@@ -11,6 +11,6 @@ Agent视频工程工作站：保存创作脚本，让内部或外部Agent读取�
 | [架构与功能详解](docs/架构与功能详解.md) | 工程持久化、模块、Worker、渲染与桌面机制 |
 | [文档索引](docs/文档索引.md) | 全部说明的职责、开发交接和历史边界 |
 
-当前源码版本`0.3.4`（生产试用版），分支`codex/integrate-remote-20261029`，已发布[v0.3.4](https://github.com/KiriuKazurei/Video-A-Cut/releases/tag/v0.3.4)，本地安装版已通过生产更新器从0.3.3完成升级与自动重启；验证范围见测试说明。项目整体不判定完工，真实模型、人工体验和最新候选发行分别验证。
+当前源码版本`0.4.0`（生产试用版开发源码），分支`codex/integrate-remote-20261029`，包含独立代码轨、分段脚本编辑及Motion Canvas。已发布安装版仍为[v0.3.4](https://github.com/KiriuKazurei/Video-A-Cut/releases/tag/v0.3.4)；本次只推送源码。项目整体不判定完工，真实模型、人工体验和0.4.0安装包分别验证，范围见测试说明。
 
 测试与验证证据见[TESTING](scripts/TESTING.md)，仓库约束见[AGENTS](AGENTS.md)。

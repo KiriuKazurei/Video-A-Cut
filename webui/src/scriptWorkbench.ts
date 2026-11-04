@@ -68,7 +68,7 @@ export function scriptTimelineStarts(w: Pick<ScriptWorkbenchView, 'segments' | '
 export interface ScriptToken { text: string; kind: 'text' | 'directive' | 'invalid'; start: number; end: number }
 
 /** Lightweight lexical highlighting; the Go parser remains authoritative. */
-export function scriptTokens(source: string): ScriptToken[] {
+export function scriptTokens(source: string, codeContext=false): ScriptToken[] {
   const out: ScriptToken[] = [];
   let ordinary = 0;
   for (let i = 0; i < source.length; i++) {
@@ -84,7 +84,7 @@ export function scriptTokens(source: string): ScriptToken[] {
       else if (c === '}') break;
     }
     const body = source.slice(i + 1, end).trim();
-    const known = body.startsWith('@') || (body.startsWith('"') && subtitleWellFormed(body)) || ['黑屏', '白屏', '交叉溶解'].includes(body);
+    const known = codeContext && /^(音量|移动|旋转)\s*[,，]/.test(body) || body.startsWith('@') || (body.startsWith('"') && subtitleWellFormed(body)) || ['黑屏', '白屏', '交叉溶解'].includes(body);
     const stop = Math.min(end + 1, source.length);
     out.push({ text: source.slice(i, stop), kind: end < source.length && !nested && known ? 'directive' : 'invalid', start: i, end: stop });
     i = stop - 1; ordinary = stop;

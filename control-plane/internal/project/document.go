@@ -80,6 +80,7 @@ type Identity struct {
 }
 
 type AvpDocument struct {
+	Migrated         bool              `json:"-"`
 	DrawCompositions []DrawComposition `json:"draw_compositions,omitempty"`
 	FileReferences   map[string]string `json:"file_references,omitempty"`
 	Format           string            `json:"format"`
@@ -186,6 +187,21 @@ func (d AvpDocument) Validate() error {
 			}
 		}
 	}
+	drawings := append([]DrawComposition{}, d.DrawCompositions...)
+	for _, r := range d.Resources {
+		if r.Draw != nil {
+			drawings = append(drawings, r.Draw.Snapshot)
+		}
+	}
+	for _, drawing := range drawings {
+		doc := drawing.UnifiedDocument()
+		for _, a := range doc.AudioBindings {
+			audio, ok := resources[a.ResourceID]
+			if !ok || !slices.Contains(Streams(audio, "audio"), a.StreamIndex) || (a.ResourceSHA != "" && a.ResourceSHA != audio.Source.SHA256) || a.SourceIn+doc.Canvas.FPS.Seconds(a.DurationFrames) > number(audio.Metadata["duration"])+1e-6 {
+				return fmt.Errorf("代码声音引用无效或超出资源")
+			}
+		}
+	}
 	for _, sc := range d.Scripts {
 		if seen["script:"+sc.ID] {
 			return fmt.Errorf("重复的脚本 ID")
@@ -209,16 +225,22 @@ func (d AvpDocument) Validate() error {
 					return fmt.Errorf("片段引用工程外资源")
 				}
 				r := resources[clip.ResourceID]
-				if (track.Kind == "video" && r.Kind != "video" && r.Kind != "image") || (track.Kind == "audio" && r.Kind != "audio" && r.Kind != "video") || (track.Kind == "subtitle" && r.Kind != "subtitle") {
+				if (track.Kind == "video" && r.Kind != "video" && r.Kind != "image") || (track.Kind == "code" && r.Draw == nil) || (track.Kind == "audio" && r.Kind != "audio" && r.Kind != "video") || (track.Kind == "subtitle" && r.Kind != "subtitle") {
 					return fmt.Errorf("片段资源与轨道类型不匹配")
 				}
-				if (track.Kind == "audio" || track.Kind == "video") && r.Kind != "image" && r.Metadata["streams"] != nil && !slices.Contains(Streams(r, track.Kind), clip.StreamIndex) {
+				if (track.Kind == "audio" || track.Kind == "video" || track.Kind == "code") && r.Kind != "image" && r.Metadata["streams"] != nil && !slices.Contains(Streams(r, track.Kind), clip.StreamIndex) {
 					return fmt.Errorf("片段引用了错误的源流索引")
 				}
 				if clip.Effects.Transition > 0 {
 					var previous *Clip
-					for i := range track.Clips {
-						c := &track.Clips[i]
+					neighbors := []Clip{}
+					for _, other := range sequence.Tracks {
+						if other.ID == track.ID || track.VisualGroup != "" && track.VisualGroup == other.VisualGroup {
+							neighbors = append(neighbors, other.Clips...)
+						}
+					}
+					for i := range neighbors {
+						c := &neighbors[i]
 						if c.At+c.Duration == clip.At {
 							previous = c
 							break

@@ -179,6 +179,32 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 	if err != nil {
 		return r, err
 	}
+	if len(req.CodeTargets) > 0 {
+		if len(req.CodeTargets) > 32 || req.Strategy != "draw" || (req.CodeAction != "describe" && req.CodeAction != "regenerate") {
+			return r, model.ErrArgument
+		}
+		timeline, e := s.Timeline(ctx, req.ProjectID, req.SequenceID)
+		if e != nil {
+			return r, e
+		}
+		found := map[string]bool{}
+		for _, t := range timeline.Sequence.Tracks {
+			if t.Kind != "code" {
+				continue
+			}
+			for _, c := range t.Clips {
+				if expected, ok := req.CodeTargets[c.ID]; ok {
+					if t.Locked || c.Code == nil || expected != c.Code.ContentVersion {
+						return r, model.ErrConflict
+					}
+					found[c.ID] = true
+				}
+			}
+		}
+		if len(found) != len(req.CodeTargets) {
+			return r, model.ErrNotFound
+		}
+	}
 	scope := "skill-run:" + actor
 	sequenceID := req.SequenceID
 	if w := s.workspace; w != nil {
@@ -235,7 +261,7 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 			return model.ErrConflict
 		}
 		now := s.autoNow()
-		r = skill.Run{Strategy: req.Strategy, ID: newID("skr"), ProjectID: p.ID, ProjectVersion: p.Version, SkillID: pack.ID, SkillSHA: pack.SHA, SkillVersion: pack.Version, Mode: req.Mode, Flow: p.Flow, VisibleSHA: view.SHA, State: "queued", Owner: actor, Version: 1, Budget: req.Budget, Goal: req.Goal, ProfileID: req.ProfileID, ProfileRevision: req.ProfileRevision, ProfileSHA: profileSHA, ExternalAuthorized: req.AcceptExternal || p.ExternalAuthorized, Frames: []skill.Frame{}, Artifacts: []skill.Artifact{}, CreatedAt: now, UpdatedAt: now}
+		r = skill.Run{CodeTargets: req.CodeTargets, CodeAction: req.CodeAction, Strategy: req.Strategy, ID: newID("skr"), ProjectID: p.ID, ProjectVersion: p.Version, SkillID: pack.ID, SkillSHA: pack.SHA, SkillVersion: pack.Version, Mode: req.Mode, Flow: p.Flow, VisibleSHA: view.SHA, State: "queued", Owner: actor, Version: 1, Budget: req.Budget, Goal: req.Goal, ProfileID: req.ProfileID, ProfileRevision: req.ProfileRevision, ProfileSHA: profileSHA, ExternalAuthorized: req.AcceptExternal || p.ExternalAuthorized, Frames: []skill.Frame{}, Artifacts: []skill.Artifact{}, CreatedAt: now, UpdatedAt: now}
 		r.TranscriptionAuthorized = (p.TranscriptionAuthorized && req.ProfileID == p.ProfileID && req.ProfileRevision == p.ProfileRevision) || (isHumanActor(actor) && req.AcceptTranscription)
 		if s.WorkspaceEnabled() {
 			r.TranscriptionAuthorized = true
@@ -352,7 +378,7 @@ func (s *Service) SkillRunContext(ctx context.Context, actor, id string) (map[st
 	}
 	drawings, _ := s.DrawCompositions(r.ProjectID)
 	imageResources, _ := s.DrawImageResources(r.ProjectID)
-	result := map[string]any{"image_resources": imageResources, "draw_compositions": drawings, "run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools}
+	result := map[string]any{"code_sources": s.codeRunSources(r), "image_resources": imageResources, "draw_compositions": drawings, "run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools}
 	if s.WorkspaceEnabled() && r.SequenceID != "" {
 		view, e := s.Timeline(ctx, r.ProjectID, r.SequenceID)
 		if e != nil {

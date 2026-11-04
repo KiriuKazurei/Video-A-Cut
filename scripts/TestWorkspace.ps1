@@ -9,9 +9,11 @@ param(
   [string]$ArgumentsJson,
   [string]$WorkingDirectory,
   [switch]$CacheOnly,
-  [string]$StorageRoot
+  [string]$StorageRoot,
+  [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$')][string]$TestName
 )
 $ErrorActionPreference = 'Stop'
+if ($TestName -and $Suite -ne 'custom') { throw 'TestName requires -Suite custom' }
 if ($CacheOnly -and $Action -ne 'Clear') { throw 'CacheOnly requires -Action Clear' }
 $repo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $allowedRoot = Join-Path $repo '.run-data/tests'
@@ -198,19 +200,20 @@ try {
     return
   }
   if ($Action -eq 'Measure') { Measure-Storage | ConvertTo-Json -Compress; return }
-  $artifact = Join-Path $current ('artifacts/'+$Suite)
+  $testKey = if ($TestName) { "$Suite/$TestName" } else { $Suite }
+  $artifact = Join-Path $current ('artifacts/'+$testKey)
   $cache = Join-Path $current 'cache'
   foreach ($path in @($artifact,$cache)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
   if ($Action -eq 'Prepare') { Write-Output $artifact; return }
   $command = switch ($Suite) {
     'go' { @{exe='go';args=@('-C','control-plane','test','-p','1','-count=1','./...');cwd=$repo} }
     'python' { @{exe='python';args=@('-B','-m','unittest','discover','-s','tests','-t','.','-v');cwd=(Join-Path $repo 'workers/python')} }
-    'webui' { @{exe='node';args=@('--experimental-strip-types','--test','test_suite.mjs','desktop_test.mjs','tts_test.mjs','pipeline_test.mjs','evidence_summary_test.mjs');cwd=(Join-Path $repo 'webui')} }
+    'webui' { @{exe='pwsh';args=@('-Command','npm run test:unit');cwd=(Join-Path $repo 'webui')} }
     'pipeline' { @{exe='node';args=@('--experimental-strip-types','--test','pipeline_test.mjs');cwd=(Join-Path $repo 'webui')} }
     'timeline' { @{exe='node';args=@('--test');cwd=(Join-Path $repo 'workers/node/timeline-cli')} }
     'exporter' { @{exe='node';args=@('--test');cwd=(Join-Path $repo 'workers/node/export-worker')} }
-    'guard' { @{exe='pwsh';args=@('-NoProfile','-File',(Join-Path $repo 'scripts/Test-TauriStateGuard.ps1'));cwd=$repo} }
-    'workspace' { @{exe='pwsh';args=@('-NoProfile','-File',(Join-Path $repo 'test-support/test-workspace.ps1'));cwd=$repo} }
+    'guard' { @{exe='pwsh';args=@('-File',(Join-Path $repo 'scripts/Test-TauriStateGuard.ps1'));cwd=$repo} }
+    'workspace' { @{exe='pwsh';args=@('-File',(Join-Path $repo 'test-support/test-workspace.ps1'));cwd=$repo} }
     'custom' { if (!$Executable) { throw 'Custom tests require -Executable and -Arguments' }; @{exe=$Executable;args=$Arguments;cwd=$(if($WorkingDirectory){[IO.Path]::GetFullPath($WorkingDirectory)}else{$repo})} }
   }
   $start = [Diagnostics.ProcessStartInfo]::new($command.exe)
@@ -223,7 +226,7 @@ try {
   $start.Environment['GOCACHE']=(Join-Path $cache 'go'); $start.Environment['GOTMPDIR']=$artifact
   $start.Environment['GOPROXY']='off'; $start.Environment['GOTOOLCHAIN']='local'; $start.Environment['GOFLAGS']='-p=1'
   $start.Environment['npm_config_cache']=(Join-Path $cache 'npm')
-  Write-Output ("Testing $Suite / $Version; before: $($before.total_MiB) MiB")
+  Write-Output ("Testing $testKey / $Version; before: $($before.total_MiB) MiB")
   $process = [Diagnostics.Process]::Start($start)
   $stdout=$process.StandardOutput.ReadToEndAsync(); $stderr=$process.StandardError.ReadToEndAsync()
   $process.WaitForExit()
@@ -233,13 +236,16 @@ try {
   $exitCode=$process.ExitCode
   $result=if($exitCode -eq 0){'passed'}else{'failed'}
   $summary=Read-Summary $current
-  $old=$summary.tests[$Suite]
-  $head=(& git -C $repo rev-parse --short HEAD).Trim()
-  if (@(& git -C $repo status --porcelain).Count) { $head += '+working-tree' }
+  $old=$summary.tests[$testKey]
+  $head=(& git -C $command.cwd rev-parse --short HEAD 2>$null)
+  if ($LASTEXITCODE -eq 0) {
+    $head=$head.Trim()
+    if (@(& git -C $command.cwd status --porcelain).Count) { $head += '+working-tree' }
+  } else { $head='unrecorded' }
   $fixed=if($old -and $old.fixed_in){$old.fixed_in}else{''}
   if($result -eq 'passed' -and $old -and $old.result -eq 'failed') { $fixed="$Version@$head" }
   if($result -eq 'passed' -and $old -and $old.previous_result -eq 'failed') { $fixed="$Version@$head ($($old.previous_version) failed→passed)" }
-  $summary.tests[$Suite]=@{result=$result;fixed_in=$fixed;head=$head}
+  $summary.tests[$testKey]=@{result=$result;fixed_in=$fixed;head=$head;working_directory=$command.cwd}
   $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $current 'summary.json') -Encoding utf8NoBOM
   $after=Measure-Storage
   $after | ConvertTo-Json -Compress

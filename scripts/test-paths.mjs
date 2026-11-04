@@ -17,7 +17,10 @@ export function testDirectory(name = '') {
     try { entry = lstatSync(cursor); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (entry?.isSymbolicLink()) throw new Error('Linked test output is not allowed');
   }
-  const versionRoot = path.join(root, path.relative(root, base).split(path.sep)[0]);
+  // StorageRoot may isolate suites underneath tests. Locate the enclosing
+  // version rather than treating the StorageRoot's name as an app version.
+  let versionRoot = base;
+  while (versionRoot !== root && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(path.basename(versionRoot))) versionRoot = path.dirname(versionRoot);
   const marker = path.join(versionRoot, '.test-workspace.json');
   const currentVersion = path.basename(versionRoot);
   if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(currentVersion)) throw new Error('Invalid output version');

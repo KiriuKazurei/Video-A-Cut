@@ -306,5 +306,5 @@ func (s *Service) DrawCapabilities(projectID string) (map[string]any, error) {
 	if _, e := s.DrawCompositions(projectID); e != nil {
 		return nil, e
 	}
-	return map[string]any{"document_schema": 1, "avp_schema": 3, "policy_version": "vac-unified-1", "engines": map[string]string{"hyperframes": "0.8.193", "remotion": "4.0.538"}, "nodes": []string{"source", "image", "text", "group", "mask", "shape"}, "presets": []string{"auto", "interface", "data", "media"}, "live_preview": true, "alpha": "straight", "color_space": "srgb", "cross_document_backdrop_filter": false, "picture_generation": false, "no_runtime_downloads": true}, nil
+	return map[string]any{"document_schema": 1, "avp_schema": 3, "policy_version": "vac-unified-1", "engines": map[string]string{"hyperframes": "0.8.193", "remotion": "4.0.538", "motion_canvas": "3.17.2"}, "nodes": []string{"source", "image", "text", "group", "mask", "shape"}, "presets": []string{"auto", "interface", "data", "media"}, "live_preview": true, "alpha": "straight", "color_space": "srgb", "cross_document_backdrop_filter": false, "picture_generation": false, "no_runtime_downloads": true}, nil
 }

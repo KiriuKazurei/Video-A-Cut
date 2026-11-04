@@ -602,7 +602,7 @@ func (s *Service) ImportDrawComposition(ctx context.Context, actor, projectID, i
 	if target == "" {
 		group = newID("grp")
 		seq.Groups = append(seq.Groups, project.TrackGroup{ID: group, Name: "绘制 · " + c.Name, Origin: origin})
-		if err = seq.Apply(draft, project.Operation{Type: "track.add", Kind: "video", GroupID: group, Name: c.Name}, origin); err != nil {
+		if err = seq.Apply(draft, project.Operation{Type: "track.add", Kind: project.ResourceTrackKind(resource), GroupID: group, Name: c.Name}, origin); err != nil {
 			return TimelineView{}, err
 		}
 		target = seq.Tracks[len(seq.Tracks)-1].ID
@@ -641,5 +641,6 @@ func (s *Service) ImportDrawComposition(ctx context.Context, actor, projectID, i
 		return TimelineView{}, err
 	}
 	s.publish("workspace.timeline.changed", map[string]any{"project_id": projectID, "sequence_id": seq.ID})
+	s.scheduleCodeDescriptions(projectID, seq.ID)
 	return view, nil
 }

@@ -89,7 +89,7 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
   for(const node of document.nodes)if(node.kind==='image'&&!images[node.resource_id])throw Error('Missing project image '+node.resource_id);
   let gsap='',runtime='';
   let seekSerial=0,currentDocument=structuredClone(document),html={},htmlHash='',resourcesDirty=true,browser,page,server,origin='',closed=false,serial=Promise.resolve();
-  const reactSources=new Map(),compileCounts=new Map();
+  const reactSources=new Map(),motionSources=new Map(),compileCounts=new Map();
   const lifecycle=[];const trace=(type,message='')=>{lifecycle.push({type,message:String(message),at:Date.now()});if(lifecycle.length>12)lifecycle.shift();};
   const install=async(id,code)=>{await page.addScriptTag({content:code});await page.evaluate(id=>window.vacInstallSource(id),id);};
   async function compile(d){
@@ -98,6 +98,18 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
     if(htmlSources.length&&!runtime){gsap=await readFile(require.resolve('gsap/dist/gsap.min.js'),'utf8');runtime=await readFile(join(dirname(require.resolve('hyperframes/package.json')),'dist/hyperframe.runtime.iife.js'),'utf8');}
     html=Object.fromEntries(htmlSources.map(s=>[s.id,htmlSource(s.source,gsap,runtime,sourceBindings(d,s),images,{variables:d.variables??{},theme:d.theme??{},seed:d.seed??0},origin)]));
     const generated=hash(JSON.stringify(html));if(generated!==htmlHash){htmlHash=generated;resourcesDirty=true;}
+    const motion=d.sources.filter(s=>s.engine==='motion_canvas');
+    for(const id of motionSources.keys())if(!motion.some(s=>s.id===id)){motionSources.delete(id);if(page)await page.evaluate(id=>window.vacRemoveMotion(id),id);}
+    for(const source of motion){
+      const spec={...d.canvas,...source.canvas,seed:d.seed??0,variables:d.variables??{}},signature=hash(JSON.stringify([source.source,spec]));
+      if(motionSources.get(source.id)?.signature===signature)continue;
+      const bundle=await build({stdin:{contents:source.source,loader:'tsx',resolveDir:join(directory,'..')},bundle:true,write:false,format:'iife',globalName:'VacMotionBuild',platform:'browser',jsx:'automatic',jsxImportSource:'@motion-canvas/2d/lib',plugins:[{name:'shared-motion-runtime',setup(b){
+        b.onResolve({filter:/^@motion-canvas\/(core|2d)(?:\/lib\/jsx-runtime)?$/},args=>({path:args.path,namespace:'motion'}));
+        b.onLoad({filter:/.*/,namespace:'motion'},args=>({contents:'module.exports=window.'+({'@motion-canvas/core':'__vacMotionCore','@motion-canvas/2d':'__vacMotion2D','@motion-canvas/2d/lib/jsx-runtime':'__vacMotionJSX'}[args.path]),loader:'js'}));
+      }}]});
+      motionSources.set(source.id,{signature,code:bundle.outputFiles[0].text,spec});compileCounts.set(source.id,(compileCounts.get(source.id)??0)+1);
+      if(page){await page.addScriptTag({content:bundle.outputFiles[0].text});await page.evaluate(async({id,spec})=>window.vacInstallMotion(id,window.VacMotionBuild.default,spec),{id:source.id,spec});}
+    }
     const react=d.sources.filter(s=>s.engine==='remotion');
     for(const id of reactSources.keys())if(!react.some(s=>s.id===id)){reactSources.delete(id);if(page)await page.evaluate(id=>window.vacRemoveSource(id),id);}
     for(const source of react){
@@ -112,7 +124,7 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
   }
   try{
     await compile(document);
-    const bundle=await build({entryPoints:[join(directory,'unified-scene.jsx')],bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'}});
+    const bundle=await build({entryPoints:[join(directory,'unified-scene.jsx')],bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',loader:{'.glsl':'text','.svg':'text'},define:{'process.env.NODE_ENV':'"production"'}});
     await writeFile(join(root,'scene.js'),bundle.outputFiles[0].contents);
     server=createServer(async(req,res)=>{try{if(req.method!=='GET'){res.statusCode=405;res.end();return;}if(imageFiles.has(req.url)){res.setHeader('Content-Type','image/png');res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Cache-Control','public,max-age=31536000,immutable');res.end(await readFile(imageFiles.get(req.url)));}else if(req.url==='/scene.js'){res.setHeader('Content-Type','application/javascript');res.end(await readFile(join(root,'scene.js')));}else if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><head><style>html,body{margin:0;background:transparent;overflow:hidden}</style></head><body><div id="root"></div><script src="/scene.js"></script></body></html>');}else{res.statusCode=404;res.end();}}catch{res.statusCode=500;res.end();}});
     await listenDrawServer(server);
@@ -132,6 +144,7 @@ export async function openUnifiedDraw({document,assets=[],output_dir,browser_pat
     await page.setViewport({width:document.canvas.width,height:document.canvas.height,deviceScaleFactor:1});
     await page.goto(origin,{waitUntil:'load'});await page.waitForFunction('window.vacReady===true');
     for(const [id,source] of reactSources)await install(id,source.code);
+    for(const [id,source] of motionSources){await page.addScriptTag({content:source.code});await page.evaluate(async({id,spec})=>window.vacInstallMotion(id,window.VacMotionBuild.default,spec),{id,spec:source.spec});}
   }catch(error){try{if(sharedBrowser)await page?.close();else await browser?.close();}finally{server?.close();}throw error;}
   const enqueue=action=>{const result=serial.then(()=>{if(closed)throw Error('Frame adapter disposed');return action();});serial=result.catch(()=>{});return result;};
   return {
@@ -171,7 +184,7 @@ export async function renderUnifiedDraw(input) {
     host=await openUnifiedDraw({document:d,assets:input.assets,output_dir:stage});
     for(let frame=0;frame<d.duration_frames;frame++){
       const result=await host.seek({frame,revision:c.revision,content_version:c.content_version,request_id:'export-'+frame});
-      await writeFile(join(stage,String(frame/frame_step).padStart(6,'0')+'.png'),result.png);
+      await writeFile(join(stage,String(frame).padStart(6,'0')+'.png'),result.png);
     }
     await host.close();host=null;
     const codec=format==='mp4'?['-c:v','libx264','-crf','18','-pix_fmt','yuv420p','-movflags','+faststart']:format==='webm-alpha'?['-c:v','libvpx-vp9','-pix_fmt','yuva420p','-auto-alt-ref','0','-crf','18','-b:v','0']:['-c:v','prores_ks','-profile:v','4','-pix_fmt','yuva444p10le'];

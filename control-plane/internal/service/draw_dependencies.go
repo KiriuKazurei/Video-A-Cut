@@ -46,6 +46,18 @@ func bindDrawingAssets(doc *project.AvpDocument, c *project.DrawComposition) err
 	}
 	if c.Document != nil {
 		c.Document.AssetBindings = bindings
+		for i := range c.Document.AudioBindings {
+			a := &c.Document.AudioBindings[i]
+			index := slices.IndexFunc(doc.Resources, func(r project.Resource) bool { return r.ID == a.ResourceID })
+			if index < 0 {
+				return model.ErrNotFound
+			}
+			r := doc.Resources[index]
+			if r.Missing || r.Removed || r.Changed || !slices.Contains(project.Streams(r, "audio"), a.StreamIndex) {
+				return model.ErrConflict
+			}
+			a.ResourceSHA = r.Source.SHA256
+		}
 	}
 	return nil
 }

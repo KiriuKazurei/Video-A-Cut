@@ -50,7 +50,7 @@ func (c DrawComposition) Validate() error {
 		return c.Document.Validate()
 	}
 	if !validID(c.ID) || strings.TrimSpace(c.Name) == "" || len(c.Name) > 256 || len(c.Source) == 0 || len(c.Source) > 96<<10 ||
-		(c.Engine != "hyperframes" && c.Engine != "remotion") || c.Width < 16 || c.Width > 3840 || c.Height < 16 || c.Height > 2160 ||
+		(c.Engine != "hyperframes" && c.Engine != "remotion" && c.Engine != "motion_canvas") || c.Width < 16 || c.Width > 3840 || c.Height < 16 || c.Height > 2160 ||
 		c.Width%2 != 0 || c.Height%2 != 0 || c.FPS.Num < 1 || c.FPS.Den < 1 || (c.FPS.Value() < 1 || c.FPS.Value() > 120) ||
 		c.DurationFrames < 1 || c.DurationFrames > 18000 || c.FPS.Seconds(c.DurationFrames) > 300 {
 		return fmt.Errorf("invalid draw composition: use HTML or React source, even dimensions, 1-120 fps, and at most 300 seconds")

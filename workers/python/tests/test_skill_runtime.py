@@ -93,6 +93,7 @@ class SkillSamplingTests(unittest.TestCase):
         request = {'history': [], 'run': {'goal': '编辑标记帧', 'sequence_id': 'seq'},
                    'skill': {'content': 'VAC adapter', 'resources': {'vac/tool-contracts.md': 'current typed contract'}},
                    'media': [], 'sequence': {'session': 'session', 'sequence': {'id': 'seq', 'fps': {'num': 30000, 'den': 1001}}},
+                   'code_sources': {'instance': {'engine': 'motion_canvas', 'source': 'native scene source'}},
                    'references': [reference], 'tools': ['timeline.read', 'timeline.edit', 'references.resolve'],
                    'provider': {'endpoint': 'local-fixture'}}
         with mock.patch('vac_worker.skill_runtime.call_model', return_value={'tool': 'timeline.read', 'arguments': {}}) as model:
@@ -101,6 +102,7 @@ class SkillSamplingTests(unittest.TestCase):
         payload = json.loads(prompt.rsplit('\n', 1)[1])
         self.assertEqual(payload['references'], [reference])
         self.assertEqual(payload['sequence'], request['sequence'])
+        self.assertEqual(payload['code_sources'], request['code_sources'])
         self.assertIn('current typed contract', prompt)
         self.assertIn('run.finish {sequence_revision,content_version}', prompt)
         self.assertEqual(result['tool'], 'timeline.read')

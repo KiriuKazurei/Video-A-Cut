@@ -48,7 +48,9 @@ export async function openSequenceGPU({browser_path,backend='auto'}={}) {
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
-      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([x0,y0,left,top,x0,y1,left,1-bottom,x1,y0,1-right,top,x1,y1,1-right,1-bottom]),gl.STREAM_DRAW);
+      const angle=(layer.rotation||0)*Math.PI/180,cx=x+w/2,cy=y+h/2;
+      const point=(px,py)=>{const dx=px-cx,dy=py-cy;return [(cx+dx*Math.cos(angle)-dy*Math.sin(angle))/width*2-1,1-(cy+dx*Math.sin(angle)+dy*Math.cos(angle))/height*2];};
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([...point(x,y),left,top,...point(x,y+h),left,1-bottom,...point(x+w,y),1-right,top,...point(x+w,y+h),1-right,1-bottom]),gl.STREAM_DRAW);
       gl.uniform1f(gl.getUniformLocation(program,'brightness'),layer.brightness);gl.uniform1f(gl.getUniformLocation(program,'fadeColor'),layer.fade_color);gl.uniform1f(gl.getUniformLocation(program,'opacity'),layer.opacity);
       gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
      }finally{gl.deleteTexture(texture);}

@@ -1,3 +1,4 @@
+import {codeAudioTracks} from './code-audio.mjs';
 import { runTool } from './media.mjs';
 
 const MIN = 1;
@@ -61,10 +62,11 @@ export async function inspectBasicQuality({path,sha256,duration,videoWindows,aud
  return result;
 }
 export function sequenceExpectations(sequence, resources, tracks) {
+ tracks=[...tracks,...codeAudioTracks(sequence,resources,tracks)];
  const fps=sequence.fps.num/sequence.fps.den, audioSources=[],videoWindows=[],videoExclusions=[];
  for(const track of tracks) for(const clip of track.clips) {
   const start=clip.at/fps,end=(clip.at+clip.duration)/fps,e=clip.effects||{};
-  if(track.kind==='video') {
+  if((track.kind==='video'||track.kind==='code')&&!track.hidden) {
    const black=!e.fade_color || e.fade_color==='black', from=(e.from_frame??0)/fps,to=(e.to_frame??clip.duration)/fps;
    videoWindows.push({start,end});
    if(black && e.fade_in)videoExclusions.push({start:start+from,end:start+from+Math.min(e.fade_in/fps,to-from)});

@@ -73,5 +73,5 @@ func drawingEnvironmentVersion() string {
 	if runtime.GOOS == "windows" {
 		roots = []string{filepath.Join(os.Getenv("WINDIR"), "Fonts"), filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "Windows", "Fonts")}
 	}
-	return "vac-unified-1:hf0.8.193:remotion4.0.538:srgb-straight:" + drawingFontVersion(roots)
+	return "vac-unified-1:hf0.8.193:remotion4.0.538:motioncanvas3.17.2:codeparams1:srgb-straight:" + drawingFontVersion(roots)
 }

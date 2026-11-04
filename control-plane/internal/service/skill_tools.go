@@ -160,7 +160,9 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	if toolErr != nil {
 		elapsed := r.ElapsedMilliseconds
 		framesSpent := r.FramesSpent
+		codeCandidates := r.CodeCandidates
 		r = beforeTool
+		r.CodeCandidates = codeCandidates
 		r.ElapsedMilliseconds = elapsed
 		r.FramesSpent = framesSpent
 		step.State = "failed"
@@ -266,6 +268,13 @@ func decodeSkillArgs(raw json.RawMessage, out any) error {
 }
 func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harnessSnapshot, name string, args json.RawMessage) (json.RawMessage, error) {
 	respond := func(v any) (json.RawMessage, error) { return json.Marshal(v) }
+	if len(r.CodeTargets) > 0 {
+		switch name {
+		case "timeline.read", "timeline.edit", "references.resolve", "agent.model", "run.finish", "draw.capabilities", "draw.list", "draw.check", "draw.get_frame", "draw.preview", "media.list":
+		default:
+			return nil, fmt.Errorf("局部代码任务只允许读取上下文及提交目标条替换: %w", model.ErrArgument)
+		}
+	}
 	if strings.HasPrefix(name, "draw.") {
 		return s.executeDrawTool(ctx, r, name, args)
 	}
@@ -312,12 +321,61 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		if req.SequenceID != r.SequenceID || r.SequenceID == "" {
 			return nil, model.ErrForbidden
 		}
+		if len(r.CodeTargets) > 0 && len(req.Command.Operations) != 1 {
+			return nil, model.ErrArgument
+		}
 		for _, op := range req.Command.Operations {
+			if len(r.CodeTargets) > 0 {
+				if len(op.ClipIDs) != 1 {
+					return nil, model.ErrArgument
+				}
+				expected, ok := r.CodeTargets[op.ClipIDs[0]]
+				if !ok {
+					return nil, model.ErrForbidden
+				}
+				if r.CodeAction == "regenerate" {
+					if op.Type != "code.replace" || op.CodeVersion != expected {
+						return nil, model.ErrArgument
+					}
+				}
+				if r.CodeAction == "describe" {
+					if op.Type != "code.script" || op.Mode != "describe" {
+						return nil, model.ErrArgument
+					}
+					current, e := s.Timeline(ctx, r.ProjectID, r.SequenceID)
+					if e != nil {
+						return nil, e
+					}
+					valid := false
+					for _, t := range current.Sequence.Tracks {
+						for _, c := range t.Clips {
+							if c.ID == op.ClipIDs[0] && c.Code.ContentVersion == expected {
+								valid = true
+							}
+						}
+					}
+					if !valid {
+						return nil, model.ErrConflict
+					}
+				}
+			}
 			if op.Type == "history.undo" || op.Type == "history.redo" {
 				return nil, model.ErrForbidden
 			}
 		}
 		v, e := s.TimelineCommand(ctx, "agent:"+r.ID, r.ProjectID, req.SequenceID, req.Command)
+		if len(r.CodeTargets) > 0 && r.CodeAction == "regenerate" {
+			op := req.Command.Operations[0]
+			id := op.ClipIDs[0]
+			if e != nil {
+				if r.CodeCandidates == nil {
+					r.CodeCandidates = map[string]json.RawMessage{}
+				}
+				r.CodeCandidates[id], _ = json.Marshal(op)
+			} else {
+				delete(r.CodeCandidates, id)
+			}
+		}
 		if e != nil {
 			return nil, e
 		}
@@ -338,7 +396,7 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		}
 		drawings, _ := s.DrawCompositions(r.ProjectID)
 		imageResources, _ := s.DrawImageResources(r.ProjectID)
-		input := map[string]any{"image_resources": imageResources, "draw_compositions": drawings, "run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools, "history": req.History, "provider": profile.Narration, "vision_provider": profile.Vision}
+		input := map[string]any{"code_sources": s.codeRunSources(*r), "image_resources": imageResources, "draw_compositions": drawings, "run": r, "skill": snap.Package, "media": snap.Media, "tools": snap.Package.Tools, "history": req.History, "provider": profile.Narration, "vision_provider": profile.Vision}
 		if s.WorkspaceEnabled() && r.SequenceID != "" {
 			view, e := s.Timeline(ctx, r.ProjectID, r.SequenceID)
 			if e != nil {
@@ -502,6 +560,13 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		}
 		return respond(map[string]any{"artifact": art, "base64": base64.StdEncoding.EncodeToString(raw)})
 	case "run.finish":
+		if len(r.CodeTargets) > 0 {
+			if !r.StructuredEdit {
+				return nil, model.ErrInvalidState
+			}
+			r.State = "succeeded"
+			return respond(map[string]bool{"completed": true})
+		}
 		if r.StructuredEdit && r.Plan == nil {
 			v, e := s.finishSequenceEdit(ctx, r, args)
 			if e != nil {

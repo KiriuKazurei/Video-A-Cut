@@ -23,7 +23,7 @@ export function drawAgentStatus(run:SkillRun|undefined,now:number):string {
  const age=Number.isFinite(updated)?Math.max(0,Math.floor((now-updated)/1000)):0;
  return text+(seconds?` · ${seconds} 秒`:'' )+received+(age>15?` · 上次更新 ${age} 秒前`:'');
 }
-export const DRAW_ENGINES=['hyperframes','remotion','unified'] as const;
+export const DRAW_ENGINES=['hyperframes','remotion','motion_canvas','unified'] as const;
 export type DrawEngine=(typeof DRAW_ENGINES)[number];
 export const DRAW_FOCUSES=['canvas','timeline','source','inspector','lint','render-queue'] as const;
 export type DrawFocus=(typeof DRAW_FOCUSES)[number];
@@ -58,7 +58,7 @@ export interface DrawActionRequest {session:string;content_version:string}
 export type DrawOutputFormat='mp4'|'webm-alpha'|'prores4444';
 export interface DrawImportRequest extends DrawActionRequest {target_track_id?:string;at?:number;sequence_id:string;expected_revision:number;idempotency_key:string;source_mode?:'snapshot'|'follow'|'rendered'}
 export interface DrawDeepLink {project?:string;run?:string;slot?:string;engine?:DrawEngine;focus?:DrawFocus}
-export function isDrawEngine(value:string|null|undefined):value is DrawEngine{return value==='hyperframes'||value==='remotion'||value==='unified';}
+export function isDrawEngine(value:string|null|undefined):value is DrawEngine{return value==='hyperframes'||value==='remotion'||value==='motion_canvas'||value==='unified';}
 export function isDrawFocus(value:string|null|undefined):value is DrawFocus{return !!value&&(DRAW_FOCUSES as readonly string[]).includes(value);}
 export function isDrawEntrySkill(id:string|null|undefined){return !!id&&(DRAW_ENTRY_SKILLS as readonly string[]).includes(id);}
 export function engineForSkill(id:string|null|undefined):DrawEngine{return id==='vac-draw-remotion'?'remotion':'hyperframes';}
@@ -71,6 +71,7 @@ export function drawAgentContext(input:{project_id?:string;skill_run_id?:string;
 }
 export function newDrawComposition(engine:DrawEngine='unified'):DrawComposition{
  if(engine==='unified')return {id:'',name:'新构图',engine,source:'',width:1280,height:720,fps:{num:30,den:1},duration_frames:150,revision:0,content_version:'',document:{schema_version:1,canvas:{width:1280,height:720,fps:{num:30,den:1},alpha:'straight',color_space:'srgb'},duration_frames:150,preset:'auto',sources:[],nodes:[{id:'title_'+crypto.randomUUID(),name:'标题',kind:'text',text:'开始创作',color:'#ffffff',font_size:64,from:0,duration:150,transform:{x:100,y:280,width:1080,height:150}}]}};
+ if(engine==='motion_canvas')return {id:'',name:'Motion Canvas 构图',engine,source:'import {makeScene2D, Rect} from "@motion-canvas/2d";\nimport {createRef} from "@motion-canvas/core";\nexport default makeScene2D(function* (view) {const box=createRef<Rect>();view.add(<Rect ref={box} width={120} height={120} fill="white" x={-100}/>);yield* box().position.x(100,3);});',width:640,height:360,fps:{num:30,den:1},duration_frames:90,revision:0,content_version:''};
  const source=engine==='remotion'
  ?'import React from "react";\nimport {AbsoluteFill, useCurrentFrame} from "remotion";\nexport default function Scene(){\n const frame=useCurrentFrame();\n return <AbsoluteFill style={{background:"#1e1e1e",color:"#ffffff",fontFamily:"sans-serif",justifyContent:"center",alignItems:"center"}}>\n  <h1 style={{transform:"translateX("+(frame*2-90)+"px)"}}>VAC</h1>\n </AbsoluteFill>;\n}\n'
  :'<!doctype html>\n<html><head><meta charset="utf-8"><style>\nbody{margin:0;background:#1e1e1e;color:#ffffff;font-family:sans-serif}\n#root{position:relative;width:640px;height:360px;overflow:hidden;display:grid;place-items:center}\n</style></head><body>\n<div id="root" data-composition-id="root" data-width="640" data-height="360" data-duration="3"><h1 id="title">VAC</h1></div>\n<script>\nconst tl=gsap.timeline({paused:true});\ntl.fromTo("#title",{x:-90,opacity:0},{x:90,opacity:1,duration:3,ease:"none"},0);\nwindow.__timelines={root:tl};\n</script></body></html>\n';
@@ -95,14 +96,14 @@ export function acceptDrawSave(current:DrawComposition,snapshot:DrawComposition,
 }
 
 export interface DrawTransform {x:number;y:number;width?:number;height?:number;rotation?:number;scale_x?:number;scale_y?:number}
-export interface DrawSource {id:string;name?:string;engine:'hyperframes'|'remotion';source:string;reason?:string;capabilities?:string[];image_bindings?:DrawImageLayer[];canvas?:DrawDocument['canvas'];duration_frames?:number}
+export interface DrawSource {id:string;name?:string;engine:'hyperframes'|'remotion'|'motion_canvas';source:string;reason?:string;capabilities?:string[];image_bindings?:DrawImageLayer[];canvas?:DrawDocument['canvas'];duration_frames?:number}
 export interface DrawRenderPlan {schema_version:1;policy_version:string;nodes:{node_id:string;engine:string;reason:string;dependencies:string[];capabilities:string[]}[];engines:string[];alpha:'straight';color_space:'srgb';runtime_versions:Record<string,string>;frame_evaluations:number;fallback_policy:string}
 export interface DrawNode {id:string;name?:string;kind:'source'|'image'|'text'|'group'|'mask'|'shape';shape?:'rect'|'ellipse';source_id?:string;resource_id?:string;resource_sha256?:string;parent_id?:string;from:number;duration:number;source_offset?:number;speed?:FrameRate;transform:DrawTransform;opacity?:number;z?:number;hidden?:boolean;fit?:'contain'|'cover'|'fill';crop?:{top:number;right:number;bottom:number;left:number};text?:string;color?:string;font_size?:number;parameters?:Record<string,unknown>;keyframes?:{frame:number;x:number;y:number;opacity?:number}[]}
-export interface DrawDocument {asset_bindings?:{resource_id:string;sha256:string;original_sha256:string;raw_develop?:import('./projectContracts').RawDevelop}[];schema_version:1;canvas:{width:number;height:number;fps:FrameRate;background?:string;alpha?:'straight';color_space?:'srgb'};duration_frames:number;preset:'auto'|'interface'|'data'|'media';sources:DrawSource[];nodes:DrawNode[];variables?:Record<string,unknown>;theme?:Record<string,unknown>;seed?:number;goal?:string;explanation?:string}
+export interface DrawDocument {audio_bindings?:{resource_id:string;resource_sha256?:string;at_frame:number;duration_frames:number;source_in:number;stream_index:number;gain_db:number}[];asset_bindings?:{resource_id:string;sha256:string;original_sha256:string;raw_develop?:import('./projectContracts').RawDevelop}[];schema_version:1;canvas:{width:number;height:number;fps:FrameRate;background?:string;alpha?:'straight';color_space?:'srgb'};duration_frames:number;preset:'auto'|'interface'|'data'|'media';sources:DrawSource[];nodes:DrawNode[];variables?:Record<string,unknown>;theme?:Record<string,unknown>;seed?:number;goal?:string;explanation?:string}
 export interface DrawPreviewFrame {session:string;content_version:string;revision:string;request_id:string;frame:number;png:string;geometry:{id:string;x:number;y:number;width:number;height:number}[]}
 export function unifiedComposition(c:DrawComposition):DrawComposition {
  if(c.document)return c;
- const document:DrawDocument={schema_version:1,canvas:{width:c.width,height:c.height,fps:c.fps},duration_frames:c.duration_frames,preset:'auto',sources:[{id:'legacy-source',name:c.name,engine:c.engine as 'hyperframes'|'remotion',source:c.source,image_bindings:c.images}],nodes:[{id:'legacy-scene',kind:'source',name:c.name,source_id:'legacy-source',from:0,duration:c.duration_frames,transform:{x:0,y:0}}]};
+ const document:DrawDocument={schema_version:1,canvas:{width:c.width,height:c.height,fps:c.fps},duration_frames:c.duration_frames,preset:'auto',sources:[{id:'legacy-source',name:c.name,engine:c.engine as 'hyperframes'|'remotion'|'motion_canvas',source:c.source,image_bindings:c.images}],nodes:[{id:'legacy-scene',kind:'source',name:c.name,source_id:'legacy-source',from:0,duration:c.duration_frames,transform:{x:0,y:0}}]};
  for(const im of c.images??[])document.nodes.push({id:im.id,name:'图片',kind:'image',resource_id:im.resource_id,resource_sha256:im.resource_sha256,from:0,duration:c.duration_frames,transform:{x:im.x,y:im.y,width:im.width,height:im.height},opacity:im.opacity,fit:im.fit,hidden:im.mode==='source',z:100+document.nodes.length,...(im.to_frame>im.from_frame?{keyframes:[{frame:im.from_frame,x:im.x,y:im.y},{frame:im.to_frame,x:im.x+im.dx,y:im.y+im.dy}]}:{})});
  return {...c,engine:'unified',source:'',images:undefined,document};
 }

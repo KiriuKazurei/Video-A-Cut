@@ -34,7 +34,7 @@ type SequencePlayback struct {
 }
 
 func neutralPlayback(e project.Effects) bool {
-	return e.GainDB == 0 && len(e.GainKeyframes) == 0 && e.FadeIn == 0 && e.FadeOut == 0 && e.Transition == 0 && (e.Scale == 0 || e.Scale == 1) && e.X == 0 && e.Y == 0 && e.CropLeft == 0 && e.CropRight == 0 && e.CropTop == 0 && e.CropBottom == 0
+	return e.Rotation == 0 && len(e.ParameterKeyframes) == 0 && e.GainDB == 0 && len(e.GainKeyframes) == 0 && e.FadeIn == 0 && e.FadeOut == 0 && e.Transition == 0 && (e.Scale == 0 || e.Scale == 1) && e.X == 0 && e.Y == 0 && e.CropLeft == 0 && e.CropRight == 0 && e.CropTop == 0 && e.CropBottom == 0
 }
 
 // Direct playback is an optimization of the existing selected-track semantics.
@@ -68,7 +68,7 @@ func (s *Service) SequencePlaybackPlan(ctx context.Context, projectID, sequenceI
 				plan.Mode = "segments"
 			}
 			clip := PlaybackClip{ID: c.ID, ResourceID: c.ResourceID, At: c.At, Duration: c.Duration, SourceIn: project.Seconds(c.SourceIn)}
-			if track.Kind == "video" {
+			if track.Kind == "video" || track.Kind == "code" {
 				plan.Video = append(plan.Video, clip)
 			} else {
 				plan.Audio = append(plan.Audio, clip)
@@ -126,7 +126,26 @@ func segmentInputs(seq project.Sequence, sources []sequenceSource, start, end in
 	state.Groups = nil
 	state.Tracks = nil
 	ids := map[string]bool{}
-	for _, track := range sequenceTracks(seq) {
+	tracks := sequenceTracks(seq)
+	visualKey := func(track project.Track) string {
+		if track.VisualGroup != "" {
+			return "group:" + track.VisualGroup
+		}
+		return "track:" + track.ID
+	}
+	// Index adjacent transition starts once; segment requests also serve long
+	// timelines, so finding handles must not scan all clips for every clip.
+	transitions := map[string]map[int64]int64{}
+	for _, track := range tracks {
+		key := visualKey(track)
+		if transitions[key] == nil {
+			transitions[key] = map[int64]int64{}
+		}
+		for _, c := range track.Clips {
+			transitions[key][c.At] = max(transitions[key][c.At], c.Effects.Transition)
+		}
+	}
+	for _, track := range tracks {
 		track.Name = ""
 		track.Height = 0
 		track.Locked = false
@@ -142,16 +161,14 @@ func segmentInputs(seq project.Sequence, sources []sequenceSource, start, end in
 			return 0
 		})
 		track.Clips = nil
-		for i, c := range ordered {
-			tail := int64(0)
-			if i+1 < len(ordered) && ordered[i+1].At == c.At+c.Duration {
-				tail = ordered[i+1].Effects.Transition
-			}
+		for _, c := range ordered {
+			tail := transitions[visualKey(track)][c.At+c.Duration]
 			if c.At >= end || c.At+c.Duration+tail <= start {
 				continue
 			}
 			c.Name = ""
 			c.Origin = project.Origin{}
+			c.Code = nil
 			track.Clips = append(track.Clips, c)
 			ids[c.ResourceID] = true
 		}
@@ -160,6 +177,15 @@ func segmentInputs(seq project.Sequence, sources []sequenceSource, start, end in
 		}
 	}
 	selected := []sequenceSource{}
+	// Dependencies of selected source-code pictures are inputs too. Dropping
+	// these made bounded playback fail while a full export could still mix audio.
+	for _, r := range sources {
+		if ids[r.ID] && r.Draw != nil {
+			for _, binding := range r.Draw.AudioBindings {
+				ids[binding.ResourceID] = true
+			}
+		}
+	}
 	for _, r := range sources {
 		if ids[r.ID] {
 			selected = append(selected, r)
