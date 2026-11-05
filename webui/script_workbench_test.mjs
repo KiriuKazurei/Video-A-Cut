@@ -18,6 +18,23 @@ test('parameter directives highlight only inside the code workbench',()=>{
  assert.equal(scriptTokens('{旋转, 时间:00:00:01',true)[0].kind,'invalid');
 });
 
+test('shared directive definitions drive code completion and caption highlighting',()=>{
+ assert.deepEqual(filterSnippets('缩','code').map(x=>x.key),['缩放']);
+ assert.equal(scriptTokens('{缩放, 比例:120%}',true)[0].kind,'directive');
+ assert.equal(scriptTokens('{透明度, 从:0%, 到:100%}',true)[0].kind,'directive');
+ assert.equal(scriptTokens('{字幕, 文本:"a,{b}", 时间:条内1s, 持续:1s}')[0].kind,'directive');
+ assert.equal(scriptTokens('{透明度, 到:101%}',true)[0].kind,'invalid');
+});
+
+test('code description retains authored layout and rebases only sequence time arguments',async()=>{
+ const {codeDescription,rebaseCodeDescription}=await import('./src/codeClips.ts');
+ const text='保留两行\n\n{移动, 时间:条内1s, x:20px, y:0px}\n{字幕, 文本:"时间:00:00:01", 时间:序列00:00:11:00, 持续:1s}';
+ const c={at:330,duration:90,effects:{gain_db:0},code:{description:'保留两行',script:text,script_at:300}};
+ const expected=text.replace('时间:序列00:00:11:00','时间:序列00:00:12:00');
+ assert.equal(codeDescription(c,{num:30,den:1}),expected);
+ assert.equal(rebaseCodeDescription(text,30,{num:30,den:1}),expected);
+});
+
 test('code colors survive inserting and removing other occurrences',async()=>{
  const {codeClipColors}=await import('./src/codeClips.ts');
  const sequence={tracks:[{kind:'code',clips:Array.from({length:30},(_,i)=>({id:`clip-${i}`}))}]};
@@ -56,7 +73,7 @@ test('script highlighting preserves all text, escaped braces and quoted closing 
 test('completion filters known effects and subtitle parameters without new directives', () => {
   assert.deepEqual(filterSnippets('黑').map(item => item.text), ['{黑屏}']);
   assert.deepEqual(filterSnippets('交').map(item => item.text), ['{交叉溶解}']);
-  assert.equal(filterSnippets('').length, 5);
+  assert.equal(filterSnippets('定时字幕')[0].text.startsWith('{字幕,'),true);
   assert.equal(filterSnippets('闪白').length, 0);
   assert.equal(filterSnippets('字').some(item => item.text.includes('字幕')), true);
   const typed = completionContext('{黑', 2);

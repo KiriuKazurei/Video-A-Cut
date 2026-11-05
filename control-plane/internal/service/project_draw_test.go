@@ -95,6 +95,44 @@ func TestCodeAgentCannotWriteOutsideCapturedTargets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	authored := "existing description\n\n{缩放, 时间:条内0f, 比例:120%}\n{透明度, 时间:条内0f, 到:80%}\n{字幕, 文本:\"本条标题\", 时间:条内0f, 持续:15f}"
+	timeline, err = svc.TimelineCommand(ctx, "human:window", saved.Document.Project.ID, seq.ID, project.Command{Session: timeline.Session, ExpectedRevision: timeline.Sequence.Revision, IdempotencyKey: "native-code-script", Operations: []project.Operation{{Type: "code.script", ClipIDs: []string{target.ID}, Description: &authored, CodeRevision: target.Code.Revision, Unlinked: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, track := range timeline.Sequence.Tracks {
+		for _, clip := range track.Clips {
+			if clip.ID == target.ID {
+				target = clip
+			}
+		}
+	}
+	persisted, err := svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := avpWorkspaceFixture(t)
+	if _, err = fresh.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: persisted.Path}); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := fresh.Timeline(ctx, saved.Document.Project.ID, seq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, track := range reopened.Sequence.Tracks {
+		for _, clip := range track.Clips {
+			if clip.ID == target.ID {
+				found = true
+				if clip.Code.Script == nil || *clip.Code.Script != authored || len(clip.Effects.Subtitles) != 1 || len(clip.Effects.ParameterKeyframes) != 2 {
+					t.Fatalf("native script/effects lost on reopen: %+v", clip)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("saved code clip disappeared")
+	}
 	run, err := svc.CreateSkillRun(ctx, "human:window", skill.RunRequest{ProjectID: saved.Document.Project.ID, SequenceID: seq.ID, Flow: "custom", SkillID: "vac-draw-pipeline", Strategy: "draw", Mode: "external_mcp", VisibleSHA: visible.SHA, Goal: "change only captured source", CodeTargets: map[string]string{target.ID: target.Code.ContentVersion}, CodeAction: "regenerate", IdempotencyKey: "scoped"})
 	if err != nil {
 		t.Fatal(err)

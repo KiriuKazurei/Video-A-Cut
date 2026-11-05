@@ -4,6 +4,7 @@ export function parameterValue(effects,kind,field,frame,initial=0){
  for(const key of effects.parameter_keyframes??[]){
   if(key.kind!==kind)continue;if(frame<key.frame)break;
   const target=key[field]??0;
+  if(key.start_value!==undefined)value=key.start_value;
   if(key.duration>0&&frame<key.frame+key.duration)return value+(target-value)*(frame-key.frame)/key.duration;
   value=target;
  }
@@ -14,7 +15,8 @@ export function parameterExpression(effects,kind,field,clock,initial=0){
  for(const key of effects.parameter_keyframes??[]){
   if(key.kind!==kind)continue;
   const target=key[field]??0;
-  const next=key.duration>0?`if(lt(${clock},${key.frame+key.duration}),${value}+(${target}-${value})*(${clock}-${key.frame})/${key.duration},${target})`:String(target);
+  const start=key.start_value??value;
+  const next=key.duration>0?`if(lt(${clock},${key.frame+key.duration}),${start}+(${target}-${start})*(${clock}-${key.frame})/${key.duration},${target})`:String(target);
   expression=`if(lt(${clock},${key.frame}),${expression},${next})`;value=target;
  }
  return expression;

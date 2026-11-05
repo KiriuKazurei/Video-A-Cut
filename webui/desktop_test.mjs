@@ -7,7 +7,36 @@ import { createWorkflowPreview } from './src/previewContext.ts';
 import { currentMcpURL, mcpConnectionConfig, mcpInstallCommand } from './src/mcpConnection.ts';
 import * as presence from './src/externalAgentStatus.ts';
 import { EXPORT_SECTIONS, parseWorkspaceHash } from './src/navigation.ts';
-import { playbackClipAt, playbackSourceTime, setSegmentWindow } from './src/programPlayback.ts';
+import { playbackClipAt, playbackSourceTime, setSegmentWindow, segmentedProgramPlayer } from './src/programPlayback.ts';
+
+for(const earlyMetadata of [false,true])test(`cold segment restoration seeks when media ranges lag append (${earlyMetadata?'early':'late'} metadata)`,async t=>{
+ const globals=['window','document','MediaSource','requestAnimationFrame','cancelAnimationFrame'];
+ const saved=new Map(globals.map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ const createURL=URL.createObjectURL,revokeURL=URL.revokeObjectURL;let player;
+ t.after(()=>{player?.close();for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}URL.createObjectURL=createURL;URL.revokeObjectURL=revokeURL;});
+ const ranges=()=>({length:1,start:()=>2,end:()=>3.98802});
+ class Video extends EventTarget{
+  readyState=0;paused=true;buffered={length:0};time=0;
+  get currentTime(){return this.time;}set currentTime(value){this.time=value;queueMicrotask(()=>{if(this.buffered.length){this.readyState=2;this.dispatchEvent(new Event('seeked'));}});}
+  pause(){this.paused=true;}play(){this.paused=false;return Promise.resolve();}setAttribute(){}removeAttribute(){}load(){}remove(){}
+ }
+ const video=new Video();
+ class Buffer extends EventTarget{
+  buffered={length:0};
+  appendBuffer(){queueMicrotask(()=>{this.buffered=ranges();if(earlyMetadata){video.readyState=1;video.dispatchEvent(new Event('loadedmetadata'));}this.dispatchEvent(new Event('updateend'));setTimeout(()=>{video.buffered=ranges();video.readyState=1;if(!earlyMetadata)video.dispatchEvent(new Event('loadedmetadata'));if(video.currentTime>0){video.readyState=2;video.dispatchEvent(new Event('seeked'));}},0);});}
+ }
+ class Source extends EventTarget{
+  static isTypeSupported(){return true;}readyState='closed';
+  constructor(){super();queueMicrotask(()=>{this.readyState='open';this.dispatchEvent(new Event('sourceopen'));});}
+  addSourceBuffer(){return new Buffer();}endOfStream(){this.readyState='ended';}
+ }
+ Object.assign(globalThis,{window:{MediaSource:Source},MediaSource:Source,document:{createElement:()=>video},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{}});
+ URL.createObjectURL=()=> 'blob:cold-segment';URL.revokeObjectURL=()=>{};
+ const readiness=[],errors=[];
+ player=segmentedProgramPlayer({append(){},dataset:{}},{frames:120,fps:{num:30,den:1},segment_frames:60},async()=>({report:{start_frame:60,frames:60},bytes:new ArrayBuffer(0)}),{media(){},frame(){},ready:value=>readiness.push(value),error:error=>errors.push(error)},119/30);
+ await new Promise(resolve=>setTimeout(resolve,40));
+ assert.deepEqual(errors,[]);assert.equal(video.currentTime,119/30,'restored playhead must seek into the buffered final segment');assert.equal(readiness.at(-1),true);
+});
 
 test('segment append windows can advance to the preceding end and seek backwards',()=>{
  let start=0,end=2,offset=0;

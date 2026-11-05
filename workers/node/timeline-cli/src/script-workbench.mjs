@@ -84,6 +84,13 @@ export async function renderScript(input, { run = runTool, probe = probeMedia, f
       for (const f of resolved) if (!fontRecords.some(r => r.sha256 === f.sha256 && r.family === f.family)) fontRecords.push({ family: f.family, sha256: f.sha256 });
       cues.push({ start: cursor, end: cursor + duration, text: sub?.text ?? seg.narration, font, size: sub?.size_px || 36 });
     }
+    for(const cue of p.subtitle_cues??[]){
+      const start=cue.frame/frameRate-(cue.time_base==='sequence'?cursor:0),end=cue.duration?start+cue.duration/frameRate:duration;
+      if(!Number.isSafeInteger(cue.frame)||start<0||end<=start||end>duration+1e-8)throw Error(`第${index+1}段字幕时间超出实际片段`);
+      const font=cue.font||defaultFont;if(!available.includes(font))throw Error(`字体不可用：${font}`);
+      for(const f of await resolveFont([font]))if(!fontRecords.some(r=>r.sha256===f.sha256&&r.family===f.family))fontRecords.push({family:f.family,sha256:f.sha256});
+      cues.push({start:cursor+start,end:cursor+end,text:cue.text,font,size:cue.size_px||36});
+    }
     paths.push(cut); durations.push(duration); cursor += duration;
   }
   const joined = join(output, 'joined.mp4');

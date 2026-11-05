@@ -1,9 +1,9 @@
 package project
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,8 +18,6 @@ type ParameterKeyframe struct {
 	Y          float64  `json:"y,omitempty"`
 	Value      float64  `json:"value,omitempty"`
 }
-
-var codeDirective = regexp.MustCompile(`^\{(音量|移动|旋转)([^{}]*)\}$`)
 
 // Shared with the paragraph language: quoted subtitle braces and escaped
 // literal braces must have the same meaning in both editing contexts.
@@ -48,44 +46,17 @@ func ScriptDirectiveEnd(source string, start int) (int, error) {
 	return 0, fmt.Errorf("语法块缺少右花括号或字符串引号未闭合")
 }
 
-type codeDirectiveSpan struct {
-	start, end int
-	match      []string
-}
-
-func codeDirectiveSpans(text string) ([]codeDirectiveSpan, error) {
-	spans := []codeDirectiveSpan{}
-	for i := 0; i < len(text); {
-		if text[i] == '\\' && i+1 < len(text) && strings.ContainsRune("{}\\", rune(text[i+1])) {
-			i += 2
-			continue
-		}
-		if text[i] != '{' {
-			i++
-			continue
-		}
-		end, err := ScriptDirectiveEnd(text, i)
-		if err != nil {
-			return nil, err
-		}
-		body := strings.TrimSpace(text[i+1 : end])
-		match := codeDirective.FindStringSubmatch("{" + body + "}")
-		if match != nil {
-			spans = append(spans, codeDirectiveSpan{i, end + 1, match})
-		}
-		i = end + 1
-	}
-	return spans, nil
-}
-
 func validateParameterKeyframes(keys []ParameterKeyframe, duration int64) error {
 	last := map[string]int64{}
 	for _, k := range keys {
-		if (k.Kind != "移动" && k.Kind != "旋转") || k.Frame < 0 || k.Frame >= duration || k.Duration < 0 || k.Duration > duration-k.Frame || !finite(k.X) || !finite(k.Y) || !finite(k.Value) {
+		if !slices.Contains([]string{"移动", "旋转", "缩放", "透明度"}, k.Kind) || k.Frame < 0 || k.Frame >= duration || k.Duration < 0 || k.Duration > duration-k.Frame || !finite(k.X) || !finite(k.Y) || !finite(k.Value) {
 			return fmt.Errorf("参数关键帧无效")
 		}
 		if end, ok := last[k.Kind]; ok && k.Frame < end {
 			return fmt.Errorf("参数关键帧重叠或未排序")
+		}
+		if k.Kind == "缩放" && (k.Value <= 0 || k.Value > 8) || k.Kind == "透明度" && (k.Value < 0 || k.Value > 1 || k.StartValue != nil && (!finite(*k.StartValue) || *k.StartValue < 0 || *k.StartValue > 1)) {
+			return fmt.Errorf("参数取值超出范围")
 		}
 		last[k.Kind] = max(k.Frame+1, k.Frame+k.Duration)
 	}
@@ -95,8 +66,16 @@ func validateParameterKeyframes(keys []ParameterKeyframe, duration int64) error 
 func parameterAt(e Effects, kind string, frame int64) (float64, float64) {
 	x, y := e.X, e.Y
 	if kind == "旋转" {
-		x = e.Rotation
-		y = 0
+		x, y = e.Rotation, 0
+	}
+	if kind == "缩放" {
+		x, y = e.Scale, 0
+	}
+	if kind == "透明度" {
+		x, y = 1, 0
+		if e.Opacity != nil {
+			x = *e.Opacity
+		}
 	}
 	for _, k := range e.ParameterKeyframes {
 		if k.Kind != kind {
@@ -106,9 +85,12 @@ func parameterAt(e Effects, kind string, frame int64) (float64, float64) {
 			break
 		}
 		a, b := k.X, k.Y
-		if kind == "旋转" {
+		if kind != "移动" {
 			a = k.Value
 			b = 0
+		}
+		if k.StartValue != nil {
+			x = *k.StartValue
 		}
 		p := 1.0
 		if k.Duration > 0 {
@@ -127,6 +109,19 @@ func sliceParameters(c *Clip, offset int64) {
 	old := clone(c.Effects)
 	c.Effects.X, c.Effects.Y = parameterAt(old, "移动", offset)
 	c.Effects.Rotation, _ = parameterAt(old, "旋转", offset)
+	c.Effects.Scale, _ = parameterAt(old, "缩放", offset)
+	if old.Opacity != nil || slices.ContainsFunc(old.ParameterKeyframes, func(k ParameterKeyframe) bool { return k.Kind == "透明度" }) {
+		v, _ := parameterAt(old, "透明度", offset)
+		c.Effects.Opacity = &v
+	}
+	c.Effects.Subtitles = nil
+	for _, cue := range old.Subtitles {
+		start, end := max(cue.Frame, offset), min(cue.Frame+cue.Duration, offset+c.Duration)
+		if end > start {
+			cue.Frame, cue.Duration = start-offset, end-start
+			c.Effects.Subtitles = append(c.Effects.Subtitles, cue)
+		}
+	}
 	c.Effects.ParameterKeyframes = nil
 	for _, k := range old.ParameterKeyframes {
 		end := k.Frame + k.Duration
@@ -136,6 +131,7 @@ func sliceParameters(c *Clip, offset int64) {
 		if k.Frame < offset {
 			k.Frame = 0
 			k.Duration = end - offset
+			k.StartValue = nil
 		} else {
 			k.Frame -= offset
 		}
@@ -144,7 +140,7 @@ func sliceParameters(c *Clip, offset int64) {
 		}
 		if k.Duration > c.Duration-k.Frame {
 			x, y := parameterAt(old, k.Kind, offset+c.Duration)
-			if k.Kind == "旋转" {
+			if k.Kind != "移动" {
 				k.Value = x
 			} else {
 				k.X = x
@@ -183,105 +179,197 @@ func CodeTime(text string, rate Rate) (int64, error) {
 	return ((values[0]*60+values[1])*60+values[2])*nominal + f, nil
 }
 
+// ParseScriptTime returns a clip-local integer frame. Legacy bare timecodes
+// remain sequence time; explicit local times survive timeline moves.
+func ParseScriptTime(text string, c Clip, rate Rate) (int64, error) {
+	if text == "" {
+		return 0, nil
+	}
+	local := strings.HasPrefix(text, "条内")
+	text = strings.TrimPrefix(strings.TrimPrefix(text, "条内"), "序列")
+	var frame int64
+	var err error
+	if strings.Contains(text, ":") {
+		frame, err = CodeTime(text, rate)
+	} else {
+		frame, err = ScriptDuration(text, rate)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !local {
+		frame -= c.At
+	}
+	return frame, nil
+}
+func ScriptDuration(text string, rate Rate) (int64, error) {
+	factor := 1.0
+	unit := "s"
+	if strings.HasSuffix(text, "ms") {
+		unit = "ms"
+		factor = .001
+	} else if strings.HasSuffix(text, "f") {
+		unit = "f"
+	}
+	if !strings.HasSuffix(text, unit) {
+		return 0, fmt.Errorf("时间需要时码或s/ms/f单位")
+	}
+	raw := strings.TrimSuffix(text, unit)
+	n, err := strconv.ParseFloat(raw, 64)
+	if !scriptDurationDecimal.MatchString(raw) || err != nil || !finite(n) || n < 0 || n > 1e7 || unit == "f" && n != math.Trunc(n) {
+		return 0, fmt.Errorf("时间值无效")
+	}
+	if unit == "f" {
+		return int64(n), nil
+	}
+	return rate.Frames(n * factor), nil
+}
+
+type SubtitleCue struct {
+	TimeBase string  `json:"time_base,omitempty"`
+	Text     string  `json:"text"`
+	Frame    int64   `json:"frame"`
+	Duration int64   `json:"duration"`
+	SizePX   float64 `json:"size_px,omitempty"`
+	Font     string  `json:"font,omitempty"`
+}
+
+func (cue SubtitleCue) Validate(duration int64) error {
+	if cue.TimeBase != "" {
+		return fmt.Errorf("片段字幕必须使用条内整数帧")
+	}
+	if strings.TrimSpace(cue.Text) == "" || len([]rune(cue.Text)) > 2000 || cue.Frame < 0 || cue.Frame >= duration || cue.Duration < 1 || cue.Duration > duration-cue.Frame || cue.SizePX != 0 && (!finite(cue.SizePX) || cue.SizePX < 1 || cue.SizePX > 512) || len([]rune(cue.Font)) > 100 || strings.ContainsAny(cue.Font, "\r\n\x00") {
+		return fmt.Errorf("字幕文字、样式或时间范围无效")
+	}
+	return nil
+}
+func ParseSubtitleCue(block ScriptBlock, c Clip, rate Rate) (SubtitleCue, error) {
+	cue := SubtitleCue{}
+	_ = json.Unmarshal([]byte(block.Args["文本"]), &cue.Text)
+	_ = json.Unmarshal([]byte(block.Args["字体"]), &cue.Font)
+	var err error
+	cue.Frame, err = ParseScriptTime(block.Args["时间"], c, rate)
+	if err != nil {
+		return cue, err
+	}
+	cue.Duration = c.Duration - cue.Frame
+	if v := block.Args["持续"]; v != "" {
+		cue.Duration, err = ScriptDuration(v, rate)
+		if err != nil {
+			return cue, err
+		}
+	}
+	if v := block.Args["字号"]; v != "" {
+		cue.SizePX, err = ScriptNumber("字幕", "字号", v)
+		if err != nil {
+			return cue, err
+		}
+	}
+	return cue, cue.Validate(c.Duration)
+}
+
 // The timeline owns parameter semantics; creative text remains plain data.
 func ParseCodeDescription(text string, c Clip, rate Rate) (Effects, string, error) {
 	fx := clone(c.Effects)
 	keys := []ParameterKeyframe{}
-	seen := map[string]bool{}
-	spans, err := codeDirectiveSpans(text)
+	blocks, err := ScriptBlocks(text, "code")
 	if err != nil {
 		return fx, "", err
 	}
-	for _, span := range spans {
-		match := span.match
-		fields := strings.Split(strings.ReplaceAll(match[2], "，", ","), ",")
-		args := map[string]string{}
-		for _, field := range fields {
-			field = strings.TrimSpace(field)
-			if field == "" {
+	fx.Subtitles = nil
+	if c.Code != nil && c.Code.Script != nil {
+		old, _ := ScriptBlocks(*c.Code.Script, "code")
+		for _, prior := range old {
+			if slices.ContainsFunc(blocks, func(b ScriptBlock) bool { return b.Name == prior.Name }) {
 				continue
 			}
-			kv := strings.SplitN(field, ":", 2)
-			if len(kv) != 2 || args[strings.TrimSpace(kv[0])] != "" {
-				return fx, "", fmt.Errorf("参数格式无效或重复")
+			switch prior.Name {
+			case "音量":
+				fx.GainDB = 0
+			case "移动":
+				fx.X, fx.Y = 0, 0
+			case "旋转":
+				fx.Rotation = 0
+			case "缩放":
+				fx.Scale = 1
+			case "透明度":
+				fx.Opacity = nil
+			case "黑屏", "白屏":
+				fx.FadeIn = 0
+				fx.FadeColor = ""
+			case "交叉溶解":
+				fx.Transition = 0
 			}
-			args[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 		}
-		at, e := CodeTime(args["时间"], rate)
-		if e != nil {
-			return fx, "", e
+	}
+	cursor := 0
+	var body strings.Builder
+	for _, block := range blocks {
+		body.WriteString(text[cursor:block.Start])
+		cursor = block.End
+		if block.Name == "@" {
+			body.WriteString(text[block.Start:block.End])
+			continue
 		}
-		at -= c.At
-		k := ParameterKeyframe{Kind: match[1], Frame: at}
-		if v := args["持续"]; v != "" {
-			if !strings.HasSuffix(v, "s") {
-				return fx, "", fmt.Errorf("持续时间使用s")
+		fail := func(err error) (Effects, string, error) { return fx, "", ScriptError(text, block.Start, err.Error()) }
+		if block.Name == "字幕" {
+			cue, err := ParseSubtitleCue(block, c, rate)
+			if err != nil {
+				return fail(err)
 			}
-			n, e := strconv.ParseFloat(strings.TrimSuffix(v, "s"), 64)
-			if e != nil || !finite(n) || n < 0 {
-				return fx, "", fmt.Errorf("持续时间无效")
+			fx.Subtitles = append(fx.Subtitles, cue)
+			continue
+		}
+		if block.Name == "黑屏" || block.Name == "白屏" {
+			fx.FadeColor = "black"
+			if block.Name == "白屏" {
+				fx.FadeColor = "white"
 			}
-			k.Duration = rate.Frames(n)
+			fx.FadeIn = min(rate.Frames(.35), c.Duration/3)
+			continue
+		}
+		if block.Name == "交叉溶解" {
+			fx.Transition = min(rate.Frames(.35), c.Duration/3)
+			continue
+		}
+		at, err := ParseScriptTime(block.Args["时间"], c, rate)
+		if err != nil {
+			return fail(err)
+		}
+		k := ParameterKeyframe{Kind: block.Name, Frame: at}
+		if v := block.Args["持续"]; v != "" {
+			k.Duration, err = ScriptDuration(v, rate)
+			if err != nil {
+				return fail(err)
+			}
 		}
 		if at < 0 || at >= c.Duration || k.Duration > c.Duration-at {
-			return fx, "", fmt.Errorf("参数时间超出代码条")
+			return fail(fmt.Errorf("%s时间超出代码条（共%d帧）", block.Name, c.Duration))
 		}
-		number := func(name, unit string) (float64, error) {
-			v, ok := args[name]
-			if !ok {
-				return 0, fmt.Errorf("缺少参数%s", name)
-			}
-			if unit != "" && !strings.HasSuffix(v, unit) {
-				return 0, fmt.Errorf("参数%s需要%s", name, unit)
-			}
-			n, e := strconv.ParseFloat(strings.TrimSuffix(v, unit), 64)
-			if e != nil || !finite(n) || math.Abs(n) > 100000 {
-				return 0, fmt.Errorf("参数%s无效", name)
-			}
-			return n, nil
-		}
-		allowed := map[string]bool{"时间": true, "持续": true}
+		number := func(name string) float64 { v, _ := ScriptNumber(block.Name, name, block.Args[name]); return v }
 		switch k.Kind {
 		case "移动":
-			allowed["x"] = true
-			allowed["y"] = true
-			k.X, e = number("x", "px")
-			if e == nil {
-				k.Y, e = number("y", "px")
-			}
+			k.X, k.Y = number("x"), number("y")
 		case "旋转":
-			allowed["角度"] = true
-			k.Value, e = number("角度", "")
-		case "音量":
-			allowed["增益"] = true
-			allowed["起始增益"] = true
-			if args["起始增益"] != "" {
-				v, err := number("起始增益", "dB")
-				if err != nil || v < -96 || v > 24 {
-					return fx, "", fmt.Errorf("起始增益无效")
-				}
+			k.Value = number("角度")
+		case "缩放":
+			k.Value = number("比例") / 100
+		case "透明度":
+			k.Value = number("到") / 100
+			if block.Args["从"] != "" {
+				v := number("从") / 100
 				k.StartValue = &v
 			}
-			k.Value, e = number("增益", "dB")
-			if k.Value < -96 || k.Value > 24 {
-				e = fmt.Errorf("音量范围为-96到24dB")
+		case "音量":
+			k.Value = number("增益")
+			if block.Args["起始增益"] != "" {
+				v := number("起始增益")
+				k.StartValue = &v
 			}
 		}
-		if e != nil {
-			return fx, "", e
-		}
-		for name := range args {
-			if !allowed[name] {
-				return fx, "", fmt.Errorf("未知参数%s", name)
-			}
-		}
-		id := fmt.Sprint(k.Kind, at)
-		if seen[id] {
-			return fx, "", fmt.Errorf("同一参数时刻重复")
-		}
-		seen[id] = true
 		keys = append(keys, k)
 	}
+	body.WriteString(text[cursor:])
 	slices.SortStableFunc(keys, func(a, b ParameterKeyframe) int {
 		if a.Frame < b.Frame {
 			return -1
@@ -294,20 +382,18 @@ func ParseCodeDescription(text string, c Clip, rate Rate) (Effects, string, erro
 	last := map[string]int64{}
 	for _, k := range keys {
 		if end, ok := last[k.Kind]; ok && k.Frame < end {
-			return fx, "", fmt.Errorf("参数动画范围重叠")
+			return fx, "", fmt.Errorf("%s在第%d帧的指令重复或动画范围重叠", k.Kind, k.Frame)
 		}
-		last[k.Kind] = k.Frame + k.Duration
+		last[k.Kind] = max(k.Frame+1, k.Frame+k.Duration)
 	}
 	fx.ParameterKeyframes = nil
-	// Gain uses the existing envelope so direct manipulation and rendering agree.
 	fx.GainKeyframes = nil
 	for _, k := range keys {
 		if k.Kind != "音量" {
 			fx.ParameterKeyframes = append(fx.ParameterKeyframes, k)
 			continue
 		}
-		start := float64(k.Frame) / float64(c.Duration)
-		end := float64(k.Frame+k.Duration) / float64(c.Duration)
+		start, end := float64(k.Frame)/float64(c.Duration), float64(k.Frame+k.Duration)/float64(c.Duration)
 		if len(fx.GainKeyframes) == 0 && start > 0 {
 			fx.GainKeyframes = append(fx.GainKeyframes, GainKeyframe{0, fx.GainDB})
 		}
@@ -338,12 +424,5 @@ func ParseCodeDescription(text string, c Clip, rate Rate) (Effects, string, erro
 	if len(fx.GainKeyframes) > 0 {
 		fx.GainDB = fx.GainKeyframes[0].DB
 	}
-	var body strings.Builder
-	textCursor := 0
-	for _, span := range spans {
-		body.WriteString(text[textCursor:span.start])
-		textCursor = span.end
-	}
-	body.WriteString(text[textCursor:])
 	return fx, strings.TrimSpace(body.String()), nil
 }

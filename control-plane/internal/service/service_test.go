@@ -15,6 +15,23 @@ import (
 
 var storesByService sync.Map
 
+func TestServiceFixtureReleasesStoreAndEventBus(t *testing.T) {
+	var svc *service.Service
+	bus := events.New()
+	defer bus.Close()
+	t.Run("fixture", func(t *testing.T) {
+		svc = newService(t)
+		svc.SetBus(bus)
+		bus.Subscribe("task_updated", func(events.Envelope) {})
+	})
+	if _, exists := storesByService.Load(svc); exists {
+		t.Error("completed fixture retained service and store")
+	}
+	if _, _, err := bus.SubscribeManySignal([]string{"task_updated"}, func(events.Envelope) {}); !errors.Is(err, events.ErrClosed) {
+		t.Error("completed fixture retained event bus subscriptions")
+	}
+}
+
 // newService returns a Service backed by a fresh, empty SQLite database. The
 // database lives in the test's temp directory and is closed by t.Cleanup.
 func newService(t *testing.T) *service.Service {
@@ -23,9 +40,15 @@ func newService(t *testing.T) *service.Service {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
 	svc := service.New(st)
 	storesByService.Store(svc, st)
+	t.Cleanup(func() {
+		if bus := svc.Bus(); bus != nil {
+			bus.Close()
+		}
+		storesByService.Delete(svc)
+		_ = st.Close()
+	})
 	return svc
 }
 

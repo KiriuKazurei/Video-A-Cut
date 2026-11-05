@@ -34,7 +34,7 @@ type SequencePlayback struct {
 }
 
 func neutralPlayback(e project.Effects) bool {
-	return e.Rotation == 0 && len(e.ParameterKeyframes) == 0 && e.GainDB == 0 && len(e.GainKeyframes) == 0 && e.FadeIn == 0 && e.FadeOut == 0 && e.Transition == 0 && (e.Scale == 0 || e.Scale == 1) && e.X == 0 && e.Y == 0 && e.CropLeft == 0 && e.CropRight == 0 && e.CropTop == 0 && e.CropBottom == 0
+	return (e.Opacity == nil || *e.Opacity == 1) && len(e.Subtitles) == 0 && e.Rotation == 0 && len(e.ParameterKeyframes) == 0 && e.GainDB == 0 && len(e.GainKeyframes) == 0 && e.FadeIn == 0 && e.FadeOut == 0 && e.Transition == 0 && (e.Scale == 0 || e.Scale == 1) && e.X == 0 && e.Y == 0 && e.CropLeft == 0 && e.CropRight == 0 && e.CropTop == 0 && e.CropBottom == 0
 }
 
 // Direct playback is an optimization of the existing selected-track semantics.

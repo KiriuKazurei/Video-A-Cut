@@ -71,8 +71,11 @@ if($Action -in @('inspect','capture','close','resize','click','rightclick','drag
     $inputDpi=[DesktopWindowProbe]::SetThreadDpiAwarenessContext([IntPtr](-4))
     $buttonIsDown=$false
     try {
-      [DesktopWindowProbe]::SetForegroundWindow($handle)|Out-Null
-      Start-Sleep -Milliseconds 150
+      $focusDeadline=[DateTime]::UtcNow.AddSeconds(3)
+      do {
+        [DesktopWindowProbe]::SetForegroundWindow($handle)|Out-Null
+        Start-Sleep -Milliseconds 150
+      } while([DesktopWindowProbe]::GetForegroundWindow() -ne $handle -and [DateTime]::UtcNow -lt $focusDeadline)
       if([DesktopWindowProbe]::GetForegroundWindow() -ne $handle){throw 'Owned window did not receive foreground; input was not sent'}
       if($Action -eq 'key') {
         $keys=@{SPACE=32;ESC=27;LEFT=37;RIGHT=39;DELETE=46;V=86;C=67;M=77;I=73;O=79;'CTRL+K'=75;'CTRL+Z'=90;'CTRL+Y'=89;'CTRL+C'=67;'CTRL+X'=88;'CTRL+V'=86;'CTRL+SHIFT+Z'=90;'SHIFT+DELETE'=46}

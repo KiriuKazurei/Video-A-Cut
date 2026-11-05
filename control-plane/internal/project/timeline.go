@@ -88,6 +88,8 @@ type GainKeyframe struct {
 	DB float64 `json:"db"`
 }
 type Effects struct {
+	Opacity            *float64            `json:"opacity,omitempty"`
+	Subtitles          []SubtitleCue       `json:"subtitles,omitempty"`
 	Rotation           float64             `json:"rotation,omitempty"`
 	ParameterKeyframes []ParameterKeyframe `json:"parameter_keyframes,omitempty"`
 	GainDB             float64             `json:"gain_db"`
@@ -338,6 +340,14 @@ func (s Sequence) Validate() error {
 			}
 			if err := validateParameterKeyframes(e.ParameterKeyframes, c.Duration); err != nil {
 				return err
+			}
+			if e.Opacity != nil && (!finite(*e.Opacity) || *e.Opacity < 0 || *e.Opacity > 1) {
+				return fmt.Errorf("透明度范围为0到1")
+			}
+			for _, cue := range e.Subtitles {
+				if err := cue.Validate(c.Duration); err != nil {
+					return err
+				}
 			}
 			if err := validateGainKeyframes(e.GainKeyframes); err != nil {
 				return err
@@ -634,6 +644,7 @@ func insertGap(s *Sequence, at, duration int64, group string) error {
 	return ripple(s, at, duration, group)
 }
 func sliceClip(c Clip, from, to int64, fps Rate) Clip {
+	before := c
 	original := c.At
 	originalDuration := c.Duration
 	c.Code = clone(c.Code)
@@ -676,6 +687,7 @@ func sliceClip(c Clip, from, to int64, fps Rate) Clip {
 			c.Effects.GainDB = c.Effects.GainKeyframes[0].DB
 		}
 	}
+	syncCodeScript(before, &c, fps)
 	return c
 }
 
@@ -1181,6 +1193,7 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 					original := *c
 					*c = sliceClip(original, start, end, s.FPS)
 				case "clip.update":
+					before := *c
 					if c.Code != nil {
 						c.Code = clone(c.Code)
 						c.Code.Revision++
@@ -1220,6 +1233,7 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 					if op.FontSize > 0 {
 						c.FontSize = op.FontSize
 					}
+					syncCodeScript(before, c, s.FPS)
 				}
 				c.Origin = editedOrigin(c.Origin, origin)
 				if c.Text == "" {

@@ -1,15 +1,15 @@
 ---
 name: vac-script-syntax
-description: Author and interpret Video Auto Cut paragraph scripts with forced visible-video references, literal subtitles, and supported screen transitions; generate grounded narration and a reviewable edit plan.
+description: Author and interpret Video Auto Cut paragraph and code-clip scripts with stable references, native parameters, timed subtitles and supported transitions; generate grounded narration and reviewable edits.
 ---
 
-# Video Auto Cut script syntax v2
+# Video Auto Cut script syntax v3
 
 Use this Skill for the script workbench. The Go control plane owns scope, validation and finalization. Script blocks are editing data; never evaluate them as Java, C#, JavaScript, shell or a template language.
 
 ## Language
 
-Blank lines separate paragraphs. A block anywhere within a paragraph affects that whole paragraph. Text outside blocks is an instruction to write narration and find fitting visible footage; do not simply read that instruction as the narration. For example, `介绍抽卡机制` asks for an explanation, not a spoken repetition of those six characters.
+Blank lines separate ordinary script paragraphs; code cards instead bind stable clip IDs and keep blank lines as text. Legacy paragraph blocks affect the whole paragraph; named subtitle cues use explicit timing. Text outside blocks is an instruction to write narration and find fitting visible footage; do not simply read that instruction as the narration. For example, `介绍抽卡机制` asks for an explanation, not a spoken repetition of those six characters.
 
 | Syntax | Meaning |
 | --- | --- |
@@ -20,9 +20,11 @@ Blank lines separate paragraphs. A block anywhere within a paragraph affects tha
 | `{白屏}` | Use a dip/fade through white at this paragraph's entrance. |
 | `{交叉溶解}` | Blend the previous paragraph into this paragraph. |
 
-Each paragraph may contain multiple typed references, one subtitle and one effect. Narration generation selects at most one video source per paragraph; use separate paragraphs for distinct sources. A point alone is a valid one-frame anchor and never requires an out point or produces a zero-duration clip. Quoted strings use JSON double-quote escapes (`\"`, `\\`, `\n`). Commas, braces and colons inside a quoted subtitle are literal content. Outside blocks, `\{` and `\}` mean ordinary braces. A font name is a family from the installed-font catalogue; never download fonts or substitute a missing forced font silently. Size range is 1–512px on the output canvas. Default subtitle styling applies when optional values are absent.
+Each paragraph may contain multiple typed references, one legacy whole-paragraph subtitle, multiple named timed subtitle cues, and one effect. Narration generation selects at most one video source per paragraph; use separate paragraphs for distinct sources. A point alone is a valid one-frame anchor and never requires an out point or produces a zero-duration clip. Quoted strings use JSON double-quote escapes (`\"`, `\\`, `\n`). Commas, braces and colons inside a quoted subtitle are literal content. Outside blocks, `\{` and `\}` mean ordinary braces. A font name is a family from the installed-font catalogue; never download fonts or substitute a missing forced font silently. Size range is 1–512px on the output canvas. Default subtitle styling applies when optional values are absent.
 
-The three effect names above are the first supported catalogue. Other block names are errors until a versioned implementation registers them. Do not invent camera, duration, expression, network, command or executable syntax. Further effects can extend the registry without changing the meaning of v1 blocks.
+The registry at control-plane/internal/project/script_directives.json defines available commands, contexts, fields, units and bounds. The three effect names above remain the supported transition catalogue. Other block names are errors until a versioned implementation registers them. Do not invent camera, duration, expression, network, command or executable syntax. Further effects can extend the registry without changing the meaning of v1 blocks.
+
+The workbench also inserts {字幕, 文本:"字幕文字", 时间:条内1s, 持续:2s, 字号:24px}; quoted commas and braces remain literal. Ordinary paragraph rendering resolves local caption times against that paragraph and explicit sequence times against its final placement. Missing caption duration extends to the paragraph end; out-of-range cues fail before delivery. The workbench inserts only registered constructs. While the caret is inside `{…}`, completion filters 黑屏、白屏、交叉溶解 and the snippet labels; after a subtitle's quoted text it offers `字号:` and `字体:"…"`. Ctrl+Space or Cmd+Space reopens that list beside a directive. The chip row, 开场/结果/转场 templates and the 语法速查 collapse insert the same blocks and leave the caret on the reference name, subtitle text or instruction. Invalid highlights can be replaced with a known effect, a subtitle template, or reference completion. None of these controls add syntax.
 
 The paragraph renderer keeps its 1280x720/30fps defaults, 36px outlined subtitles, bounded entrance effects and 1–20 segments of 0.1–120 seconds; its dissolve overlap shortens that flattened film. The multitrack sequence renderer instead uses the sequence's integer frames, rational FPS, canvas and audio sample rate. Its cross dissolve requires adjacent clips and real source handles, preserving sequence duration. Never confuse these two models. Script input is limited to 64KiB and 100 paragraphs.
 
@@ -44,7 +46,7 @@ Use only source URLs actually retrieved by the research step. If requested game-
 - Ordinary prose may ask for researched knowledge. Web research for text is allowed; distinguish visible evidence, external factual sources, and general explanation. Record the real URLs used. A general request such as `介绍抽卡机制` can explain common mechanics without naming a game or quoting probabilities. Do not invent citations, gameplay events, game identity, probabilities or guarantees. Ask for context when requested game-specific rules cannot be identified or verified.
 - Forced video/subtitle/effect blocks outrank automatic editorial choices. Preserve literal subtitle text and optional style. If the footage is unsuitable, report the conflict rather than overriding the block.
 - Produce a draft: paragraph narration, selected visible media and source windows, effects, subtitle intent and knowledge sources. Never label the user's input instruction as already generated narration.
-- A generated, edited or regenerated draft needs human finalization. Changes to referenced media, script or timeline content invalidate the runs and deliveries that depend on that content; saving, renaming and notes do not. Neither `agent:` nor `system:auto-review` can finalize for the person.
+- Saving a script does not start an Agent run. Use the existing explicit generation action; do not add a new human approval stage. Changes to referenced media, script or timeline content invalidate dependent deliveries; metadata-only changes do not alter pixels.
 
 ## Delivery
 
@@ -57,4 +59,18 @@ When extending this language, update parser, highlighting, grammar examples and 
 
 ## Code-clip context extension
 
-The existing paragraph language above remains unchanged for ordinary scripts. A selected code clip uses an instance-bound description: blank lines do not create new clips. Its workbench additionally registers 音量、移动、旋转 named-parameter blocks, using the forms and exact time/units in [the tool contract](vac/tool-contracts.md#代码条参数语法). The Go timeline parser owns validation and stores clip-local integer frames; the editor only formats sequence-time text and highlights known blocks. Parameter edits use code.script and take effect without an Agent run. Plain description changes require explicit regeneration; preserve original code until validated replacement succeeds. No extra human finalization or approval stage is added.
+Code cards bind stable clip IDs; blank lines never split them. Natural-language descriptions are separate from deterministic directives. A description changes source only on explicit regeneration; never bake the timeline parameters into newly generated code a second time.
+
+Native commands use the same registry and parser: 音量 (增益, optional 起始增益, -96..24dB), 移动 (x/y px, relative to canvas center), 旋转 (角度, clockwise), 缩放 (比例, 1..800%), 透明度 (到, optional 从, 0..100%), 字幕 (文本, optional 时间/持续/字号/字体). Literal subtitle shorthand remains supported. Black/white/dissolve presets use the existing effect model; material references constrain Agent generation.
+
+Time may be omitted for clip start. Bare legacy timecodes remain sequence time; explicit forms include 时间:序列00:00:10:00, 时间:条内1s and 时间:条内30f. Durations accept s/ms/f. All stored code parameters and subtitles use clip-local integer frames. Subtitle duration may be omitted to extend to clip end; an omitted animation duration means an immediate change. Out-of-range time, duplicate fields, overlapping same-property animation and unknown fields are errors with line/column context.
+
+Examples:
+```text
+蓝色背景和白色标题。
+{缩放, 时间:条内1s, 比例:120%, 持续:1s}
+{透明度, 时间:条内0f, 从:0%, 到:100%, 持续:500ms}
+{字幕, 文本:"开始，{原样}", 时间:条内1s, 持续:2s, 字号:24px}
+```
+
+The workbench preserves authored prose, blank lines and unchanged blocks. Parameter gestures patch the corresponding directive family; saving invalid text preserves a draft and leaves the last valid picture active. Completion, highlighting and local field feedback consume the shared registry; Go validation and the effects model remain authoritative for preview/export and undo. Per-element targets, arbitrary expressions, easing curves and a new narration directive are not implemented in this increment.

@@ -2,6 +2,20 @@ package scriptsyntax
 
 import "testing"
 
+func TestNamedTimedSubtitlesKeepParagraphAndLiteralText(t *testing.T) {
+	doc := Parse("介绍流程{字幕, 文本:\"第一句，{原样}\", 时间:条内1s, 持续:2s, 字号:24px}{字幕, 文本:\"第二句\", 时间:条内3s, 持续:1s}")
+	if len(doc.Diagnostics) != 0 || len(doc.Paragraphs) != 1 || doc.Paragraphs[0].Instruction != "介绍流程" {
+		t.Fatalf("named subtitles rejected: %+v", doc)
+	}
+	if cues := doc.Paragraphs[0].SubtitleCues; len(cues) != 2 || cues[0].Text != "第一句，{原样}" || cues[0].Frame != 30 || cues[0].Duration != 60 || cues[0].TimeBase != "" {
+		t.Fatalf("wrong cues: %+v", cues)
+	}
+	doc = Parse(`{字幕, 文本:"序列字幕", 时间:序列00:02:01, 持续:1s}`)
+	if len(doc.Diagnostics) != 0 || doc.Paragraphs[0].SubtitleCues[0].TimeBase != "sequence" {
+		t.Fatalf("sequence time lost: %+v", doc)
+	}
+}
+
 func TestDirectivesAndNaturalInstructions(t *testing.T) {
 	doc := Parse("{@抽卡演示.mp4}介绍抽卡机制。{\"十次必得，规则看这里 {详情}\", 字号:24px, 字体:\"Microsoft YaHei\",}{白屏}\n\n展示本次结果{交叉溶解}")
 	if len(doc.Diagnostics) != 0 || len(doc.Paragraphs) != 2 {

@@ -1,7 +1,8 @@
 import type { ReferenceCandidate, ScriptReference } from './timelineContracts';
 import { insertReference, rebaseReferences } from './scriptReferences.ts';
+import {SCRIPT_DIRECTIVES,directiveTemplate,activeDirective,scriptBlockEnd,type ScriptContext} from './scriptGrammar.ts';
 
-/** Editor helpers for vac-script-syntax v2. They do not add directives. */
+/** Editor helpers use the same registered directives as the Go parser. */
 export interface AuthoringInsert {
   text: string;
   selectStart: number;
@@ -15,7 +16,7 @@ export interface SnippetChoice extends AuthoringInsert {
   prefixes: string[];
 }
 
-export const SNIPPETS: SnippetChoice[] = [
+const LEGACY_SNIPPETS: SnippetChoice[] = [
   { key: 'reference', label: '@ 素材或标记引用', text: '{@', prefixes: ['@'], selectStart: 2, selectEnd: 2, openReference: true },
   { key: 'subtitle', label: '字幕 · 指定文字与字号', text: '{"字幕文字"}', prefixes: ['"', '字幕'], selectStart: 2, selectEnd: 6 },
   { key: 'black', label: '黑场淡变', text: '{黑屏}', prefixes: ['黑屏', '黑场淡变'], selectStart: 4, selectEnd: 4 },
@@ -23,6 +24,13 @@ export const SNIPPETS: SnippetChoice[] = [
   { key: 'dissolve', label: '交叉溶解', text: '{交叉溶解}', prefixes: ['交叉溶解'], selectStart: 6, selectEnd: 6 },
 ];
 
+const legacyName:Record<string,string>={reference:'@',subtitle:'字幕',black:'黑屏',white:'白屏',dissolve:'交叉溶解'};
+export const SNIPPETS:SnippetChoice[]=SCRIPT_DIRECTIVES.filter(s=>s.contexts.includes('paragraph')).flatMap(spec=>{
+ const legacy=LEGACY_SNIPPETS.find(s=>legacyName[s.key]===spec.name);
+ if(spec.name!=='字幕')return legacy?[legacy]:[];
+ const text='{字幕, 文本:"字幕文字", 时间:条内0f, 持续:1s}',start=text.indexOf('字幕文字');
+ return [...(legacy?[legacy]:[]),{key:'timed-subtitle',label:'定时字幕 · 文字与时间',text,prefixes:['字幕','定时字幕'],selectStart:start,selectEnd:start+4}];
+});
 export const SUBTITLE_INSERT: AuthoringInsert = { text: '{"字幕文字"}', selectStart: 2, selectEnd: 6 };
 export const EFFECT_INSERTS = {
   黑屏: { text: '{黑屏}', selectStart: 4, selectEnd: 4 },
@@ -60,10 +68,11 @@ export function paragraphTemplate(kind: ParagraphTemplateKind): AuthoringInsert 
   return { text, selectStart: at, selectEnd: at, openReference: true };
 }
 
-export function filterSnippets(query: string): SnippetChoice[] {
+export function filterSnippets(query: string,context:ScriptContext='paragraph'): SnippetChoice[] {
   const q = query.trim().toLocaleLowerCase();
-  if (!q) return SNIPPETS;
-  return SNIPPETS.filter(snippet =>
+  const snippets=context==='code'?SCRIPT_DIRECTIVES.filter(s=>s.name!=='@'&&s.contexts.includes('code')).map(s=>{const text=directiveTemplate(s.name);return {key:s.name,label:s.label,text,prefixes:[s.name],selectStart:text.length-1,selectEnd:text.length-1};}):SNIPPETS;
+  if (!q) return snippets;
+  return snippets.filter(snippet =>
     snippet.prefixes.some(prefix => prefix.toLocaleLowerCase().startsWith(q)) ||
     snippet.label.toLocaleLowerCase().startsWith(q));
 }
@@ -84,7 +93,7 @@ export function filterFonts(fonts: string[], query: string): string[] {
 }
 
 export interface CompletionQuery {
-  kind: 'snippet' | 'reference' | 'param' | 'font';
+  kind: 'snippet' | 'reference' | 'param' | 'font' | 'registered';
   start: number;
   end: number;
   query: string;
@@ -99,6 +108,7 @@ export function completionContext(source: string, caret: number, force = false):
   const token = source.slice(region.brace + 1, caret);
   if (token.includes('\n')) return force && nearDirective(source, caret) ? { kind: 'snippet', start: caret, end: caret, query: '' } : null;
   if (token.startsWith('@')) return { kind: 'reference', start: region.brace, end: region.end, query: token.slice(1) };
+  if(/^字幕\s*[,，]/.test(token))return {kind:'registered',start:region.brace,end:region.end,query:token};
   if (token.startsWith('"')) {
     const param = subtitleQuery(source, region.brace, caret);
     if (param) return param;
@@ -188,16 +198,10 @@ export function applyAuthoringInsert(body: string, references: ScriptReference[]
 }
 
 function directiveRegion(source: string, caret: number): { brace: number; end: number } | null {
-  const prefix = source.slice(0, caret);
-  let brace = -1;
-  for (let i = prefix.length - 1; i >= 0; i--) {
-    if (prefix[i] !== '{' || escaped(prefix, i)) continue;
-    brace = i;
-    break;
-  }
-  if (brace < 0 || unquotedIndex(prefix.slice(brace + 1), '}') >= 0) return null;
-  const close = unquotedBoundary(source.slice(caret));
-  return { brace, end: close >= 0 ? caret + close + 1 : caret };
+  const brace=activeDirective(source,caret).start;
+  if(brace<0)return null;
+  const close=scriptBlockEnd(source,brace);
+  return {brace,end:close>=0?close+1:caret};
 }
 
 function nearDirective(source: string, caret: number): boolean {

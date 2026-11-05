@@ -1,4 +1,5 @@
 import {codeAudioTracks} from './code-audio.mjs';
+import {parameterValue} from './code-parameters.mjs';
 import { runTool } from './media.mjs';
 
 const MIN = 1;
@@ -68,7 +69,12 @@ export function sequenceExpectations(sequence, resources, tracks) {
   const start=clip.at/fps,end=(clip.at+clip.duration)/fps,e=clip.effects||{};
   if((track.kind==='video'||track.kind==='code')&&!track.hidden) {
    const black=!e.fade_color || e.fade_color==='black', from=(e.from_frame??0)/fps,to=(e.to_frame??clip.duration)/fps;
-   videoWindows.push({start,end});
+   // Deliberate transparent holds do not imply missing video. Subtract from
+   // this layer only: another visible layer must retain its own expectation.
+   const scopeStart=e.from_frame??0,scopeEnd=e.to_frame??clip.duration;
+   const boundaries=[...new Set([0,clip.duration,scopeStart,scopeEnd,...(e.parameter_keyframes??[]).filter(k=>k.kind==='透明度').flatMap(k=>[k.frame,k.frame+k.duration])])].filter(f=>f>=0&&f<=clip.duration).sort((a,b)=>a-b), transparent=[];
+   for(let i=1;i<boundaries.length;i++){const a=boundaries[i-1],b=boundaries[i];if(a>=scopeStart&&b<=scopeEnd&&parameterValue(e,'透明度','value',a,e.opacity??1)===0&&parameterValue(e,'透明度','value',b-1,e.opacity??1)===0)transparent.push({start:start+a/fps,end:start+b/fps});}
+   videoWindows.push(...subtract([{start,end}],transparent));
    if(black && e.fade_in)videoExclusions.push({start:start+from,end:start+from+Math.min(e.fade_in/fps,to-from)});
    if(black && e.fade_out)videoExclusions.push({start:start+Math.max(from,to-e.fade_out/fps),end:start+to});
    if(e.transition)videoExclusions.push({start,end:Math.min(end,start+e.transition/fps)});

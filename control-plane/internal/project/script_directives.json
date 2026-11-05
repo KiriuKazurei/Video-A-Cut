@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "directives": [
+    {"name":"@","label":"素材或标记引用","contexts":["paragraph","code"],"mode":"generate","parameters":[]},
+    {"name":"字幕","label":"定时字幕","contexts":["paragraph","code"],"mode":"direct","parameters":[{"name":"文本","type":"string","required":true},{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"字号","type":"number","unit":"px","min":1,"max":512},{"name":"字体","type":"string"}]},
+    {"name":"黑屏","label":"入口黑场淡变","contexts":["paragraph","code"],"mode":"direct","parameters":[]},
+    {"name":"白屏","label":"入口白场淡变","contexts":["paragraph","code"],"mode":"direct","parameters":[]},
+    {"name":"交叉溶解","label":"与上一画面叠化","contexts":["paragraph","code"],"mode":"direct","parameters":[]},
+    {"name":"音量","label":"代码条自身声音","contexts":["code"],"mode":"direct","parameters":[{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"增益","type":"number","unit":"dB","required":true,"min":-96,"max":24},{"name":"起始增益","type":"number","unit":"dB","min":-96,"max":24}]},
+    {"name":"移动","label":"相对画布中心的位置","contexts":["code"],"mode":"direct","parameters":[{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"x","type":"number","unit":"px","required":true,"min":-100000,"max":100000},{"name":"y","type":"number","unit":"px","required":true,"min":-100000,"max":100000}]},
+    {"name":"旋转","label":"顺时针角度","contexts":["code"],"mode":"direct","parameters":[{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"角度","type":"number","required":true,"min":-100000,"max":100000}]},
+    {"name":"缩放","label":"整幅画面缩放","contexts":["code"],"mode":"direct","parameters":[{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"比例","type":"number","unit":"%","required":true,"min":1,"max":800}]},
+    {"name":"透明度","label":"整幅画面透明度","contexts":["code"],"mode":"direct","parameters":[{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"从","type":"number","unit":"%","min":0,"max":100},{"name":"到","type":"number","unit":"%","required":true,"min":0,"max":100}]}
+  ]
+}

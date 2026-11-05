@@ -3,8 +3,11 @@ import type { TextAreaRef } from 'antd/es/input/TextArea';
 import type { ReferenceCandidate, ScriptReference } from '../timelineContracts';
 import { candidateLabel, insertReference, rebaseReferences } from '../scriptReferences';
 import { completionContext, filterFonts, filterParams, filterSnippets, type CompletionQuery } from '../scriptAuthoring.ts';
+import {directiveCompletions} from '../scriptGrammar';
 
 interface Choice {
+  replaceStart?: number;
+  replaceEnd?: number;
   key: string;
   label: string;
   text?: string;
@@ -28,6 +31,8 @@ export function ScriptCompletion({ editor, body, references, directory, fonts = 
   const matching = range?.kind === 'reference' ? directory.filter(c => candidateLabel(c).toLocaleLowerCase().includes(range.query.toLocaleLowerCase())) : [];
   const choices: Choice[] = !range ? [] : range.kind === 'reference'
     ? matching.slice(0, 80).map((c, i) => ({ key: `${c.target_id}:${c.clip_id ?? ''}:${i}`, label: candidateLabel(c), candidate: c }))
+    : range.kind === 'registered'
+      ? directiveCompletions(body,range.start+1+range.query.length,'paragraph').map(item=>({key:item.label,label:item.label,text:item.text,replaceStart:item.start,replaceEnd:item.end}))
     : range.kind === 'snippet'
       ? filterSnippets(range.query).map(snippet => ({ key: snippet.key, label: snippet.label, text: snippet.text, selectStart: snippet.selectStart, selectEnd: snippet.selectEnd, openReference: snippet.openReference }))
       : range.kind === 'font'
@@ -64,12 +69,13 @@ export function ScriptCompletion({ editor, body, references, directory, fonts = 
       selStart = selEnd = range.start + text.length;
     } else {
       const raw = choice.text!;
+      const start=choice.replaceStart??range.start,end=choice.replaceEnd??range.end;
       const text = range.kind === 'param' && range.needsComma ? `, ${raw}` : raw;
-      nextBody = body.slice(0, range.start) + text + body.slice(range.end);
+      nextBody = body.slice(0, start) + text + body.slice(end);
       nextReferences = rebaseReferences(body, nextBody, references);
       const pad = text.length - raw.length;
-      selStart = range.start + (choice.selectStart ?? raw.length) + pad;
-      selEnd = range.start + (choice.selectEnd ?? raw.length) + pad;
+      selStart = start + (choice.selectStart ?? raw.length) + pad;
+      selEnd = start + (choice.selectEnd ?? raw.length) + pad;
       reopen = !!choice.openReference;
     }
     onEdit(nextBody, nextReferences);
@@ -95,7 +101,7 @@ export function ScriptCompletion({ editor, body, references, directory, fonts = 
       if (!range) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setRange(null); }
       else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); event.stopPropagation(); setActive(value => (value + (event.key === 'ArrowDown' ? 1 : Math.max(1, choices.length) - 1)) % Math.max(1, choices.length)); }
-      else if ((event.key === 'Enter' || event.key === 'Tab') && choices.length) { event.preventDefault(); event.stopPropagation(); choose(choices[active % choices.length]); }
+      else if ((event.key === 'Enter' || event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) && choices.length) { event.preventDefault(); event.stopPropagation(); choose(choices[active % choices.length]); }
     };
     const begin = () => { composing.current = true; setRange(null); }, end = () => { composing.current = false; requestAnimationFrame(() => refresh()); };
     const up = (event: KeyboardEvent) => {

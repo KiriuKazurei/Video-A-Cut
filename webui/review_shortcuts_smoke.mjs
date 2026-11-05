@@ -58,6 +58,11 @@ try {
  assert.equal(await page.locator('.timeline-row').count(),6);assert.equal(await page.locator('.workflow-panel:visible').count(),0);assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');await page.reload();await clip.waitFor();assert.equal(await page.locator('.timeline-ruler>.track-heading').innerText(),'00:00:01:15');ok('unified editor restores a saved nonzero playhead on load and reload with six tracks');
  assert.equal(await clip.evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(62, 111, 176)');assert.match(await page.locator('[data-clip-id="clip-3"]').innerText(),/流 1/);ok('ordinary video and audio use theme blue and show actual stream identity');
  await clip.focus();await press('Enter');assert.equal(await clip.getAttribute('aria-pressed'),'true');assert.equal(await page.locator('[data-clip-id="clip-3"]').getAttribute('aria-pressed'),'true');ok('keyboard clip selection includes its linked sound');
+ await clip.evaluate(el=>{el.blur();el.closest('.timeline-scroll').scrollLeft=120;});
+ const scrollBefore=await page.locator('.timeline-scroll').evaluate(el=>el.scrollLeft),dragBounds=await clip.boundingBox();
+ await page.mouse.move(dragBounds.x+dragBounds.width*.85,dragBounds.y+dragBounds.height*.5);await page.mouse.down();
+ assert.equal(await page.locator('.timeline-scroll').evaluate(el=>el.scrollLeft),scrollBefore,'pointer focus must not scroll the timeline before a drag');
+ await page.mouse.up();await page.locator('.timeline-scroll').evaluate(el=>el.scrollLeft=0);
  await press('c');assert.equal(await page.getByRole('button',{name:'剃刀工具 C',exact:true}).getAttribute('aria-pressed'),'true');assert.equal(approvals.length,0);ok('C selects the razor without legacy approval');
  await press('v');assert.equal(await page.getByRole('button',{name:'选择工具 V',exact:true}).getAttribute('aria-pressed'),'true');ok('V restores selection tool');
  const split=await command('Control+k');assert.equal(split.session,'review-session');assert.equal(split.operations[0].type,'clip.split');assert.deepEqual(split.operations[0].clip_ids,['clip-0','clip-3']);assert(split.expected_revision>=1&&split.idempotency_key);ok('Ctrl+K dispatches linked stable IDs with CAS and idempotency');
@@ -89,7 +94,7 @@ try {
  await page.route('**/api/projects/review-project/sequences/seq-review/commands',async route=>{
   const request=route.request().postDataJSON();writes.push(request);
   for(const op of request.operations){const target=view.sequence.tracks.flatMap(t=>t.clips).find(c=>c.id===op.clip_ids?.[0]);
-   if(op.type==='code.script'){target.code.description=op.description.split('\n').filter(line=>!line.startsWith('{')).join('\n').trim();target.code.revision++;}
+   if(op.type==='code.script'){target.code.description=op.description.split('\n').filter(line=>!line.startsWith('{')).join('\n').trim();target.code.script=op.description;target.code.script_at=target.at;target.code.revision++;}
    if(op.type==='code.job')target.code.run_id=op.code_run_id;
   }
   view.sequence.revision++;workspace.document.sequences=[view.sequence];await route.fulfill({json:view});
@@ -109,6 +114,25 @@ try {
   assert.equal(await marker.evaluate(n=>getComputedStyle(n).backgroundColor),await page.locator('.code-script-card').filter({hasText:title}).evaluate(n=>getComputedStyle(n).borderColor));
  }
  ok('code multiselection shows ordered, colored scripts with thumbnails and gain lines');
+ const authored='原画面\n\n{缩放, 时间:条内0f, 比例:125%}\n{透明度, 时间:条内0f, 到:80%}\n{字幕, 文本:"标题,{原样}", 时间:条内0.5s, 持续:1s}';
+ await first.fill(authored);
+ await page.waitForTimeout(1100);assert(writes.some(w=>w.operations.some(op=>op.type==='code.script'&&op.description===authored)));
+ assert.equal(await first.inputValue(),authored,'saving must preserve blank lines and authored units');
+ await page.getByRole('button',{name:'重新生成画面',exact:true}).click();await page.waitForTimeout(100);assert.equal(created.length,0,'native parameter/subtitle edits must not regenerate source');
+ ok('named local-time transforms and captions autosave without reformatting or Agent work');
+ const writesBeforeInvalid=writes.length;
+ await first.fill('原画面\n{透明度, 到:101%}');
+ await page.getByRole('alert').filter({hasText:'透明度.到'}).waitFor();await page.waitForTimeout(900);
+ assert.equal(writes.length,writesBeforeInvalid,'invalid draft must not submit timeline writes');
+ await first.fill('{缩');
+ await page.getByRole('button',{name:'缩放 · 整幅画面缩放',exact:true}).waitFor();await first.press('Tab');assert.match(await first.inputValue(),/\{缩放, 时间:条内0f, 比例:100%\}/);assert(await first.evaluate(el=>document.activeElement===el),'Tab completion keeps the caret in the editor');
+ await first.fill('{缩放, 比');await page.getByRole('button',{name:'比例 (%)',exact:true}).waitFor();await first.press('Tab');assert.match(await first.inputValue(),/比例:100%/);
+ await first.fill('{');await first.press('ArrowDown');const chosen=await page.locator('.code-script-completions .ant-btn-primary').innerText();await first.press('Tab');assert((await first.inputValue()).startsWith('{'+chosen.split(' · ')[0]),'Tab accepts the highlighted candidate');
+ await first.fill('{缩');await first.press('Shift+Tab');assert.equal(await first.inputValue(),'{缩');assert.equal(await first.evaluate(el=>document.activeElement===el),false,'Shift+Tab must navigate backwards');
+ await first.fill('{缩');await first.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',code:'Tab',bubbles:true,cancelable:true,isComposing:true})));assert.equal(await first.inputValue(),'{缩','IME composition must not accept a candidate');
+ await first.fill('普通描述');await first.press('Tab');assert.equal(await first.inputValue(),'普通描述');assert.equal(await first.evaluate(el=>document.activeElement===el),false,'Tab without candidates retains focus navigation');
+ await first.fill(authored);
+ ok('code grammar reports local field errors and completes registered directives');
  await first.fill((await first.inputValue()).replace('原画面','绿色背景'));
  await page.waitForFunction(()=>document.body.innerText.includes('代码条脚本'));
  await page.waitForTimeout(1100);assert(writes.some(w=>w.operations.some(op=>op.type==='code.script'&&op.clip_ids[0]==='code-first')));
@@ -118,5 +142,13 @@ try {
  assert.equal(created.length,1);assert.deepEqual(Object.keys(created[0].code_targets),['code-first']);assert.equal(created[0].code_action,'regenerate');
  assert.equal(second&&await second.inputValue(),'原画面\n{音量, 时间:00:00:03:00, 增益:0dB}');
  assert.deepEqual(errors,[]);ok('autosave preserves other scripts and generation captures only changed code clips');
+ await page.route('**/resources/review-resource/content*',route=>route.fulfill({path:fileURLToPath(new URL('../workers/node/timeline-cli/fixtures/media/clip_01.mp4',import.meta.url)),contentType:'video/mp4'}));
+ await page.route('**/preview/playback',route=>route.fulfill({json:{mode:'direct',content_version:'browser-fixture',frames:180,fps:{num:30,den:1},segment_frames:60,video:[{id:'direct',resource_id:'review-resource',at:0,duration:180,source_in:0}],audio:[]}}));
+ await page.reload();await page.locator('.program-monitor .program-playback[data-mode="direct"]').waitFor();
+ await page.locator('.source-monitor-badge').click();await page.getByRole('region',{name:'源监视器',exact:true}).waitFor();
+ assert.equal(await page.locator('.source-monitor .program-playback').count(),0,'source monitor must never mount or own the program playback engine');
+ assert.equal(await page.locator('.program-playback').count(),1,'only one program player may control the sequence clock');
+ await page.getByRole('button',{name:'收起源监视器',exact:true}).click();assert.equal(await page.locator('.program-playback').count(),1);
+ ok('opening and closing the source monitor preserves one program playback owner');
  console.log(`unified editor browser smoke passed (${number} groups)`);
 } catch(error) {console.error('Browser failure state',await page?.evaluate(()=>({body:document.body.innerText.slice(-4000),url:location.href})).catch(()=>undefined));throw error;} finally {if(page&&process.env.VAC_TEST_OUTPUT)await page.screenshot({path:join(process.env.VAC_TEST_OUTPUT,'code-track-ui.png')}).catch(()=>{});await browser.close();}

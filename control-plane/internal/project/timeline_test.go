@@ -79,8 +79,102 @@ func TestCodeScriptUsesLocalFramesAndRejectsOutOfRange(t *testing.T) {
 	}
 }
 
+func TestCodeScriptNamedTimesScaleOpacityAndTimedSubtitles(t *testing.T) {
+	c := Clip{At: 300, Duration: 150, Effects: Effects{Scale: 1}}
+	text := "保留创作描述\n{缩放, 时间:条内1s, 比例:150%, 持续:1s}\n{透明度, 时间:序列00:00:11, 从:0%, 到:100%, 持续:1s}\n{字幕, 文本:\"你好，{世界}\", 时间:条内1s, 持续:2s, 字号:24px}"
+	fx, body, err := ParseCodeDescription(text, c, Rate{30, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != "保留创作描述" || len(fx.ParameterKeyframes) != 2 {
+		t.Fatalf("directives not separated: %s %+v", body, fx)
+	}
+	scale, _ := parameterAt(fx, "缩放", 45)
+	opacity, _ := parameterAt(fx, "透明度", 45)
+	if scale != 1.25 || opacity != .5 {
+		t.Fatalf("wrong transform values: %v %v", scale, opacity)
+	}
+	raw, _ := json.Marshal(fx)
+	var state map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &state)
+	var captions []struct {
+		Text     string `json:"text"`
+		Frame    int64  `json:"frame"`
+		Duration int64  `json:"duration"`
+	}
+	_ = json.Unmarshal(state["subtitles"], &captions)
+	if len(captions) != 1 || captions[0].Text != "你好，{世界}" || captions[0].Frame != 30 || captions[0].Duration != 60 {
+		t.Fatalf("wrong captions: %s", raw)
+	}
+	fx, _, err = ParseCodeDescription("{移动, x:20px, y:0px}", c, Rate{30, 1})
+	if err != nil || len(fx.ParameterKeyframes) != 1 || fx.ParameterKeyframes[0].Frame != 0 {
+		t.Fatalf("omitted time must use clip start: %+v %v", fx, err)
+	}
+	for _, bad := range []string{"{缩放, 比例:0%}", "{透明度, 到:101%}", "{旋转, 角度:0x1p2}", "{旋转, 角度:30, 持续:1e0s}", "{字幕, 文本:\"越界\", 时间:条内4s, 持续:2s}", "{移动, 时间:条内1s, x:10px, y:0px, 未知:1}"} {
+		if _, _, err := ParseCodeDescription(bad, c, Rate{30, 1}); err == nil {
+			t.Fatalf("accepted invalid directive %s", bad)
+		}
+	}
+}
+
+func TestCodeScriptPreservesAuthoredLayout(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	s.Configured, s.FPS = true, Rate{30, 1}
+	s.Tracks[0].Kind = "code"
+	s.Tracks[0].Clips = []Clip{{ID: "code", ResourceID: "r", Duration: 90, SourceIn: MediaTime(0), SourceOut: MediaTime(3), Speed: 1, Effects: Effects{Scale: 1}, Code: &CodeClip{Revision: 1}}}
+	text := "创作描述\n\n{移动, 时间:00:00:01, x:20px, y:0px}\n保留这一行"
+	if err := s.Apply(&d, Operation{Type: "code.script", ClipIDs: []string{"code"}, Description: &text, CodeRevision: 1}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(s.Tracks[0].Clips[0].Code)
+	var code map[string]any
+	_ = json.Unmarshal(raw, &code)
+	if code["script"] != text {
+		t.Fatalf("authored layout lost: %s", raw)
+	}
+	fx := s.Tracks[0].Clips[0].Effects
+	fx.GainDB = -6
+	if err := s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{"code"}, Effects: &fx, Unlinked: true}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = json.Marshal(s.Tracks[0].Clips[0].Code)
+	_ = json.Unmarshal(raw, &code)
+	updated, _ := code["script"].(string)
+	if !strings.Contains(updated, text) || !strings.Contains(updated, "增益:-6dB") {
+		t.Fatalf("parameter gesture reformatted or failed to synchronize text: %s", raw)
+	}
+	withoutGain := text
+	if err := s.Apply(&d, Operation{Type: "code.script", ClipIDs: []string{"code"}, Description: &withoutGain, CodeRevision: s.Tracks[0].Clips[0].Code.Revision}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Tracks[0].Clips[0].Effects.GainDB != 0 {
+		t.Fatal("deleting authored volume did not restore default gain")
+	}
+	nativeOnly := "{透明度, 到:75%}"
+	if err := s.Apply(&d, Operation{Type: "code.script", ClipIDs: []string{"code"}, Description: &nativeOnly, CodeRevision: s.Tracks[0].Clips[0].Code.Revision}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	beforeDescribe, _ := json.Marshal(s.Tracks[0].Clips[0].Effects)
+	description := "Agent补全的画面描述"
+	if err := s.Apply(&d, Operation{Type: "code.script", ClipIDs: []string{"code"}, Description: &description, CodeRevision: s.Tracks[0].Clips[0].Code.Revision, Mode: "describe"}, Origin{Actor: "agent"}); err != nil {
+		t.Fatal(err)
+	}
+	afterDescribe, _ := json.Marshal(s.Tracks[0].Clips[0].Effects)
+	if *s.Tracks[0].Clips[0].Code.Script != description+"\n\n"+nativeOnly || string(beforeDescribe) != string(afterDescribe) {
+		t.Fatal("completed description hidden by authored script or changed effects")
+	}
+}
+
 func TestCodeSplitPreservesTransformClockAndDescriptionIsolation(t *testing.T) {
 	c := Clip{ID: "original", At: 0, Duration: 60, SourceIn: MediaTime(0), SourceOut: MediaTime(2), Speed: 1, Effects: Effects{Scale: 1, ParameterKeyframes: []ParameterKeyframe{{Kind: "移动", Frame: 0, Duration: 60, X: 100}}}, Code: &CodeClip{Revision: 1, Description: "original"}}
+	text := "original\n\n{移动, x:100px, y:0px, 持续:2s}\n{缩放, 比例:200%, 持续:2s}\n{透明度, 从:0%, 到:100%, 持续:2s}\n{字幕, 文本:\"跨切点\", 时间:条内0.5s, 持续:1s}"
+	c.Code.Script = &text
+	var err error
+	c.Effects, _, err = ParseCodeDescription(text, c, Rate{30, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
 	left, right := sliceClip(c, 0, 30, Rate{30, 1}), sliceClip(c, 30, 60, Rate{30, 1})
 	x, _ := parameterAt(left.Effects, "移动", 15)
 	if x != 25 {
@@ -89,6 +183,24 @@ func TestCodeSplitPreservesTransformClockAndDescriptionIsolation(t *testing.T) {
 	x, _ = parameterAt(right.Effects, "移动", 15)
 	if x != 75 {
 		t.Fatalf("right animation retimed: %v", x)
+	}
+	for i, cut := range []Clip{left, right} {
+		scale, _ := parameterAt(cut.Effects, "缩放", 15)
+		opacity, _ := parameterAt(cut.Effects, "透明度", 15)
+		if scale != 1.25+float64(i)*.5 || opacity != .25+float64(i)*.5 {
+			t.Fatalf("scalar animation retimed: %+v", cut.Effects)
+		}
+		if len(cut.Effects.Subtitles) != 1 || cut.Effects.Subtitles[0].Frame != int64(15-i*15) || cut.Effects.Subtitles[0].Duration != 15 {
+			t.Fatalf("caption not clipped: %+v", cut.Effects.Subtitles)
+		}
+		reparsed, _, parseErr := ParseCodeDescription(*cut.Code.Script, cut, Rate{30, 1})
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		got, _ := parameterAt(reparsed, "透明度", 15)
+		if got != opacity || !strings.Contains(*cut.Code.Script, "original\n\n") {
+			t.Fatalf("cut text disagrees with effects: %s", *cut.Code.Script)
+		}
 	}
 	right.Code.Description = "changed"
 	if left.Code.Description != "original" || c.Code.Description != "original" {
@@ -104,7 +216,7 @@ func TestCodeDirectivesRespectLiteralBracesAndSubtitleQuotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body != literal || len(effects.ParameterKeyframes) != 1 || effects.ParameterKeyframes[0].Kind != "旋转" {
+	if body != `显示\{旋转\}和` || len(effects.Subtitles) != 1 || effects.Subtitles[0].Text != "字幕包含{移动, 时间:00:00:00, x:20px, y:0px}" || len(effects.ParameterKeyframes) != 1 || effects.ParameterKeyframes[0].Kind != "旋转" {
 		t.Fatalf("literal text executed as parameters: %s %+v", body, effects.ParameterKeyframes)
 	}
 }

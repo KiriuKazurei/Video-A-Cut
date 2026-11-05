@@ -206,11 +206,35 @@ try {
   foreach ($path in @($artifact,$cache)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
   if ($Action -eq 'Prepare') { Write-Output $artifact; return }
   $command = switch ($Suite) {
-    'go' { @{exe='go';args=@('-C','control-plane','test','-p','1','-count=1','./...');cwd=$repo} }
+    'go' {
+      $goChecks = @'
+$ErrorActionPreference='Stop'
+$packages=@(go list ./...)
+if($LASTEXITCODE){exit $LASTEXITCODE}
+$service=($packages|Where-Object {$_ -match '/internal/service$'})
+$others=@($packages|Where-Object {$_ -ne $service})
+go test -p 1 -count=1 @others
+if($LASTEXITCODE){exit $LASTEXITCODE}
+# Real-media service workflows exceed a package-wide ten-minute budget in
+# aggregate. Run every discovered top-level test exactly once in bounded
+# groups; retain the same timeout and all nested scenarios in each group.
+$names=@(go test $service -list '^Test' | Where-Object {$_ -match '^Test\S*$'})
+if($LASTEXITCODE){exit $LASTEXITCODE}
+if(!$names.Count){throw 'No service tests discovered'}
+for($offset=0;$offset -lt $names.Count;$offset+=80){
+  $batch=@($names|Select-Object -Skip $offset -First 80)
+  Write-Output ('Service tests '+($offset+1)+'..'+($offset+$batch.Count)+' / '+$names.Count)
+  go test $service -count=1 -timeout=600s -run ('^('+($batch -join '|')+')$')
+  if($LASTEXITCODE){exit $LASTEXITCODE}
+}
+exit 0
+'@
+      @{exe='pwsh';args=@('-Command',$goChecks);cwd=(Join-Path $repo 'control-plane')}
+    }
     'python' { @{exe='python';args=@('-B','-m','unittest','discover','-s','tests','-t','.','-v');cwd=(Join-Path $repo 'workers/python')} }
     'webui' { @{exe='pwsh';args=@('-Command','npm run test:unit');cwd=(Join-Path $repo 'webui')} }
     'pipeline' { @{exe='node';args=@('--experimental-strip-types','--test','pipeline_test.mjs');cwd=(Join-Path $repo 'webui')} }
-    'timeline' { @{exe='node';args=@('--test');cwd=(Join-Path $repo 'workers/node/timeline-cli')} }
+    'timeline' { @{exe='node';args=@('--test','--test-concurrency=1');cwd=(Join-Path $repo 'workers/node/timeline-cli')} }
     'exporter' { @{exe='node';args=@('--test');cwd=(Join-Path $repo 'workers/node/export-worker')} }
     'guard' { @{exe='pwsh';args=@('-File',(Join-Path $repo 'scripts/Test-TauriStateGuard.ps1'));cwd=$repo} }
     'workspace' { @{exe='pwsh';args=@('-File',(Join-Path $repo 'test-support/test-workspace.ps1'));cwd=$repo} }

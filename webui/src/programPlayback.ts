@@ -108,7 +108,15 @@ export function segmentedProgramPlayer(container:HTMLElement,plan:SequencePlayba
     if(buffer.buffered.length&&buffer.buffered.start(0)<desired-14){const removed=wait(buffer,'updateend',signal);buffer.remove(0,desired-10);await removed;for(const old of appended)if((old+plan.segment_frames)/fps<desired-10)appended.delete(old);}
     setSegmentWindow(buffer,report.start_frame/fps,Math.min(duration,(report.start_frame+report.frames)/fps));
     const updated=wait(buffer,'updateend',signal);buffer.appendBuffer(bytes);await updated;appended.add(frame);
-    if(contains(desired)){if(Math.abs(video.currentTime-desired)>.1)video.currentTime=desired;await loaded(video,signal);if(closed||own!==generation)return;events.ready(true);if(intent&&video.paused)await video.play();}
+    // SourceBuffer completion can precede the media element's metadata and
+    // buffered ranges. At a nonzero restore point, checking too early leaves
+    // currentTime at zero outside the appended window with no later retry.
+    if(video.readyState<1)await wait(video,'loadedmetadata',signal);
+    if(closed||own!==generation)return;
+    // The media element can still expose stale ranges after metadata; the
+    // SourceBuffer is authoritative for the append just acknowledged above.
+    let appendedContains=false;for(let i=0;i<buffer.buffered.length;i++)if(buffer.buffered.start(i)<=desired+.02&&buffer.buffered.end(i)>desired)appendedContains=true;
+    if(appendedContains){if(Math.abs(video.currentTime-desired)>.1)video.currentTime=desired;await loaded(video,signal);if(closed||own!==generation)return;events.ready(true);if(intent&&video.paused)await video.play();}
     if(frame+report.frames>=plan.frames&&media.readyState==='open')media.endOfStream();
    }
   }catch(error){if(!closed&&own===generation){intent=false;events.error(error);}}

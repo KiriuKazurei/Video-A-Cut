@@ -16,7 +16,7 @@ test('real script render bakes Chinese subtitles, black/white dips and cross dis
   const font = ['Microsoft YaHei','Microsoft YaHei UI','Noto Sans CJK SC'].find(f => fonts.includes(f));
   assert.ok(font, 'Chinese system font required for real acceptance');
   const segments = [red, blue, red, blue].map(path => ({ path, start: 0, end: 1, narration: '实际旁白文稿' }));
-  const document = { version: 1, paragraphs: [{ effect: '黑屏', subtitle: { text: '抽卡机制 {文字}', size_px: 40, font } }, { effect: '白屏' }, {}, { effect: '交叉溶解' }] };
+  const document = { version: 3, paragraphs: [{ effect: '黑屏', subtitle: { text: '抽卡机制 {文字}', size_px: 40, font } }, { effect: '白屏',subtitle_cues:[{text:'按序列时间显示',frame:36,duration:12,time_base:'sequence',size_px:24,font}] }, {}, { effect: '交叉溶解' }] };
   const output = join(root, 'delivery');
   const result = await renderScript({ segments, document, subtitles_enabled: false, output_dir: output, sources: [] });
   assert.equal(result.basic_quality.status, 'passed'); assert.equal(result.basic_quality.audio_status, 'skipped'); assert.equal(result.basic_quality.sha256, result.sha256);
@@ -31,7 +31,8 @@ test('real script render bakes Chinese subtitles, black/white dips and cross dis
   assert.equal(createHash('sha256').update(copied).digest('hex'), result.sha256);
   assert.equal(createHash('sha256').update(final).digest('hex'), result.sha256);
   const ass = await readFile(join(output,'subtitles.ass'),'utf8');
-  assert.match(ass, /Style: P0,[^,]+,40,/); assert.match(ass, /抽卡机制/); assert.equal((ass.match(/Dialogue:/g)||[]).length,1);
+  assert.match(ass, /Style: P0,[^,]+,40,/); assert.match(ass, /抽卡机制/); assert.equal((ass.match(/Dialogue:/g)||[]).length,2);
+  assert.match(ass,/Dialogue:.*0:00:01.20,0:00:01.60.*按序列时间显示/);
   assert.ok(result.fonts.some(f => f.family === font && f.sha256.length === 64));
   // A cropped pixel average proves effects exist in the encoded file, independently of filter arguments.
   const stats = async at => {

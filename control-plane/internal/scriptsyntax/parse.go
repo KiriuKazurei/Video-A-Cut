@@ -3,17 +3,13 @@
 package scriptsyntax
 
 import (
-	"encoding/json"
-	"fmt"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
-	"math"
 	"regexp"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
 
-const Version = 2
+const Version = 3
 
 type Subtitle struct {
 	Text   string  `json:"text"`
@@ -22,6 +18,7 @@ type Subtitle struct {
 }
 
 type Paragraph struct {
+	SubtitleCues       []project.SubtitleCue        `json:"subtitle_cues,omitempty"`
 	VideoID            string                       `json:"video_id,omitempty"`
 	ResolvedReferences []project.ReferenceCandidate `json:"resolved_references,omitempty"`
 	References         []string                     `json:"references,omitempty"`
@@ -46,7 +43,6 @@ type Document struct {
 }
 
 var blankLine = regexp.MustCompile(`\n[\t ]*\n+`)
-var sizePattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)px$`)
 
 // Parse retains diagnostics and original paragraphs so the editor can display
 // invalid input without silently treating unknown instructions as ordinary text.
@@ -95,7 +91,26 @@ func Parse(source string) Document {
 				break
 			}
 			body := strings.TrimSpace(p.Source[start+1 : end])
+			block, syntaxErr := project.ParseScriptBlock(body, "paragraph")
+			if syntaxErr != nil {
+				addError(start, syntaxErr.Error())
+				i = end + 1
+				continue
+			}
 			switch {
+			case block.Name == "字幕" && (!block.Legacy || block.Args["时间"] != "" || block.Args["持续"] != ""):
+				cue, err := project.ParseSubtitleCue(block, project.Clip{Duration: 30 * 60 * 60 * 24}, project.Rate{Num: 30, Den: 1})
+				if err != nil {
+					addError(start, err.Error())
+				} else {
+					if block.Args["持续"] == "" {
+						cue.Duration = 0
+					}
+					if value := block.Args["时间"]; value != "" && !strings.HasPrefix(value, "条内") {
+						cue.TimeBase = "sequence"
+					}
+					p.SubtitleCues = append(p.SubtitleCues, cue)
+				}
 			case strings.HasPrefix(body, "@"):
 				name := strings.TrimSpace(strings.TrimPrefix(body, "@"))
 				if name == "" || len(name) > 512 || strings.ContainsAny(name, "\r\n") {
@@ -137,59 +152,10 @@ func directiveEnd(source string, start int) (int, error) {
 }
 
 func parseSubtitle(body string) (Subtitle, error) {
-	var sub Subtitle
-	parts := []string{}
-	start, quoted, escaped := 0, false, false
-	for i := 0; i < len(body); i++ {
-		c := body[i]
-		if quoted {
-			if escaped {
-				escaped = false
-			} else if c == '\\' {
-				escaped = true
-			} else if c == '"' {
-				quoted = false
-			}
-		} else if c == '"' {
-			quoted = true
-		} else if c == ',' {
-			parts = append(parts, strings.TrimSpace(body[start:i]))
-			start = i + 1
-		}
+	block, err := project.ParseScriptBlock(body, "paragraph")
+	if err != nil {
+		return Subtitle{}, err
 	}
-	parts = append(parts, strings.TrimSpace(body[start:]))
-	if len(parts) > 1 && parts[len(parts)-1] == "" {
-		parts = parts[:len(parts)-1]
-	}
-	if len(parts) == 0 || json.Unmarshal([]byte(parts[0]), &sub.Text) != nil || strings.TrimSpace(sub.Text) == "" || utf8.RuneCountInString(sub.Text) > 2000 {
-		return sub, fmt.Errorf("字幕正文需使用双引号，且为 1～2000 个字符")
-	}
-	seen := map[string]bool{}
-	for _, part := range parts[1:] {
-		key, value, ok := strings.Cut(part, ":")
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if !ok || seen[key] {
-			return sub, fmt.Errorf("字幕参数应为 名称:值，且不能重复")
-		}
-		seen[key] = true
-		switch key {
-		case "字号":
-			m := sizePattern.FindStringSubmatch(value)
-			if m == nil {
-				return sub, fmt.Errorf("字号格式例如 24px")
-			}
-			sub.SizePX, _ = strconv.ParseFloat(m[1], 64)
-			if math.IsNaN(sub.SizePX) || math.IsInf(sub.SizePX, 0) || sub.SizePX < 1 || sub.SizePX > 512 {
-				return sub, fmt.Errorf("字号需为 1～512px")
-			}
-		case "字体":
-			if json.Unmarshal([]byte(value), &sub.Font) != nil || strings.TrimSpace(sub.Font) == "" || utf8.RuneCountInString(sub.Font) > 100 || strings.ContainsAny(sub.Font, "\r\n\x00") {
-				return sub, fmt.Errorf("字体需为双引号包围的系统字体名称")
-			}
-		default:
-			return sub, fmt.Errorf("未知字幕参数；首版仅支持 字号、字体")
-		}
-	}
-	return sub, nil
+	cue, err := project.ParseSubtitleCue(block, project.Clip{Duration: 1}, project.Rate{Num: 30, Den: 1})
+	return Subtitle{Text: cue.Text, SizePX: cue.SizePX, Font: cue.Font}, err
 }

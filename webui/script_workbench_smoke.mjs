@@ -73,6 +73,9 @@ try {
   }), id + ' must remain directly visible');
   check('legacy script link opens the script in the editor right pane');
   const body = workbench.getByRole('textbox', { name: '脚本指令', exact: true });
+  await body.fill('{黑');await page.getByRole('option',{name:'黑场淡变',exact:true}).waitFor();await body.press('Tab');assert.equal(await body.inputValue(),'{黑屏}');assert(await body.evaluate(el=>document.activeElement===el));
+  await body.fill('{黑');await page.getByRole('option',{name:'黑场淡变',exact:true}).waitFor();await body.press('Shift+Tab');assert.equal(await body.inputValue(),'{黑');assert.equal(await body.evaluate(el=>document.activeElement===el),false);
+  await body.fill('无候选描述');await body.press('Tab');assert.equal(await body.inputValue(),'无候选描述');assert.equal(await body.evaluate(el=>document.activeElement===el),false);
   await workbench.getByText('使用内部模型生成文稿',{exact:true}).click();
   const send = workbench.getByRole('button', { name: '发送给内部模型', exact: true });
   await body.fill('{未知}'); await page.waitForTimeout(350); assert(await send.isDisabled());

@@ -18,6 +18,16 @@ test('code tracks compose pixels and parameter animation using video streams',()
  assert.match(graph.filters.join(';'),/rotate=/);
 });
 
+test('code scale opacity and timed captions share the still/movie graph',()=>{
+ const s=seq();s.tracks=[{id:'code',kind:'code',clips:[{...clip('c'),effects:{...effects(),parameter_keyframes:[{kind:'缩放',frame:0,duration:12,value:.5},{kind:'透明度',frame:0,duration:12,start_value:0,value:.5}],subtitles:[{text:'定时字幕',frame:3,duration:9,size_px:24}]}}]}];
+ const resources=[{id:'r',kind:'video',path:join(process.cwd(),'drawing.png'),metadata:{duration:2,streams:[{index:0,codec_type:'video'}]}}];
+ const graph=sequenceGraph(s,resources,{frame:6});
+ assert.equal(graph.frameLayers[0].width,240);assert.equal(graph.frameLayers[0].opacity,.25);
+ assert.equal(graph.cues[0].text,'定时字幕');assert.equal(graph.cues[0].start,.1);assert.equal(graph.cues[0].end,.4);
+ assert.equal(sequenceGraph(s,resources,{frame:13}).cues.length,0,'caption cache must not retain a cue after its end');
+ assert.match(sequenceGraph(s,resources).filters.join(';'),/geq=/);
+});
+
 test('code audio follows its envelope independently of hidden pixels and mute',()=>{
  const s=seq();s.tracks=[{id:'code',kind:'code',hidden:true,gain_db:-2,clips:[{...clip('c'),effects:{...effects(),gain_db:-6}}]}];
  const resources=[{id:'r',kind:'video',path:join(process.cwd(),'drawing.png'),draw_document:{canvas:{fps:{num:30,den:1}},audio_bindings:[{resource_id:'sound',at_frame:0,duration_frames:24,source_in:0,stream_index:2,gain_db:-3}]},metadata:{streams:[{index:0,codec_type:'video'}]}},{id:'sound',kind:'audio',path:join(process.cwd(),'sound.wav'),metadata:{duration:2,streams:[{index:2,codec_type:'audio'}]}}];
@@ -54,7 +64,7 @@ test('all code engines share still/movie transforms and declared source audio',{
  };
  for(const [engine,source] of Object.entries(sources)){
   const document={schema_version:1,canvas:{width:320,height:180,fps:{num:30,den:1}},duration_frames:12,sources:[{id:'source',engine,source}],nodes:[{id:'scene',kind:'source',source_id:'source',from:0,duration:12,transform:{x:0,y:0}}],audio_bindings:[{resource_id:'r',at_frame:0,duration_frames:12,source_in:0,stream_index:2,gain_db:0}]};
-  const sequence=seq(),visual={...clip('picture'),resource_id:'picture',duration:12,source_out:{value:400000000,scale:1e9},effects:{...effects(),gain_db:-12,parameter_keyframes:[{kind:'移动',frame:0,duration:12,x:80,y:0},{kind:'旋转',frame:0,duration:12,value:90}]}};
+  const sequence=seq(),visual={...clip('picture'),resource_id:'picture',duration:12,source_out:{value:400000000,scale:1e9},effects:{...effects(),gain_db:-12,parameter_keyframes:[{kind:'移动',frame:0,duration:12,x:80,y:0},{kind:'旋转',frame:0,duration:12,value:90},{kind:'缩放',frame:0,duration:12,value:.75},{kind:'透明度',frame:0,duration:12,start_value:0,value:1}],subtitles:[{text:'定时字幕',frame:0,duration:3,size_px:18}]}};
   sequence.tracks=[{id:'base',kind:'video',clips:[{...clip('base'),duration:12,source_out:visual.source_out}]},{id:'code',kind:'code',clips:[visual]}];
   const resources=[...fixture.resources,{id:'picture',kind:'video',name:engine,path:join(fixture.root,engine+'.source'),sha256:engine,draw_document:document,metadata:{duration:.4,streams:[{index:0,codec_type:'video'}]}}];
   const output=join(fixture.root,'code-'+engine);
@@ -62,6 +72,7 @@ test('all code engines share still/movie transforms and declared source audio',{
   await renderSequenceFrame({sequence,resources,frame:6,output_dir:join(output,'still'),content_version:'code-'+engine});
   const movie=join(output,'program.mp4'),a=await pixelStat(movie,.2,195,80),b=await pixelStat(join(output,'still','frame.png'),0,195,80);
   for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(a[key]-b[key])<8,`${engine} ${key} still/movie mismatch: ${a[key]} ${b[key]}`);
+  assert.match(await readFile(join(output,'subtitles.ass'),'utf8'),/Dialogue:.*0:00:00.00,0:00:00.10.*定时字幕/);
   const after=await audioStat(movie,'lavfi.astats.Overall.RMS_level',.1,.15);
   // An audible sine at about -21 dBFS with the code clip at -12 dB must remain audible near -33 dBFS.
   assert(Number.isFinite(after)&&after< -28&&after> -39,`${engine} code audio missing or ignored gain: ${after}`);
@@ -192,6 +203,9 @@ test('WebGL preview agrees with CPU transforms fades dissolves and captions',{ti
   const w=await gpu.render({sequence:white,resources,frame:57,content_version:'white'}),wCPU=await cpu.render({sequence:white,resources,frame:57,content_version:'white'});
   const wp=join(root,'gpu-white.png'),cp=join(root,'cpu-white.png');await writeFile(wp,Buffer.from(w.image.split(',')[1],'base64'));await writeFile(cp,Buffer.from(wCPU.image.split(',')[1],'base64'));
   const whiteGPU=await pixelStat(wp,0,150,50),whiteCPU=await pixelStat(cp,0,150,50);for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(whiteGPU[key]-whiteCPU[key])<12,'white fade must preserve the CPU alpha rule');
+  const animated=structuredClone(s);animated.tracks=animated.tracks.slice(0,1);animated.tracks[0].clips[1].effects={...effects(),opacity:.7,parameter_keyframes:[{kind:'缩放',frame:0,duration:30,value:.5},{kind:'透明度',frame:0,duration:30,start_value:0,value:1}],subtitles:[{text:'定时字幕',frame:0,duration:10,size_px:18}]};
+  const animatedExport=join(root,'animated-export');await renderSequence({sequence:animated,resources,output_dir:animatedExport,content_version:'animated'});
+  for(const frame of [36,45,57]){const input={sequence:animated,resources,frame,content_version:'animated'},g=await gpu.render(input),c=await cpu.render(input),gp=join(root,'animated-gpu.png'),cp=join(root,'animated-cpu.png');await writeFile(gp,Buffer.from(g.image.split(',')[1],'base64'));await writeFile(cp,Buffer.from(c.image.split(',')[1],'base64'));for(const [x,y] of [[150,50],[0,0],[150,120]]){const a=await pixelStat(gp,0,x,y),b=await pixelStat(cp,0,x,y),movie=await pixelStat(join(animatedExport,'program.mp4'),frame/30,x,y);for(const key of ['YAVG','UAVG','VAVG']){assert(Math.abs(a[key]-b[key])<12,`animated frame ${frame} ${key} GPU/CPU`);assert(Math.abs(a[key]-movie[key])<12,`animated frame ${frame} ${key} GPU/movie`);}}}
   await writeFile(join(root,'gpu-verification.json'),JSON.stringify(gpu.diagnostics(),null,2));
  }finally{await gpu.close();await cpu.close();}
 });
@@ -263,6 +277,10 @@ test('basic inspection maps source speed, position and explicit black fades',{ti
  const s=seq();s.tracks=[{id:'v',kind:'video',clips:[{...clip('v'),duration:120,effects:{...effects(),fade_in:105,fade_color:'black'}}]}];
  const expected=sequenceExpectations(s,resources,selectedTracks(s));
  const fade=await inspectBasicQuality({...args,...expected});assert.equal(fade.status,'passed');
+ s.tracks[0].clips[0].effects={...effects(),opacity:0,parameter_keyframes:[{kind:'透明度',frame:60,duration:0,value:1}]};
+ assert.deepEqual(sequenceExpectations(s,resources,selectedTracks(s)).videoWindows,[{start:2,end:4}],'intentional zero opacity is not missing video');
+ s.tracks[0].clips[0].effects.from_frame=30;s.tracks[0].clips[0].effects.to_frame=90;
+ assert.deepEqual(sequenceExpectations(s,resources,selectedTracks(s)).videoWindows,[{start:0,end:1},{start:2,end:4}],'opacity exclusion honors the clip effect scope');
 });
 
 

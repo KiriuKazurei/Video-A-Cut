@@ -27,6 +27,7 @@ const menu = async (top,item) => {
   await c.wait(`document.querySelector('.project-menu-bar')?.getAttribute('aria-busy')!=='true'`);
   await c.wait(`[...document.querySelectorAll('.project-menu-bar .ant-menu-submenu-title')].some(n=>n.textContent.trim()===${JSON.stringify(top)}&&n.getAttribute('aria-disabled')!=='true')`);
   const point=await c.ev(`(()=>{const n=[...document.querySelectorAll('.project-menu-bar .ant-menu-submenu-title')].find(n=>n.textContent.trim()===${JSON.stringify(top)});const r=n.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+  await c.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:700,y:110});await sleep(100);
   await c.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
   await c.wait(`[...document.querySelectorAll('.ant-menu-submenu-popup [role=menuitem]')].some(n=>n.offsetParent!==null&&n.textContent.trim()===${JSON.stringify(item)})`);
   // Ant's popup enters with a transform. Wait before measuring its final hit box.
@@ -45,6 +46,9 @@ const choose = (title,file) => probe('choose',['-DialogTitle',title,'-FilePath',
 const nativePoint = async (selector,fx=.5,fy=.5) => {
   await c.wait(`document.querySelector(${JSON.stringify(selector)})?.getClientRects().length`);
   await c.ev(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'nearest',inline:'nearest'})`);await sleep(150);
+  if(selector.includes('[data-lane]'))await c.ev(`document.querySelector('.timeline-scroll').scrollLeft=0`);
+  let previous,stable=0;
+  await until(async()=>{const rect=await c.ev(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return [r.left,r.top,r.width,r.height]})()`);const key=JSON.stringify(rect);stable=key===previous?stable+1:0;previous=key;return stable;},value=>value>=3,5000);
   return c.ev(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:Math.round((r.left+r.width*${fx})*devicePixelRatio),y:Math.round((r.top+r.height*${fy})*devicePixelRatio)}})()`);
 };
 const nativeClick = async (selector,action='click') => {const point=await nativePoint(selector);await probe(action,['-X',String(point.x),'-Y',String(point.y)]);};
@@ -73,7 +77,7 @@ const verifyTimeline = async runtime => {
   assert.equal(ws.document.sequences[0].tracks.filter(t=>t.kind==='video').length,3);assert.equal(ws.document.sequences[0].tracks.filter(t=>t.kind==='audio').length,3);
   await importFile(media);await importFile(script);ws=await workspace();const resource=ws.document.resources.find(r=>r.kind==='video'),scriptResource=ws.document.resources.find(r=>r.kind==='script');
   await menu('视图','编辑');await c.wait('document.querySelector(".sequence-timeline")');await select(resource.id);
-  const track=ws.document.sequences[0].tracks[0].id,to=await nativePoint(`[data-track-id="${track}"] [data-lane]`,.003,.5),from=await nativePoint(`.project-resource-list [data-resource-id="${resource.id}"]`);
+  const track=ws.document.sequences[0].tracks[0].id,from=await nativePoint(`.project-resource-list [data-resource-id="${resource.id}"]`),to=await nativePoint(`[data-track-id="${track}"] [data-lane]`,.003,.5);
   report.native_drag_hit=await c.ev(`(()=>{const n=document.elementFromPoint(${from.x}/devicePixelRatio,${from.y}/devicePixelRatio);const row=document.querySelector('.project-resource-list [data-resource-id="${resource.id}"]');return {tag:n?.tagName,html:n?.outerHTML.slice(0,800),row:row.getBoundingClientRect().toJSON(),scroll:scrollY,viewport:innerHeight}})()`);
   await c.ev(`(()=>{window.__nativeDragEvents=[];for(const type of ['pointerdown','pointerup','dragstart','dragover','drop','dragend'])document.addEventListener(type,e=>{if(window.__nativeDragEvents.length<80)window.__nativeDragEvents.push({type,x:e.clientX,y:e.clientY,tag:e.target.tagName,resource:e.target.closest?.('[data-resource-id]')?.dataset.resourceId,track:e.target.closest?.('[data-track-id]')?.dataset.trackId,types:e.dataTransfer?[...e.dataTransfer.types]:undefined})},true)})()`);
   await probe('drag',['-X',String(from.x),'-Y',String(from.y),'-EndX',String(to.x),'-EndY',String(to.y)]);
@@ -82,10 +86,15 @@ const verifyTimeline = async runtime => {
   await record('native resource drag creates linked video and each actual audio stream',{sequence,streams:[1,2]});
   const selected=`[data-clip-id="${clip.id}"]`;await nativeClick(selected);const p=await nativePoint(selected,.6,.5),scale=await c.ev('devicePixelRatio');
   await probe('drag',['-X',String(p.x),'-Y',String(p.y),'-EndX',String(p.x+60*scale),'-EndY',String(p.y),'-CancelDrag']);await sleep(500);assert.equal((await read()).sequence.revision,view.sequence.revision);
-  await probe('drag',['-X',String(p.x),'-Y',String(p.y),'-EndX',String(p.x+60*scale),'-EndY',String(p.y)]);view=await until(read,v=>v.sequence.tracks[0].clips[0].at===30);clip=view.sequence.tracks[0].clips[0];assert(view.sequence.tracks.flatMap(t=>t.clips).every(c=>c.at===30));
+  const retryPoint=await nativePoint(selected,.6,.5);report.drag_retry_points={before:p,after:retryPoint};
+  await probe('drag',['-X',String(retryPoint.x),'-Y',String(retryPoint.y),'-EndX',String(retryPoint.x+60*scale),'-EndY',String(retryPoint.y)]);view=await until(read,v=>v.sequence.tracks[0].clips[0].at===30);clip=view.sequence.tracks[0].clips[0];assert(view.sequence.tracks.flatMap(t=>t.clips).every(c=>c.at===30));
   await record('native drag threshold, Escape cancellation and linked movement preserve authoritative frames');
   await nativeClick(selected);await probe('key',['-Key','M']);await c.wait('document.querySelector("input[aria-label=标记备注]")');await input('input[aria-label="标记备注"]','定位');await pointerClick('.ant-modal-confirm .ant-btn-primary');view=await until(read,v=>v.sequence.markers.length===1);const marker=view.sequence.markers[0];assert.equal(marker.kind,'point');
-  await c.wait('!document.querySelector("input[aria-label=标记备注]")');await click('源标记');await input('input[aria-label="标记备注"]','定位');await pointerClick('.ant-modal-confirm .ant-btn-primary');await until(workspace,v=>v.document.resources.find(r=>r.id===resource.id).markers?.some(m=>m.notes==='定位'));await c.wait('!document.querySelector("input[aria-label=标记备注]")');
+  await c.wait('!document.querySelector("input[aria-label=标记备注]")');
+  if(await c.ev('!!document.querySelector(".source-monitor-badge")'))await pointerClick('.source-monitor-badge');
+  assert.equal(await c.ev('document.querySelectorAll(".source-monitor .program-playback").length'),0,'source monitor must not own the program clock');
+  await record('source monitor opens without duplicating the program playback owner');
+  await click('源标记');await input('input[aria-label="标记备注"]','定位');await pointerClick('.ant-modal-confirm .ant-btn-primary');await until(workspace,v=>v.document.resources.find(r=>r.id===resource.id).markers?.some(m=>m.notes==='定位'));await c.wait('!document.querySelector("input[aria-label=标记备注]")');
   await c.ev(`document.querySelector('[data-resource-id="${scriptResource.id}"]').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`);await c.wait('document.querySelector("#script-body")');await input('#script-body','{@定');await c.ev('document.querySelector("#script-body").focus()');await c.send('Input.dispatchKeyEvent',{type:'keyUp',key:'定'});
   await c.wait('document.querySelector(".script-completion")?.innerText.includes("时间线标记")&&document.querySelector(".script-completion")?.innerText.includes("素材标记")');
   await c.ev(`[...document.querySelectorAll('.script-completion button')].find(n=>n.textContent.includes('时间线标记')).click()`);await shortcut('s');ws=await until(workspace,v=>v.document.scripts[0].references?.some(r=>r.target_id===marker.id));
@@ -104,17 +113,26 @@ const verifyTimeline = async runtime => {
   view=await tool('timeline.read',{});assert(!view.history?.length);clip=view.sequence.tracks[0].clips[0];view=await tool('timeline.edit',{sequence_id:sequence,command:{session:view.session,expected_revision:view.sequence.revision,idempotency_key:'native-agent-effect',label:'Agent 测试效果',operations:[{type:'clip.update',clip_ids:[clip.id],effects:{...clip.effects,fade_in:3,gain_db:-3}}]}});
   const finished=await tool('run.finish',{sequence_revision:view.sequence.revision,content_version:view.content_version});assert(finished.completed&&finished.structured_edit);const agentClip=view.sequence.tracks[0].clips[0];await c.wait(`document.querySelector('[data-clip-id="${agentClip.id}"]')?.classList.contains('is-agent')`);
   const privateView=await mcp.call('sequences.get',{project_id:project,sequence_id:sequence});assert(!privateView.history?.length);assert(!(await c.ev(`document.querySelector('[data-clip-id="${agentClip.id}"]').textContent`)).includes('undefined'));await record('real MCP structured edit is purple on actual clips, renders without a provider and hides human history',{run:agentRun.id,content_version:view.content_version});
-  await click('时间线','.editor-panels-bar .ant-segmented-item-label');await c.wait('document.querySelector(".unified-editor")?.dataset.panel==="timeline"');await c.wait('document.querySelector(".program-monitor video")?.readyState>=2',60000);assert(await c.ev(`!!document.querySelector('[data-clip-id="${agentClip.id}"] .clip-effect-scope')`));await nativeClick(`[data-clip-id="${agentClip.id}"]`);await probe('key',['-Key','SPACE']);await c.wait('document.querySelector(".program-monitor video")?.paused===false');await probe('key',['-Key','SPACE']);await c.wait('document.querySelector(".program-monitor video")?.paused===true');const exported=path.join(out,`sequence-export ${pid}.mp4`);await click('导出当前范围');await choose('导出当前序列轨道范围',exported);await until(async()=>{try{return (await fs.stat(exported)).size>0}catch{return false}},Boolean,60000);const hash=createHash('sha256').update(await fs.readFile(exported)).digest('hex');assert.equal(hash,finished.artifact.sha256);
+  await c.wait('document.querySelector(".sequence-timeline")?.offsetParent!==null');await c.wait('document.querySelector(".program-monitor video")?.readyState>=2',60000);assert(await c.ev(`!!document.querySelector('[data-clip-id="${agentClip.id}"] .clip-effect-scope')`));await nativeClick(`[data-clip-id="${agentClip.id}"]`);await probe('key',['-Key','SPACE']);await c.wait('document.querySelector(".program-monitor video")?.paused===false');await probe('key',['-Key','SPACE']);await c.wait('document.querySelector(".program-monitor video")?.paused===true');const exported=path.join(out,`sequence-export ${pid}.mp4`);await click('导出当前范围');await choose('导出当前序列轨道范围',exported);await until(async()=>{try{return (await fs.stat(exported)).size>0}catch{return false}},Boolean,60000);const hash=createHash('sha256').update(await fs.readFile(exported)).digest('hex');assert.equal(hash,finished.artifact.sha256);
   await probe('capture',['-FilePath',path.join(out,'native-timeline-wide.png')]);
   await probe('resize',['-Width','1000','-Height','720']);await c.wait('document.querySelector(".compact-monitor-switch")?.offsetParent!==null');
   await sleep(300);const trackLayout=await c.ev(`(()=>{const sc=document.querySelector('.timeline-scroll').getBoundingClientRect(),timeline=document.querySelector('.sequence-timeline').getBoundingClientRect(),footer=document.querySelector('.app-footer').getBoundingClientRect();return {scroll:{top:sc.top,bottom:sc.bottom},timelineBottom:timeline.bottom,footerTop:footer.top,centers:[${JSON.stringify(track)},${JSON.stringify(view.sequence.tracks.find(t=>t.kind==='audio').id)}].map(id=>{const r=document.querySelector('[data-track-id="'+id+'"]').getBoundingClientRect();return r.top+r.height/2})}})()`);assert(trackLayout.timelineBottom<=trackLayout.footerTop+1&&trackLayout.centers.every(y=>y>=trackLayout.scroll.top+52&&y<=trackLayout.scroll.bottom));report.compact_track_layout=trackLayout;
-  const layout=await c.ev(`(()=>{const v=document.querySelector('.program-monitor video'),r=v.getBoundingClientRect(),s=v.parentElement.getBoundingClientRect();return {video:{w:r.width,h:r.height},screen:{w:s.width,h:s.height},controls:v.controls,bodyWidth:document.documentElement.scrollWidth,viewport:innerWidth}})()`);assert(layout.controls&&layout.video.h<=layout.screen.h+1&&layout.video.w<=layout.screen.w+1&&layout.bodyWidth<=layout.viewport+1);await c.screenshot(path.join(out,'timeline-compact.png'));await record('program preview and export share a hash; compact monitors retain the complete frame and native controls',{hash,layout});
+  const layout=await c.ev(`(()=>{const v=document.querySelector('.program-monitor video.program-video'),r=v.getBoundingClientRect(),s=v.closest('.editor-monitor-screen').getBoundingClientRect();return {video:{w:r.width,h:r.height},screen:{w:s.width,h:s.height},controls:v.controls||[...document.querySelectorAll('.program-monitor .editor-monitor-controls button')].some(n=>n.offsetParent!==null&&!n.disabled&&n.textContent.includes('播放')),bodyWidth:document.documentElement.scrollWidth,viewport:innerWidth}})()`);report.program_layout=layout;assert(layout.controls&&layout.video.w>0&&layout.video.h>0&&layout.video.h<=layout.screen.h+1&&layout.video.w<=layout.screen.w+1&&layout.bodyWidth<=layout.viewport+1);await c.screenshot(path.join(out,'timeline-compact.png'));await record('program preview and export share a hash; compact monitors retain the complete frame and playback controls',{hash,layout});
   await shortcut('s');await until(workspace,v=>!v.dirty);const saved=JSON.parse(await fs.readFile(file));assert.equal(saved.schema_version,3);assert.equal(saved.sequences.length,2);assert(saved.scripts[0].references.some(r=>r.target_id===marker.id));
   await menu('文件','关闭项目');await until(workspace,v=>!v.document);await shortcut('o');await choose('打开 VAC 工程',file);ws=await until(workspace,v=>v.document?.project.id===project);assert.equal(ws.document.sequences.length,2);assert(ws.document.scripts[0].body.includes('新的定位'));await record('multisequence AVP v2 reopens with stable clips, effects and typed script bindings');
-  await probe('resize',['-Width','1900','-Height','1200']);await c.wait(`document.querySelector('.project-resource-list [data-resource-id="${resource.id}"]')?.getAttribute('aria-pressed')==='true'`);
+  await verifyTimelineReopen(saved,sequence);
+};
+const verifyTimelineReopen=async(saved,sequence)=>{
+  const savedResource=saved.workspace.selected_resource;
+  assert(saved.resources.some(resource=>resource.id===savedResource),'saved selection must identify a saved resource');
+  await probe('resize',['-Width','1900','-Height','1200']);await c.wait(`document.querySelector('.project-resource-list [data-resource-id="${savedResource}"]')?.getAttribute('aria-pressed')==='true'`);
+  if(!await c.ev('!!document.querySelector(".sequence-timeline")?.offsetParent'))await menu('视图','编辑');
   const savedHead=saved.workspace.sequence_states[sequence].head,nominal=Math.round(saved.sequences[0].fps.num/saved.sequences[0].fps.den),seconds=Math.floor(savedHead/nominal),savedLabel=[Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60,savedHead%nominal].map(n=>String(n).padStart(2,'0')).join(':');
-  await c.wait('document.querySelector(".program-monitor video")?.readyState>=2',60000);await c.wait(`document.querySelector('.timeline-ruler>.track-heading')?.textContent===${JSON.stringify(savedLabel)}`);await c.wait(`document.title===${JSON.stringify('Video Auto Cut — 多轨工程 ')}+${pid}`);
-  await c.send('Page.reload');await c.wait(`document.querySelector('.project-resource-list [data-resource-id="${resource.id}"]')?.getAttribute('aria-pressed')==='true'`);await c.wait(`document.querySelector('.timeline-ruler>.track-heading')?.textContent===${JSON.stringify(savedLabel)}`);await c.wait(`document.title===${JSON.stringify('Video Auto Cut — 多轨工程 ')}+${pid}`);ws=await workspace();assert(!ws.dirty&&ws.document.workspace.selected_resource===resource.id);await record('page reload restores saved selection and nonzero playhead without a spurious dirty layout',{head:savedHead});
+  try{await c.wait('document.querySelector(".program-monitor video.program-video")?.readyState>=2',60000);}catch(error){report.playback_diagnostics=await c.ev(`({videos:[...document.querySelectorAll('.program-monitor video')].map(v=>({className:v.className,ready:v.readyState,time:v.currentTime,duration:v.duration,error:v.error?.message,buffered:Array.from({length:v.buffered.length},(_,i)=>[v.buffered.start(i),v.buffered.end(i)])})),messages:window.__VAC_TEST_MESSAGES})`).catch(diagnosticError=>({unavailable:String(diagnosticError)}));throw error;}await c.wait(`document.querySelector('.timeline-ruler>.track-heading')?.textContent===${JSON.stringify(savedLabel)}`);
+  const restoredMedia=await c.ev(`(()=>{const v=document.querySelector('.program-monitor video.program-video');return {ready:v.readyState,time:v.currentTime}})()`);assert(Math.abs(restoredMedia.time-savedHead/nominal)<=1/nominal);await record('saved program preview is ready at the restored nonzero media time',{head:savedHead,...restoredMedia});
+  await shortcut('s');await until(workspace,v=>!v.dirty);
+  await c.wait(`document.title===${JSON.stringify('Video Auto Cut — '+saved.project.name)}`);
+  await c.send('Page.reload');await c.wait(`document.querySelector('.project-resource-list [data-resource-id="${savedResource}"]')?.getAttribute('aria-pressed')==='true'`);await c.wait(`document.querySelector('.timeline-ruler>.track-heading')?.textContent===${JSON.stringify(savedLabel)}`);await c.wait(`document.title===${JSON.stringify('Video Auto Cut — '+saved.project.name)}`);const ws=await workspace();assert(!ws.dirty&&ws.document.workspace.selected_resource===savedResource);await record('page reload restores saved selection and nonzero playhead without a spurious dirty layout',{head:savedHead,resource_id:savedResource});
   await shortcut('s');await until(workspace,v=>!v.dirty);await menu('文件','关闭项目');await until(workspace,v=>!v.document);await probe('resize',['-Width','1900','-Height','1200']);
 };
 // Focused drawing mode reuses the native runner, dialogs, MCP transport and
@@ -177,7 +195,7 @@ const verifyUnifiedDrawing = async runtime => {
 };
 const verifyWindowChrome = async title => {
   await until(async()=>JSON.parse(await probe('inspect')),value=>value.title===title);
-  const native=JSON.parse(await probe('capture',['-FilePath',path.join(out,'native-current.png')]));
+  const native=await until(async()=>JSON.parse(await probe('capture',['-FilePath',path.join(out,'native-current.png')])),value=>value.caption_color==='#1E1E1E',5000);
   assert.equal(native.caption_color_source,'screen_pixel');assert.equal(native.caption_color,'#1E1E1E');
   await c.wait(`document.title===${JSON.stringify(title)}`);
   const layout=await c.ev(`(()=>{const status=document.querySelector('.app-footer [aria-label="后台服务状态"]');const footer=status?.closest('.app-footer');return {topBar:!!document.querySelector('.desktop-runtime-bar'),menuTitle:!!document.querySelector('.project-menu-bar .project-title'),status:status?.textContent,bottom:footer?.getBoundingClientRect().bottom,height:innerHeight,background:getComputedStyle(document.body).backgroundColor}})()`);
@@ -413,7 +431,18 @@ try {
   c=await attachDesktop();
   await c.ev(`(()=>{window.__VAC_TEST_MESSAGES=[];new MutationObserver(()=>{for(const n of document.querySelectorAll('.ant-message-notice-content')){const text=n.textContent;if(!window.__VAC_TEST_MESSAGES.includes(text))window.__VAC_TEST_MESSAGES.push(text)}}).observe(document.body,{subtree:true,childList:true})})()`);
   const status=await until(()=>c.invoke('runtime_status'),v=>v.status==='ready'||v.status==='fault');assert.equal(status.status,'ready',status.message);base=status.api_base_url;report.runtime=status;
-  if(process.env.VAC_VERIFY_PLAYBACK_PROJECT){
+  if(process.env.VAC_VERIFY_TIMELINE_REOPEN){
+    report.mode='visible_tauri_saved_timeline_reopen';
+    const file=path.resolve(process.env.VAC_VERIFY_TIMELINE_REOPEN);assert(file.startsWith(testStorageRoot+path.sep),'Only managed timeline fixtures may be reopened');
+    const saved=JSON.parse(await fs.readFile(file,'utf8'));
+    await c.wait('document.querySelector(".project-home")');await shortcut('o');await choose('打开 VAC 工程',file);await until(workspace,v=>v.document?.project.id===saved.project.id);
+    await verifyTimelineReopen(saved,saved.workspace.active_sequence);
+  }else if(process.env.VAC_VERIFY_TIMELINE==='1'){
+    report.mode='visible_tauri_timeline_real_go';
+    await c.wait('document.querySelector(".project-home")');
+    if(await c.ev(`document.body.innerText.includes('跳过引导')`))await click('跳过引导');
+    await verifyTimeline(status);
+  }else if(process.env.VAC_VERIFY_PLAYBACK_PROJECT){
     report.mode='visible_tauri_real_project_playback';
     await verifyProjectPlayback();
   }else if(process.env.VAC_VERIFY_PREVIEW==='1'){

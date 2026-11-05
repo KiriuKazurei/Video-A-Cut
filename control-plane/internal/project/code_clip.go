@@ -11,13 +11,15 @@ import (
 // CodeClip belongs to an occurrence, not a shared drawing resource. Source
 // replacement creates new immutable resources; undo retains the old bindings.
 type CodeClip struct {
-	Description          string `json:"description"`
-	GeneratedDescription string `json:"generated_description"`
-	Revision             uint64 `json:"revision"`
-	DescriptionState     string `json:"description_state,omitempty"`
-	DescriptionError     string `json:"description_error,omitempty"`
-	RunID                string `json:"run_id,omitempty"`
-	ContentVersion       string `json:"content_version,omitempty"`
+	Script               *string `json:"script,omitempty"`
+	ScriptAt             int64   `json:"script_at,omitempty"`
+	Description          string  `json:"description"`
+	GeneratedDescription string  `json:"generated_description"`
+	Revision             uint64  `json:"revision"`
+	DescriptionState     string  `json:"description_state,omitempty"`
+	DescriptionError     string  `json:"description_error,omitempty"`
+	RunID                string  `json:"run_id,omitempty"`
+	ContentVersion       string  `json:"content_version,omitempty"`
 }
 
 type CodeSegment struct {
@@ -271,6 +273,14 @@ func (s *Sequence) codeScript(op Operation) error {
 			}
 			if op.Mode != "describe" {
 				c.Effects = fx
+				c.Code.Script = clone(op.Description)
+				c.Code.ScriptAt = c.At
+			} else if c.Code.Script != nil {
+				text := body
+				if *c.Code.Script != "" {
+					text += "\n\n" + *c.Code.Script
+				}
+				c.Code.Script = &text
 			}
 			c.Code.Description = body
 			c.Code.Revision++

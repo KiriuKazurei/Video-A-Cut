@@ -1,10 +1,10 @@
 export interface ScriptSubtitle { text: string; size_px?: number; font?: string }
-export interface ScriptParagraph { index: number; source: string; instruction: string; video?: string; references?: string[]; subtitle?: ScriptSubtitle; effect?: string }
+export interface ScriptParagraph { index: number; source: string; instruction: string; video?: string; references?: string[]; subtitle?: ScriptSubtitle; subtitle_cues?:{text:string;frame:number;duration:number;size_px?:number;font?:string;time_base?:'sequence'}[]; effect?: string }
 export interface ScriptDocument { version: number; paragraphs: ScriptParagraph[]; diagnostics: { paragraph: number; column: number; message: string }[] }
 export interface ScriptMedia { kind?: 'video' | 'audio'; id: string; asset_id: string; name: string; in: number; out: number }
 import type { TtsSettings } from './ttsContracts';
 import type { ScriptReference } from './timelineContracts';
-import { subtitleWellFormed } from './scriptAuthoring.ts';
+import {readDirective} from './scriptGrammar.ts';
 
 export interface ScriptVoice { settings: TtsSettings; offset_seconds: number; accept_external: boolean }
 export interface ScriptSegment { index: number; narration: string; media_id: string; start: number; end: number; source_urls?: string[]; tts_enabled?: boolean; subtitles_enabled?: boolean; voice?: ScriptVoice }
@@ -84,7 +84,7 @@ export function scriptTokens(source: string, codeContext=false): ScriptToken[] {
       else if (c === '}') break;
     }
     const body = source.slice(i + 1, end).trim();
-    const known = codeContext && /^(音量|移动|旋转)\s*[,，]/.test(body) || body.startsWith('@') || (body.startsWith('"') && subtitleWellFormed(body)) || ['黑屏', '白屏', '交叉溶解'].includes(body);
+    const known = !readDirective(body,codeContext?'code':'paragraph').error;
     const stop = Math.min(end + 1, source.length);
     out.push({ text: source.slice(i, stop), kind: end < source.length && !nested && known ? 'directive' : 'invalid', start: i, end: stop });
     i = stop - 1; ordinary = stop;

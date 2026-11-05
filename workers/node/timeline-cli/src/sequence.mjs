@@ -75,6 +75,7 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
    if (!resource || !isAbsolute(resource.path) || /^[a-z]+:\/\//i.test(resource.path)) throw Error('片段资源缺失或不属于当前工程');
    if (!(clip.duration > 0 && clip.speed > 0) || clip.at < 0) throw Error('片段时间无效');
    const e = clip.effects, len = clip.duration / fps, at = clip.at / fps;
+   if(track.kind==='video'||track.kind==='code')for(const cue of e.subtitles??[]){if(cue.frame<0||cue.duration<1||cue.frame+cue.duration>clip.duration)throw Error('字幕时间超出片段');if(still&&(frame<clip.at+cue.frame||frame>=clip.at+cue.frame+cue.duration))continue;cues.push({start:at+cue.frame/fps,end:at+(cue.frame+cue.duration)/fps,text:cue.text,font:cue.font,size:cue.size_px||36});}
    if (track.kind === 'subtitle') { cues.push({start: at,end: at + len,text: clip.text,font: clip.font,size: clip.font_size || 36}); continue; }
    const available = resource.metadata?.streams ?? [];
    if (resource.kind !== 'image' && !available.some(s => s.index === clip.stream_index && s.codec_type === (track.kind==='code'?'video':track.kind))) throw Error(`源流 ${clip.stream_index} 不属于 ${track.kind}`);
@@ -108,16 +109,24 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
     const fx = affected ? e : {scale:1,x:0,y:0,crop_left:0,crop_right:0,crop_top:0,crop_bottom:0};
     const name = `video${layer}`, output = `composite${layer++}`;
     const left = fx.crop_left || 0, right = fx.crop_right || 0, top = fx.crop_top || 0, bottom = fx.crop_bottom || 0;
-    const width = Math.max(2,Math.round(sequence.width * (fx.scale || 1) / 2) * 2), height = Math.max(2,Math.round(sequence.height * (fx.scale || 1) / 2) * 2);
+    const scale=still?parameterValue(fx,'缩放','value',frame-clip.at,fx.scale||1):(fx.scale||1);
+    const width = Math.max(2,Math.round(sequence.width * scale / 2) * 2), height = Math.max(2,Math.round(sequence.height * scale / 2) * 2);
     if (width > 16384 || height > 16384 || left+right >= 1 || top+bottom >= 1) throw Error('缩放或裁切参数超出范围');
     if(still){
      const elapsed=frame-clip.at-start,span=end-start;
      const fadeIn=affected&&e.fade_in?Math.min(1,elapsed/Math.min(e.fade_in,span)):1;
      const fadeOut=affected&&e.fade_out?Math.max(0,Math.min(1,(span-elapsed)/Math.min(e.fade_out,span))):1;
-     frameLayers.push({clip_id:clip.id,resource_id:clip.resource_id,stream_index:clip.stream_index,source_time:seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed,width,height,x:parameterValue(fx,'移动','x',frame-clip.at,fx.x||0),y:parameterValue(fx,'移动','y',frame-clip.at,fx.y||0),rotation:parameterValue(fx,'旋转','value',frame-clip.at,fx.rotation||0),crop:[left,top,right,bottom],brightness:fadeIn*fadeOut,fade_color:e.fade_color==='white'?1:0,opacity:transition&&start===0?Math.min(1,(frame-clip.at)/(transition*fps)):1});
+     frameLayers.push({clip_id:clip.id,resource_id:clip.resource_id,stream_index:clip.stream_index,source_time:seconds(clip.source_in)+(frame-clip.at)/fps*clip.speed,width,height,x:parameterValue(fx,'移动','x',frame-clip.at,fx.x||0),y:parameterValue(fx,'移动','y',frame-clip.at,fx.y||0),rotation:parameterValue(fx,'旋转','value',frame-clip.at,fx.rotation||0),crop:[left,top,right,bottom],brightness:fadeIn*fadeOut,fade_color:e.fade_color==='white'?1:0,opacity:parameterValue(fx,'透明度','value',frame-clip.at,fx.opacity??1)*(transition&&start===0?Math.min(1,(frame-clip.at)/(transition*fps)):1)});
     }
     const timing=still?`trim=duration=${n(Math.max(2/fps,2/fps*clip.speed))},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate},setpts=PTS+${frame-clip.at-start}`:`trim=start=${n(seconds(clip.source_in) + start/fps*clip.speed-seek)}:end=${n(seconds(clip.source_in) + end/fps*clip.speed-seek)},setpts=(PTS-STARTPTS)/${n(clip.speed)},fps=${rate}`;
-    let chain = `[${source}]${timing},crop=w='iw*${n(1-left-right)}':h='ih*${n(1-top-bottom)}':x='iw*${n(left)}':y='ih*${n(top)}',scale=w=${width}:h=${height}:force_original_aspect_ratio=decrease,setsar=1,format=rgba`;
+    const animatedScale=!still&&fx.parameter_keyframes?.some(k=>k.kind==='缩放'),scaleExpression=parameterExpression(fx,'缩放','value',`(n+${start})`,fx.scale||1);
+    const scaling=animatedScale?`w='max(2,round(${sequence.width}*(${scaleExpression})/2)*2)':h='max(2,round(${sequence.height}*(${scaleExpression})/2)*2)':eval=frame`:`w=${width}:h=${height}`;
+    const maximumScale=Math.max(fx.scale||1,...(fx.parameter_keyframes??[]).filter(k=>k.kind==='缩放').map(k=>k.value)),padWidth=Math.ceil(sequence.width*maximumScale/2)*2,padHeight=Math.ceil(sequence.height*maximumScale/2)*2;
+    if(padWidth>16384||padHeight>16384)throw Error('缩放参数超出范围');
+    // Rotate/geq require stable input dimensions. Keep animated scale centered
+    // in a transparent fixed canvas before those filters consume the frame.
+    const scaleCanvas=animatedScale?`,format=rgba,pad=${padWidth}:${padHeight}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`:'';
+    let chain = `[${source}]${timing},crop=w='iw*${n(1-left-right)}':h='ih*${n(1-top-bottom)}':x='iw*${n(left)}':y='ih*${n(top)}',scale=${scaling}:force_original_aspect_ratio=decrease${scaleCanvas},setsar=1,format=rgba`;
     const clock=still?String(frame-clip.at):`(t*${fps}+${start})`;
     const rotation=parameterExpression(fx,'旋转','value',clock,fx.rotation||0);
     if(rotation!=='0')chain+=`,rotate='(${rotation})*PI/180':ow='ceil(hypot(iw,ih)/2)*2':oh='ceil(hypot(iw,ih)/2)*2':c=none`;
@@ -127,6 +136,8 @@ export function sequenceGraph(sequence, resources, {frame,window}={}) {
     const fadeOrigin=still||window?0.000001:0;
     if (affected && e.fade_in) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(Math.min(e.fade_in,partEnd-partStart)/fps)}:color=${e.fade_color || 'black'}`;
     if (affected && e.fade_out) chain += `,fade=t=out:st=${n(Math.max(fadeOrigin,(partEnd-partStart-e.fade_out)/fps))}:d=${n(Math.min(e.fade_out,partEnd-partStart)/fps)}:color=${e.fade_color || 'black'}`;
+    const opacity=parameterExpression(fx,'透明度','value',still?String(frame-clip.at):`(T*${fps}+${partStart})`,fx.opacity??1);
+    if(opacity!=='1')chain+=`,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${opacity})',format=rgba`;
     if (transition && partStart === 0) chain += `,fade=t=in:st=${n(fadeOrigin)}:d=${n(transition)}:alpha=1`;
     chain += still?`,setpts=PTS-STARTPTS+${frame}[${name}]`:window?`,setpts=PTS-STARTPTS+${clip.at+start}[${name}]`:`,setpts=PTS+${clip.at+start}[${name}]`;
     filters.push(chain,`[${canvas}][${name}]overlay=x='(W-w)/2+${still?parameterValue(fx,'移动','x',frame-clip.at,fx.x||0):parameterExpression(fx,'移动','x',`((t-${at})*${fps})`,fx.x||0)}':y='(H-h)/2+${still?parameterValue(fx,'移动','y',frame-clip.at,fx.y||0):parameterExpression(fx,'移动','y',`((t-${at})*${fps})`,fx.y||0)}':eof_action=pass:enable='gte(t,${n(at+start/fps)})*lt(t,${n(at+end/fps)})'[${output}]`);canvas=output;
@@ -194,7 +205,7 @@ export async function renderSequenceFrame(input,{run=runTool,drawFrame}={}) {
 export async function renderSequence(input,{run=runTool,probe=probeMedia,prepareDrawFrames}={}) {
  const {output_dir:output,content_version:version,window,preview=false}=input;
  const sequence=structuredClone(input.sequence);let previewScale=1;
- if(preview&&sequence.width>960){const factor=960/sequence.width;previewScale=factor;sequence.width=960;sequence.height=Math.max(2,Math.round(sequence.height*factor/2)*2);for(const t of sequence.tracks)for(const c of t.clips){c.effects.x*=factor;c.effects.y*=factor;if(t.kind==='subtitle'||c.font_size)c.font_size=Math.max(1,Math.round((c.font_size||36)*factor));}}
+ if(preview&&sequence.width>960){const factor=960/sequence.width;previewScale=factor;sequence.width=960;sequence.height=Math.max(2,Math.round(sequence.height*factor/2)*2);for(const t of sequence.tracks)for(const c of t.clips){c.effects.x*=factor;c.effects.y*=factor;for(const k of c.effects.parameter_keyframes??[])if(k.kind==='移动'){k.x*=factor;k.y*=factor;}for(const cue of c.effects.subtitles??[])cue.size_px=(cue.size_px||36)*factor;if(t.kind==='subtitle'||c.font_size)c.font_size=Math.max(1,Math.round((c.font_size||36)*factor));}}
  sequenceGraph(sequence,input.resources.map(r=>r.draw_document?{...r,path:join(output,'draw.png')}:r),{window});
  const resources=[];
  for(const r of input.resources){

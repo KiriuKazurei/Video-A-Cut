@@ -42,6 +42,7 @@ function ClipProperties({clip,trackId}:{clip:TimelineClip;trackId:string}) {
   <div className="timeline-property-grid">
    <label>速度（保持音调）<InputNumber aria-label="片段速度" min={.05} max={100} step={.1} value={speed} onChange={value=>setSpeed(value ?? 1)}/></label>
    <label>音量 dB<InputNumber aria-label="片段音量" min={-96} max={24} value={effects.gain_db} onChange={value=>setEffects(old=>constantGainEffects({...old,gain_db:value ?? 0}, value ?? 0))}/></label>
+   {(track.kind==='code'||track.kind==='video')&&<label>透明度 %<InputNumber aria-label="片段透明度" min={0} max={100} value={(effects.opacity??1)*100} onChange={value=>fx('opacity',(value??100)/100)}/></label>}
    {!!effects.gain_keyframes?.length&&<Typography.Text type="secondary" style={{gridColumn:'1 / -1'}}>时间线增益线有 {effects.gain_keyframes.length} 个关键帧；在此改音量会替换为恒定增益。</Typography.Text>}
    <label>淡入（秒）<InputNumber aria-label="片段淡入" min={0} max={clip.duration/rate} step={.1} value={effects.fade_in/rate} onChange={value=>fx('fade_in',Math.round((value ?? 0)*rate))}/></label>
    <label>淡出（秒）<InputNumber aria-label="片段淡出" min={0} max={clip.duration/rate} step={.1} value={effects.fade_out/rate} onChange={value=>fx('fade_out',Math.round((value ?? 0)*rate))}/></label>

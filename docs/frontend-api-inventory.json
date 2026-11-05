@@ -6669,7 +6669,7 @@
       ],
       "frontend_calls": [
         {
-          "line": 82,
+          "line": 83,
           "file": "webui/src/sequenceEditor.tsx"
         }
       ],
@@ -6704,7 +6704,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/sequenceEditor.tsx",
-          "line": 61
+          "line": 62
         }
       ],
       "lifecycle": "current_project_only"
