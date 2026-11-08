@@ -218,6 +218,8 @@ Unified documents render HTML and React source nodes together on one integer-fra
 
 ### Compile authored shot descriptions
 
+Keep template previews and generated frames free of unsolicited credits, watermarks, footer notes, tool names, and leftover demo text. Put applicable attribution and license notices in source comments and accompanying files. Display credits in the video only when the user explicitly requests them or the selected asset's license requires that placement.
+
 An authored paragraph or code clip can use `{#card-id}` or `{#card-id/variant-id}`. This selects the exact template. `{@name}` still binds project resources or markers. Keep the authored description and stable template ID when saving or regenerating.
 
 1. Read the selected card with draw.shot. For prose without a card, extract what appears, what moves, when it moves, and which inputs are needed. Search by that intent before choosing a recipe.

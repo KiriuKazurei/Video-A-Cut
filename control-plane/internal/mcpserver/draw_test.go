@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/scriptsyntax"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
 
@@ -298,6 +300,25 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 		t.Fatal(e)
 	}
 	pid, sequence := view.Document.Project.ID, view.Document.Sequences[0].ID
+	imagePath := filepath.Join(t.TempDir(), "shot-image.jpg")
+	picture := image.NewRGBA(image.Rect(0, 0, 100, 60))
+	for y := 0; y < 60; y++ {
+		for x := 0; x < 100; x++ {
+			picture.SetRGBA(x, y, color.RGBA{G: 255, A: 255})
+		}
+	}
+	var jpegBytes bytes.Buffer
+	if e = jpeg.Encode(&jpegBytes, picture, nil); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(imagePath, jpegBytes.Bytes(), 0600); e != nil {
+		t.Fatal(e)
+	}
+	view, e = f.svc.ImportProjectResource(ctx, pid, imagePath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	importedImage := view.Document.Resources[0]
 	must := func(name string, args any) map[string]any {
 		t.Helper()
 		out, bad, raw := f.call("unified", name, args)
@@ -323,7 +344,12 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	if capability["live_preview"] != true {
 		t.Fatal("missing unified capability")
 	}
-	shot := tool("draw.shot", map[string]any{"action": "read", "id": "card-stack"})
+	script := scriptsyntax.Parse("{#row-embed}展示嵌入页面")
+	if len(script.Diagnostics) != 0 || len(script.Paragraphs) != 1 || script.Paragraphs[0].ShotCard != "row-embed" {
+		t.Fatalf("shot card script did not resolve: %+v", script)
+	}
+	shotID := script.Paragraphs[0].ShotCard
+	shot := tool("draw.shot", map[string]any{"action": "read", "id": shotID})
 	if source, _ := shot["source"].(string); !strings.Contains(source, "export default") || shot["duration_frames"].(float64) <= 0 {
 		t.Fatal("shot card did not provide executable source")
 	}
@@ -354,9 +380,9 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 		t.Fatal("preview unexpectedly required/published standalone movie")
 	}
 	current = must("sequences.get", map[string]any{"project_id": pid, "sequence_id": sequence})
-	tool("draw.save", map[string]any{"session": view.ID, "expected_revision": current["project_revision"], "idempotency_key": "save-shot", "shot_card": "card-stack", "composition": map[string]any{"id": "shot-stack"}})
+	tool("draw.save", map[string]any{"session": view.ID, "expected_revision": current["project_revision"], "idempotency_key": "save-shot", "shot_card": shotID, "composition": project.DrawComposition{ID: "shot-row", Images: []project.DrawImageLayer{{ID: "detail-full", ResourceID: importedImage.ID, Width: 100, Height: 60, Mode: "source"}}}})
 	list, e = f.svc.DrawCompositions(pid)
-	if e != nil || len(list) != 2 || list[1].ID != "shot-stack" {
+	if e != nil || len(list) != 2 || list[1].ID != "shot-row" {
 		t.Fatalf("save by shot ID: %v %v", list, e)
 	}
 	preset := list[1]
@@ -366,8 +392,41 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	tv := tool("timeline.read", map[string]any{"sequence_id": sequence})
 	tool("draw.import", map[string]any{"session": view.ID, "composition_id": c.ID, "content_version": c.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach", "source_mode": "snapshot"})
 	tv = tool("timeline.read", map[string]any{"sequence_id": sequence})
-	attached := tool("draw.import", map[string]any{"session": view.ID, "composition_id": preset.ID, "content_version": preset.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach-shot", "source_mode": "snapshot", "at": 6})
-	finished := tool("run.finish", map[string]any{"sequence_revision": attached["sequence"].(map[string]any)["revision"], "content_version": attached["content_version"]})
+	tool("draw.import", map[string]any{"session": view.ID, "composition_id": preset.ID, "content_version": preset.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach-shot", "source_mode": "snapshot", "at": 6})
+	timeline, e := f.svc.Timeline(ctx, pid, sequence)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var target project.Clip
+	for _, track := range timeline.Sequence.Tracks {
+		for _, clip := range track.Clips {
+			if clip.Origin.ArtifactID == preset.ID && track.Kind == "code" {
+				target = clip
+			}
+		}
+	}
+	if target.Code == nil {
+		t.Fatal("Shotcraft source did not land on a code track")
+	}
+	preview := func(view service.TimelineView) string {
+		t.Helper()
+		frame, err := f.svc.CreateSequenceFrame(ctx, pid, sequence, service.SequenceFrameRequest{Session: view.Session, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion, Frame: target.At + 12})
+		if err != nil || frame.Image == "" {
+			t.Fatalf("preview Shotcraft on the sequence: %v", err)
+		}
+		return frame.Image
+	}
+	before := preview(timeline)
+	authored := "{#row-embed}展示嵌入页面\n{移动, x:90px, y:0px}\n{缩放, 比例:92%}"
+	tool("timeline.edit", map[string]any{"sequence_id": sequence, "command": project.Command{Session: timeline.Session, ExpectedRevision: timeline.Sequence.Revision, IdempotencyKey: "edit-shot-script", Operations: []project.Operation{{Type: "code.script", ClipIDs: []string{target.ID}, CodeRevision: target.Code.Revision, Description: &authored, Unlinked: true}}}})
+	edited, e := f.svc.Timeline(ctx, pid, sequence)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if after := preview(edited); before == after {
+		t.Fatal("code script did not change the actual preview pixels")
+	}
+	finished := tool("run.finish", map[string]any{"sequence_revision": edited.Sequence.Revision, "content_version": edited.ContentVersion})
 	if run["state"] != "succeeded" || finished["human_acceptance"] != "not_checked" {
 		t.Fatalf("finish: %v %v", run, finished)
 	}
@@ -383,12 +442,25 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	for _, resource := range reopened.Document.Resources {
 		if resource.Draw != nil && resource.Draw.Snapshot.Document != nil && resource.Draw.CompositionID == preset.ID && resource.Draw.Mode == "snapshot" {
 			for _, source := range resource.Draw.Snapshot.Document.Sources {
-				foundShot = foundShot || strings.Contains(source.Source, "Vincentwei1021")
+				for _, binding := range resource.Draw.Snapshot.ImageBindings() {
+					foundShot = foundShot || strings.Contains(source.Source, "Vincentwei1021") && binding.ID == "detail-full" && binding.ResourceID == importedImage.ID && binding.ResourceSHA != ""
+				}
 			}
 		}
 	}
 	if !foundShot {
-		t.Fatal("reopened AVP did not retain the attributed shot source snapshot")
+		t.Fatal("reopened AVP did not retain the attributed shot source snapshot and image binding")
+	}
+	foundScript := false
+	for _, track := range reopened.Document.Sequences[0].Tracks {
+		for _, clip := range track.Clips {
+			if clip.ID == target.ID && clip.ResourceID == target.ResourceID && clip.Code != nil && clip.Code.Script != nil && *clip.Code.Script == authored && len(clip.Effects.ParameterKeyframes) == 2 {
+				foundScript = true
+			}
+		}
+	}
+	if !foundScript {
+		t.Fatal("reopened AVP did not retain the authored shot and parameter script")
 	}
 	if output := os.Getenv("VAC_TEST_OUTPUT"); output != "" {
 		raw, _ := json.MarshalIndent(map[string]any{"capabilities": capability, "preview": frame, "finish": finished, "run": run, "no_standalone_mp4": true}, "", "  ")

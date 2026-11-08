@@ -113,6 +113,8 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 ## 0.5.1 版本与本地提交（2026-11-08 VERSION051）
 
+SHOTCRAFT-CODE-CHECK（2026-11-08，0.5.1，fcccbd7 加测试增强）。现有受管 Go 目录、语法、工程、服务和 MCP 定向回归通过，Node 模板与序列像素/音画/代理/缓存 5 项、前端工作台 18 项通过。将现有 MCP 用例扩展为 `{#row-embed}` 解析、按卡号和 `detail-full` 图片绑定保存、入代码轨、在同一任务中提交移动与缩放脚本、同一节目帧像素变化、实际 MP4、AVP 保存重开。重开断言稳定素材 ID、带指纹图片绑定、源码署名、原脚本及两个参数关键帧。首轮在人工编辑后使用旧任务收尾，命中序列内容版本保护并返回冲突。改由任务自身提交参数后通过。证据见 `code-track-go/0.5.1/artifacts/custom/shotcraft-bound-code-final/output.log`，首轮日志同目录上一级的 `shotcraft-bound-code/output.log`。本轮为自动化定向验收，真实模型和安装版未运行。
+
 VERSION051（2026-11-08）应用升至 0.5.1。桌面、Cargo/npm 锁文件、前端、MCP 双服务端和探针及操作 Skill 版本核对通过。当前版本前端 147 项和样式通过，MCP 双服务端 × 四协议的 8 个子场景通过，文档与接口静态检查通过。0.4.1 的 Shotcraft 像素、MP4 与 AVP 验收保留原版本口径。
 
 三个现用命名测试根 `code-track`、`code-track-go` 和 `code-ui` 已通过 Prepare 从 0.4.1 轮换到 0.5.1。统一 Measure 同口径在轮换前后为 863629708 与 107340438 字节，减少 756289270 字节，测量点在新版本复验之前。下述 0.4.1 日志路径为历史位置。默认测试根混有旧命名目录，本轮保留其内容。

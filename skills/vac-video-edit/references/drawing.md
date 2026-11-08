@@ -4,6 +4,8 @@
 
 用当前提供的 `vac-draw-pipeline` 或其他绘制执行包；`strategy:draw` 可在无视频素材的工程运行。先 `draw.capabilities`，再按实际能力设计；使用该包的资源索引读取引擎说明及工具合同，不要求用户先选引擎。
 
+模板预览和生成画面默认只显示项目需要的文字。交付前移除模板残留文案及无关署名、水印、页脚说明或工具名。适用的署名和许可保存在源码及随附文件中。仅在用户明确要求或素材许可明确要求画面内展示时加在视频里。
+
 如果脚本指定 `{#卡号}`，按绘制包声明的 `draw.shot` 工具读取对应配方、源码和图片别名。原样调用可向 `draw.save` 传顶层 `shot_card`，需要定制时保留作者声明并适配返回源码。图片别名绑定当前工程素材。旧运行只以自身声明的工具为准。
 
 1. `draw.list`、`sequences.get` 获取session、project_revision与已有构图。新构图使用稳定ID、revision:0；更新使用已存composition.revision。每次draw.save前重读project_revision，工具日志也可能推进它。
