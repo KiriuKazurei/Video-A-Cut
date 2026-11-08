@@ -214,6 +214,15 @@ Unified documents render HTML and React source nodes together on one integer-fra
 |---|---|---|
 | draw.capabilities | {} | Current-project document schema, engines/versions, common nodes, alpha/color and explicitly unsupported capabilities. No installs/downloads. |
 | draw.preview | {session,composition_id,content_version,frame,request_id?} | {frame,artifact}; actual current source pixels, consumes one frame budget, no MP4 prerequisite. |
+| draw.shot | {action:"list",query?,offset?} or {action:"read",id,dependency?} | Search the built-in Shotcraft catalog or read a card/variant, recipe, local compiled Remotion source, native timebase and project image aliases. Use a card ID or card-ID/variant-ID. Optional dependency reads only a packaged shared source path. |
+
+### Compile authored shot descriptions
+
+An authored paragraph or code clip can use `{#card-id}` or `{#card-id/variant-id}`. This selects the exact template. `{@name}` still binds project resources or markers. Keep the authored description and stable template ID when saving or regenerating.
+
+1. Read the selected card with draw.shot. For prose without a card, extract what appears, what moves, when it moves, and which inputs are needed. Search by that intent before choosing a recipe.
+2. For the preset unchanged, use draw.save {session,expected_revision,idempotency_key,shot_card,composition:{id?,name?,revision?,images?}} in the unified or Remotion Skill. The service resolves the pinned source and native 1920×1080 / 30 fps timebase. Supply every returned image alias as a current-project composition.images binding in source mode, retaining the alias as its ID.
+3. For prose customization or a local code replacement, adapt the returned source into a complete VAC composition. Preserve the original motion and author notice. Change copy, data, bindings and timing to match the authored script. Keep timeline effects, subtitles and audio in their existing timeline contracts. Use deterministic frames and current-project image IDs. Use draw.check, actual frame previews and the existing editable source import or code.replace path.
 
 New draw.save composition.document uses schema_version=1, canvas {width,height,fps:{num,den},alpha:"straight",color_space:"srgb"}, duration_frames, preset (auto/interface/data/media), sources [{id,engine,source,reason,canvas?,duration_frames?}], nodes [{id,kind,name?,source_id?,resource_id?,parent_id?,from,duration,source_offset?,speed?:{num,den},transform:{x,y,width?,height?,rotation?},opacity?,z?,hidden?,text?,color?,font_size?,parameters?,keyframes?}]. Kinds are source/image/text/group/mask/shape; graph cycles fail. keyframes are strictly increasing local frames with x/y/optional opacity; outer motion is independent of source animation. All ranges are half-open. Go generates composition engine/specification and plan, binds current-project image fingerprints, and returns the saved revision/content_version. AVP3 retains the entire editable document; AVP1/2 remain readable and AVS stays2. Legacy single-engine composition arguments remain valid.
 

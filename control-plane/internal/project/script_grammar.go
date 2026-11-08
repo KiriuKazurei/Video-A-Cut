@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/shotcraft"
 )
 
 // The same registry is statically imported by the workbench. Units, limits,
@@ -101,6 +103,15 @@ func scriptFields(body string) []string {
 
 func ParseScriptBlock(body, context string) (ScriptBlock, error) {
 	block := ScriptBlock{Args: map[string]string{}}
+	if reference := strings.TrimSpace(body); strings.HasPrefix(reference, "#") {
+		id := strings.TrimSpace(reference[1:])
+		if _, _, ok := shotcraft.Lookup(id); !ok {
+			return block, fmt.Errorf("未知镜头卡或变体 %q", id)
+		}
+		block.Name = "#"
+		block.Args["镜头卡"] = id
+		return block, nil
+	}
 	if reference := strings.TrimSpace(body); strings.HasPrefix(reference, "@") {
 		name := strings.TrimSpace(reference[1:])
 		if name == "" || len(name) > 512 || strings.ContainsAny(name, "\r\n") {

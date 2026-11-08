@@ -20,10 +20,10 @@ func TestDrawBuiltinsAreExecutableLocalStrategies(t *testing.T) {
 	}
 	for _, id := range []string{"vac-draw-hyperframes", "vac-draw-remotion", "vac-draw-pipeline"} {
 		p := byID[id]
-		if p.Runtime != "harness" || !p.Enabled || !p.Builtin || p.Version != "0.3.0" {
+		if p.Runtime != "harness" || !p.Enabled || !p.Builtin || p.Version != "0.3.1" {
 			t.Fatalf("inactive drawing Skill: %#v", p)
 		}
-		for _, tool := range []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "timeline.edit", "run.finish", "run.steps"} {
+		for _, tool := range []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.shot", "timeline.edit", "run.finish", "run.steps"} {
 			if !slices.Contains(p.Tools, tool) {
 				t.Fatalf("%s missing %s", id, tool)
 			}

@@ -323,6 +323,10 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	if capability["live_preview"] != true {
 		t.Fatal("missing unified capability")
 	}
+	shot := tool("draw.shot", map[string]any{"action": "read", "id": "card-stack"})
+	if source, _ := shot["source"].(string); !strings.Contains(source, "export default") || shot["duration_frames"].(float64) <= 0 {
+		t.Fatal("shot card did not provide executable source")
+	}
 	doc := project.DrawDocument{SchemaVersion: 1, Canvas: project.DrawCanvas{Width: 320, Height: 180, FPS: project.Rate{Num: 30, Den: 1}}, DurationFrames: 6, Preset: "auto", Sources: []project.DrawSource{{ID: "html", Engine: "hyperframes", Source: `<!doctype html><html><head><style>body{margin:0}#root{width:320px;height:180px}#box{width:80px;height:80px;background:red}</style></head><body><div id="root" data-composition-id="root" data-width="320" data-height="180" data-duration="0.2"><div id="box"></div></div><script>const tl=gsap.timeline({paused:true});tl.to("#box",{x:60,duration:.2,ease:"none"});window.__timelines.root=tl;</script></body></html>`}, {ID: "react", Engine: "remotion", Source: `import React from "react";export default function Card(){return <div style={{position:"absolute",left:160,top:40,width:80,height:60,background:"rgba(0,0,255,.5)"}}/>;}`}}, Nodes: []project.DrawNode{{ID: "web", Kind: "source", SourceID: "html", Duration: 6}, {ID: "card", Kind: "source", SourceID: "react", Duration: 6}}}
 	current := must("sequences.get", map[string]any{"project_id": pid, "sequence_id": sequence})
 	// A real detailed PNG must remain inspectable beyond the old 256 KiB
@@ -349,11 +353,42 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	if _, _, e = f.svc.DrawRenderPath(pid, c.ID, c.ContentVersion); e == nil {
 		t.Fatal("preview unexpectedly required/published standalone movie")
 	}
+	current = must("sequences.get", map[string]any{"project_id": pid, "sequence_id": sequence})
+	tool("draw.save", map[string]any{"session": view.ID, "expected_revision": current["project_revision"], "idempotency_key": "save-shot", "shot_card": "card-stack", "composition": map[string]any{"id": "shot-stack"}})
+	list, e = f.svc.DrawCompositions(pid)
+	if e != nil || len(list) != 2 || list[1].ID != "shot-stack" {
+		t.Fatalf("save by shot ID: %v %v", list, e)
+	}
+	preset := list[1]
+	if !strings.Contains(preset.Source, "Vincentwei1021") || preset.DurationFrames != int64(shot["duration_frames"].(float64)) {
+		t.Fatal("compiled source or native duration was not saved")
+	}
 	tv := tool("timeline.read", map[string]any{"sequence_id": sequence})
-	attached := tool("draw.import", map[string]any{"session": view.ID, "composition_id": c.ID, "content_version": c.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach", "source_mode": "snapshot"})
+	tool("draw.import", map[string]any{"session": view.ID, "composition_id": c.ID, "content_version": c.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach", "source_mode": "snapshot"})
+	tv = tool("timeline.read", map[string]any{"sequence_id": sequence})
+	attached := tool("draw.import", map[string]any{"session": view.ID, "composition_id": preset.ID, "content_version": preset.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach-shot", "source_mode": "snapshot", "at": 6})
 	finished := tool("run.finish", map[string]any{"sequence_revision": attached["sequence"].(map[string]any)["revision"], "content_version": attached["content_version"]})
 	if run["state"] != "succeeded" || finished["human_acceptance"] != "not_checked" {
 		t.Fatalf("finish: %v %v", run, finished)
+	}
+	saved, e := f.svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{ExpectedSession: view.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	reopened, e := f.svc.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: saved.Path, StopTasks: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	foundShot := false
+	for _, resource := range reopened.Document.Resources {
+		if resource.Draw != nil && resource.Draw.Snapshot.Document != nil && resource.Draw.CompositionID == preset.ID && resource.Draw.Mode == "snapshot" {
+			for _, source := range resource.Draw.Snapshot.Document.Sources {
+				foundShot = foundShot || strings.Contains(source.Source, "Vincentwei1021")
+			}
+		}
+	}
+	if !foundShot {
+		t.Fatal("reopened AVP did not retain the attributed shot source snapshot")
 	}
 	if output := os.Getenv("VAC_TEST_OUTPUT"); output != "" {
 		raw, _ := json.MarshalIndent(map[string]any{"capabilities": capability, "preview": frame, "finish": finished, "run": run, "no_standalone_mp4": true}, "", "  ")

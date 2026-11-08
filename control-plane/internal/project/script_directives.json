@@ -2,6 +2,7 @@
   "version": 3,
   "directives": [
     {"name":"@","label":"素材或标记引用","contexts":["paragraph","code"],"mode":"generate","parameters":[]},
+    {"name":"#","label":"镜头卡引用","contexts":["paragraph","code"],"mode":"generate","parameters":[]},
     {"name":"字幕","label":"定时字幕","contexts":["paragraph","code"],"mode":"direct","parameters":[{"name":"文本","type":"string","required":true},{"name":"时间","type":"time"},{"name":"持续","type":"duration"},{"name":"字号","type":"number","unit":"px","min":1,"max":512},{"name":"字体","type":"string"}]},
     {"name":"黑屏","label":"入口黑场淡变","contexts":["paragraph","code"],"mode":"direct","parameters":[]},
     {"name":"白屏","label":"入口白场淡变","contexts":["paragraph","code"],"mode":"direct","parameters":[]},

@@ -15,6 +15,33 @@ const html='<!doctype html><html><head><style>body{margin:0;background:#101820}#
 const react='import React from "react";import {AbsoluteFill,useCurrentFrame} from "remotion";export default function Scene(){const frame=useCurrentFrame();return <AbsoluteFill style={{background:"#101820"}}><div style={{position:"absolute",top:60,left:frame*6,width:40,height:40,background:"#ff8800"}}/><span style={{color:"white"}}>VAC draw</span></AbsoluteFill>}';
 export const composition=(engine='hyperframes')=>{const source=engine==='hyperframes'?html:react;return {id:'drawing',name:'Draw test',engine,source,width:320,height:180,fps:{num:30,den:1},duration_frames:30,revision:1,content_version:createHash('sha256').update(source).digest('hex')};};
 
+test('Shotcraft variants render animation, project image inputs and sampled blur', {timeout: 180000}, async () => {
+ const catalog=JSON.parse(await readFile(new URL('../../../../control-plane/internal/shotcraft/compiled.json',import.meta.url),'utf8'));
+ const {openUnifiedDraw}=await import('../src/unified-draw.mjs');
+ const root=join(process.env.VAC_TEST_OUTPUT,'draw','shotcraft');
+ await mkdir(root,{recursive:true});
+ const png=join(root,'input.png');
+ await runTool('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=lime:s=64x48','-frames:v','1','-threads','1',png]);
+ const sha256=createHash('sha256').update(await readFile(png)).digest('hex');
+ const assets=[{resource_id:'photo',path:png,sha256}];
+ for(const [key, first, second] of [
+  ['card-stack/card-stack',0,50],['row-embed/row-embed',10,55],['crane-rise-reveal/crane-rise-reveal',27,45],
+  ['brand-ink-open/brand-ink-open',0,50],
+ ]){
+  const {source,duration_frames,image_aliases=[]}=catalog[key];
+  const width=1920,height=1080,fps={num:30,den:1};
+  const document={schema_version:1,canvas:{width,height,fps},duration_frames,
+   sources:[{id:'source',engine:'remotion',source,image_bindings:image_aliases.map(id=>({id,resource_id:'photo',resource_sha256:sha256,x:0,y:0,width:64,height:48,dx:0,dy:0,from_frame:0,to_frame:0,mode:'source'}))}],
+   nodes:[{id:'shot',kind:'source',source_id:'source',from:0,duration:duration_frames}]};
+  const host=await openUnifiedDraw({document,assets,output_dir:join(root,key.split('/')[0])});
+  try{
+   const a=await host.seek({frame:first}),b=await host.seek({frame:second}),again=await host.seek({frame:first});
+   assert.notDeepEqual(a.png,b.png,key+' must animate');
+   assert.deepEqual(a.png,again.png,key+' must seek deterministically');
+  }finally{await host.close();}
+ }
+});
+
 test('Motion Canvas source uses native scene animation and supports backwards seek',async()=>{
  const {openUnifiedDraw}=await import('../src/unified-draw.mjs');
  const source='import {makeScene2D,Rect} from "@motion-canvas/2d";import {createRef} from "@motion-canvas/core";export default makeScene2D(function* (view){const box=createRef();view.add(<Rect ref={box} width={40} height={40} fill="#ff8800" x={-100}/>);yield* box().position.x(100,1);});';

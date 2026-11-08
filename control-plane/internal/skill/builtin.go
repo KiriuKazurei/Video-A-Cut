@@ -50,9 +50,9 @@ func Builtins() []Package {
 }
 
 func drawSkills() []Package {
-	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish", "run.steps"}
+	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "draw.shot", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish", "run.steps"}
 	makePackage := func(id, name, content string) Package {
-		return Package{ID: id, Name: name, Description: "Executable local code-to-video and editing handoff", Version: "0.3.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: []string{"external_mcp", "builtin_api"}, Tools: tools, Permissions: []string{"project_media", "ffmpeg", "browser_render"}, Inputs: []string{"goal", "composition_spec", "project_images"}, Outputs: []string{"composition_source", "mp4", "timeline"}, Content: content, Resources: map[string]string{}}
+		return Package{ID: id, Name: name, Description: "Executable local code-to-video and editing handoff", Version: "0.3.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: []string{"external_mcp", "builtin_api"}, Tools: tools, Permissions: []string{"project_media", "ffmpeg", "browser_render"}, Inputs: []string{"goal", "composition_spec", "project_images"}, Outputs: []string{"composition_source", "mp4", "timeline"}, Content: content, Resources: map[string]string{}}
 	}
 	return []Package{makePackage("vac-draw-hyperframes", "HyperFrames 绘制", hyperframesDraw), makePackage("vac-draw-remotion", "Remotion 绘制", remotionDraw), makePackage("vac-draw-pipeline", "绘制管线", pipelineDraw)}
 }

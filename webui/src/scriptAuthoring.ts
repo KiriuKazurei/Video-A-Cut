@@ -1,6 +1,6 @@
 import type { ReferenceCandidate, ScriptReference } from './timelineContracts';
 import { insertReference, rebaseReferences } from './scriptReferences.ts';
-import {SCRIPT_DIRECTIVES,directiveTemplate,activeDirective,scriptBlockEnd,type ScriptContext} from './scriptGrammar.ts';
+import {SCRIPT_DIRECTIVES,directiveTemplate,activeDirective,scriptBlockEnd,shotCardCompletions,type ScriptContext} from './scriptGrammar.ts';
 
 /** Editor helpers use the same registered directives as the Go parser. */
 export interface AuthoringInsert {
@@ -70,7 +70,11 @@ export function paragraphTemplate(kind: ParagraphTemplateKind): AuthoringInsert 
 
 export function filterSnippets(query: string,context:ScriptContext='paragraph'): SnippetChoice[] {
   const q = query.trim().toLocaleLowerCase();
-  const snippets=context==='code'?SCRIPT_DIRECTIVES.filter(s=>s.name!=='@'&&s.contexts.includes('code')).map(s=>{const text=directiveTemplate(s.name);return {key:s.name,label:s.label,text,prefixes:[s.name],selectStart:text.length-1,selectEnd:text.length-1};}):SNIPPETS;
+  if(q.startsWith('#'))return shotCardCompletions(q.slice(1)).map(card=>{
+    const text=`{#${card.id}}`;
+    return {key:card.id,label:card.id+' · '+card.summary,text,prefixes:['#'],selectStart:text.length,selectEnd:text.length};
+  });
+  const snippets=context==='code'?SCRIPT_DIRECTIVES.filter(s=>s.name!=='@'&&s.name!=='#'&&s.contexts.includes('code')).map(s=>{const text=directiveTemplate(s.name);return {key:s.name,label:s.label,text,prefixes:[s.name],selectStart:text.length-1,selectEnd:text.length-1};}):SNIPPETS;
   if (!q) return snippets;
   return snippets.filter(snippet =>
     snippet.prefixes.some(prefix => prefix.toLocaleLowerCase().startsWith(q)) ||

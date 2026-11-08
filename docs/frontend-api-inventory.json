@@ -924,7 +924,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 326
+          "line": 327
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -970,7 +970,7 @@
         },
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 326
+          "line": 327
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3303,7 +3303,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 230
+          "line": 231
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -3619,7 +3619,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/ScriptWorkbench.tsx",
-          "line": 328
+          "line": 329
         }
       ],
       "lifecycle": "current_or_compatible"

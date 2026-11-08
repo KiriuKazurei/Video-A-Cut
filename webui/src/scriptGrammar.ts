@@ -1,4 +1,5 @@
 import definition from '../../control-plane/internal/project/script_directives.json' with {type:'json'};
+import shotcraft from '../../control-plane/internal/shotcraft/catalog.json' with {type:'json'};
 import {fpsValue,frameLabel,parseTimecode,type FrameRate,type TimelineClip} from './timelineContracts.ts';
 
 export type ScriptContext='paragraph'|'code';
@@ -6,6 +7,15 @@ export interface DirectiveParameter {name:string;type:string;unit?:string;requir
 export interface DirectiveDefinition {name:string;label:string;contexts:string[];mode:string;parameters:DirectiveParameter[]}
 export const SCRIPT_DIRECTIVES=definition.directives as DirectiveDefinition[];
 export function directiveSpec(name:string){return SCRIPT_DIRECTIVES.find(x=>x.name===name);}
+
+export function shotCardCompletions(query:string){
+ const search=query.toLowerCase();
+ const matches=shotcraft.flatMap(card=>{
+  const options=[{id:card.id,summary:card.summary},...card.styles.filter(style=>card.styles.length>1).map(style=>({id:card.id+'/'+style.id,summary:style.description}))];
+  return options.filter(option=>option.id.includes(search)||option.summary.toLowerCase().includes(search));
+ });
+ return matches.slice(0,12);
+}
 
 export function directiveFields(body:string){
  const fields:{text:string;start:number;end:number}[]=[];let start=0,quoted=false,escaped=false;
@@ -15,6 +25,12 @@ export function directiveFields(body:string){
 export function readDirective(body:string,context:ScriptContext='code'){
  const fields=directiveFields(body),head=fields[0].text.trim(),args:Record<string,string>={},legacy=head.startsWith('"');
  if(body.trim().startsWith('@')){const reference=body.trim().slice(1).trim();args['引用']=reference;return {name:'@',args,error:reference&&new TextEncoder().encode(reference).length<=512&&!/[\r\n]/.test(reference)?'':'引用名称不能为空或跨行'};}
+ if(body.trim().startsWith('#')){
+  const reference=body.trim().slice(1).trim();
+  const [id,style,...extra]=reference.split('/');
+  const valid=!extra.length&&shotcraft.some(card=>card.id===id&&(style===undefined||card.styles.some(variant=>variant.id===style)));
+  return {name:'#',args:{镜头卡:reference},error:valid?'':`未知镜头卡或变体 ${reference}`};
+ }
  const name=legacy?'字幕':head,spec=directiveSpec(name);
  if(!spec)return {name,args,error:`未知指令${name}`};
  if(!spec.contexts.includes(context))return {name,args,error:`${name}仅适用于代码条工作台`};
@@ -57,7 +73,8 @@ export function directiveCompletions(source:string,caret:number,context:ScriptCo
  const {start,quoted}=activeDirective(source,caret);
  if(start<0||quoted)return [];
  const prefix=source.slice(start+1,caret),fields=directiveFields(prefix),end=scriptBlockEnd(source,start),stop=end<0?caret:end+1;
- if(fields.length===1){const query=fields[0].text.trim();return SCRIPT_DIRECTIVES.filter(x=>x.name!=='@'&&x.contexts.includes(context)&&x.name.startsWith(query)).map(x=>({label:x.name+' · '+x.label,start,end:stop,text:directiveTemplate(x.name)}));}
+ if(prefix.startsWith('#'))return shotCardCompletions(prefix.slice(1).trim()).map(card=>({label:card.id+' · '+card.summary,start,end:stop,text:`{#${card.id}}`}));
+ if(fields.length===1){const query=fields[0].text.trim();return SCRIPT_DIRECTIVES.filter(x=>x.name!=='@'&&x.name!=='#'&&x.contexts.includes(context)&&x.name.startsWith(query)).map(x=>({label:x.name+' · '+x.label,start,end:stop,text:directiveTemplate(x.name)}));}
  const name=fields[0].text.trim(),spec=directiveSpec(name);if(!spec)return [];
  const last=fields.at(-1)!,query=last.text.trim(),used=new Set(fields.slice(1,-1).map(f=>f.text.split(':')[0].trim()));
  if(query.includes(':'))return [];
@@ -74,7 +91,8 @@ export function inspectCodeScript(source:string,clip:Pick<TimelineClip,'at'|'dur
    const frame=scriptTimeFrame(block.args['时间'],clip,rate),duration=block.args['持续']===undefined?0:durationFrames(block.args['持续'],rate),timed=!!directiveSpec(block.name)?.parameters.some(p=>p.type==='time');
    if(timed&&(frame===null||duration===null||frame<0||frame>=clip.duration||duration>clip.duration-frame||block.name==='字幕'&&block.args['持续']!==undefined&&duration<1))report(start,i+1,'时间或持续超出当前代码条');
    else if(timed&&block.name!=='字幕'&&(ranges.get(block.name)??[]).some(r=>frame!<r.end&&Math.max(frame!+1,frame!+duration!)>r.start))report(start,i+1,`${block.name}指令重复或动画范围重叠`);
-   else{if(timed&&block.name!=='字幕'){const list=ranges.get(block.name)??[];list.push({start:frame!,end:Math.max(frame!+1,frame!+duration!)});ranges.set(block.name,list);}instructions.push({start,end:i+1,label:block.name,frame:frame??0,mode:directiveSpec(block.name)?.mode??'direct'});}
+   else if(block.name==='#'&&instructions.some(item=>item.label.startsWith('#')))report(start,i+1,'每个代码条只能引用一张镜头卡');
+   else{if(timed&&block.name!=='字幕'){const list=ranges.get(block.name)??[];list.push({start:frame!,end:Math.max(frame!+1,frame!+duration!)});ranges.set(block.name,list);}instructions.push({start,end:i+1,label:block.name==='#'?'#'+block.args['镜头卡']:block.name,frame:frame??0,mode:directiveSpec(block.name)?.mode??'direct'});}
   }start=-1;
  }
  if(start>=0)report(start,source.length,'语法块缺少右花括号或引号未闭合');

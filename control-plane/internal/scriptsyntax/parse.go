@@ -26,6 +26,7 @@ type Paragraph struct {
 	Source             string                       `json:"source"`
 	Instruction        string                       `json:"instruction"`
 	Video              string                       `json:"video,omitempty"`
+	ShotCard           string                       `json:"shot_card,omitempty"`
 	Subtitle           *Subtitle                    `json:"subtitle,omitempty"`
 	Effect             string                       `json:"effect,omitempty"`
 }
@@ -98,6 +99,12 @@ func Parse(source string) Document {
 				continue
 			}
 			switch {
+			case block.Name == "#":
+				if p.ShotCard != "" {
+					addError(start, "每段只能引用一张镜头卡")
+				} else {
+					p.ShotCard = block.Args["镜头卡"]
+				}
 			case block.Name == "字幕" && (!block.Legacy || block.Args["时间"] != "" || block.Args["持续"] != ""):
 				cue, err := project.ParseSubtitleCue(block, project.Clip{Duration: 30 * 60 * 60 * 24}, project.Rate{Num: 30, Den: 1})
 				if err != nil {

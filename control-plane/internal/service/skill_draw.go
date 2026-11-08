@@ -14,6 +14,7 @@ import (
 
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/shotcraft"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/skill"
 )
 
@@ -65,15 +66,26 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		}
 		return respond(v)
 	}
+	if name == "draw.shot" {
+		return shotTool(args)
+	}
 	if name == "draw.save" {
-		var req DrawSaveRequest
+		var req struct {
+			DrawSaveRequest
+			ShotCard string `json:"shot_card,omitempty"`
+		}
 		if e := decodeSkillArgs(args, &req); e != nil {
 			return nil, e
+		}
+		if req.ShotCard != "" {
+			if e := useShotTemplate(&req.Composition, req.ShotCard); e != nil {
+				return nil, e
+			}
 		}
 		if !drawCompositionAllowed(r.SkillID, req.Composition) {
 			return nil, fmt.Errorf("composition sources do not match this Skill's engine: %w", model.ErrArgument)
 		}
-		v, e := s.SaveDrawComposition(ctx, r.ProjectID, req)
+		v, e := s.SaveDrawComposition(ctx, r.ProjectID, req.DrawSaveRequest)
 		if e != nil {
 			return nil, e
 		}
@@ -193,4 +205,93 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		return respond(map[string]any{"frame": frame, "artifact": artifact})
 	}
 	return nil, fmt.Errorf("unknown draw tool %s: %w", strings.TrimPrefix(name, "draw."), model.ErrArgument)
+}
+
+func shotTool(args json.RawMessage) (json.RawMessage, error) {
+	var req struct {
+		Action     string `json:"action"`
+		ID         string `json:"id,omitempty"`
+		Query      string `json:"query,omitempty"`
+		Offset     int    `json:"offset,omitempty"`
+		Dependency string `json:"dependency,omitempty"`
+	}
+	if err := decodeSkillArgs(args, &req); err != nil {
+		return nil, err
+	}
+	switch req.Action {
+	case "list":
+		cards := shotcraft.List(req.Query)
+		if req.Offset < 0 || req.Offset > len(cards) {
+			return nil, model.ErrArgument
+		}
+		return json.Marshal(map[string]any{"revision": shotcraft.Revision, "total": len(cards), "cards": cards[req.Offset:min(req.Offset+12, len(cards))]})
+	case "read":
+		card, style, ok := shotcraft.Lookup(req.ID)
+		if !ok {
+			return nil, fmt.Errorf("unknown shot card or variant %q: %w", req.ID, model.ErrArgument)
+		}
+		if req.Dependency != "" {
+			if !strings.HasPrefix(req.Dependency, "demos/_fixtures/") && !strings.HasPrefix(req.Dependency, "demos/_textures/") && !strings.HasPrefix(req.Dependency, "assets/lib/") {
+				return nil, model.ErrArgument
+			}
+			body, err := shotcraft.Read(req.Dependency)
+			if err != nil {
+				return nil, model.ErrArgument
+			}
+			return json.Marshal(map[string]string{"path": req.Dependency, "source": body})
+		}
+		recipe, err := shotcraft.Read(card.Recipe)
+		if err != nil {
+			return nil, err
+		}
+		tpl := shotcraft.Compiled(card, style)
+		result := map[string]any{
+			"card": card, "style": style, "recipe": recipe, "revision": shotcraft.Revision,
+			"license": "Apache-2.0", "author": "Vincentwei1021", "engine": "remotion", "width": 1920, "height": 1080,
+			"fps": project.Rate{Num: 30, Den: 1}, "duration_frames": tpl.DurationFrames, "source": tpl.Source,
+			"image_aliases": tpl.ImageAliases,
+		}
+		if tpl.Source == "" {
+			body, err := shotcraft.Read(style.Source)
+			if err != nil {
+				return nil, err
+			}
+			result["reference_source"] = body
+			result["needs_adapter"] = tpl.NeedsAdapter
+		}
+		return json.Marshal(result)
+	default:
+		return nil, model.ErrArgument
+	}
+}
+
+func useShotTemplate(c *project.DrawComposition, id string) error {
+	card, variant, ok := shotcraft.Lookup(id)
+	if !ok {
+		return fmt.Errorf("unknown shot card or variant %q: %w", id, model.ErrArgument)
+	}
+	tpl := shotcraft.Compiled(card, variant)
+	if tpl.Source == "" {
+		return fmt.Errorf("shot card %q needs adaptation: %s: %w", id, tpl.NeedsAdapter, model.ErrArgument)
+	}
+	for _, alias := range tpl.ImageAliases {
+		bound := false
+		for _, binding := range c.Images {
+			bound = bound || binding.ID == alias && binding.Mode == "source"
+		}
+		if !bound {
+			return fmt.Errorf("shot card %q needs current-project image alias %q in source mode: %w", id, alias, model.ErrArgument)
+		}
+	}
+	if c.Document != nil || c.Source != "" || (c.Engine != "" && c.Engine != "remotion") ||
+		c.Width != 0 || c.Height != 0 || c.FPS != (project.Rate{}) || c.DurationFrames != 0 {
+		return fmt.Errorf("shot_card supplies its own source, engine and timebase: %w", model.ErrArgument)
+	}
+	if c.Name == "" {
+		c.Name = variant.ID
+	}
+	c.Engine, c.Source, c.Width, c.Height = "remotion", tpl.Source, 1920, 1080
+	c.FPS = project.Rate{Num: 30, Den: 1}
+	c.DurationFrames = int64(tpl.DurationFrames)
+	return nil
 }

@@ -270,7 +270,7 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 	respond := func(v any) (json.RawMessage, error) { return json.Marshal(v) }
 	if len(r.CodeTargets) > 0 {
 		switch name {
-		case "timeline.read", "timeline.edit", "references.resolve", "agent.model", "run.finish", "draw.capabilities", "draw.list", "draw.check", "draw.get_frame", "draw.preview", "media.list":
+		case "timeline.read", "timeline.edit", "references.resolve", "agent.model", "run.finish", "draw.capabilities", "draw.list", "draw.check", "draw.get_frame", "draw.preview", "draw.shot", "media.list":
 		default:
 			return nil, fmt.Errorf("局部代码任务只允许读取上下文及提交目标条替换: %w", model.ErrArgument)
 		}
@@ -1000,6 +1000,12 @@ func (s *Service) renderSkillPlan(ctx context.Context, r *skill.Run, snap harnes
 	if err := validateHarnessPlan(*r.Plan, snap); err != nil {
 		return err
 	}
+	document := scriptsyntax.Parse(r.Plan.Body)
+	for _, paragraph := range document.Paragraphs {
+		if paragraph.ShotCard != "" {
+			return fmt.Errorf("第 %d 段使用镜头卡 %q，请用绘制与时间线交付: %w", paragraph.Index+1, paragraph.ShotCard, model.ErrArgument)
+		}
+	}
 	dir, err := s.skillRunDir(*r)
 	if err != nil {
 		return err
@@ -1029,7 +1035,7 @@ func (s *Service) renderSkillPlan(ctx context.Context, r *skill.Run, snap harnes
 		}
 		rows = append(rows, row)
 	}
-	_, err = s.scriptProcess(ctx, true, "render", map[string]any{"script": map[string]any{"script_id": r.ID, "version": r.Plan.Version, "visible_set_sha": r.VisibleSHA, "finalized_by": r.Plan.FinalizedBy, "finalized_at": r.Plan.FinalizedAt}, "segments": rows, "document": scriptsyntax.Parse(r.Plan.Body), "subtitles_enabled": r.Plan.Subtitles, "sources": []any{}, "output_dir": out})
+	_, err = s.scriptProcess(ctx, true, "render", map[string]any{"script": map[string]any{"script_id": r.ID, "version": r.Plan.Version, "visible_set_sha": r.VisibleSHA, "finalized_by": r.Plan.FinalizedBy, "finalized_at": r.Plan.FinalizedAt}, "segments": rows, "document": document, "subtitles_enabled": r.Plan.Subtitles, "sources": []any{}, "output_dir": out})
 	if err != nil {
 		return err
 	}

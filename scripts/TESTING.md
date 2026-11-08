@@ -4,11 +4,11 @@
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前0.4.1。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前0.5.1。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。`webui` 现在调用完整 `npm run test:unit`，同时执行样式检查；旧基础子集退出受管默认入口。保留 `pipeline` 作为有明确范围的定向入口。
 
-当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，当前基线`d373947`加语法v3、Tab与协同修复，应用 `0.4.1`。本地`checkpoint/0.4.0-before-script-syntax`保留原基线。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
+当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，当前基线`75d0a25`加 Shotcraft 编译和目录，应用 `0.5.1`。本地`checkpoint/0.4.0-before-script-syntax`保留原基线。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
 
 自定义检查使用稳定 `-TestName`，例如 `go-core`、`go-code-service`、`browser-editor`、`doc-contracts`。日志写入 `artifacts/custom/<TestName>/output.log`，summary按 `custom/<TestName>` 分开保存；不同检查互不覆盖，也不把无关检查的通过记成先前失败已修复。不按日期或每次重跑新建StorageRoot；同一检查重复使用同一名称。未命名旧custom结果保留溯源，不作为全套结论。
 
@@ -20,6 +20,7 @@
 | 参数语法、工作台与颜色 | Go `project/timeline_test.go`、`scriptsyntax/parse_test.go`，前端 `script_workbench_test.mjs`、`gain_envelope_test.mjs` | 维护共享语法/时间/错误、布局保存与局部同步、缩放/透明度/定时字幕、切割回解析、补全与高亮；前端完整清单由package.json唯一维护。 |
 | 局部Agent与真实服务 | `service/project_draw_test.go`、`project_workspace_test.go`、`project_media_test.go`、`draw_environment_test.go` | 保留冲突/部分成功/撤销/只读迁移；扩展既有分段用例检查实际声音、跨迁移轨转场与描述缓存。 |
 | 三引擎、像素与混音 | `workers/node/timeline-cli/test/{draw,sequence,script-workbench}.test.mjs`；`-Suite timeline` | 保留引擎取帧/寻址/声音，扩展缩放/透明度与CPU/GPU/终渲一致、字幕结束清除、普通段落序列字幕和主动透明质量检查；不另建媒体套件。 |
+| Shotcraft 镜头卡 | Go `internal/shotcraft`、既有语法和 MCP 套件、前端工作台、Node `draw.test.mjs` | 覆盖固定目录、署名、卡号与变体、可编辑源入轨、实际像素和 AVP 重开。 |
 | Agent模型上下文与Worker | `workers/python/tests/`；`-Suite python` | 保留现有套件，模型桩与真实质量分开；本轮路径辅助函数随命名StorageRoot联动。 |
 | 编辑器/工作台交互 | `webui/run-local-smokes.mjs` + `review_shortcuts_smoke.mjs` / `script_workbench_smoke.mjs` | 当前编辑器22组、普通脚本15组；补参数无需Agent、错误草稿保护和命令补全。复用生产构建与本机Chrome，不是原生窗口/真实模型验收。 |
 | 导出租约、恢复与资源归属 | `workers/node/export-worker/test/`；`-Suite exporter` | 保留职责独立的套件，不合并进timeline或服务桩。 |
@@ -110,6 +111,12 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
 
+## 0.5.1 版本与本地提交（2026-11-08 VERSION051）
+
+VERSION051（2026-11-08）应用升至 0.5.1。桌面、Cargo/npm 锁文件、前端、MCP 双服务端和探针及操作 Skill 版本核对通过。当前版本前端 147 项和样式通过，MCP 双服务端 × 四协议的 8 个子场景通过，文档与接口静态检查通过。0.4.1 的 Shotcraft 像素、MP4 与 AVP 验收保留原版本口径。
+
+三个现用命名测试根 `code-track`、`code-track-go` 和 `code-ui` 已通过 Prepare 从 0.4.1 轮换到 0.5.1。统一 Measure 同口径在轮换前后为 863629708 与 107340438 字节，减少 756289270 字节，测量点在新版本复验之前。下述 0.4.1 日志路径为历史位置。默认测试根混有旧命名目录，本轮保留其内容。
+
 ## 0.4.1版本与源码推送（2026-11-06 VERSION041）
 
 按用户授权，将本地语法v3、Tab补全及系统协同修复一并纳入0.4.1源码。桌面tauri/Cargo/npm、前端npm及两类MCP服务端/探针版本统一为0.4.1，Cargo.lock仅改应用包条目，不修改同号依赖。
@@ -121,6 +128,10 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 媒体与原生此前验收保持实际范围，未将它们改写为0.4.1新版重跑通过。公开安装版仍0.3.4，开发调试候选仍为此前0.4.0，本轮不创建Release或重建安装器。当前检查完成，提交与远程核对随后记录。
 
 实现提交8089f7e700ce60391cb64a4f17e358f7b0842fd2（57文件）已正常快进推送origin/codex/integrate-remote-20261029，git ls-remote与本地实现HEAD完全一致；暂存差异空白检查通过。无测试生成物、业务AVP、安装包或密钥入库。本记录作为随后文档提交；源码推送不代表安装版或Release更新。
+
+VAC-AGENT-SKILL（2026-11-07，0.4.1，`75d0a25`加Skill文档）通过Skill Creator格式校验、版本与UI元数据校验、19个公开/25个受控工具名与注册源码对照、3个JSON调用示例和现有文档检查。只读演练纠正了参数修改与局部源码再生成的路由。既有Go `project` / `scriptsyntax` 定向语法测试通过，受管入口为`code-track-go`下的`custom/vac-skill-grammar`。默认沙箱第一次未能访问CIM进程列表，随后在已核验的受管测试根成功执行。安装的7个文件与仓库SHA256一致。未执行真实MCP写入、模型或成片验收。
+
+SHOTCRAFT-COMPILER（2026-11-08，0.4.1，`75d0a25` 加当前改动）通过目录完整性、脚本和 Skill 合同、前端套件与类型检查及 Python Agent 工具 12 项。固定上游 319 个原件逐文件与归档一致。批量预览用合成图片检查 150 个变体的首中尾帧，初测 146/150。四个失败均来自上游 JSX 缺显式 React 导入，改用自动 JSX 后 150/150，证据为 `code-ui/0.4.1/artifacts/custom/shotcraft-all-frames-jsx/output.log`。代表帧夹具先后修正图片位置字段和越界帧号。MCP 真预览、按卡号保存、代码轨源入轨、MP4 和 AVP 保存重开由 `code-track-go/0.4.1/artifacts/custom/shotcraft-mcp-release-source` 覆盖，复验前将保存安排在首次入轨之前，避开自动描述任务造成的项目修订冲突。真实模型自由描述质量、素材视觉观感及安装包留待验收。
 
 ## 系统修复（2026-11-05 SYSTEM-FIX，本轮修复与对应验收完成）
 

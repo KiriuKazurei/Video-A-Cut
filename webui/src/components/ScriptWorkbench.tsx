@@ -223,7 +223,8 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     extra={<Tag>{latest?.script.status === 'finalized' ? '可导出' : '草稿'}</Tag>}>
     <Flex vertical gap={dock ? 8 : 12}>
       {!dock && <Typography.Text type="secondary">先写下创作要求并保存。Agent 可读取脚本，按要求完成编辑；空行分段，花括号可引用素材、字幕或画面效果。</Typography.Text>}
-      {dock && <Typography.Text type="secondary" style={{fontSize:12}}>空行分段；{'{@标记}'} 引用时间线。中心时间线可同时剪辑。</Typography.Text>}
+      {dock && <Typography.Text type="secondary" style={{fontSize:12}}>空行分段。{'{@标记}'} 引用素材或时间线，{'{#镜头卡}'} 选择动效模板。</Typography.Text>}
+      {paragraphs.some(p=>p.shot_card) && <Alert type="info" message="这份脚本使用动效镜头卡。请交给绘制 Agent，生成可编辑代码条后从时间线交付。" />}
       {scriptId && projectWorkspace.session?.document?.scripts.some(script => script.id === scriptId && script.bindings.some(binding => binding.unresolved)) && <Alert type="warning" message="脚本有待关联素材，可继续编辑。使用相关素材生成或渲染前请完成关联。" action={<Button onClick={() => void projectWorkspace.rebindScript(scriptId).catch(reason => setFailure(errorText(reason)))}>关联素材</Button>} />}
       {list.isError && <Alert type="error" message={errorText(list.error)} />}
       {!list.isPending && !list.data?.length && <Button type="primary" loading={busy} onClick={() => invoke(async () => {
@@ -353,7 +354,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
                   <Checkbox checked={seg.subtitles_enabled ?? subtitles} disabled={!canEdit || !canParse} onChange={e => editSegment(i, { subtitles_enabled: e.target.checked })}>本段自动字幕</Checkbox>
                   {(seg.tts_enabled ?? tts) && <Button disabled={dirty || busy || !navigate} onClick={() => navigate?.({ workspace: 'tts', scriptId, scriptVersion: loadedVersion, scriptSegment: i })}>到 TTS 专页调整第 {i + 1} 段</Button>}
                 </Space>
-                <Space wrap>{p.video && <Tag>强制视频：{p.video}</Tag>}{p.subtitle && <Tag>强制字幕：{p.subtitle.text}</Tag>}{p.effect && <Tag>画面效果：{p.effect}</Tag>}</Space>
+                <Space wrap>{p.video && <Tag>强制视频：{p.video}</Tag>}{p.shot_card && <Tag>镜头卡：{p.shot_card}</Tag>}{p.subtitle && <Tag>强制字幕：{p.subtitle.text}</Tag>}{p.effect && <Tag>画面效果：{p.effect}</Tag>}</Space>
                 <label htmlFor={`script-narration-${i}`}>实际旁白文稿（可手写，也可由 Agent 生成）</label>
                 <Input.TextArea id={`script-narration-${i}`} value={seg.narration} disabled={!canEdit || !canParse} rows={3} maxLength={2000}
                   onChange={e => editSegment(i, { narration: e.target.value })} />
@@ -388,7 +389,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
                   <Checkbox checked={seg.subtitles_enabled ?? subtitles} disabled={!canEdit || !canParse} onChange={e => editSegment(i, { subtitles_enabled: e.target.checked })}>本段自动字幕</Checkbox>
                   {(seg.tts_enabled ?? tts) && <Button disabled={dirty || busy || !navigate} onClick={() => navigate?.({ workspace: 'tts', scriptId, scriptVersion: loadedVersion, scriptSegment: i })}>到 TTS 专页调整第 {i + 1} 段</Button>}
                 </Space>
-                <Space wrap>{p.video && <Tag>强制视频：{p.video}</Tag>}{p.subtitle && <Tag>强制字幕：{p.subtitle.text}</Tag>}{p.effect && <Tag>画面效果：{p.effect}</Tag>}</Space>
+                <Space wrap>{p.video && <Tag>强制视频：{p.video}</Tag>}{p.shot_card && <Tag>镜头卡：{p.shot_card}</Tag>}{p.subtitle && <Tag>强制字幕：{p.subtitle.text}</Tag>}{p.effect && <Tag>画面效果：{p.effect}</Tag>}</Space>
                 <label htmlFor={`script-narration-${i}`}>实际旁白文稿（可手写，也可由 Agent 生成）</label>
                 <Input.TextArea id={`script-narration-${i}`} value={seg.narration} disabled={!canEdit || !canParse} rows={3} maxLength={2000}
                   onChange={e => editSegment(i, { narration: e.target.value })} />

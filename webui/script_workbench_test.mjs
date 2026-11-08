@@ -26,6 +26,18 @@ test('shared directive definitions drive code completion and caption highlightin
  assert.equal(scriptTokens('{透明度, 到:101%}',true)[0].kind,'invalid');
 });
 
+test('shot card completions insert a stable ID or explicit variant without changing media references',async()=>{
+ const {inspectCodeScript}=await import('./src/scriptGrammar.ts');
+ const source='{#chart-live-moves/axis-rescale-shock}{@截图}显示坐标缩放';
+ assert.equal(filterSnippets('#chart-live-moves/axis')[0].text,'{#chart-live-moves/axis-rescale-shock}');
+ assert.equal(completionContext(source,12).kind,'snippet');
+ assert.equal(scriptTokens(source).filter(token=>token.kind==='directive').length,2);
+ assert.equal(scriptTokens('{#chart-live-moves/unknown}')[0].kind,'invalid');
+ const parsed=inspectCodeScript(source,{at:0,duration:120},{num:30,den:1});
+ assert.equal(parsed.issues.length,0);
+ assert.equal(parsed.instructions[0].mode,'generate');
+});
+
 test('code description retains authored layout and rebases only sequence time arguments',async()=>{
  const {codeDescription,rebaseCodeDescription}=await import('./src/codeClips.ts');
  const text='保留两行\n\n{移动, 时间:条内1s, x:20px, y:0px}\n{字幕, 文本:"时间:00:00:01", 时间:序列00:00:11:00, 持续:1s}';

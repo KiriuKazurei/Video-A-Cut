@@ -189,7 +189,7 @@ func registerSkillTools(server *mcp.Server, svc *service.Service) {
 		v, e := svc.UpdateSkillRun(ctx, mcpSkillActor(ctx), a.RunID, "cancel", a.Version)
 		return nil, v, e
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Use skill_runs.update to confirm a pending plan or resume your own run."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview/shot; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Use skill_runs.update to confirm a pending plan or resume your own run."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
 		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
 			return nil, nil, e
 		}

@@ -314,6 +314,11 @@ func (s *Service) ExportScriptWorkbench(ctx context.Context, actor, id string, v
 	if err != nil {
 		return store.ScriptDelivery{}, err
 	}
+	for _, paragraph := range w.Document.Paragraphs {
+		if paragraph.ShotCard != "" {
+			return store.ScriptDelivery{}, fmt.Errorf("第 %d 段使用镜头卡 %q，请用 Agent 绘制并通过时间线交付: %w", paragraph.Index+1, paragraph.ShotCard, model.ErrArgument)
+		}
+	}
 	if err = s.requireVisibleConfirmation(ctx, s.st, w.Script.AssetID); err != nil {
 		return store.ScriptDelivery{}, err
 	}

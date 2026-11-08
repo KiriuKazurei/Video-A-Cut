@@ -303,11 +303,18 @@ func ParseCodeDescription(text string, c Clip, rate Rate) (Effects, string, erro
 		}
 	}
 	cursor := 0
+	hasShot := false
 	var body strings.Builder
 	for _, block := range blocks {
 		body.WriteString(text[cursor:block.Start])
 		cursor = block.End
-		if block.Name == "@" {
+		if block.Name == "#" {
+			if hasShot {
+				return fx, "", ScriptError(text, block.Start, "每个代码条只能引用一张镜头卡")
+			}
+			hasShot = true
+		}
+		if block.Name == "@" || block.Name == "#" {
 			body.WriteString(text[block.Start:block.End])
 			continue
 		}

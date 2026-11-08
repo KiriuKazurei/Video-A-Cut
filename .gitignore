@@ -57,6 +57,10 @@ Thumbs.db
 !/docs/development/依赖与模型部署向导.md
 !/docs/development/AI画面修改.md
 !/docs/development/当前问题清单与修复指导.md
+!/docs/development/Agent视频创作与内置素材库.md
+!/docs/user-guide/
+/docs/user-guide/*
+!/docs/user-guide/脚本语法教程.md
 !/docs/后续模块交接/
 /docs/后续模块交接/*
 !/docs/后续模块交接/v1/

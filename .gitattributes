@@ -5,3 +5,7 @@ control-plane/internal/deliveryvariant/specs/*.json text eol=lf
 # Golden comparisons use exact JSON bytes on Windows and Unix.
 control-plane/internal/api/testdata/*.golden.json text eol=lf
 control-plane/internal/autoreview/testdata/*.golden.json text eol=lf
+# Keep the imported Shotcraft originals byte-for-byte as distributed upstream.
+control-plane/internal/shotcraft/upstream/** -text
+control-plane/internal/shotcraft/catalog.json text eol=lf
+control-plane/internal/shotcraft/compiled.json text eol=lf

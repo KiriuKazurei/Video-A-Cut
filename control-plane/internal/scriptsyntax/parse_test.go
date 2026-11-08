@@ -2,6 +2,22 @@ package scriptsyntax
 
 import "testing"
 
+func TestShotCardReferenceKeepsMediaBindingAndNaturalText(t *testing.T) {
+	doc := Parse(`{#deck-deal-flyin}{@首页截图.png}用三张卡片介绍主要功能。`)
+	if len(doc.Diagnostics) != 0 || len(doc.Paragraphs) != 1 {
+		t.Fatalf("shot card rejected: %+v", doc)
+	}
+	p := doc.Paragraphs[0]
+	if p.ShotCard != "deck-deal-flyin" || p.Instruction != "用三张卡片介绍主要功能。" || len(p.References) != 1 || p.References[0] != "首页截图.png" {
+		t.Fatalf("shot card interfered with the authored paragraph: %+v", p)
+	}
+	for _, text := range []string{`{#}`, `{#../example}`, `{#deck-deal-flyin}{#spotlight-hero-card}`} {
+		if doc := Parse(text); len(doc.Diagnostics) == 0 {
+			t.Fatalf("accepted invalid shot selection %s", text)
+		}
+	}
+}
+
 func TestNamedTimedSubtitlesKeepParagraphAndLiteralText(t *testing.T) {
 	doc := Parse("介绍流程{字幕, 文本:\"第一句，{原样}\", 时间:条内1s, 持续:2s, 字号:24px}{字幕, 文本:\"第二句\", 时间:条内3s, 持续:1s}")
 	if len(doc.Diagnostics) != 0 || len(doc.Paragraphs) != 1 || doc.Paragraphs[0].Instruction != "介绍流程" {

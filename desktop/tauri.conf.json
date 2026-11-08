@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Video Auto Cut",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "identifier": "io.kiriukazurei.video-auto-cut",
   "build": {
     "frontendDist": "../webui/dist",
@@ -45,6 +45,8 @@
       "../workers/node/timeline-cli/node_modules/": "runtime/workers/node/timeline-cli/node_modules/",
       "../contracts/": "runtime/contracts/",
       "../skills/vac-script-syntax/": "runtime/skills/vac-script-syntax/",
+      "../control-plane/internal/shotcraft/upstream/LICENSE": "runtime/licenses/video-shotcraft/LICENSE",
+      "../control-plane/internal/shotcraft/ATTRIBUTION.md": "runtime/licenses/video-shotcraft/ATTRIBUTION.md",
       "../scripts/runtime_state.py": "runtime/scripts/runtime_state.py",
       "../configs/phase6/profile.builtin.example.json": "runtime/default-profile.json",
       "../workers/python/vac_worker/*.py": "runtime/workers/python/vac_worker/",

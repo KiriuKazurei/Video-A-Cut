@@ -2,7 +2,7 @@
   "id": "vac-draw-pipeline",
   "name": "绘制管线",
   "description": "Project-scoped controlled drawing tools, live frame preview and editable source import. No arbitrary shell.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "source": "builtin",
   "runtime": "harness",
   "compatible_flows": [
@@ -21,6 +21,7 @@
     "draw.import",
     "draw.capabilities",
     "draw.preview",
+    "draw.shot",
     "timeline.read",
     "timeline.edit",
     "references.resolve",
