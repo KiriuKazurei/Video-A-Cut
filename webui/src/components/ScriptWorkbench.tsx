@@ -224,7 +224,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
     <Flex vertical gap={dock ? 8 : 12}>
       {!dock && <Typography.Text type="secondary">先写下创作要求并保存。Agent 可读取脚本，按要求完成编辑；空行分段，花括号可引用素材、字幕或画面效果。</Typography.Text>}
       {dock && <Typography.Text type="secondary" style={{fontSize:12}}>空行分段。{'{@标记}'} 引用素材或时间线，{'{#镜头卡}'} 选择动效模板。</Typography.Text>}
-      {paragraphs.some(p=>p.shot_card) && <Alert type="info" message="这份脚本使用动效镜头卡。请交给绘制 Agent，生成可编辑代码条后从时间线交付。" />}
+      {paragraphs.some(p=>p.shot_card) && <Alert type="info" message="这份脚本使用动效镜头卡。交给外部 Agent 后，它会将指定镜头生成可编辑代码条，再与其他素材一起编排。" />}
       {scriptId && projectWorkspace.session?.document?.scripts.some(script => script.id === scriptId && script.bindings.some(binding => binding.unresolved)) && <Alert type="warning" message="脚本有待关联素材，可继续编辑。使用相关素材生成或渲染前请完成关联。" action={<Button onClick={() => void projectWorkspace.rebindScript(scriptId).catch(reason => setFailure(errorText(reason)))}>关联素材</Button>} />}
       {list.isError && <Alert type="error" message={errorText(list.error)} />}
       {!list.isPending && !list.data?.length && <Button type="primary" loading={busy} onClick={() => invoke(async () => {
@@ -306,7 +306,7 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
           </Space>
           </div><aside className="script-compose-actions" aria-label="脚本生成与Agent交接">
           <ScriptAgentHandoff task={scriptAgentHandoff({ projectId, scriptId, version: loadedVersion, title, body, dirty })} prepareTask={prepareAgentTask} navigate={navigate} active={active} />
-          <Collapse size="small" items={[{key:"model",label:"使用内部模型生成文稿",children:(
+          <Collapse size="small" items={[{key:"model",label:"使用内部模型生成文稿（兼容）",children:(
           <Card size="small" title="发送给内部模型">
             <Flex vertical gap={8}>
               <Select aria-label="脚本生成预设" disabled={busy} value={profile?.profile_id} placeholder="选择已配置模型的预设" onChange={value => { setProfileId(value); setConsent(''); }} options={usableProfiles.map(item => ({ value: item.profile_id, label: `${item.name} · v${item.revision} · ${item.narration.model || '已配置模型'}` }))} />

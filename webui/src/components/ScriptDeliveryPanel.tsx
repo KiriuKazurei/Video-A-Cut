@@ -39,7 +39,7 @@ export function ScriptDeliveryPanel({ scriptId, assetId, active = true }: { scri
       {!id && !scripts.isPending && <Empty description="当前资产还没有脚本，请先在脚本工作台创建并保存。" />}
       {w && <>
         <Space wrap><Typography.Text>{w.script.title || w.script.script_id} · 修订 {w.version}</Typography.Text><Tag>{ready ? '交付有效' : '已保存'}</Tag></Space>
-        {!complete && <Alert type="info" showIcon message="补齐分段文稿与素材后可直接生成，也可交给 Agent 按脚本编辑。" />}
+        {!complete && <Alert type="info" showIcon message="此处交付已编排的段落。需要根据创作要求选材和剪辑时，请在脚本工作台交给外部 Agent。" />}
         <Button type="primary" loading={render.isPending} disabled={!complete || !active} onClick={() => render.mutate({ id: id!, version: w.version, sha: w.script.visible_set_sha })}>{ready ? '重新生成当前修订成片' : '生成成片与 Premiere 包'}</Button>
       </>}
       {preview && info && <>

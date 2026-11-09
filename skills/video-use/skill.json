@@ -1,8 +1,8 @@
 {
   "id": "video-use",
   "name": "Video Use",
-  "description": "VAC route-2 draw entry and lightweight edit adapter. Draw tools are not wired.",
-  "version": "0.1.0-vac.7",
+  "description": "Transcript-led editing, optionally mixed with code and Shotcraft shots.",
+  "version": "0.1.0-vac.8",
   "source": "builtin",
   "runtime": "harness",
   "compatible_flows": [
@@ -19,6 +19,8 @@
     "summaries.get",
     "summaries.submit",
     "scripts.propose",
+    "scripts.voice",
+    "run.steps",
     "renders.create",
     "renders.inspect",
     "renders.review",
@@ -34,8 +36,9 @@
     "draw.render",
     "draw.get_frame",
     "draw.import",
-    "scripts.voice",
-    "run.steps"
+    "draw.capabilities",
+    "draw.preview",
+    "draw.shot"
   ],
   "permissions": [
     "project_media",

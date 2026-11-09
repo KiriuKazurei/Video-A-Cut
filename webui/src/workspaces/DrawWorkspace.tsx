@@ -34,7 +34,7 @@ export function DrawWorkspace({route,navigate}:Props){
  const serverHistory=useQuery({queryKey:['draw-history',session?.id,id,selected?.id,selected?.revision],queryFn:()=>drawApi.history(id,selected!.id),enabled:active&&!!selected?.id});
  const [draft,setDraft]=useState<DrawComposition>(),[nodeID,setNodeID]=useState(''),[head,setHead]=useState(0),[playing,setPlaying]=useState(false);
  const [busy,setBusy]=useState(''),[failure,setFailure]=useState(''),[notice,setNotice]=useState(''),[goal,setGoal]=useState(''),[previewOnly,setPreviewOnly]=useState(false),[sourceID,setSourceID]=useState(''),[tab,setTab]=useState('layers');
- const [execution,setExecution]=useState('auto'),[historyVersion,setHistoryVersion]=useState(0);
+ const [execution,setExecution]=useState('external'),[historyVersion,setHistoryVersion]=useState(0);
  const [outputFormat,setOutputFormat]=useState<DrawOutputFormat>('mp4');
  type ViewState={head:number;node:string;source:string;tab:string;preview_only:boolean;output_format:DrawOutputFormat};
  const viewState:ViewState={head,node:nodeID,source:sourceID,tab,preview_only:previewOnly,output_format:outputFormat};
@@ -139,7 +139,7 @@ export function DrawWorkspace({route,navigate}:Props){
  };
  const createRun=async()=>{
   const c=await persist(),visible=await skillApi.visibleSet(id),profile=profiles.data?.find(p=>p.content_mode==='configured'&&p.narration.endpoint);
-  const builtin=execution==='builtin'||execution==='auto'&&!!profile;
+  const builtin=execution==='builtin';
   if(builtin&&!profile)throw Error('请在设置中配置可用的 Agent 服务商，或使用外部 MCP Agent');
   const run=await skillApi.createRun({project_id:id,sequence_id:editor.sequenceId,flow:'custom',skill_id:'vac-draw-pipeline',strategy:'draw',execution_mode:builtin?'builtin_api':'external_mcp',visible_set_sha:visible.sha256,goal:(goal.trim()||'完善当前画面，保持现有素材和未选中图层。')+'\n构图 ID：'+c.id+'；用途：'+c.document?.preset+'；默认自动协同，按图层选用合适能力；只修改必要节点。',idempotency_key:crypto.randomUUID(),...(builtin&&profile?{profile_id:profile.profile_id,profile_revision:profile.revision}:{})});
   const current=await projectApi.workspace();if(current.id!==session?.id||current.document?.project.id!==id)return;
@@ -229,7 +229,7 @@ export function DrawWorkspace({route,navigate}:Props){
     <Collapse ghost items={[{key:'advanced',label:'高级 · 源码与实现策略',children:<Flex vertical gap={8}>
      <Select aria-label="视频导出格式" value={outputFormat} onChange={setOutputFormat} options={[{value:'mp4',label:'MP4 · 常规视频'},{value:'webm-alpha',label:'WebM · 透明背景'},{value:'prores4444',label:'ProRes 4444 · 透明背景'}]}/>
      <Typography.Text type="secondary">{document.explanation||'公共图层直接合成；HTML 动效与 React 组件按画面需要协作。'}</Typography.Text>
-     <Select aria-label="Agent 执行方式" value={execution} onChange={setExecution} options={[{value:'auto',label:'自动使用已配置 Agent'},{value:'builtin',label:'内置服务商 Agent'},{value:'external',label:'外部 MCP Agent'}]}/>
+     <Select aria-label="Agent 执行方式" value={execution} onChange={setExecution} options={[{value:'external',label:'外部 MCP Agent'},{value:'builtin',label:'内置服务商 Agent（兼容）'}]}/>
      <Space wrap><Button disabled={!canUse} onClick={()=>addSource('hyperframes')}>添加 HTML 画面</Button><Button disabled={!canUse} onClick={()=>addSource('remotion')}>添加 React 画面</Button><Button disabled={!canUse} onClick={()=>addSource('motion_canvas')}>添加 Motion Canvas 画面</Button></Space>
      <Select aria-label="源码对象" value={source?.id} options={document.sources.map(s=>({value:s.id,label:(s.name||s.id)+' · '+engineLabels[s.engine]}))} onChange={setSourceID}/>
      {source&&<><Typography.Text type="secondary">{source.reason||engineLabels[source.engine]}</Typography.Text><Select aria-label="强制指定源码引擎" disabled={!canUse} value={source.engine} options={[{value:'hyperframes',label:'HyperFrames · HTML / GSAP'},{value:'remotion',label:'Remotion · React'},{value:'motion_canvas',label:'Motion Canvas · TypeScript'}]} onChange={engine=>patchDocument(d=>({...d,sources:d.sources.map(s=>s.id===source.id?{...s,engine}:s)}))}/><Typography.Text type="secondary">指定后须提供对应语言的源码；检查失败会明确提示。</Typography.Text><Input.TextArea disabled={!canUse} className="draw-source-editor" rows={22} aria-label="构图源码" value={source.source} spellCheck={false} onChange={e=>patchDocument(d=>({...d,sources:d.sources.map(s=>s.id===source.id?{...s,source:e.target.value}:s)}))}/></>}

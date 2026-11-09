@@ -15,8 +15,15 @@ func TestDrawBuiltinsAreExecutableLocalStrategies(t *testing.T) {
 		byID[p.ID] = p
 	}
 	video := byID["video-use"]
-	if video.Version != "0.1.0-vac.7" || video.Runtime != "harness" || !slices.Contains(video.Tools, "draw.render") {
+	if video.Version != "0.1.0-vac.8" || video.Runtime != "harness" || !slices.Contains(video.Tools, "draw.render") {
 		t.Fatal("video-use cannot execute drawing")
+	}
+	for _, id := range []string{"video-use", "vac-visual-summary"} {
+		for _, tool := range []string{"draw.shot", "draw.import", "timeline.edit", "run.finish"} {
+			if !slices.Contains(byID[id].Tools, tool) {
+				t.Fatalf("%s cannot combine Shotcraft with source editing: missing %s", id, tool)
+			}
+		}
 	}
 	for _, id := range []string{"vac-draw-hyperframes", "vac-draw-remotion", "vac-draw-pipeline"} {
 		p := byID[id]
@@ -52,6 +59,28 @@ func TestDrawBuiltinsAreExecutableLocalStrategies(t *testing.T) {
 		assertNoShell(t, id, p.Content)
 	}
 	assertNoShell(t, "video-use", video.Content)
+}
+
+func TestOperatorSkillMatchesClientDistribution(t *testing.T) {
+	guide := operatorSkill()
+	if len(guide.Flows) != 0 || len(guide.Tools) != 0 || guide.Runtime != "instructions_only" {
+		t.Fatal("operator guide must not run as an execution package")
+	}
+	files := map[string]string{"SKILL.md": guide.Content}
+	for name, content := range guide.Resources {
+		files[name] = content
+	}
+	root := filepath.Join("..", "..", "..", "skills", guide.ID)
+	refs, err := os.ReadDir(filepath.Join(root, "references"))
+	if err != nil || len(refs) != len(guide.Resources) {
+		t.Fatalf("operator reference index differs from distribution: %v", err)
+	}
+	for name, content := range files {
+		raw, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil || strings.ReplaceAll(string(raw), "\r\n", "\n") != strings.ReplaceAll(content, "\r\n", "\n") {
+			t.Fatalf("embedded guide differs from %s: %v", name, err)
+		}
+	}
 }
 func assertNoShell(t *testing.T, id, content string) {
 	t.Helper()

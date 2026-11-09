@@ -18,7 +18,7 @@ export function ScriptAgentHandoff({ task, prepareTask, navigate, active = true 
   };
   return <Card size="small" title="交给外部 Agent">
     <Flex vertical gap={8}>
-      <Typography.Text type="secondary">复制前先保存脚本。将任务粘贴给已连接 VAC 的 Agent，它会读取已保存的脚本并按要求编辑时间线。</Typography.Text>
+      <Typography.Text type="secondary">复制前先保存脚本。将任务粘贴给已连接 VAC MCP 的 Agent，由它按创作要求和素材选择剪辑、绘制或混合路线。</Typography.Text>
       <Space wrap>
         {navigate && <Button onClick={() => navigate({ workspace: 'settings', settingsCategory: 'skills' })}>配置外部 Agent</Button>}
         <Button type="primary" disabled={!task.trim()} loading={busy} onClick={() => void copy()}>复制 Agent 任务</Button>

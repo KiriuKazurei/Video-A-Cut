@@ -54,7 +54,7 @@ func (s *Service) codeRunSources(r skill.Run) map[string]project.DrawComposition
 }
 
 // Schedule only missing descriptions. Code remains usable while the existing
-// Agent runtime queues/executes this scoped task. No separate model client.
+// Agent runtime queues this scoped task for the external Agent.
 func (s *Service) scheduleCodeDescriptions(projectID, sequenceID string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -86,15 +86,6 @@ func (s *Service) scheduleCodeDescriptions(projectID, sequenceID string) {
 		}
 		raw, _ := json.Marshal(descriptions)
 		request := skill.RunRequest{ProjectID: projectID, SequenceID: sequenceID, Flow: "custom", SkillID: "vac-draw-pipeline", Strategy: "draw", Mode: "external_mcp", VisibleSHA: visible.SHA, CodeTargets: targets, CodeAction: "describe", Goal: fmt.Sprintf("补齐以下代码条的自然语言画面描述：%s。先timeline.read及resources.read读取源码；每条单独使用timeline.edit提交code.script，mode=describe、clip_ids、code_revision和description。不得更改画面、参数或其他条。失败条保留，继续其他条，最后run.finish。", raw), IdempotencyKey: "code-describe:" + skillHash([]any{view.Session, targets})[:32]}
-		profiles, _ := s.ListProcessingProfiles(ctx, 100, 0)
-		for _, p := range profiles {
-			if p.ContentMode == "configured" && p.Narration.Endpoint != "" {
-				request.Mode = "builtin_api"
-				request.ProfileID = p.ProfileID
-				request.ProfileRevision = p.Revision
-				break
-			}
-		}
 		run, err := s.CreateSkillRun(ctx, "human:desktop", request)
 		if err != nil {
 			s.failCodeDescriptions(projectID, sequenceID, view.Session, targets)
@@ -121,9 +112,6 @@ func (s *Service) scheduleCodeDescriptions(projectID, sequenceID string) {
 			if err == nil {
 				break
 			}
-		}
-		if err == nil && request.Mode == "builtin_api" {
-			go func() { _, _ = s.RunBuiltinAgent(context.Background(), "human:desktop", run.ID, run.Version) }()
 		}
 		if err == nil {
 			s.scheduleCodeDescriptions(projectID, sequenceID)

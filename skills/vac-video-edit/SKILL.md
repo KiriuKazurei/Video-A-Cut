@@ -2,9 +2,9 @@
 name: vac-video-edit
 description: 使用 Video Auto Cut（VAC）的 MCP 工具完成素材剪辑、脚本编排、字幕配音、时间线编辑、程序化绘制和视频交付。用于操作 VAC 编辑视频及解释或编写 VAC 脚本；不用于开发 VAC 源码或操作其他剪辑软件。
 metadata:
-  version: "0.5.1"
+  version: "0.5.2"
   vac-supported: ">=0.5.1 <0.6.0"
-  vac-verified: "0.5.1"
+  vac-verified: "0.5.2"
 ---
 
 # VAC 视频编辑
@@ -13,24 +13,28 @@ metadata:
 
 ## 版本与连接
 
-本 Skill 版本 **0.5.1**，对应编写基线 VAC **0.5.1**；声明兼容范围 **>=0.5.1 <0.6.0**，已核对版本仅 **0.5.1**。范围内其他版本须通过工具与语法合同检查，不能仅凭版本号宣称兼容。兼容判断和何时升级见 [版本兼容](references/compatibility.md)。
+本 Skill 版本 **0.5.2**，对应编写基线 VAC **0.5.2**；声明兼容范围 **>=0.5.1 <0.6.0**，已核对 **0.5.1** 和 **0.5.2** 的相关合同。范围内其他版本须通过工具与语法合同检查，不能仅凭版本号宣称兼容。兼容判断和何时升级见 [版本兼容](references/compatibility.md)。
 
-使用 VAC 桌面连接面板提供的 MCP 地址与安装配置，不猜端口。连接后读取实时工具 schema、`skills.list/get` 和执行包的 `vac/tool-contracts.md`；服务端合同优先于本地速查。若当前会话没有 VAC MCP，说明缺少连接及所需入口，保留编辑方案；不把本 Skill 当作已经连接，也不直接读数据库或另起 FFmpeg 替代 VAC。
+使用 VAC 桌面连接面板提供的 MCP 地址与安装配置，不猜端口。VAC 0.5.2 初始化会提示用 `skills.get {id:"vac-video-edit"}` 获取本文。按返回的摘要用 `skills.read_resource` 读取参考，无需提前安装宿主 Skill。连接后读取实时工具 schema、`skills.list/get` 和执行包的 `vac/tool-contracts.md`；服务端合同优先于本地速查。若当前会话没有 VAC MCP，说明缺少连接及所需入口，保留编辑方案；不把本 Skill 当作已经连接，也不直接读数据库或另起 FFmpeg 替代 VAC。
 
-## 选择编辑路线
+## 根据脚本和素材选路
 
-| 目标 | 路线与必读资源 |
+自然语言脚本是创作要求。先读目标、可见素材和时间线，保留显式资源、镜头卡、字幕与时间约束，再为未指定的段落决定素材与剪法。外部 Agent 用 `execution_mode:external_mcp`，自行提交明确的 `flow`、`skill_id` 和 `strategy`。省略字段会沿用工程默认，`custom` 也只是流程标识。
+
+| 决定成片的依据 | 路线 |
 |---|---|
-| 读脚本、理解需求、查当前素材 | `resources.list/read`；写脚本前读 [语法](references/script-syntax.md) |
-| 按源素材与旁白生成成片 | 选当前可用 `video-use` / `vac-visual-summary`；读 [工具表](references/tools.md) 和 [编辑与交付](references/workflows.md) |
-| 移动、修剪、分割、多轨、音乐或效果 | 先读序列，再走 `timeline.edit`；读 [编辑与交付](references/workflows.md) |
-| 标题动画、图形、源码画面、无素材视频 | `strategy:draw`，优先当前 `vac-draw-pipeline`；读 [绘制与代码条](references/drawing.md) |
-| 只改已选代码条 | 仅参数修改走普通timeline.edit/code.script；重新生成源码才使用捕获的 `code_targets`；读 [绘制与代码条](references/drawing.md) |
+| 说了什么、在哪个词或停顿处切 | 轻量口播，`lightweight / video-use / edit`。先核对词级转录依赖与授权。 |
+| 画面何时发生关键变化 | 画面摘要，`visual_heavy / vac-visual-summary / edit`。定向抽帧验证，转录可按需使用。 |
+| 需要创造标题、图表、UI 动效等新画面 | 绘制，`custom / vac-draw-pipeline / draw`。允许无源视频，按镜头选择源码引擎或镜头卡。 |
+| 真实素材和生成画面共同叙事 | 用主素材对应的剪辑包取得证据，按段加入可编辑代码条，在同一序列完成。 |
+| 只调整现有时间线或选中的代码条 | 先读取目标实例，直接编辑；局部重新生成源码才捕获 `code_targets`。 |
+
+创建前读 [选路与交付](references/workflows.md) 和 [工具表](references/tools.md)。涉及源码读 [绘制与代码条](references/drawing.md)，写脚本读 [语法](references/script-syntax.md)。
 
 ## 每次任务的必要步骤
 
 1. `projects.list` 确认当前工程；读取所需脚本资源、序列、素材与稳定引用。用户交接的脚本以 `resources.read` 返回的已保存正文与修订为准。重名需明确候选，失效引用需重新绑定。
-2. 有交接 `run_id` 时优先读取/领取该任务；否则按当前执行包、媒体指纹与目标序列创建任务。选定策略后不因缺依赖静默切策略、换服务商或扩大素材范围。
+2. 有交接 `run_id` 时先读冻结范围与允许工具，匹配任务再领取；否则先选路，再按实时执行包、媒体指纹与目标序列创建任务。依赖缺失时按选路规则说明取舍，遵守任务预算与授权。
 3. 先检查素材帧/词级时间，再决定切点。工具结果必须支持旁白、镜头与字幕的判断；不要把“介绍机制”这类创作要求原样读成旁白。
 4. 写入使用返回的版本与稳定ID。每个新动作使用新幂等键；超时且结果未知时，先以原键和相同请求重放，不重复生成或插入。CAS冲突后重新读取、核对用户修改，再构造新请求。
 5. 按路线完成实际渲染与检查。普通成片需 inspect → 逐帧读取 → review → finish；结构化时间线使用当前序列修订/内容摘要 finish；局部代码任务可在目标写入成功后 finish。不能混用这三种完成条件。

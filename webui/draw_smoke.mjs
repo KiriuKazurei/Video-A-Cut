@@ -26,6 +26,7 @@ try{
  await page.route('**/api/workspace/state',route=>{workspace.document.workspace=route.request().postDataJSON().state;workspace.revision++;return route.fulfill({json:workspace});});
  await page.route('**/api/projects/'+pid+'/resources/image-ui/thumbnail**',route=>route.fulfill({body:imageBytes,contentType:'image/png'}));
  await page.route('**/api/projects/'+pid+'/visible-set',route=>route.fulfill({json:{sha256:'ui-visible',confirmed:true,assets:[]}}));
+ await page.route('**/api/processing-profiles?limit=50',route=>route.fulfill({json:[{profile_id:'configured',revision:1,content_mode:'configured',narration:{endpoint:'http://127.0.0.1/model'}}]}));
  await page.route('**/api/skill-runs',route=>{if(route.request().method()==='POST'){calls.push({agent:route.request().postDataJSON()});return route.fulfill({json:runRecord});}return route.fulfill({json:[]});});
  await page.route('**/api/skill-runs/run-draw',route=>route.fulfill({json:runRecord}));
  await page.route('**/api/projects/'+pid+'/draw-compositions**',async route=>{
@@ -78,7 +79,10 @@ try{
  const duration=await page.locator('.draw-selection').evaluate(e=>getComputedStyle(e).transitionDuration);assert(duration.split(',').every(d=>parseFloat(d)===0));checks.push('reduced motion retains immediate high-frequency edits');
  failPreview=true;await slider.focus();await slider.press('ArrowRight');await page.getByText('测试：构图版本已改变',{exact:false}).waitFor();assert(await page.getByAltText('当前构图合成帧').count());checks.push('stale/error frame is explicitly marked while last pixels remain visible');
  failPreview=false;await page.getByRole('textbox',{name:'Agent 绘制目标'}).fill('图片背景叠加界面演示与数据卡');await page.getByRole('button',{name:'交给 Agent 制作',exact:true}).click();
- await page.waitForTimeout(250);assert.equal(calls.find(c=>c.agent)?.agent.skill_id,'vac-draw-pipeline');checks.push('one goal uses the automatic pipeline');
+ await page.waitForTimeout(250);
+ const agentRequest=calls.find(c=>c.agent)?.agent;
+ assert.equal(agentRequest?.skill_id,'vac-draw-pipeline');assert.equal(agentRequest?.execution_mode,'external_mcp');
+ checks.push('drawing defaults to the external agent even with a configured model profile');
  await page.waitForFunction(()=>location.hash.includes('run=run-draw'));
  await page.waitForFunction(()=>document.querySelector('.draw-agent-status')?.textContent?.includes('等待 Agent 领取'));
  runRecord={...runRecord,version:2,owner:'agent:fixture',lease_until:new Date(Date.now()+120000).toISOString(),progress:{phase:'generating',output_chars:128,started_at:new Date().toISOString(),updated_at:new Date().toISOString()}};

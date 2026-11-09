@@ -206,6 +206,10 @@ test('Agent handoff preserves the current draft and identifies its project and b
   assert.match(task, /p1/); assert.match(task, /s1/); assert.match(task, /修订 4/);
   assert.match(task, /未保存/); assert.match(task, /第一段 \{@素材\}\n\n第二段🙂/);
   assert.match(task, /projects.list/); assert.match(task, /resources.read/); assert.match(task, /不等待逐步人工定稿/);
+  assert.match(task, /按说话内容找剪点用 video-use/);
+  assert.match(task, /按画面事件找剪点用 vac-visual-summary/);
+  assert.match(task, /以新画面为主用 vac-draw-pipeline/);
+  assert.match(task, /同一序列，按当前序列修订交付/);
 });
 
 test('script links open the standalone workspace and preserve the selected revision', () => {

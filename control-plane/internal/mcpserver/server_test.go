@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -60,9 +61,29 @@ func TestSDKProtocolNegotiationAndCalls(t *testing.T) {
 					if _, err = session.ListTools(t.Context(), nil); err != nil {
 						t.Fatal(err)
 					}
-					result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "skills.get", Arguments: map[string]any{"id": "video-use"}})
+					if !strings.Contains(session.InitializeResult().Instructions, "vac-video-edit") {
+						t.Fatal("MCP initialization did not advertise the VAC operator Skill")
+					}
+					catalog, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "skills.list"})
+					if err != nil || catalog.IsError || !strings.Contains(fmt.Sprint(catalog.StructuredContent), "vac-video-edit") {
+						t.Fatalf("operator Skill not discoverable: %v", err)
+					}
+					result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "skills.get", Arguments: map[string]any{"id": "vac-video-edit"}})
 					if err != nil || result.IsError {
 						t.Fatalf("tools/call: %+v %v", result, err)
+					}
+					raw, err := json.Marshal(result.StructuredContent)
+					var guide struct {
+						Version string `json:"version"`
+						SHA     string `json:"content_sha256"`
+						Content string `json:"content"`
+					}
+					if err != nil || json.Unmarshal(raw, &guide) != nil || guide.Version != desktop.Version || !strings.Contains(guide.Content, "vac-visual-summary") {
+						t.Fatalf("unexpected VAC guide: %s", raw)
+					}
+					ref, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "skills.read_resource", Arguments: map[string]any{"id": "vac-video-edit", "content_sha256": guide.SHA, "resource": "references/workflows.md"}})
+					if err != nil || ref.IsError || !strings.Contains(fmt.Sprint(ref.StructuredContent), "混合素材剪辑与源码镜头") {
+						t.Fatalf("workflow resource: %+v %v", ref, err)
 					}
 				})
 			}

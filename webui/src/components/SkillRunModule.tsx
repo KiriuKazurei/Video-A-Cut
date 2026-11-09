@@ -31,7 +31,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
   const runId = workspace.runId;
   const [flow, setFlow] = useState<SkillFlow>('lightweight');
   const [skillId, setSkillId] = useState('');
-  const [mode, setMode] = useState<SkillExecutionMode>('builtin_api');
+  const [mode, setMode] = useState<SkillExecutionMode>('external_mcp');
   const [goal, setGoal] = useState('');
   const [steps, setSteps] = useState<number | null>(null);
   const [seconds, setSeconds] = useState<number | null>(null);
@@ -255,7 +255,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
     {notice && <Alert type="info" showIcon message={notice} />}
     {project.data && <Card size="small" title="启动 Skill 运行">
       <Flex vertical gap={12}>
-        <Typography.Text type="secondary">流程 A 以口播为主，流程 B 以画面摘要为主，不强制转录。内置模式调用 execute；外部模式由 Agent 领取。</Typography.Text>
+        <Typography.Text type="secondary">这里用于指定流程并建立任务。需要 Agent 根据脚本和素材选路时，从脚本工作台交接给外部 Agent。</Typography.Text>
         <Flex gap={8} wrap align="flex-end">
           <Form.Item label="素材流程" layout="vertical" style={{ marginBottom: 0, minWidth: 220 }}>
             <ValueSelect<SkillFlow> aria-label="素材流程" value={flow} onChange={setFlow} options={(['lightweight', 'visual_heavy', 'custom'] as const).map((item) => ({ value: item, label: FLOW_LABEL[item] }))} />
@@ -263,12 +263,15 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
         </Flex>
         <Flex gap={8} wrap align="flex-end">
           <Form.Item label="Skill" layout="vertical" style={{ marginBottom: 0, minWidth: 240, flex: 1 }}>
-            <ValueSelect<string> aria-label="运行 Skill" value={skillId} onChange={(value) => { setSkillId(value); const pack = skills.data?.find((item) => item.id === value); if (pack && !pack.execution_modes.includes(mode)) setMode(pack.execution_modes[0]); }}
+            <ValueSelect<string> aria-label="运行 Skill" value={skillId} onChange={setSkillId}
               options={[{ value: '', label: '选择 Skill' }, ...compatible.map((item) => ({ value: item.id, label: `${item.name} · ${item.version}` }))]} />
           </Form.Item>
           <Form.Item label="Agent 模式" layout="vertical" style={{ marginBottom: 0, minWidth: 200 }}>
             <ValueSelect<SkillExecutionMode> aria-label="Agent 模式" value={mode} onChange={setMode}
-              options={(selectedSkill?.execution_modes ?? ['builtin_api', 'external_mcp']).map((item) => ({ value: item, label: item === 'builtin_api' ? '内置 API Agent' : '外部 MCP Agent' }))} />
+              options={(['external_mcp', 'builtin_api'] as const).map((item) => ({
+                value: item, label: item === 'builtin_api' ? '内置 API Agent（兼容）' : '外部 MCP Agent',
+                disabled: Boolean(selectedSkill && !selectedSkill.execution_modes.includes(item)),
+              }))} />
           </Form.Item>
         </Flex>
         <Input.TextArea aria-label="运行目标" rows={3} value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="这次运行要完成的目标" />
@@ -280,7 +283,7 @@ export function SkillRunModule({ navigate, active = true }: { navigate: (state: 
         <Form.Item label="处理预设" style={{ marginBottom: 0 }}><ValueSelect<string> aria-label="运行处理预设" value={profileId} onChange={setProfileId} options={[{ value: '', label: '未指定' }, ...(profiles.data ?? []).map(item => ({ value: item.profile_id, label: `${item.name} · v${item.revision}` }))]} /></Form.Item>
         <Typography.Text type="secondary">资源来自当前工程，服务商调用使用设置中的统一配置。</Typography.Text>
         <Space wrap>
-          <Button type="primary" disabled={!skillId || !goal.trim() || !visible.data?.confirmed} loading={action.isPending} onClick={create}>创建运行</Button>
+          <Button type="primary" disabled={!selectedSkill?.execution_modes.includes(mode) || !goal.trim() || !visible.data?.confirmed} loading={action.isPending} onClick={create}>创建运行</Button>
           {isDrawEntrySkill(skillId) && <Button onClick={() => navigate(drawRoute({ project: projectId, engine: engineForSkill(skillId), focus: 'canvas', slot: 'slot-title' }))}>打开绘制</Button>}
         </Space>
       </Flex>

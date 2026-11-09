@@ -80,6 +80,7 @@ try {
  assert.equal(await page.getByRole('img',{name:'当前帧预览',exact:true}).count(),0);assert.deepEqual(errors,[]);ok('completed movie replaces the still after its target frame is ready');
  // Exercise code clips through the same editor/workbench fixture, without a model call.
  const workspace=await (await page.request.get(base+'/api/workspace')).json(),codeRuns=[],created=[];
+ await page.route('**/api/processing-profiles?limit=50',route=>route.fulfill({json:[{profile_id:'configured',revision:1,content_mode:'configured',narration:{endpoint:'http://127.0.0.1/model'}}]}));
  const prototype=structuredClone(view.sequence.tracks[0].clips[0]);
  const makeCode=(id,name,at)=>({...prototype,id,name,at,duration:60,link_id:undefined,source_out:{value:96000,scale:48000},code:{description:'原画面',generated_description:'原画面',revision:1,content_version:id+'-source',description_state:'ready'}});
  view.sequence.tracks.push({id:'code-track',kind:'code',name:'代码画面',height:96,locked:false,hidden:false,muted:false,solo:false,gain_db:0,clips:[makeCode('code-late','后画面',90),makeCode('code-first','先画面',0)]});
@@ -139,7 +140,7 @@ try {
  assert.equal(created.length,0,'editing description must not start generation');
  await page.getByRole('button',{name:'重新生成画面',exact:true}).click();
  await page.waitForFunction(()=>document.body.innerText.includes('等待外部Agent处理'));
- assert.equal(created.length,1);assert.deepEqual(Object.keys(created[0].code_targets),['code-first']);assert.equal(created[0].code_action,'regenerate');
+ assert.equal(created.length,1);assert.deepEqual(Object.keys(created[0].code_targets),['code-first']);assert.equal(created[0].code_action,'regenerate');assert.equal(created[0].execution_mode,'external_mcp');
  assert.equal(second&&await second.inputValue(),'原画面\n{音量, 时间:00:00:03:00, 增益:0dB}');
  assert.deepEqual(errors,[]);ok('autosave preserves other scripts and generation captures only changed code clips');
  await page.route('**/resources/review-resource/content*',route=>route.fulfill({path:fileURLToPath(new URL('../workers/node/timeline-cli/fixtures/media/clip_01.mp4',import.meta.url)),contentType:'video/mp4'}));

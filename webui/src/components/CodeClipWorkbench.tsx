@@ -38,7 +38,7 @@ function CodeScriptField({label,value,disabled,clip,rate,onChange,onSeek}:{label
 type Draft={text:string;base:string;revision:number;at:number};
 export function CodeClipWorkbench({active,navigate}:{active:boolean;navigate:(route:Partial<RouteState>)=>void}){
  const p=useProjectWorkspace(),e=useSequenceEditor(),client=useQueryClient(),sequence=e.view?.sequence;
- const [drafts,setDrafts]=useState<Record<string,Draft>>({}),[busy,setBusy]=useState(false),[failure,setFailure]=useState(''),[execution,setExecution]=useState<'auto'|'builtin'|'external'>('auto');
+ const [drafts,setDrafts]=useState<Record<string,Draft>>({}),[busy,setBusy]=useState(false),[failure,setFailure]=useState(''),[execution,setExecution]=useState<'builtin'|'external'>('external');
  const draftRef=useRef(drafts);draftRef.current=drafts;
  const failedDraft=useRef('');
  const saveFlight=useRef<Promise<void>|null>(null),[autoSaving,setAutoSaving]=useState(false),identity=`${p.session?.id}:${e.sequenceId}`,current=useRef(identity);current.current=identity;
@@ -84,7 +84,7 @@ export function CodeClipWorkbench({active,navigate}:{active:boolean;navigate:(ro
  const task=(clips:TimelineClip[],action:'describe'|'regenerate')=>JSON.stringify({action,sequence_id:e.sequenceId,targets:clips.map(c=>({clip_id:c.id,code_version:c.code?.content_version,code_revision:c.code?.revision,run_id:c.code?.run_id,description:c.code?.description,resource_id:c.resource_id}))},null,2)+'\n先调用timeline.read读取最新序列和目标源码。只允许修改以上代码条。'+(action==='describe'?'根据源码补写自然语言画面描述；使用timeline.edit，每次只提交一个code.script操作，mode=describe、description、code_revision及clip_ids。不得改变画面或参数。':'按原时间顺序分别生成，每条通过timeline.edit提交一个code.replace操作：clip_ids、code_version、code_segments:[{composition:完整DrawComposition,description:自然语言画面描述}]。每段必须独立可执行；参数动画不拆条。允许改变时长，由引擎执行轨组波纹。某条失败后继续其余条；不要调用draw.import或修改共享构图。')+'\n外部Agent先通过projects.list读取当前工程的排队任务，使用skill_runs.claim领取code_targets对应的运行；随后通过skill_runs.tool调用上述工具。完成后调用run.finish。';
  const launch=async(clips:TimelineClip[],action:'describe'|'regenerate',forceExternal=false)=>{
   if(!clips.length)return;
-  const owner=current.current,profile=profiles.data?.find(x=>x.content_mode==='configured'&&x.narration.endpoint),builtin=!forceExternal&&(execution==='builtin'||execution==='auto'&&!!profile);
+  const owner=current.current,profile=profiles.data?.find(x=>x.content_mode==='configured'&&x.narration.endpoint),builtin=!forceExternal&&execution==='builtin';
   if(builtin&&!profile)throw Error('请先配置内部Agent服务商，或选择外部MCP Agent');
   const visible=await skillApi.visibleSet(e.projectId);
   const targets=Object.fromEntries(clips.map(c=>[c.id,c.code!.content_version!])),existing=(await skillApi.runs(e.projectId)).find(r=>r.code_action===action&&r.execution_mode===(builtin?'builtin_api':'external_mcp')&&['queued','running'].includes(r.state)&&Object.keys(r.code_targets??{}).length===clips.length&&clips.every(c=>r.code_targets?.[c.id]===targets[c.id]));
@@ -102,7 +102,7 @@ export function CodeClipWorkbench({active,navigate}:{active:boolean;navigate:(ro
    <Typography.Title level={4}>代码条脚本</Typography.Title>
    <Typography.Text type="secondary">参数与字幕保存后直接应用；画面描述修改后点击重新生成。时间可写“条内1s”或“序列00:00:10:00”；省略时间表示本条起点。Ctrl+Space 打开补全，↑↓选择，Tab或Enter接受。</Typography.Text>
    {failure&&<Alert type="error" message={failure} closable onClose={()=>setFailure('')}/>}
-   <Space wrap><Select aria-label="代码条Agent执行方式" value={execution} onChange={setExecution} options={[{value:'auto',label:'自动选择Agent'},{value:'builtin',label:'内部Agent'},{value:'external',label:'外部MCP Agent'}]}/><Button loading={busy} disabled={!dirty||e.pending} onClick={()=>perform(save)}>保存脚本与参数</Button><Button type="primary" loading={busy} disabled={!selected.length||e.pending} onClick={()=>perform(regenerate)}>重新生成画面</Button></Space>
+   <Space wrap><Select aria-label="代码条Agent执行方式" value={execution} onChange={setExecution} options={[{value:'external',label:'外部 MCP Agent'},{value:'builtin',label:'内置 Agent（兼容）'}]}/><Button loading={busy} disabled={!dirty||e.pending} onClick={()=>perform(save)}>保存脚本与参数</Button><Button type="primary" loading={busy} disabled={!selected.length||e.pending} onClick={()=>perform(regenerate)}>重新生成画面</Button></Space>
    {selected.map(({clip,track},i)=>{
     const value=drafts[clip.id]?.text??codeDescription(clip,sequence!.fps),run=runs.data?.find(r=>r.id===clip.code?.run_id),working=run&&['queued','running'].includes(run.state);
     return <Card key={clip.id} size="small" className="code-script-card" style={{borderColor:colors[clip.id]}} title={`${i+1} · ${clip.name}`} extra={<Button size="small" onClick={()=>e.setHead(clip.at)}>定位</Button>}>

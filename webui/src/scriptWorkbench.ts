@@ -101,8 +101,9 @@ export function initialScriptSegment(p: ScriptParagraph, media: ScriptMedia[]): 
 export function scriptAgentHandoff(input: { projectId: string; scriptId: string; resourceId?:string; version: number; title: string; body: string; dirty: boolean }): string {
   return `请通过 VAC MCP 协助处理以下脚本。先调用 projects.list 核对当前工程为 ${input.projectId}，再通过 skills.list 读取可用能力。工程不匹配时停止并提示我切换工程。
 脚本 ID：${input.scriptId}；基准修订 ${input.version}；${input.dirty ? '以下包含未保存的当前草稿，以此为准' : '以下为已保存脚本'}。
-调用 resources.list 查找脚本 ID 对应的资源，再用 resources.read 读取${input.resourceId?`资源 ${input.resourceId}`:'该脚本资源'}，核对脚本 ID 与修订；若有更新，以最新已保存修订为准。遵照脚本要求检查可见素材和引用，保留特殊语法，使用可用 Skill 自主完成时间线编辑、配音和导出；不等待逐步人工定稿。成片直接在编辑页面查看。
-遇到 {#镜头卡} 时使用绘制管线的 draw.shot 读取该卡和可运行源码，按正文适配素材与文案。素材与标记仍使用 {@名称}。
+调用 resources.list 查找脚本 ID 对应的资源，再用 resources.read 读取${input.resourceId?`资源 ${input.resourceId}`:'该脚本资源'}，核对脚本 ID 与修订；若有更新，以最新已保存修订为准。把正文当作创作要求，保留显式素材、标记、字幕和时间约束。
+用 skills.get 读取 vac-video-edit 及相关参考。如果服务端没有该说明包，使用客户端已安装的同名 Skill 或按以下规则选路。查看可见素材与目标序列后再创建 external_mcp 任务。按说话内容找剪点用 video-use，按画面事件找剪点用 vac-visual-summary，以新画面为主用 vac-draw-pipeline。根据实际能力显式选择流程和执行包，可按段混用。
+遇到 {#镜头卡} 时用支持 draw.shot 的执行包读取该卡。混合素材与绘制时，将真实素材和可编辑代码条编排到同一序列，按当前序列修订交付。检查成片与实际工具结果，不等待逐步人工定稿。成片直接在编辑页面查看。
 标题：${input.title}
 脚本正文：
 ${input.body}`;

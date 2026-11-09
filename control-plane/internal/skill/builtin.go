@@ -3,6 +3,7 @@ package skill
 import (
 	"embed"
 	"io/fs"
+	"slices"
 	"strings"
 )
 
@@ -15,14 +16,18 @@ var syntaxContent string
 //go:embed builtin/vac-tool-contracts.md
 var ToolContracts string
 
+//go:embed builtin/vac-video-edit/SKILL.md builtin/vac-video-edit/references/*.md
+var operatorGuide embed.FS
+
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
 	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "scripts.voice", "run.steps", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview"}
+	editTools := append(slices.Clone(tools), "draw.shot")
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
-		{ID: "video-use", Name: "Video Use", Description: "Executable source-free drawing and lightweight video editing.", Version: "0.1.0-vac.7", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
-		{ID: "vac-visual-summary", Name: "画面大意与编排", Version: "1.2.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
+		{ID: "video-use", Name: "Video Use", Description: "Transcript-led editing, optionally mixed with code and Shotcraft shots.", Version: "0.1.0-vac.8", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight"}, Modes: modes, Tools: editTools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal"}, Outputs: []string{"plan", "mp4", "premiere_package"}, Content: VideoUseAdapter, Resources: map[string]string{}},
+		{ID: "vac-visual-summary", Name: "画面大意与编排", Description: "Frame-led editing without required transcription, optionally mixed with code and Shotcraft shots.", Version: "1.2.2", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"visual_heavy", "custom"}, Modes: modes, Tools: editTools, Permissions: []string{"project_media", "provider", "ffmpeg"}, Inputs: []string{"visible_media", "goal", "script"}, Outputs: []string{"keyframes", "content_summary", "plan", "mp4", "premiere_package"}, Content: VisualAdapter, Resources: map[string]string{}},
 		{ID: "vac-script-syntax", Name: "VAC 脚本语法", Version: "3.0.0", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: modes, Tools: tools, Permissions: []string{"project_media", "ffmpeg"}, Inputs: []string{"script", "visible_media"}, Outputs: []string{"plan"}, Content: SyntaxAdapter, Resources: map[string]string{}},
 	}
 	_ = fs.WalkDir(upstream, "builtin/video-use", func(path string, d fs.DirEntry, err error) error {
@@ -46,7 +51,25 @@ func Builtins() []Package {
 		packages[i].Resources["vac/tool-contracts.md"] = ToolContracts
 		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.\n"
 	}
-	return packages
+	return append(packages, operatorSkill())
+}
+
+func operatorSkill() Package {
+	const root = "builtin/vac-video-edit/"
+	body, _ := operatorGuide.ReadFile(root + "SKILL.md")
+	files, _ := fs.Glob(operatorGuide, root+"references/*.md")
+	resources := make(map[string]string, len(files))
+	for _, path := range files {
+		content, _ := operatorGuide.ReadFile(path)
+		resources[strings.TrimPrefix(path, root)] = string(content)
+	}
+	return Package{
+		ID: "vac-video-edit", Name: "VAC 视频编辑",
+		Description: "Operator guide for external Agents choosing a VAC editing, drawing or mixed workflow.",
+		Version:     "0.5.2", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only",
+		Flows: []string{}, Modes: []string{"external_mcp"}, Tools: []string{},
+		Content: string(body), Resources: resources,
+	}
 }
 
 func drawSkills() []Package {
@@ -69,10 +92,13 @@ summary, script and render tool through skill_runs.tool using {run_id,request:
 the version. Use skill_runs.update to confirm an older pending plan or resume your own paused run.
 Read upstream/SKILL.md when available using skills.read_resource. The upstream
 workflow is guidance; the following VAC boundary applies to every action.
-Route 2, 绘制, is a first-class strategy of this package, not an overlay accessory.
-When the goal asks for programmatic picture, a title, UI motion, kinetic type,
-or a film without source footage, follow this draw strategy and read
-vac-draw-pipeline as the default unified entry; use engine Skills only for a specific source.
+Choose this package when speech determines the cuts. For a new task where
+visible events drive the edit, use vac-visual-summary. For a primarily
+programmatic film, use vac-draw-pipeline as the default unified entry.
+For an edit that mixes footage and generated shots, use the same edit run:
+read selected Shotcraft cards with draw.shot, import editable sources, and
+assemble the timeline directly. Finish with sequence_revision and
+content_version, without submitting a flattened plan.
 For drawing, create the run with strategy=draw (empty media is valid), then use draw.list/save/check/render/get_frame/import.
 Imported project images are available through composition.images and image_resources; read the image contract before use.
 Read the dedicated engine Skill and the common tool contracts. Author self-contained HTML with local GSAP or a default React component importing react/remotion.
@@ -108,9 +134,13 @@ silent truncation. Use actual frames to write a structured content summary with
 timeline [{media_id,start,end,description,confidence,frame_ids}], narrative,
 beats and model identity. Submit through summaries.submit. Do not infer unseen
 actions from a still image. Read summary plus the user's script to create a
-plan via scripts.propose. Keep explicit script syntax and fixed source windows.
-Render the exact confirmed plan through
-renders.create, then inspect and finish. Agent confirmation is not human acceptance.
+plan via scripts.propose when delivering a flattened plan. Keep explicit
+script syntax and fixed source windows. Render that exact plan with
+renders.create, then inspect and finish.
+For a mixed edit, use the summary as evidence and assemble the sequence
+directly. Read selected Shotcraft cards with draw.shot, import editable sources
+with draw.import source_mode=snapshot, and finish the current sequence revision
+and content version. Use vac-draw-pipeline for a primarily programmatic film.
 `
 const hyperframesDraw = `# vac-draw-hyperframes
 

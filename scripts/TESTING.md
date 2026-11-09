@@ -4,11 +4,11 @@
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前0.5.1。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前0.5.2。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。`webui` 现在调用完整 `npm run test:unit`，同时执行样式检查；旧基础子集退出受管默认入口。保留 `pipeline` 作为有明确范围的定向入口。
 
-当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，当前基线`75d0a25`加 Shotcraft 编译和目录，应用 `0.5.1`。本地`checkpoint/0.4.0-before-script-syntax`保留原基线。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
+当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，当前基线`75d0a25`加 Shotcraft 编译和目录，应用 `0.5.2`。本地`checkpoint/0.4.0-before-script-syntax`保留原基线。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
 
 自定义检查使用稳定 `-TestName`，例如 `go-core`、`go-code-service`、`browser-editor`、`doc-contracts`。日志写入 `artifacts/custom/<TestName>/output.log`，summary按 `custom/<TestName>` 分开保存；不同检查互不覆盖，也不把无关检查的通过记成先前失败已修复。不按日期或每次重跑新建StorageRoot；同一检查重复使用同一名称。未命名旧custom结果保留溯源，不作为全套结论。
 
@@ -110,6 +110,21 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 `webui/run-local-smokes.mjs` 服务生产构建，`review_shortcuts_smoke.mjs` 当前22组覆盖统一编辑器、播放接管、多选代码条、参数工作台及局部生成。写请求只记录到本机夹具，不当成真实Go编辑或模型验证。已不挂载的quickstart卡片检查退出默认入口，原源码保留溯源；不把旧CR03计数当当前结果。生产构建写入VAC_TEST_OUTPUT/ui-dist，浏览器运行前令VAC_DIST指向它，再从webui目录通过命名custom执行 `node run-local-smokes.mjs review_shortcuts_smoke.mjs`。
 
 本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
+
+## 0.5.2 MCP 操作指南与源码版本（2026-11-09 VERSION052）
+
+受管 `code-track-go/0.5.2/artifacts/custom/version052-mcp` 通过 Skill 嵌入副本核对、MCP 和服务定向回归。桌面本地与授权 Worker 各验证四个协议版本，覆盖初始化指引、`skills.list`、`skills.get` 和按摘要读取工作流参考；混合素材真实 MP4 和 AVP 重开复验通过。0.5.1 首次连接缺少指引的红灯结论随版本轮换归档。
+
+受管 `code-ui/0.5.2/artifacts` 下前端 147 项、样式、类型、生产构建及 196 项 HTTP、17 项 IPC、171 项模型、30 项 SSE 和 698 个文档链接检查通过。本机 Codex Skill 七个文件与仓库 SHA-256 一致。真实模型和新版安装包未验。
+
+## 2026-11-09 外部 Agent 选路（EXTERNAL-AGENT-ROUTING）
+
+基线 `77c46d4` 加本轮工作树改动。复用现有 Skill、MCP、Go 服务、WebUI 与 Chrome 套件。受管输出沿用 `code-track-go/0.5.1/artifacts/custom` 与 `code-ui/0.5.1/artifacts`。
+
+- Go 先复现剪辑包缺少 `draw.shot`，再通过 Skill、MCP、代码条服务定向回归。真实外部 MCP 协议用例在同一视觉摘要任务中读取镜头卡、预览源码帧、将动效作为代码条与实际录屏一起入轨，导出 `sequence-program.mp4` 后保存并重开 AVP。基础视频检查通过，音频检查跳过，人工观感未验。
+- WebUI 147 项、样式、类型和生产构建通过。现有脚本、绘制和编辑器 Chrome 分别通过 15、12、23 组。绘制及代码条用例在存在内置模型配置时检查实际请求仍为 `external_mcp`。首轮受管类型检查用裸 `npm` 启动失败，改用已安装的 TypeScript 入口通过。首轮绘制浏览器缺受管图片夹具，最终由现有真实帧用例生成后复验通过。
+- 196 项 HTTP、17 项桌面 IPC、171 项类型、30 项 SSE 和 27 份文档的 698 个链接通过。通用 Skill 校验器缺 PyYAML，改用静态检查核对操作 Skill 的头部、版本和六个相对链接，以及 Video Use 清单、正文与内嵌工具合同。仓库与本机 Codex Skill 的七个文件 SHA-256 一致。
+- 真实外部模型能否按不同输入稳定选路、成片创作质量和原生安装版尚未验收。MCP 测试由 SDK 按明确步骤驱动。
 
 ## 0.5.1 版本与本地提交（2026-11-08 VERSION051）
 
@@ -824,3 +839,18 @@ Go service定向55.133秒通过，覆盖当前帧/取消释放/共享原生Agent
 清理前确认相关进程退出，逐目标核验绝对路径、父链/子项无重解析点及所属Git无跟踪文件，使用PowerShell Remove-Item -LiteralPath。清理前后原根与整合工作树Git状态完全一致。保留全部工作树及未提交修改、当前code-track测试输出、development/accepted-projects/accepted-fixtures、正常开发依赖、固定样本和恢复副本、debug/release可执行程序及runtime、app/app-debug、release/bundle和updates正式包、签名及发布元数据。未知用途的小型历史目录未清理。
 
 同口径原根.run-data文件逻辑大小21509796820→8620418254字节，减少12889378566字节（12.00 GiB）；E盘可用空间35639836672→46505267200字节，实际增加10865430528字节（10.12 GiB）。文件逻辑大小跳过重解析点目标，硬链接/文件系统分配导致其与磁盘释放值不同。本次旧测试明细路径已失效，结论以版本简档与本文历史边界为准；code-track当前证据仍可用。下次构建会重新生成已清除缓存，本次未新增产品验证或质量验收结论。
+
+### 2026-11-08 VAC 0.5.1 生产发布与本机更新
+
+Windows x64 正式构建和签名通过。GitHub Release 438306562（v0.5.1，源提交 77c46d40407b2cd7d20f96f671dcad566203cfe5）已设为最新版。安装器、签名、latest.json 的 GitHub 附件 SHA-256 与本地产物一致，公开生产清单返回 0.5.1。
+
+复用 TestWorkspace custom/release-051-installed 和 verify-tauri-updater.mjs。实际安装版从 0.3.4 通过生产更新器下载 78,938,442 字节并通过验签，经原生安装确认后自动重启至 0.5.1。原生窗口可见，三个 worker 在线，数据目录相同，资源列表前后相同（本次列表为空），MCP 端点已写盘，再次检查返回 up_to_date，验证进程正常退出。磁盘上安装程序主可执行文件 ProductVersion 为 0.5.1。证据位于 .run-data/tests/code-ui/0.5.1/artifacts/custom/release-051-installed/updater-installed/results.json。
+
+
+### 2026-11-09 开发产物轮换与文档更新
+
+按标记清理原根 agent-ux-go 0.4.1、codex-skill-harness 0.2.3 和 timeline-audio-viz 0.3.2 的受管测试输出，保留或合并各自的简档。另清理整合工作树的 ASS 和 MP4 旧预览输出及 Shotcraft 临时下载与解压副本。删除前核对进程、目标路径、重解析点及 Git 跟踪状态。
+
+七个目标逻辑大小从 102,123,684 降至 0 字节，同一时段 E 盘可用空间增加 105,009,152 字节。现用的 code-track、code-track-go 和 code-ui 三组受管根保留 0.5.1。未标记的整合工作树 tests/0.4.1 只有少量 uv 缓存，按未知测试根规则留存。Git 工作树、当前交付、正式构建、业务数据和仓库内镜头卡源码保留。
+
+现有 custom/doc-contracts 和 custom/doc-links 通过。核对 196 个 HTTP 接口、17 个 IPC、171 个类型、30 个 SSE 事件及 27 份文档的 696 个链接。此轮改动仅涉及说明与旧产物清理。

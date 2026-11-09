@@ -270,7 +270,7 @@ func TestDrawRT(t *testing.T) {
 	}
 }
 
-func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.T) {
+func TestMixedEditMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.T) {
 	f := newLoopFixture(t, 3*time.Minute, Agent{ID: "unified", Role: "editor"})
 	ctx := t.Context()
 	root, e := filepath.Abs("../../..")
@@ -319,6 +319,11 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 		t.Fatal(e)
 	}
 	importedImage := view.Document.Resources[0]
+	view, e = f.svc.ImportProjectResource(ctx, pid, filepath.Join(root, "workers", "node", "timeline-cli", "fixtures", "media", "clip_01.mp4"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	footage := view.Document.Resources[len(view.Document.Resources)-1]
 	must := func(name string, args any) map[string]any {
 		t.Helper()
 		out, bad, raw := f.call("unified", name, args)
@@ -327,10 +332,10 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 		}
 		return out
 	}
-	pack := must("skills.get", map[string]any{"id": "vac-draw-pipeline"})
-	must("skills.read_resource", map[string]any{"id": "vac-draw-pipeline", "content_sha256": pack["content_sha256"], "resource": "vac/tool-contracts.md"})
+	pack := must("skills.get", map[string]any{"id": "vac-visual-summary"})
+	must("skills.read_resource", map[string]any{"id": "vac-visual-summary", "content_sha256": pack["content_sha256"], "resource": "vac/tool-contracts.md"})
 	visible := must("projects.visible_set.get", map[string]any{"id": pid})
-	run := must("skill_runs.create", map[string]any{"project_id": pid, "sequence_id": sequence, "flow": "custom", "skill_id": "vac-draw-pipeline", "strategy": "draw", "execution_mode": "external_mcp", "visible_set_sha": visible["sha256"], "goal": "Combine HTML and React in a single editable picture", "idempotency_key": "create"})
+	run := must("skill_runs.create", map[string]any{"project_id": pid, "sequence_id": sequence, "flow": "visual_heavy", "skill_id": "vac-visual-summary", "strategy": "edit", "execution_mode": "external_mcp", "visible_set_sha": visible["sha256"], "goal": "Combine footage and editable graphics in one sequence", "idempotency_key": "create"})
 	runID := run["id"].(string)
 	step := 0
 	tool := func(name string, args any) map[string]any {
@@ -426,6 +431,22 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	if after := preview(edited); before == after {
 		t.Fatal("code script did not change the actual preview pixels")
 	}
+	videoTrack := ""
+	for _, track := range edited.Sequence.Tracks {
+		if track.Kind == "video" {
+			videoTrack = track.ID
+			break
+		}
+	}
+	if videoTrack == "" {
+		t.Fatal("missing video track for the source footage")
+	}
+	out := project.Time{Value: 6, Scale: 30}
+	tool("timeline.edit", map[string]any{"sequence_id": sequence, "command": project.Command{Session: edited.Session, ExpectedRevision: edited.Sequence.Revision, IdempotencyKey: "insert-footage", Operations: []project.Operation{{Type: "clip.insert", TrackID: videoTrack, ResourceID: footage.ID, SourceOut: &out, At: target.At + target.Duration}}}})
+	edited, e = f.svc.Timeline(ctx, pid, sequence)
+	if e != nil {
+		t.Fatal(e)
+	}
 	finished := tool("run.finish", map[string]any{"sequence_revision": edited.Sequence.Revision, "content_version": edited.ContentVersion})
 	if run["state"] != "succeeded" || finished["human_acceptance"] != "not_checked" {
 		t.Fatalf("finish: %v %v", run, finished)
@@ -451,9 +472,10 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	if !foundShot {
 		t.Fatal("reopened AVP did not retain the attributed shot source snapshot and image binding")
 	}
-	foundScript := false
+	foundScript, foundFootage := false, false
 	for _, track := range reopened.Document.Sequences[0].Tracks {
 		for _, clip := range track.Clips {
+			foundFootage = foundFootage || track.Kind == "video" && clip.ResourceID == footage.ID && clip.At == target.At+target.Duration
 			if clip.ID == target.ID && clip.ResourceID == target.ResourceID && clip.Code != nil && clip.Code.Script != nil && *clip.Code.Script == authored && len(clip.Effects.ParameterKeyframes) == 2 {
 				foundScript = true
 			}
@@ -461,6 +483,9 @@ func TestUnifiedDrawMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.
 	}
 	if !foundScript {
 		t.Fatal("reopened AVP did not retain the authored shot and parameter script")
+	}
+	if !foundFootage {
+		t.Fatal("reopened AVP did not retain the source footage next to the editable shot")
 	}
 	if output := os.Getenv("VAC_TEST_OUTPUT"); output != "" {
 		raw, _ := json.MarshalIndent(map[string]any{"capabilities": capability, "preview": frame, "finish": finished, "run": run, "no_standalone_mp4": true}, "", "  ")

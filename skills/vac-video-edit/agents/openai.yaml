@@ -1,4 +1,4 @@
 interface:
   display_name: "VAC 视频编辑"
   short_description: "调用 VAC 工具剪辑视频、编写脚本、制作字幕配音与动画并检查交付"
-  default_prompt: "使用 $vac-video-edit，通过当前 VAC 工程的工具完成视频编辑，核对脚本语法并检查实际交付。"
+  default_prompt: "使用 $vac-video-edit，读取当前 VAC 工程的脚本与素材，选择合适的剪辑、绘制或混合路线并检查实际交付。"
