@@ -21,8 +21,8 @@
 .sequence-tabs .ant-tabs-nav { margin-bottom:0; }
 .editor-monitors { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
 .editor-monitors.is-source-open { grid-template-columns:minmax(180px,32%) minmax(0,1fr); }
-.source-monitor-badge { margin-inline-start:auto; max-width:180px; padding:0 8px; min-height:22px; border:1px solid var(--vac-hairline); border-radius:2px; background:var(--vac-control); color:var(--vac-text); font:inherit; font-size:12px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.source-monitor-badge:hover { border-color:var(--vac-accent); color:var(--vac-accent); }
+.source-monitor-badge.ant-btn { margin-inline-start:auto; max-width:180px; }
+.source-monitor-badge.ant-btn > span { overflow:hidden; text-overflow:ellipsis; }
 .editor-monitor-title .source-monitor-badge { flex-shrink:0; }
 .editor-monitor { min-width:0; display:flex; flex-direction:column; background:var(--vac-panel); border:1px solid var(--vac-hairline); border-radius:2px; overflow:hidden; }
 .editor-monitor-title { display:flex; align-items:center; gap:8px; padding:4px 8px; min-width:0; border-bottom:1px solid var(--vac-hairline); }

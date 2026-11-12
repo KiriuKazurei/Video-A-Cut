@@ -182,6 +182,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
   return (
     <div className="page-body">
       <Tabs
+        animated={false}
         activeKey={exportSection}
         onChange={(key) => navigate({ exportSection: key as typeof exportSection })}
         items={EXPORT_SECTIONS.map((section) => ({

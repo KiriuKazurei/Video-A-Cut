@@ -8,7 +8,7 @@ export function selectedCodeClips(sequence:TimelineSequence,ids:string[]){
   .sort((a,b)=>a.clip.at-b.clip.at||a.order-b.order||a.clip.id.localeCompare(b.clip.id));
 }
 export function codeClipColors(sequence:TimelineSequence){
- const palette=['--vac-accent','--vac-status-cyan','--vac-warning-text','--vac-success-text','--vac-clip-effect','--vac-danger-text'];
+ const palette=['--vac-accent','--vac-clip-effect'];
  const colors:Record<string,string>={};
  const ids=sequence.tracks.filter(t=>t.kind==='code').flatMap(t=>t.clips.map(c=>c.id)).sort();
  for(const id of ids){let hash=2166136261;for(const c of id)hash=Math.imul(hash^c.charCodeAt(0),16777619)>>>0;

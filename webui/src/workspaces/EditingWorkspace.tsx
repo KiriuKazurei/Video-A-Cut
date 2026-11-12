@@ -72,7 +72,7 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
  const outFrame=[...(s?.markers??[])].reverse().find(m=>m.kind==='out')?.frame;
  const hasRange=inFrame!==undefined&&outFrame!==undefined&&outFrame>inFrame;
  return <div className="unified-editor" data-panel="timeline" tabIndex={-1} aria-label="统一多轨编辑器">
-  <Tabs className="sequence-tabs" type="editable-card" size="small" activeKey={e.sequenceId} items={items} onChange={e.switchSequence} onEdit={(key,action)=>void e.manageSequence(action==='add'?'create':'delete',typeof key==='string'?key:undefined).catch(()=>{})}/>
+  <Tabs className="sequence-tabs" type="editable-card" size="small" animated={false} activeKey={e.sequenceId} items={items} onChange={e.switchSequence} onEdit={(key,action)=>void e.manageSequence(action==='add'?'create':'delete',typeof key==='string'?key:undefined).catch(()=>{})}/>
   {e.error&&<Alert type="error" showIcon message={e.error}/>}
   <div className={`editor-monitors${sourceOpen?' is-source-open':' is-primary-only'}`}>
    {sourceOpen?<SourceMonitor onCollapse={()=>setSourceOpen(false)} seekTo={sourceSeek} onSeeked={()=>setSourceSeek(null)}/>:null}
@@ -84,7 +84,7 @@ export function EditingWorkspace({route,navigate}:EditingWorkspaceProps) {
      {e.playbackPlan&&<Typography.Text type="secondary">{e.playbackPlan.mode==='direct'?(e.playbackReady&&e.program.current?.src.includes('?timeline_proxy=')?'素材代理':'素材直放'):e.playbackPlan.mode==='cached'?'缓存预览':'分段预览 · 代理画质'}</Typography.Text>}
      {!e.playbackPlan&&e.framePreviewDiagnostics&&<Typography.Text type="secondary" title={e.framePreviewDiagnostics.renderer||e.framePreviewDiagnostics.fallback_reason}>{e.framePreviewDiagnostics.backend==='cached-movie'?'缓存预览':e.framePreviewDiagnostics.backend==='webgl2'?(e.framePreviewDiagnostics.hardware_accelerated?'GPU 合成':'软件 WebGL'):'CPU 预览'}</Typography.Text>}
      {hasRange&&<Typography.Text type="secondary" className="program-inout-label">导出 {frameLabel(inFrame!,s!.fps)}–{frameLabel(outFrame!,s!.fps)}</Typography.Text>}
-     {!sourceOpen&&<button type="button" className="source-monitor-badge" onClick={()=>setSourceOpen(true)} title="打开源监视器" aria-label={`打开源监视器：${sourceLabel}`}>源 · {sourceLabel}</button>}
+     {!sourceOpen&&<Button size="small" className="source-monitor-badge" onClick={()=>setSourceOpen(true)} title="打开源监视器" aria-label={`打开源监视器：${sourceLabel}`}>源 · {sourceLabel}</Button>}
     </div>
     <div className="program-monitor-row">
      <div className="editor-monitor-screen">
