@@ -51,6 +51,10 @@ test('code colors survive inserting and removing other occurrences',async()=>{
  const {codeClipColors}=await import('./src/codeClips.ts');
  const sequence={tracks:[{kind:'code',clips:Array.from({length:30},(_,i)=>({id:`clip-${i}`}))}]};
  const before=codeClipColors(sequence);
+ for (const color of Object.values(before)) {
+  assert.match(color, /var\(--vac-(?:accent|clip-effect)\)/);
+  assert.doesNotMatch(color, /status-cyan|warning|success|danger/);
+ }
  sequence.tracks[0].clips.unshift({id:'clip-000'});
  const inserted=codeClipColors(sequence);
  for(const [id,color] of Object.entries(before))assert.equal(inserted[id],color,id);
