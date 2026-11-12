@@ -8,9 +8,14 @@ export interface DirectiveDefinition {name:string;label:string;contexts:string[]
 export const SCRIPT_DIRECTIVES=definition.directives as DirectiveDefinition[];
 export function directiveSpec(name:string){return SCRIPT_DIRECTIVES.find(x=>x.name===name);}
 
-export function shotCardCompletions(query:string){
+export interface ShotCompletionCard {
+ id:string;
+ summary:string;
+ styles:readonly {id:string;description:string}[];
+}
+export function shotCardCompletions(query:string,custom:readonly ShotCompletionCard[]=[]){
  const search=query.toLowerCase();
- const matches=shotcraft.flatMap(card=>{
+ const matches=[...custom,...shotcraft].flatMap(card=>{
   const options=[{id:card.id,summary:card.summary},...card.styles.filter(style=>card.styles.length>1).map(style=>({id:card.id+'/'+style.id,summary:style.description}))];
   return options.filter(option=>option.id.includes(search)||option.summary.toLowerCase().includes(search));
  });
@@ -28,7 +33,7 @@ export function readDirective(body:string,context:ScriptContext='code'){
  if(body.trim().startsWith('#')){
   const reference=body.trim().slice(1).trim();
   const [id,style,...extra]=reference.split('/');
-  const valid=!extra.length&&shotcraft.some(card=>card.id===id&&(style===undefined||card.styles.some(variant=>variant.id===style)));
+  const valid=/^user-[a-z0-9]+(?:-[a-z0-9]+)*(?:\/default)?$/.test(reference)&&id.length<=64||!extra.length&&shotcraft.some(card=>card.id===id&&(style===undefined||card.styles.some(variant=>variant.id===style)));
   return {name:'#',args:{镜头卡:reference},error:valid?'':`未知镜头卡或变体 ${reference}`};
  }
  const name=legacy?'字幕':head,spec=directiveSpec(name);
@@ -67,13 +72,13 @@ export function activeDirective(source:string,caret:number){
  return {start,quoted};
 }
 export function scriptBlockEnd(source:string,start:number){let quoted=false,escaped=false;for(let i=start+1;i<source.length;i++){const c=source[i];if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;}else if(c==='"')quoted=true;else if(c==='}')return i;}return -1;}
-export function directiveCompletions(source:string,caret:number,context:ScriptContext='code'){
+export function directiveCompletions(source:string,caret:number,context:ScriptContext='code',custom:readonly ShotCompletionCard[]=[]){
  // Only the current unfinished directive is completed. Strings are scanned
  // forward so a brace in subtitle text never changes the active directive.
  const {start,quoted}=activeDirective(source,caret);
  if(start<0||quoted)return [];
  const prefix=source.slice(start+1,caret),fields=directiveFields(prefix),end=scriptBlockEnd(source,start),stop=end<0?caret:end+1;
- if(prefix.startsWith('#'))return shotCardCompletions(prefix.slice(1).trim()).map(card=>({label:card.id+' · '+card.summary,start,end:stop,text:`{#${card.id}}`}));
+ if(prefix.startsWith('#'))return shotCardCompletions(prefix.slice(1).trim(),custom).map(card=>({label:card.id+' · '+card.summary,start,end:stop,text:`{#${card.id}}`}));
  if(fields.length===1){const query=fields[0].text.trim();return SCRIPT_DIRECTIVES.filter(x=>x.name!=='@'&&x.name!=='#'&&x.contexts.includes(context)&&x.name.startsWith(query)).map(x=>({label:x.name+' · '+x.label,start,end:stop,text:directiveTemplate(x.name)}));}
  const name=fields[0].text.trim(),spec=directiveSpec(name);if(!spec)return [];
  const last=fields.at(-1)!,query=last.text.trim(),used=new Set(fields.slice(1,-1).map(f=>f.text.split(':')[0].trim()));

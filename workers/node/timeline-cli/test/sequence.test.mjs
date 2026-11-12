@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sequenceGraph, selectedTracks, renderSequence, renderSequenceFrame, sequenceFileHash, waveform } from '../src/sequence.mjs';
-import { runTool } from '../src/media.mjs';
+import { probeMedia, runTool } from '../src/media.mjs';
 import { inspectBasicQuality, sequenceExpectations } from '../src/basic-quality.mjs';
 
 const effects = () => ({scale:1,x:0,y:0,crop_left:0,crop_right:0,crop_top:0,crop_bottom:0,fade_in:0,fade_out:0,transition:0,gain_db:0});
@@ -149,6 +149,23 @@ test('bounded preview segments preserve absolute effects, transitions, audio and
  for(const frame of [0,5,15]){const actual=await pixelStat(join(output,'program.mp4'),frame/30),expected=await pixelStat(join(reference,'program.mp4'),(frame+36)/30);for(const key of ['YAVG','UAVG','VAVG'])assert(Math.abs(actual[key]-expected[key])<12,`${frame} ${key}: ${actual[key]} vs ${expected[key]}`);}
  assert(await audioStat(join(output,'program.mp4'),'lavfi.astats.Overall.RMS_level',.05,.4)>-32);
  await assert.rejects(()=>renderSequence({sequence:s,resources,output_dir:join(root,'invalid-window'),window:{start:60,end:61},preview:true}),/范围|window/);
+});
+
+test('portrait segments limit the longest edge while keeping source timing and full export',{timeout:120000},async()=>{
+ const {root,resources}=await realFixture(),sequence={...seq(),width:1080,height:1920};
+ sequence.tracks=[{id:'v',kind:'video',clips:[clip('video')]},{id:'a',kind:'audio',clips:[clip('audio',2)]}];
+ const window={start:0,end:12},output=join(root,'portrait-segment');
+ const segment=await renderSequence({sequence,resources,output_dir:output,content_version:'portrait',window,preview:true});
+ const file=join(output,'program.mp4');
+ const {video}=await probeMedia(file);
+ assert.deepEqual([video.width,video.height,segment.frames],[540,960,12]);
+ assert.deepEqual(segment.fps,sequence.fps);
+ assert((await pixelStat(file,.1,262,472)).VAVG>200,'the centre contains the red source');
+ assert(await audioStat(file,'lavfi.astats.Overall.RMS_level',.05,.25)>-32);
+ const full=join(root,'portrait-export');
+ await renderSequence({sequence,resources,output_dir:full,content_version:'portrait-full'});
+ const exported=(await probeMedia(join(full,'program.mp4'))).video;
+ assert.deepEqual([exported.width,exported.height,exported.frames],[1080,1920,24]);
 });
 
 test('persistent preview reuses source frames across effect edits and recompiles only changed drawing source',{timeout:120000},async()=>{

@@ -3,6 +3,7 @@ import type { TextAreaRef } from 'antd/es/input/TextArea';
 import type { ReferenceCandidate, ScriptReference } from '../timelineContracts';
 import { candidateLabel, insertReference, rebaseReferences } from '../scriptReferences';
 import { completionContext, filterFonts, filterParams, filterSnippets, type CompletionQuery } from '../scriptAuthoring.ts';
+import {useShotCards} from '../shotcraftApi';
 import {directiveCompletions} from '../scriptGrammar';
 
 interface Choice {
@@ -28,13 +29,15 @@ export function ScriptCompletion({ editor, body, references, directory, fonts = 
 }) {
   const [range, setRange] = useState<CompletionQuery | null>(null), [active, setActive] = useState(0), composing = useRef(false);
   const id = useId(), popup = useRef<HTMLDivElement>(null), [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 180 });
+  const {data: shotCards} = useShotCards(Boolean(range?.query.startsWith('#')));
+  const customShots = shotCards?.filter(card => card.user);
   const matching = range?.kind === 'reference' ? directory.filter(c => candidateLabel(c).toLocaleLowerCase().includes(range.query.toLocaleLowerCase())) : [];
   const choices: Choice[] = !range ? [] : range.kind === 'reference'
     ? matching.slice(0, 80).map((c, i) => ({ key: `${c.target_id}:${c.clip_id ?? ''}:${i}`, label: candidateLabel(c), candidate: c }))
     : range.kind === 'registered'
-      ? directiveCompletions(body,range.start+1+range.query.length,'paragraph').map(item=>({key:item.label,label:item.label,text:item.text,replaceStart:item.start,replaceEnd:item.end}))
+      ? directiveCompletions(body,range.start+1+range.query.length,'paragraph',customShots).map(item=>({key:item.label,label:item.label,text:item.text,replaceStart:item.start,replaceEnd:item.end}))
     : range.kind === 'snippet'
-      ? filterSnippets(range.query).map(snippet => ({ key: snippet.key, label: snippet.label, text: snippet.text, selectStart: snippet.selectStart, selectEnd: snippet.selectEnd, openReference: snippet.openReference }))
+      ? filterSnippets(range.query, 'paragraph', customShots).map(snippet => ({ key: snippet.key, label: snippet.label, text: snippet.text, selectStart: snippet.selectStart, selectEnd: snippet.selectEnd, openReference: snippet.openReference }))
       : range.kind === 'font'
         ? filterFonts(fonts, range.query).map(font => ({ key: font, label: font, font }))
         : range.pendingQuote ? []

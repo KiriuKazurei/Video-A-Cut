@@ -32,6 +32,16 @@ await page.route('**/api/processing-profiles**',async route=>{
  Object.assign(profile,body.profile??body);
  return route.fulfill({json:profile});
 });
+let shotDirectory = '';
+await page.route('**/api/shotcraft/directory', route => {
+ const req = route.request();
+ if (req.method() === 'PUT') {
+  const { directory } = req.postDataJSON();
+  if (directory === 'invalid') return route.fulfill({ status: 400, json: { error: { code: 'invalid_argument', message: '无效的模板库目录' } } });
+  shotDirectory = directory;
+ }
+ return route.fulfill({ json: { directory: shotDirectory } });
+});
 await page.route('**/api/workspace/providers',route=>route.fulfill({json:{external_tts:false}}));
 await page.route('**/api/system/diagnostics',async route=>{
  diagnosticCalls++;await new Promise(resolve=>setTimeout(resolve,350));
@@ -55,6 +65,22 @@ try {
  await page.getByRole('textbox',{name:'预设名称',exact:true}).waitFor();
  assert.equal(await page.locator('.next-step-btn:visible').count(),0,'settings must not push an unrelated recording workflow');
  assert.equal(await page.getByRole('switch',{name:'允许云端配音'}).count(),0,'global provider policy belongs in providers');
+ await category('模板库').click();
+ const folder = page.getByRole('textbox', { name: '模板库目录', exact: true });
+ await folder.fill('invalid');
+ await button('保存目录').click();
+ await page.getByText('无效的模板库目录', { exact: false }).waitFor();
+ assert.equal(await folder.inputValue(), 'invalid');
+ const chosen = 'C:/VAC/Templates';
+ await folder.fill(chosen);
+ await button('保存目录').click();
+ await page.getByText('当前库：'+chosen, { exact: true }).waitFor();
+ await page.reload();
+ await page.getByText('当前库：'+chosen, { exact: true }).waitFor();
+ await button('恢复默认库').click();
+ await page.getByText('当前库：应用默认库', { exact: true }).waitFor();
+ assert.equal(shotDirectory, '');
+ check('Shotcraft directory settings preserve a rejected draft, reload the saved path and restore the default library');
  await category('Agent 与 Skill').click();
  await page.getByText('Agent MCP 连接',{exact:true}).waitFor();
  const agentPanel=page.getByRole('region',{name:'外部 Agent 状态',exact:true});

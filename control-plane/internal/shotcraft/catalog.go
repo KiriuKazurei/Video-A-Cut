@@ -1,9 +1,11 @@
-// Package shotcraft provides VAC's fixed, local Shotcraft catalog.
+// Package shotcraft provides VAC's built-in Shotcraft catalog and user template format.
 package shotcraft
 
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -19,6 +21,7 @@ type Variant struct {
 }
 
 type Card struct {
+	User     bool      `json:"user,omitempty"`
 	ID       string    `json:"id"`
 	Category string    `json:"category"`
 	Summary  string    `json:"summary"`
@@ -84,4 +87,31 @@ func Compiled(card Card, variant Variant) Template {
 func Read(path string) (string, error) {
 	body, err := files.ReadFile("upstream/" + path)
 	return string(body), err
+}
+
+var userID = regexp.MustCompile("^user-[a-z0-9]+(-[a-z0-9]+)*$")
+
+func ValidUserID(id string) bool {
+	return len(id) <= 64 && userID.MatchString(id)
+}
+
+// UserReference keeps an authored reference portable across installations.
+// Availability is checked when the template is looked up or instantiated.
+func UserReference(reference string) bool {
+	id, variant, explicit := strings.Cut(reference, "/")
+	return ValidUserID(id) && (!explicit || variant == "default")
+}
+
+type UserTemplate struct {
+	Version        int    `json:"version"`
+	ID             string `json:"id"`
+	Summary        string `json:"summary"`
+	Category       string `json:"category"`
+	DurationFrames int    `json:"duration_frames"`
+	Source         string `json:"source"`
+}
+
+func (u UserTemplate) Card() Card {
+	return Card{ID: u.ID, Summary: u.Summary, Category: u.Category, User: true, Duration: fmt.Sprintf("%.2f s", float64(u.DurationFrames)/30),
+		Styles: []Variant{{ID: "default", Description: u.Summary}}}
 }

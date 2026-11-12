@@ -2,9 +2,9 @@
 name: vac-video-edit
 description: 使用 Video Auto Cut（VAC）的 MCP 工具完成素材剪辑、脚本编排、字幕配音、时间线编辑、程序化绘制和视频交付。用于操作 VAC 编辑视频及解释或编写 VAC 脚本；不用于开发 VAC 源码或操作其他剪辑软件。
 metadata:
-  version: "0.5.2"
+  version: "0.5.3"
   vac-supported: ">=0.5.1 <0.6.0"
-  vac-verified: "0.5.2"
+  vac-verified: "0.5.3"
 ---
 
 # VAC 视频编辑
@@ -13,9 +13,9 @@ metadata:
 
 ## 版本与连接
 
-本 Skill 版本 **0.5.2**，对应编写基线 VAC **0.5.2**；声明兼容范围 **>=0.5.1 <0.6.0**，已核对 **0.5.1** 和 **0.5.2** 的相关合同。范围内其他版本须通过工具与语法合同检查，不能仅凭版本号宣称兼容。兼容判断和何时升级见 [版本兼容](references/compatibility.md)。
+本 Skill 版本 **0.5.3**，对应编写基线 VAC **0.5.3**；声明兼容范围 **>=0.5.1 <0.6.0**，已核对 **0.5.1** 至 **0.5.3** 的相关源码合同。范围内其他版本须通过工具与语法合同检查，不能仅凭版本号宣称兼容。兼容判断和何时升级见 [版本兼容](references/compatibility.md)。
 
-使用 VAC 桌面连接面板提供的 MCP 地址与安装配置，不猜端口。VAC 0.5.2 初始化会提示用 `skills.get {id:"vac-video-edit"}` 获取本文。按返回的摘要用 `skills.read_resource` 读取参考，无需提前安装宿主 Skill。连接后读取实时工具 schema、`skills.list/get` 和执行包的 `vac/tool-contracts.md`；服务端合同优先于本地速查。若当前会话没有 VAC MCP，说明缺少连接及所需入口，保留编辑方案；不把本 Skill 当作已经连接，也不直接读数据库或另起 FFmpeg 替代 VAC。
+使用 VAC 桌面连接面板提供的 MCP 地址与安装配置，不猜端口。VAC 0.5.3 初始化会提示用 `skills.get {id:"vac-video-edit"}` 获取本文。按返回的摘要用 `skills.read_resource` 读取参考，无需提前安装宿主 Skill。连接后读取实时工具 schema、`skills.list/get` 和执行包的 `vac/tool-contracts.md`；服务端合同优先于本地速查。若当前会话没有 VAC MCP，说明缺少连接及所需入口，保留编辑方案；不把本 Skill 当作已经连接，也不直接读数据库或另起 FFmpeg 替代 VAC。
 
 ## 根据脚本和素材选路
 

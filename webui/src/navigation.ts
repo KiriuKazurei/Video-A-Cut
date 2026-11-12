@@ -6,7 +6,7 @@ import { isDrawEngine, isDrawFocus, type DrawEngine, type DrawFocus } from './dr
  * 「绘制」是少开顶栏分页的显式例外，页内不再拆子顶栏。
  * 主工作区按操作流程排列；TTS 和设置不依赖素材处理流程。
  */
-export type WorkspaceId = 'resources' | 'editing' | 'script' | 'draw' | 'export' | 'settings' | 'tts';
+export type WorkspaceId = 'resources' | 'editing' | 'script' | 'draw' | 'templates' | 'export' | 'settings' | 'tts';
 
 /** Digit keys. 1–5 stay on the existing workspaces; 6 opens 绘制. */
 export const WORKSPACE_KEYS: Record<string, WorkspaceId> = {
@@ -32,7 +32,7 @@ export type ExportSection = 'delivery' | 'tasks';
 /**
  * 设置页分类：处理预设 / 服务商接入 / 运行准备 / 日志与诊断
  */
-export type SettingsCategory = 'profiles' | 'providers' | 'preparation' | 'skills' | 'logs' | 'status';
+export type SettingsCategory = 'profiles' | 'providers' | 'preparation' | 'skills' | 'templates' | 'logs' | 'status';
 
 export interface WorkspaceDef {
   id: WorkspaceId;
@@ -66,6 +66,7 @@ export const WORKSPACES: readonly WorkspaceDef[] = [
   { id: 'script', label: '脚本', english: 'Script', description: '保存脚本、发送模型并交给 Agent 编辑', apis: 'Script Workbench API' },
   { id: 'editing', label: '编辑', english: 'Editing', description: '多序列轨道编辑、脚本标记引用、Skill 与历史', apis: 'TL API · Script API · Skill API' },
   { id: 'draw', label: '绘制', english: 'Draw', description: '构图预览、构图时间轴、源码与 Inspector。不是工程多轨时间线', apis: 'Draw API · Skill API' },
+  { id: 'templates', label: '模板库', english: 'Templates', description: '浏览、预览和管理 Shotcraft 镜头卡', apis: 'Shotcraft Templates API' },
   { id: 'export', label: '导出', english: 'Export', description: '交付文件、任务监控', apis: 'API-28 · 30 · 39~41 · 43~49' },
   { id: 'tts', label: 'TTS', english: 'TTS', description: '文本试听、声音调控、模板版本与正式配音配置', apis: 'TTS API' },
   { id: 'settings', label: '设置', english: 'Settings', description: '处理预设、服务商、运行准备、日志诊断', apis: 'API-17~21 · 23~26 · 49~50' }
@@ -86,6 +87,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategoryDef[] = [
   { id: 'providers', label: '服务商接入', description: '配置画面识别、解说与转录，管理云端配音调用。' },
   { id: 'preparation', label: '运行准备', description: '选择已保存预设，检查素材与运行环境并开始生成。' },
   { id: 'skills', label: 'Agent 与 Skill', description: '连接外部 Agent，管理本地 Skill 包与依赖。' },
+  { id: 'templates', label: '模板库', description: '设置 Shotcraft 用户模板的保存目录。' },
   { id: 'logs', label: '日志与诊断', description: '查询审计日志、Agent 操作与人工注释。' },
   { id: 'status', label: '状态监控', description: '查看后台连接、本机导入与语音服务的运行状态。' }
 ];

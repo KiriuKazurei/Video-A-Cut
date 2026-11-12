@@ -8,7 +8,8 @@ import {useProjectWorkspace} from '../projectWorkspace';
 import {useSequenceEditor} from '../sequenceEditor';
 import {codeClipColors,codeDescription,rebaseCodeDescription,selectedCodeClips} from '../codeClips';
 import {frameLabel,type TimelineClip,type FrameRate} from '../timelineContracts';
-import {directiveCompletions,directiveTemplate,inspectCodeScript} from '../scriptGrammar';
+import {useShotCards} from '../shotcraftApi';
+import {activeDirective,directiveCompletions,directiveTemplate,inspectCodeScript} from '../scriptGrammar';
 import {scriptTokens} from '../scriptWorkbench';
 import {ScriptAgentHandoff} from './ScriptAgentHandoff';
 import {errorText} from './ui';
@@ -17,7 +18,9 @@ import type {RouteState} from '../navigation';
 function CodeScriptField({label,value,disabled,clip,rate,onChange,onSeek}:{label:string;value:string;disabled:boolean;clip:TimelineClip;rate:FrameRate;onChange:(value:string)=>void;onSeek:(frame:number)=>void}){
  const overlay=useRef<HTMLPreElement>(null),input=useRef<HTMLTextAreaElement|null>(null),tokens=useMemo(()=>scriptTokens(value,true),[value]);
  const [caret,setCaret]=useState(0),[open,setOpen]=useState(false),[choice,setChoice]=useState(0);
- const suggestions=useMemo(()=>open?directiveCompletions(value,caret):[],[value,caret,open]);
+ const {start}=activeDirective(value,caret);
+ const {data:shotCards}=useShotCards(open&&start>=0&&value[start+1]==='#');
+ const suggestions=useMemo(()=>open?directiveCompletions(value,caret,'code',shotCards?.filter(card=>card.user)):[],[value,caret,open,shotCards]);
  const inspection=useMemo(()=>inspectCodeScript(value,clip,rate),[value,clip.at,clip.duration,rate]);
  const insert=(item:(typeof suggestions)[number])=>{const next=value.slice(0,item.start)+item.text+value.slice(item.end),position=item.start+item.text.length-(item.text.endsWith('}')?1:0);onChange(next);setOpen(false);requestAnimationFrame(()=>{input.current?.focus();input.current?.setSelectionRange(position,position);setCaret(position);});};
  return <>

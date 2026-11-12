@@ -16,11 +16,13 @@ import (
 )
 
 type PlaybackClip struct {
-	ID         string  `json:"id"`
-	ResourceID string  `json:"resource_id"`
-	At         int64   `json:"at"`
-	Duration   int64   `json:"duration"`
-	SourceIn   float64 `json:"source_in"`
+	ID           string  `json:"id"`
+	ResourceID   string  `json:"resource_id"`
+	At           int64   `json:"at"`
+	Duration     int64   `json:"duration"`
+	SourceIn     float64 `json:"source_in"`
+	ProxyVersion string  `json:"proxy_version,omitempty"`
+	ProxyReady   bool    `json:"proxy_ready,omitempty"`
 }
 
 type SequencePlayback struct {
@@ -52,6 +54,8 @@ func (s *Service) SequencePlaybackPlan(ctx context.Context, projectID, sequenceI
 	if _, err = s.sequenceSources(ctx, projectID, view.Sequence); err != nil {
 		return plan, err
 	}
+	proxyVersions := map[string]string{}
+	proxyReady := map[string]bool{}
 	for _, track := range sequenceTracks(view.Sequence) {
 		for _, c := range track.Clips {
 			plan.Frames = max(plan.Frames, c.At+c.Duration)
@@ -69,6 +73,11 @@ func (s *Service) SequencePlaybackPlan(ctx context.Context, projectID, sequenceI
 			}
 			clip := PlaybackClip{ID: c.ID, ResourceID: c.ResourceID, At: c.At, Duration: c.Duration, SourceIn: project.Seconds(c.SourceIn)}
 			if track.Kind == "video" || track.Kind == "code" {
+				if _, known := proxyVersions[r.ID]; !known {
+					_, proxyVersions[r.ID] = timelineProxySource(r)
+					proxyReady[r.ID] = s.readyTimelineProxy(proxyVersions[r.ID]) != ""
+				}
+				clip.ProxyVersion, clip.ProxyReady = proxyVersions[r.ID], proxyReady[r.ID]
 				plan.Video = append(plan.Video, clip)
 			} else {
 				plan.Audio = append(plan.Audio, clip)
@@ -191,7 +200,11 @@ func segmentInputs(seq project.Sequence, sources []sequenceSource, start, end in
 			selected = append(selected, r)
 		}
 	}
-	key := skillHash(map[string]any{"state": state, "sources": selected, "start": start, "end": end, "renderer": "bounded-preview-v3-540p-source8-main31", "drawing_environment": drawingEnvironmentVersion()})
+	renderer := "bounded-preview-v3-540p-source8-main31"
+	if seq.Height > max(960, seq.Width) {
+		renderer = "bounded-preview-v4-long960-source8-main31"
+	}
+	key := skillHash(map[string]any{"state": state, "sources": selected, "start": start, "end": end, "renderer": renderer, "drawing_environment": drawingEnvironmentVersion()})
 	return key, selected
 }
 

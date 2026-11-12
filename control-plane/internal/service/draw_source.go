@@ -51,16 +51,11 @@ func (s *Service) DrawResourceThumbnail(ctx context.Context, projectID string, r
 	}
 	directory := s.drawDir(projectID, r.ID, c.ContentVersion+drawingEnvironmentVersion()+fmt.Sprint(frame))
 	path := filepath.Join(directory, "frame.png")
-	if _, e = os.Stat(path); e == nil {
-		return path, s.checkDrawingResourceSnapshot(ctx, projectID, r, c)
-	}
-	release, e := s.acquireScript("draw-thumbnail:" + directory)
-	if e != nil {
-		return "", e
-	}
-	defer release()
-	doc := c.UnifiedDocument()
-	_, e = s.scriptProcess(ctx, true, "draw-source-frame", map[string]any{"document": doc, "assets": assets, "output_dir": directory, "frame": frame, "scale": 160 / float64(c.Width)})
+	e = s.renderThumbnail(ctx, path, func() error {
+		doc := c.UnifiedDocument()
+		_, err := s.scriptProcess(ctx, true, "draw-source-frame", map[string]any{"document": doc, "assets": assets, "output_dir": directory, "frame": frame, "scale": 160 / float64(c.Width)})
+		return err
+	})
 	if e != nil {
 		return "", e
 	}

@@ -1,6 +1,6 @@
 import type { ReferenceCandidate, ScriptReference } from './timelineContracts';
 import { insertReference, rebaseReferences } from './scriptReferences.ts';
-import {SCRIPT_DIRECTIVES,directiveTemplate,activeDirective,scriptBlockEnd,shotCardCompletions,type ScriptContext} from './scriptGrammar.ts';
+import {SCRIPT_DIRECTIVES,directiveTemplate,activeDirective,scriptBlockEnd,shotCardCompletions,type ScriptContext,type ShotCompletionCard} from './scriptGrammar.ts';
 
 /** Editor helpers use the same registered directives as the Go parser. */
 export interface AuthoringInsert {
@@ -68,9 +68,9 @@ export function paragraphTemplate(kind: ParagraphTemplateKind): AuthoringInsert 
   return { text, selectStart: at, selectEnd: at, openReference: true };
 }
 
-export function filterSnippets(query: string,context:ScriptContext='paragraph'): SnippetChoice[] {
+export function filterSnippets(query: string,context:ScriptContext='paragraph',custom:readonly ShotCompletionCard[]=[]): SnippetChoice[] {
   const q = query.trim().toLocaleLowerCase();
-  if(q.startsWith('#'))return shotCardCompletions(q.slice(1)).map(card=>{
+  if(q.startsWith('#'))return shotCardCompletions(q.slice(1),custom).map(card=>{
     const text=`{#${card.id}}`;
     return {key:card.id,label:card.id+' · '+card.summary,text,prefixes:['#'],selectStart:text.length,selectEnd:text.length};
   });

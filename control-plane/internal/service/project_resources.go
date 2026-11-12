@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -433,21 +434,34 @@ func (s *Service) materializeResource(ctx context.Context, r project.Resource, p
 		video = append(video, map[string]any{"id": r.ID, "src": r.Source.OriginalPath, "in": 0, "out": r.Metadata["duration"], "start": 0})
 	}
 	edl := map[string]any{"version": 1, "timeline": map[string]any{"fps": 30, "sample_rate": 48000}, "video": video, "voice": []any{}, "music": []any{}, "narration": []any{}, "subtitle": []any{}}
-	if err = project.WriteAtomic(filepath.Join(dir, "edl.json"), edl); err != nil {
+	edlPath := filepath.Join(dir, "edl.json")
+	raw, err := json.MarshalIndent(edl, "", "  ")
+	if err != nil {
 		return err
 	}
-	rel, _ := filepath.Rel(s.deliveryRoot, filepath.Join(dir, "edl.json"))
+	raw = append(raw, '\n')
+	existing, err := os.ReadFile(edlPath)
+	if err != nil || !bytes.Equal(existing, raw) {
+		if err := project.WriteBytesAtomic(edlPath, raw); err != nil {
+			return err
+		}
+	}
+	rel, _ := filepath.Rel(s.deliveryRoot, edlPath)
+	artifact := filepath.ToSlash(rel)
 	a, err := s.st.GetAsset(ctx, r.AssetID)
 	if err != nil && !isNotFound(err) {
 		return err
 	}
 	if isNotFound(err) {
-		return s.st.CreateAsset(ctx, model.Asset{AssetID: r.AssetID, InputKind: model.InputKindEDLPackage, Status: model.AssetStatusIngested, AgentVisible: true, HumanApproved: true, AllowedAgents: []string{"recognizer", "narrator", "exporter", "ingester", "editor"}, Artifacts: map[string]string{"edl": filepath.ToSlash(rel)}})
+		return s.st.CreateAsset(ctx, model.Asset{AssetID: r.AssetID, InputKind: model.InputKindEDLPackage, Status: model.AssetStatusIngested, AgentVisible: true, HumanApproved: true, AllowedAgents: []string{"recognizer", "narrator", "exporter", "ingester", "editor"}, Artifacts: map[string]string{"edl": artifact}})
+	}
+	if a.Artifacts["edl"] == artifact {
+		return nil
 	}
 	if a.Artifacts == nil {
 		a.Artifacts = map[string]string{}
 	}
-	a.Artifacts["edl"] = filepath.ToSlash(rel)
+	a.Artifacts["edl"] = artifact
 	return s.st.UpdateAsset(ctx, a)
 }
 

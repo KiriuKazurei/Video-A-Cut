@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
-  ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined, 
+  ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   CompassOutlined, HighlightOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api, ingestApi } from './api';
@@ -34,12 +34,13 @@ import { EditingWorkspace } from './workspaces/EditingWorkspace';
 import { ExportWorkspace } from './workspaces/ExportWorkspace';
 import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 import { TtsWorkspace } from './workspaces/TtsWorkspace';
+import { ShotcraftWorkspace } from './workspaces/ShotcraftWorkspace';
 import { DrawWorkspace } from './workspaces/DrawWorkspace';
 import { ScriptWorkspace } from './workspaces/ScriptWorkspace';
 import { SkillWorkspaceProvider } from './skillWorkspace';
 import { protectedQueryRetry } from './skillView';
 
-const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
+const WORKSPACE_ICONS: Record<Exclude<WorkspaceId, 'templates'>, React.ReactNode> = {
   resources: <FolderOpenOutlined />,
   editing: <PlaySquareOutlined />,
   script: <FileTextOutlined />,
@@ -121,7 +122,7 @@ export default function App() {
     const next = workspaceState?.workspace;
     const hashWorkspace = window.location.hash.replace(/^#\/?/, '').split('?')[0]?.split('/')[0];
     // An explicit workspace link wins over the AVP's last active workspace.
-    if (!hashWorkspace) {
+    if (!hashWorkspace && projectWorkspace.session?.document) {
       navigate({ workspace: typeof next === 'string' && WORKSPACES.some(item => item.id === next) ? next as WorkspaceId : 'resources' });
     }
     if (typeof workspaceState?.left_width === 'number') setLeftWidth(Math.min(420, Math.max(200, workspaceState.left_width)));
@@ -287,7 +288,7 @@ export default function App() {
 
   // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
   const useSidebar = screens.xl;
-  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw' || workspace === 'script';
+  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw' || workspace === 'templates' || workspace === 'script';
   const showLeftSider = useSidebar && !independentWorkspace;
   const showRightSider = useSidebar && !independentWorkspace && workspace !== 'editing';
 
@@ -314,7 +315,7 @@ export default function App() {
       <a className="skip-link" href="#main">跳至主要内容</a>
       <ProjectMenuBar navigate={value => navigate({ workspace: value })} toggleLeft={() => setLeftCollapsed(v => !v)} toggleRight={() => setRightCollapsed(v => !v)} resetLayout={() => { resetLeftWidth(); resetRightWidth(); setLeftCollapsed(false); setRightCollapsed(false); }} refresh={() => { void projectWorkspace.refresh(); void refreshSnapshot(queryClient, watchedTaskId); }} shortcuts={() => setIsShortcutsHelpOpen(true)} tour={() => { navigate({ workspace: 'resources' }); setTourOpen(true); }} />
       {projectWorkspace.error && projectWorkspace.session?.document && <Alert type="error" showIcon message={projectWorkspace.error} />}
-      {!projectWorkspace.session?.document && workspace !== 'settings' ? <ProjectHome /> : <>
+      {!projectWorkspace.session?.document && workspace !== 'settings' && workspace !== 'templates' ? <ProjectHome onOpenTemplates={() => navigate({ workspace: 'templates' })} /> : <>
       
       <Layout.Header className="app-header">
         {/* 工作区导航：资源、编辑、导出、TTS（顶栏标志已移除，菜单在 ProjectMenuBar） */}
@@ -326,13 +327,13 @@ export default function App() {
             overflowedIndicatorPopupClassName="app-nav-popup"
             selectedKeys={[workspace]}
             onClick={({ key }) => navigate({ workspace: key as WorkspaceId })}
-            items={WORKSPACES.filter(w => w.id !== 'settings').map((item) => ({
+            items={WORKSPACES.flatMap(item => item.id === 'settings' || item.id === 'templates' ? [] : [{
               key: item.id, 
               icon: WORKSPACE_ICONS[item.id], 
               title: item.description,
-              disabled: !projectWorkspace.session?.document,
+              disabled: !projectWorkspace.session?.document && item.id !== 'resources',
               label: <span data-workspace={item.id} aria-current={workspace === item.id ? 'page' : undefined}>{item.label}</span>
-            }))} 
+            }])}
           />
         </div>
 
@@ -388,7 +389,7 @@ export default function App() {
         )}
         
         <Layout.Content id="main" className="stage-main" aria-label={`${current.label}工作区`}>
-          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'script' && workspace !== 'draw' && workspace !== 'settings' && <ContextBar
+          {workspace !== 'resources' && workspace!=='editing' && workspace !== 'script' && workspace !== 'draw' && workspace !== 'templates' && workspace !== 'settings' && <ContextBar
             route={route}
             assetId={workspace === 'tts' ? undefined : selected?.asset_id}
             next={pipeline.next}
@@ -405,6 +406,9 @@ export default function App() {
             ) : undefined}
           />}
 
+          <WorkspacePage pageId="templates" active={workspace === 'templates'}>
+            <ShotcraftWorkspace active={workspace === 'templates'} />
+          </WorkspacePage>
           <WorkspacePage pageId="draw" active={workspace === 'draw'}>
             <DrawWorkspace route={route} navigate={navigate} />
           </WorkspacePage>

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -549,4 +551,135 @@ func TestWrapJSONErrorsKeepsHandlerStatuses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestShotcraftLibraryHTTP(t *testing.T) {
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := t.TempDir()
+	if err := os.Mkdir(filepath.Join(data, "delivery"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(data, "library.db")
+	open := func() (*store.Store, *Server) {
+		t.Helper()
+		st, err := store.Open(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc := service.New(st)
+		if err := svc.ConfigureDeliveryRoot(filepath.Join(data, "delivery")); err != nil {
+			st.Close()
+			t.Fatal(err)
+		}
+		if err := svc.ConfigureTTS("python", filepath.Join(root, "workers", "python")); err != nil {
+			st.Close()
+			t.Fatal(err)
+		}
+		t.Cleanup(svc.CloseTTS)
+		t.Cleanup(func() { _ = st.Close() })
+		return st, New(svc)
+	}
+	st, srv := open()
+	call := func(method, path, body string, want int) string {
+		t.Helper()
+		req := localRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-VAC-Human-Token", "vac-human-test-credential-00000000000001")
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Fatalf("%s %s: got %d, want %d: %s", method, path, rec.Code, want, rec.Body)
+		}
+		return rec.Body.String()
+	}
+	const base = "/api/shotcraft/templates"
+	const payload = `{"version":1,"id":"user-title","summary":"Custom title","category":"opening","duration_frames":60,"source":"export default function Title(){ return <div>Custom title</div>; }"}`
+	call("POST", base, payload, 201)
+	call("POST", base, payload, 409)
+	if body := call("GET", base, "", 200); !strings.Contains(body, "user-title") || !strings.Contains(body, "row-embed") || strings.Contains(body, "export default") {
+		t.Fatalf("catalog must merge entries without exposing source: %s", body)
+	}
+	call("POST", base, strings.Replace(strings.Replace(payload, "user-title", "user-invalid", 1), "export default", "export", 1), 400)
+	call("GET", base+"/user-invalid", "", 404)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, srv = open()
+	if body := call("GET", base+"/user-title", "", 200); !strings.Contains(body, "export default") {
+		t.Fatalf("source did not survive reopening the database: %s", body)
+	}
+	const previewPath = base + "/user-title/preview?position=50"
+	firstPNG := call("GET", previewPath, "", 200)
+	frame, err := png.Decode(strings.NewReader(firstPNG))
+	if err != nil || frame.Bounds().Dx() != 480 || frame.Bounds().Dy() != 270 {
+		t.Fatalf("expected a 480x270 preview PNG, got %v", err)
+	}
+	cached, err := filepath.Glob(filepath.Join(data, "delivery", ".visual-cache", "shotcraft-v1", "*.png"))
+	if err != nil || len(cached) != 1 {
+		t.Fatalf("first preview should publish one cached PNG: %v %v", cached, err)
+	}
+	before, err := os.Stat(cached[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, srv = open()
+	if next := call("GET", previewPath, "", 200); next != firstPNG {
+		t.Fatal("reopened library did not return the same frame")
+	}
+	after, err := os.Stat(cached[0])
+	if err != nil || !after.ModTime().Equal(before.ModTime()) {
+		t.Fatal("reopened library rewrote the cached frame", err)
+	}
+	call("DELETE", base+"/user-title", "", 200)
+	call("GET", previewPath, "", 404)
+	call("GET", base+"/user-title", "", 404)
+	call("DELETE", base+"/row-embed", "", 403)
+	call("POST", base, payload, 201)
+
+	const settings = "/api/shotcraft/directory"
+	call("GET", settings, "", 200)
+	directory := t.TempDir()
+	value, _ := json.Marshal(map[string]string{"directory": directory})
+	call("PUT", settings, string(value), 200)
+	call("GET", base+"/user-title", "", 404)
+	disk := strings.ReplaceAll(payload, "user-title", "user-disk")
+	if err := os.WriteFile(filepath.Join(directory, "user-disk.json"), []byte(disk), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if body := call("GET", base, "", 200); !strings.Contains(body, "user-disk") || !strings.Contains(body, "row-embed") {
+		t.Fatalf("expected folder and built-in cards: %s", body)
+	}
+	call("GET", base+"/user-disk", "", 200)
+	if _, err := png.Decode(strings.NewReader(call("GET", base+"/user-disk/preview?position=50", "", 200))); err != nil {
+		t.Fatalf("directory template preview was not a valid PNG: %v", err)
+	}
+	updated := strings.ReplaceAll(payload, "Custom title", "Updated title")
+	call("POST", base, updated, 201)
+	if next := call("GET", previewPath, "", 200); next == firstPNG {
+		t.Fatal("same ID in a different library reused the old template pixels")
+	}
+	call("POST", base, updated, 409)
+	if body, err := os.ReadFile(filepath.Join(directory, "user-title.json")); err != nil || !strings.Contains(string(body), "Updated title") {
+		t.Fatalf("import did not write the selected folder: %s %v", body, err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, srv = open()
+	call("GET", base+"/user-disk", "", 200)
+	call("DELETE", base+"/user-disk", "", 200)
+	if _, err := os.Stat(filepath.Join(directory, "user-disk.json")); !os.IsNotExist(err) {
+		t.Fatalf("remove did not delete the directory entry: %v", err)
+	}
+	call("PUT", settings, `{"directory":"relative"}`, 400)
+	call("GET", base+"/user-title", "", 200)
+	call("DELETE", base+"/user-title", "", 200)
+	call("PUT", settings, `{"directory":""}`, 200)
+	call("GET", base+"/user-title", "", 200)
 }

@@ -16,14 +16,14 @@ const end = '<!-- END VAC GENERATED INTERFACES -->';
 const modelFiles = [
   'webui/src/externalAgentStatus.ts',
   'webui/src/systemContracts.ts',
-  'webui/src/projectContracts.ts', 'webui/src/skillContracts.ts', 'webui/src/drawContracts.ts',
+  'webui/src/projectContracts.ts', 'webui/src/skillContracts.ts', 'webui/src/drawContracts.ts', 'webui/src/shotcraftApi.ts',
   'webui/src/scriptWorkbench.ts', 'webui/src/types.ts', 'webui/src/preparation.ts',
   'webui/src/ttsContracts.ts', 'webui/src/ingest.ts', 'webui/src/autoRun.ts',
   'webui/src/previewContracts.ts', 'webui/src/deliveryVariantContracts.ts',
   'webui/src/desktop.ts', 'webui/src/api.ts',
   'webui/src/mcpConnection.ts', 'webui/src/timelineContracts.ts',
 ];
-const sdkFiles = ['webui/src/api.ts', 'webui/src/skillApi.ts', 'webui/src/projectApi.ts', 'webui/src/timelineApi.ts', 'webui/src/drawApi.ts', 'webui/src/systemContracts.ts', 'webui/src/externalAgentStatus.ts'];
+const sdkFiles = ['webui/src/api.ts', 'webui/src/skillApi.ts', 'webui/src/projectApi.ts', 'webui/src/timelineApi.ts', 'webui/src/drawApi.ts', 'webui/src/shotcraftApi.ts', 'webui/src/systemContracts.ts', 'webui/src/externalAgentStatus.ts'];
 const parsed = new Map();
 function source(file) {
   if (!parsed.has(file)) parsed.set(file, ts.createSourceFile(file,
@@ -121,7 +121,7 @@ for (const entry of inventory.endpoints) {
     '- 成功响应：' + cell(entry.success_response),
     '- 行为：' + cell(entry.behavior),
     '- 生命周期/接线：' + cell(entry.lifecycle || entry.frontend_status || 'registered') + '；' + cell(entry.frontend_ui));
-  const names = [...new Set(String(entry.frontend_function || '').match(/(?:api|skillApi|projectApi|timelineApi)\.[A-Za-z0-9_]+/g) || [])];
+  const names = [...new Set(String(entry.frontend_function || '').match(/(?:api|skillApi|projectApi|timelineApi|shotcraftApi)\.[A-Za-z0-9_]+/g) || [])];
   const definitions = names.map(name => sdk.get(name)).filter(Boolean);
   for (const definition of definitions) {
     output.push('- SDK：' + inline(definition.signature) + `；[源码](${ref(definition.file, definition.node)})`);

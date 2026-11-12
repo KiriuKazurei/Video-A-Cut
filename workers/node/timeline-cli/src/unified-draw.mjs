@@ -218,6 +218,14 @@ export async function prepareDrawFrameSource({document,assets=[],output_dir,from
 
 export async function renderDrawSourceFrame(input) {
   const host=await openUnifiedDraw(input);
-  try{const frame=await host.seek({frame:input.frame,scale:input.scale,request_id:'thumbnail'});await writeFile(join(input.output_dir,'frame.png'),frame.png);return {frame:input.frame,sha256:hash(frame.png)};}
-  finally{await host.close();}
+  const temporary=join(input.output_dir,'frame.png.partial');
+  try{
+    const frame=await host.seek({frame:input.frame,scale:input.scale,request_id:'thumbnail'});
+    await writeFile(temporary,frame.png);
+    await rename(temporary,join(input.output_dir,'frame.png'));
+    return {frame:input.frame,sha256:hash(frame.png)};
+  }finally{
+    await rm(temporary,{force:true}).catch(()=>{});
+    await host.close();
+  }
 }

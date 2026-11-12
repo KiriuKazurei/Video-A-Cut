@@ -46,6 +46,70 @@ await page.route('**/api/**', async route => {
 const check = name => { checks.push(name); console.log('PASS ' + name); };
 let completed = false;
 try {
+  const startup = await browser.newPage({ viewport: { width: 1000, height: 740 } });
+  const recent = [{ path: 'C:/projects/first.avp', name: '项目甲' }, { path: 'C:/projects/second.avp', name: '项目乙' }];
+  await startup.addInitScript(({ base, recent }) => {
+    localStorage.setItem('vac_tour_seen_v1', '1');
+    const listeners = new Map();
+    window.recentReads = 0;
+    window.hasRuntimeListener = () => listeners.has('runtime-status');
+    window.setBackendStatus = (status, revision) => listeners.get('runtime-status')?.({ payload: {
+      status, revision, api_base_url: status === 'ready' ? base : undefined, session_id: 'runtime-1', data_directory: 'C:/vac-fixture', workers: [], message: status,
+    } });
+    window.__TAURI__ = {
+      core: { invoke: async command => {
+        if (command === 'recent_projects') {
+          window.recentReads++;
+          return recent;
+        }
+        return ({
+          runtime_status: { status: 'starting', revision: 0, data_directory: '', workers: [], message: '正在检查本地运行环境…' },
+          update_status: { phase: 'idle', current_version: '0.5.3' },
+        })[command];
+      } },
+      event: { listen: async (name, callback) => { listeners.set(name, callback); return () => {
+        if (listeners.get(name) === callback) listeners.delete(name);
+      }; } },
+    };
+  }, { base, recent });
+  const startupCalls = [], startupRequests = [];
+  startup.on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/')) startupRequests.push(request.url());
+  });
+  const startupSession = { id: 'startup-session', dirty: false, revision: 0, active_tasks: 0, recent, recoveries: [] };
+  let opened = startupSession;
+  await startup.route('**/api/workspace', route => { startupCalls.push('workspace'); return route.fulfill({ json: opened }); });
+  await startup.route('**/api/workspace/{open,inspect-project}', route => {
+    const request = route.request();
+    startupCalls.push(new URL(request.url()).pathname.split('/').at(-1));
+    assert.equal(request.postDataJSON().path, recent[1].path);
+    assert.equal(request.postDataJSON().expected_session, startupSession.id);
+    opened = { ...startupSession, id: 'opened-session', path: recent[1].path,
+      document: { project: { id: 'startup-project', name: '项目乙' }, resources: [], scripts: [], sequences: [], workspace: {} } };
+    return route.fulfill({ json: opened });
+  });
+  await startup.goto(base + '/');
+  await startup.waitForFunction(() => window.hasRuntimeListener());
+  assert.equal(await startup.evaluate(() => window.recentReads), 0);
+  await startup.evaluate(() => window.setBackendStatus('starting', 1));
+  await startup.getByText('项目甲', { exact: true }).waitFor({ timeout: 5000 });
+  const recentButton = name => startup.getByRole('listitem').filter({ hasText: name }).getByRole('button', { name: '打开', exact: true });
+  await recentButton('项目甲').click();
+  await startup.getByRole('status').filter({ hasText: '项目甲' }).waitFor();
+  await startup.getByRole('button', { name: '取消', exact: true }).click();
+  await startup.getByRole('status').filter({ hasText: '项目甲' }).waitFor({ state: 'hidden' });
+  await recentButton('项目甲').click();
+  await recentButton('项目乙').click();
+  await startup.getByRole('status').filter({ hasText: '项目乙' }).waitFor();
+  assert.deepEqual(startupRequests, []);
+  await startup.screenshot({ path: path.join(output, 'startup-queued.png') });
+  await startup.evaluate(() => window.setBackendStatus('fault', 2));
+  await startup.getByRole('button', { name: '重新启动' }).waitFor();
+  await startup.evaluate(() => window.setBackendStatus('ready', 3));
+  await startup.waitForFunction(() => document.title.includes('项目乙'));
+  assert.deepEqual(startupCalls.filter(call => call !== 'workspace'), ['open']);
+  await startup.close();
+  check('desktop startup shows recent projects, preserves the last selection through retry and opens it once');
   await page.goto(base + '/#/editing/content?script=s1');
   const workbench = page.locator('.script-editor-sider [data-testid="script-workbench"]');
   await workbench.waitFor();
@@ -200,6 +264,57 @@ try {
   assert.equal(await page.getByRole('textbox',{name:'脚本指令',exact:true}).inputValue(),'保存失败时不能交接此草稿');
   failSave=false;
   check('failed script saves preserve the draft and never hand stale instructions to the Agent');
+  const library = await browser.newPage({ viewport: { width: 1280, height: 850 } });
+  library.on('pageerror', error => errors.push(error.message));
+  const payload = { version: 1, id: 'user-title', summary: '我的标题', category: '开场', duration_frames: 90, source: 'export default function Title(){return null;}' };
+  const card = { id: payload.id, summary: payload.summary, category: payload.category, styles: [{ id: 'default', description: payload.summary }], user: true };
+  let imported = false;
+  await library.route('**/api/workspace', route => route.fulfill({ json: { id: 'no-project', revision: 0, recent: [], recoveries: [] } }));
+  await library.route('**/api/shotcraft/templates', route => {
+    if (route.request().method() === 'POST') {
+      assert.deepEqual(route.request().postDataJSON(), payload);
+      imported = true;
+      return route.fulfill({ status: 201, json: card });
+    }
+    return route.fulfill({ json: imported ? [card] : [] });
+  });
+  await library.route('**/api/shotcraft/templates/user-title', route => {
+    if (route.request().method() === 'DELETE') {
+      imported = false;
+      return route.fulfill({ json: { deleted: true } });
+    }
+    return route.fulfill({ json: payload });
+  });
+  await library.route('**/api/shotcraft/templates/user-title/preview?*', route => {
+    assert.equal(new URL(route.request().url()).searchParams.get('position'), '50');
+    return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=', 'base64') });
+  });
+  await library.goto(base + '/#/resources');
+  try {
+    await library.getByRole('button', { name: '模板库', exact: true }).click({ timeout: 8000 });
+  } catch (error) {
+    await library.screenshot({ path: path.join(output, 'shotcraft-home-failure.png') });
+    throw new Error((await library.locator('body').innerText()).slice(0, 1000), { cause: error });
+  }
+  await library.getByRole('heading', { name: 'Shotcraft 模板库' }).waitFor();
+  await library.locator('input[type=file]').setInputFiles({ name: 'user-title.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)) });
+  await library.getByText('{#user-title}', { exact: true }).waitFor();
+  await library.getByRole('img', { name: 'user-title 效果预览' }).waitFor();
+  await library.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.__shotReference = text; } } }));
+  await library.getByRole('button', { name: '复制脚本引用' }).click();
+  await library.waitForFunction(() => window.__shotReference === '{#user-title}');
+  const download = library.waitForEvent('download');
+  await library.getByRole('button', { name: '导出 JSON' }).click();
+  assert.equal((await download).suggestedFilename(), 'user-title.json');
+  await library.setViewportSize({ width: 680, height: 780 });
+  await library.screenshot({ path: path.join(output, 'shotcraft-library-680.png') });
+  assert.equal(await library.locator('.shotcraft-library').evaluate(el => el.scrollWidth <= el.clientWidth), true);
+  await library.getByRole('button', { name: '移除模板' }).click();
+  await library.getByRole('dialog').getByRole('button', { name: '移除模板' }).click();
+  await library.getByText('还没有导入模板', { exact: true }).waitFor();
+  assert.equal(imported, false);
+  await library.close();
+  check('global Shotcraft library without a project imports, previews, copies, exports and removes a card');
   assert.deepEqual(errors, []); completed = true;
 } finally {
   await page.screenshot({ path: path.join(output, 'last-state.png') });

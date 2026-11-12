@@ -20,8 +20,9 @@
 | 参数语法、工作台与颜色 | Go `project/timeline_test.go`、`scriptsyntax/parse_test.go`，前端 `script_workbench_test.mjs`、`gain_envelope_test.mjs` | 维护共享语法/时间/错误、布局保存与局部同步、缩放/透明度/定时字幕、切割回解析、补全与高亮；前端完整清单由package.json唯一维护。 |
 | 局部Agent与真实服务 | `service/project_draw_test.go`、`project_workspace_test.go`、`project_media_test.go`、`draw_environment_test.go` | 保留冲突/部分成功/撤销/只读迁移；扩展既有分段用例检查实际声音、跨迁移轨转场与描述缓存。 |
 | 三引擎、像素与混音 | `workers/node/timeline-cli/test/{draw,sequence,script-workbench}.test.mjs`；`-Suite timeline` | 保留引擎取帧/寻址/声音，扩展缩放/透明度与CPU/GPU/终渲一致、字幕结束清除、普通段落序列字幕和主动透明质量检查；不另建媒体套件。 |
-| Shotcraft 镜头卡 | Go `internal/shotcraft`、既有语法和 MCP 套件、前端工作台、Node `draw.test.mjs` | 覆盖固定目录、署名、卡号与变体、可编辑源入轨、实际像素和 AVP 重开。 |
+| Shotcraft 镜头卡 | Go `internal/shotcraft`、HTTP/MCP 和脚本语法套件、前端工作台与 `script_workbench_smoke.mjs`、Node `draw.test.mjs` | 覆盖内置目录和署名、全局导入/导出/移除、SQLite 重开、用户卡补全、真实 PNG 抽帧和 MCP 构图保存、可编辑源入轨及 AVP 重开。 |
 | Agent模型上下文与Worker | `workers/python/tests/`；`-Suite python` | 保留现有套件，模型桩与真实质量分开；本轮路径辅助函数随命名StorageRoot联动。 |
+| 桌面启动与预览缓存 | `script_workbench_smoke.mjs`、Go `TestShotcraftLibraryHTTP` 和 `TestSequenceCurrentFrame` | 复用现有夹具。覆盖启动时取消/更换选择、故障恢复后自动打开、模板像素与同 ID 内容失效、并发缩略图、EDL 复用与工程重开静帧。 |
 | 编辑器/工作台交互 | `webui/run-local-smokes.mjs` + `review_shortcuts_smoke.mjs` / `script_workbench_smoke.mjs` | 当前编辑器22组、普通脚本15组；补参数无需Agent、错误草稿保护和命令补全。复用生产构建与本机Chrome，不是原生窗口/真实模型验收。 |
 | 导出租约、恢复与资源归属 | `workers/node/export-worker/test/`；`-Suite exporter` | 保留职责独立的套件，不合并进timeline或服务桩。 |
 | 输出隔离与安全轮换 | `test-support/test-workspace.ps1`、`scripts/test-paths.mjs`、Python `scripts/test_paths.py`；`-Suite workspace` | 原套件补命名结果隔离/非法名称拒绝；保留标记、重解析点、进程、跟踪文件及失败转通过保护。 |
@@ -72,7 +73,7 @@ node scripts/update-interface-documentation.mjs --refresh-inventory --write
 & $runner @managed -Suite custom -TestName doc-workbench -Executable python -WorkingDirectory $sourceRoot -Arguments @('-B','scripts/verify-script-workbench-docs.py')
 ```
 
-源 SHA 按 LF 规范化计算，兼容 Git autocrlf 而仍检测实际内容变动。刷新只定位真实路由、处理器、SDK 和页面调用，不自动推断参数语义。检查精确路由集合、源 SHA、处理器位置、17 项桌面 IPC、HTTP 请求/响应索引、类型/SDK 自动区域及本地链接。文档迁移更新原检查对象，不退役 Go/前端/Worker 覆盖。运行时 Skill 文档若变更，同步嵌入/目录副本和版本，并执行相应 MCP/服务契约回归。
+源 SHA 按 LF 规范化计算，兼容 Git autocrlf 而仍检测实际内容变动。刷新只定位真实路由、处理器、SDK 和页面调用，不自动推断参数语义。检查精确路由集合、源 SHA、处理器位置、18 项桌面 IPC、HTTP 请求/响应索引、类型/SDK 自动区域及本地链接。文档迁移更新原检查对象，不退役 Go/前端/Worker 覆盖。运行时 Skill 文档若变更，同步嵌入/目录副本和版本，并执行相应 MCP/服务契约回归。
 
 ## 4. 媒体、MCP、浏览器及可见桌面入口
 
@@ -110,6 +111,49 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 `webui/run-local-smokes.mjs` 服务生产构建，`review_shortcuts_smoke.mjs` 当前22组覆盖统一编辑器、播放接管、多选代码条、参数工作台及局部生成。写请求只记录到本机夹具，不当成真实Go编辑或模型验证。已不挂载的quickstart卡片检查退出默认入口，原源码保留溯源；不把旧CR03计数当当前结果。生产构建写入VAC_TEST_OUTPUT/ui-dist，浏览器运行前令VAC_DIST指向它，再从webui目录通过命名custom执行 `node run-local-smokes.mjs review_shortcuts_smoke.mjs`。
 
 本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
+
+## 0.5.3 启动、模板样例与编辑预览（2026-11-13）
+
+- 受管 Go 定向回归覆盖 API、service、MCP、Skill 和 store 五个包。真实 FFmpeg 素材代理、当前帧缓存、工程重开、Shotcraft 模板抽帧缓存和目录、SQLite 迁移、MCP 版本协商和操作指南嵌入副本均通过。入口为 edit-preview/0.5.3/artifacts/custom/version053-go。
+- 前端 149 项单测、类型、样式和生产构建通过。Chrome 工作台 17 组、编辑器 24 组、设置 13 组通过，含后端启动时选择工程、故障恢复后自动打开一次、素材代理切换与按需高清帧。入口为 edit-preview-web/0.5.3/artifacts/custom/version053-ui。原生 WebView2 的实际首播耗时仍待测。
+- Tauri、Cargo 和 npm 应用版本及锁文件一致。用项目固定的 Rust 1.98.1 对当前生产前端执行 cargo check --offline --locked，通过。文档核对 203 HTTP、18 IPC、172 类型和 30 SSE 事件。五个相关受管根已通过 Prepare 轮换至 0.5.3，整体逻辑占用在复跑前由 1,114,000,121 字节降至 6,301,877 字节。下文已轮换的 0.5.2 日志路径用于溯源。
+
+## 0.5.2 Shotcraft 模板目录设置（2026-11-11 SHOTCRAFT-DIRECTORY）
+
+整合工作树 `5ef0f90+working-tree`。沿用现有 HTTP、SQLite 和设置页套件。
+
+- `shotcraft-library/0.5.2/artifacts/custom/shotcraft-directory` 通过目录切换、无效路径拒绝、真实文件列出/读取/导入/移除、所选目录的模板生成 PNG、数据库重开、恢复默认库及 SQLite 迁移。
+- `code-ui/0.5.2/artifacts/custom/shotcraft-directory-ui` 通过 148 项前端单测、类型、构建、样式与 Chrome 设置夹具。目录场景验证保存失败保留输入、重载保留路径、恢复默认库。
+- Rust 格式与接口、文档检查通过。原生目录选择器实操和桌面安装未执行。
+
+## 0.5.2 时间线素材代理与快速预热
+
+沿用 TestWorkspace custom。StorageRoot 分别为 `.run-data/tests/edit-preview` 和 `.run-data/tests/edit-preview-web`。Go 运行 `TestTimelineVideoProxy`、`TestSequenceCurrentFrame`、`TestSequenceFrameHTTP` 和 `TestProjectHTTPRangeAndIsolation`，验证代理发布、无代理时直放、代理版本拒绝、工程隔离、原片路径及帧数。实测合成输入为 1080×1920，产出 540×960、15 帧、单视频流的素材代理。
+
+WebUI `desktop_test.mjs` 10 项通过，验证恢复播放头先就绪、下一段随后预热、代理解码失败回到同一源时码。Node `sequence.test.mjs` 两项分段回归通过，实测竖屏分段 540×960、颜色与音频可解码、导出仍为 1080×1920。TypeScript、样式、生产 Vite 和 Chrome `review_shortcuts_smoke.mjs` 通过，Chrome 夹具验证代理生成后重新定位才切换、高清静帧位于视频上方。Go 使用真实 FFmpeg，Chrome 使用接口夹具和本地固定 MP4。原生 WebView2 性能及实际长项目首播时间尚未测量。
+
+## 0.5.2 启动与预览缓存（2026-11-12）
+
+验证对象为整合工作树 `5ef0f90+working-tree`。复用现有受管输出和用例。
+
+- 首屏 Vite JavaScript 从约 647.32 KB 降至 296.74 KB（gzip，统计入口及静态预载 JS）。Go API/service/project 编译、Rust cargo check、TypeScript、生产构建、样式、接口和链接检查通过。
+- 初版 Chrome 夹具验证启动时显示最近工程、改选、启动故障恢复后自动打开一次。真实 Go/FFmpeg 运行验证模板重启后复用 PNG、同 ID 内容变化重新生成、并发缩略图和已保存播放头缓存命中。该轮完整媒体用例随后因测试提前重开工程打断原 Worker 连续性断言而失败，已将重开检查移到原有生命周期断言之后。
+- 最终 Chrome 与 Go 回归复跑受阻。受管入口在沙箱内无法读取 Windows CIM 进程清单，自动审批复跑超时。最终原生窗口、冷启动耗时和大型 AVP 性能尚未实测。日志保留在 `code-ui/0.5.2/artifacts/custom/startup-ui` 和 `shotcraft-library/0.5.2/artifacts/custom/preview-cache`。
+
+## 0.5.2 Shotcraft 应用模板库（2026-11-11 SHOTCRAFT-LIBRARY）
+
+验证对象为整合工作树 `5ef0f90+working-tree`。复用既有套件，受管目录记录如下。
+
+- `shotcraft-library/0.5.2/artifacts/custom/shotcraft-go`：HTTP 导入、拒绝重名和无效源码、重开 SQLite、真实 480×270 PNG、导出和移除通过。真实 MCP 在打开工程前导入用户卡，打开工程后读卡并按卡号实例化，移除库条目后保存并重开 AVP 仍保留构图源码。混合时间线与内置卡用例一并通过。
+- `code-track-go/0.5.2/artifacts/custom/shotcraft-core`：Shotcraft 内置目录、project、scriptsyntax、store 全包通过。
+- `code-ui/0.5.2/artifacts/custom/shotcraft-ui`：148 项 WebUI 单测、类型、样式、生产构建、现有 Chrome 工作台 16 组通过。新场景在无工程状态操作导入、抽帧、复制引用、导出和移除，使用接口夹具。真实像素由 HTTP Worker 测试覆盖。
+- 接口索引与文档检查通过，计 201 条 HTTP 路由及 711 个本地链接。Windows 原生安装、可见桌面和人工画面认可未验。
+
+## 0.5.2 本机覆盖安装（2026-11-11 INSTALL052）
+
+从标签 `v0.5.2`（`5ef0f90`）完成 Windows x64 NSIS 本地签名构建，安装包为 78,953,407 字节，SHA-256 为 `b8e93b370729e814a77b0cee76afcea7a3b204bbae0652cfa5a06940fa06d533`。安装器退出码为 0，原安装路径 `D:/Applications/VAC` 的 exe 版本为 0.5.2，控制面 SHA-256 与构建副本一致。
+
+启动后确认原生窗口和运行日志中的三个 Worker。首轮探针误把运行日志的 `running` 当作应为 `ready`，在同一进程上核对状态后通过实际 Codex MCP 读取了 `vac-video-edit` 0.5.2 和工作流参考。应用内生产更新和真实模型未执行。
 
 ## 0.5.2 MCP 操作指南与源码版本（2026-11-09 VERSION052）
 

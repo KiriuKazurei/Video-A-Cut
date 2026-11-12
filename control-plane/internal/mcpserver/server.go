@@ -101,7 +101,7 @@ func New(agents []Agent, svc *service.Service, lease time.Duration, options ...O
 	if lease <= 0 {
 		lease = DefaultLease
 	}
-	info := &mcp.Implementation{Name: "video-auto-cut", Version: "0.5.2"}
+	info := &mcp.Implementation{Name: "video-auto-cut", Version: "0.5.3"}
 	instructions := &mcp.ServerOptions{Instructions: "For VAC video work, first call skills.get with id vac-video-edit. Read the relevant references with skills.read_resource using the returned content_sha256. Use skills.list to discover execution packages and choose the workflow for the script and available media."}
 	server := mcp.NewServer(info, instructions)
 	registerTools(server, svc)

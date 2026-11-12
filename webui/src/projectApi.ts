@@ -18,6 +18,8 @@ export const projectApi = {
   exportScript: (project: string, script: string, path: string) => request<{ saved: boolean }>(`/api/projects/${id(project)}/scripts/${id(script)}/export-file`, json({ path })),
   contentURL: (project: string, resource: string, proxy = false) => apiURL(`/api/projects/${id(project)}/resources/${id(resource)}/content${proxy ? '?proxy=1' : ''}`),
   createPreview: (project: string, resource: string, signal?: AbortSignal) => request<{ ready: boolean }>(`/api/projects/${id(project)}/resources/${id(resource)}/preview`, { ...json({}), signal }),
+  timelineProxyURL: (project: string, resource: string, version: string) => apiURL(`/api/projects/${id(project)}/resources/${id(resource)}/content?timeline_proxy=${id(version)}`),
+  createTimelineProxy: (project: string, resource: string, version: string, signal: AbortSignal) => request<{ ready: boolean }>(`/api/projects/${id(project)}/resources/${id(resource)}/preview?timeline_proxy=${id(version)}`, { ...json({}), signal }),
   providerPolicy: () => request<{ external_tts: boolean }>('/api/workspace/providers'),
   saveProviderPolicy: (external_tts: boolean) => request<{ external_tts: boolean }>('/api/workspace/providers', json({ external_tts }, 'PUT'))
 };

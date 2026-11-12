@@ -66,7 +66,7 @@ func operatorSkill() Package {
 	return Package{
 		ID: "vac-video-edit", Name: "VAC 视频编辑",
 		Description: "Operator guide for external Agents choosing a VAC editing, drawing or mixed workflow.",
-		Version:     "0.5.2", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only",
+		Version:     "0.5.3", Source: "builtin", Builtin: true, Enabled: true, Runtime: "instructions_only",
 		Flows: []string{}, Modes: []string{"external_mcp"}, Tools: []string{},
 		Content: string(body), Resources: resources,
 	}

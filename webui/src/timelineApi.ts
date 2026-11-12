@@ -23,5 +23,5 @@ export const timelineApi = {
  resolve: (project:string,references:ScriptReference[]) => request<ReferenceCandidate[]>(`/api/projects/${id(project)}/references/resolve`,body({references})),
  waveform: (project:string,resource:string,stream:number,signal?:AbortSignal) => request<{peaks:number[];duration:number;stream_index:number}>(`/api/projects/${id(project)}/resources/${id(resource)}/waveform?stream=${stream}`,{signal}),
  loudness: (project:string,resource:string,stream:number,signal?:AbortSignal) => request<LoudnessEnvelope>(`/api/projects/${id(project)}/resources/${id(resource)}/loudness?stream=${stream}`,{signal}),
- thumbnailURL: (project:string,resource:string,at:number) => apiURL(`/api/projects/${id(project)}/resources/${id(resource)}/thumbnail?at=${at}`)
+ thumbnailURL: (project:string,resource:string,at:number,version?:string) => apiURL(`/api/projects/${id(project)}/resources/${id(resource)}/thumbnail?at=${at}${version ? '&version='+id(version) : ''}`)
 };

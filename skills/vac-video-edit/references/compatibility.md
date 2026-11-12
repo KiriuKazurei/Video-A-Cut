@@ -4,10 +4,10 @@
 
 | 项目 | 值 |
 |---|---|
-| Skill 版本 | 0.5.2 |
-| 对齐的 VAC 版本 | 0.5.2 |
+| Skill 版本 | 0.5.3 |
+| 对齐的 VAC 版本 | 0.5.3 |
 | 支持范围（SemVer，含下界不含上界） | >=0.5.1 <0.6.0 |
-| 本轮源码合同核对基线 | VAC 0.5.2；2026-11-09 |
+| 本轮源码合同核对基线 | VAC 0.5.3；2026-11-13 |
 | 其他范围内版本 | 仅在下列兼容检查成立时复用；尚未逐版验证 |
 
 版本字段集中在 `SKILL.md` 的 `metadata.version`、`metadata.vac-supported` 和 `metadata.vac-verified`。`version` 是此次 Skill 对齐的 VAC 完整版本，不使用独立的 Skill 计数器。此版本不是服务端执行包（如 video-use）的版本，不能写入 `skill_id` 或替换包摘要。

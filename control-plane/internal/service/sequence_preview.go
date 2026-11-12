@@ -162,16 +162,30 @@ func (s *Service) CreateSequenceFrame(ctx context.Context, projectID, sequenceID
 	if err != nil {
 		return result, err
 	}
+	stillPath := ""
+	if req.Frame == s.savedSequenceFrame(sequenceID, end) {
+		stillPath = s.visualCachePath("sequence-still-v1", skillHash([]string{projectID, sequenceID})+".json")
+	}
+	var still SequenceFramePreview
+	cachedStill := json.Unmarshal(readVisualCache(stillPath), &still) == nil &&
+		still.Frame == req.Frame && still.ContentVersion == view.ContentVersion &&
+		strings.HasPrefix(still.Image, "data:image/png;base64,")
+	if cachedStill {
+		result = SequenceFramePreview{ContentVersion: still.ContentVersion, Frame: still.Frame, Image: still.Image,
+			Diagnostics: map[string]any{"backend": "cached-still"}}
+	}
 	output := ""
 	// Reopening an already rendered composition must not recompile its drawing
 	// sources just to show a still. Extract from the verified same-version movie.
 	cachedDir := s.sequencePreviewDir(projectID, sequenceID, view.ContentVersion)
 	var cached SequencePreview
-	metadata, cacheErr := os.ReadFile(filepath.Join(cachedDir, "program.json"))
 	cachedMovie := false
-	if cacheErr == nil && json.Unmarshal(metadata, &cached) == nil && cached.ContentVersion == view.ContentVersion {
-		digest, digestErr := sequenceFileDigest(filepath.Join(cachedDir, "program.mp4"))
-		cachedMovie = digestErr == nil && digest == cached.SHA256
+	if !cachedStill {
+		metadata, cacheErr := os.ReadFile(filepath.Join(cachedDir, "program.json"))
+		if cacheErr == nil && json.Unmarshal(metadata, &cached) == nil && cached.ContentVersion == view.ContentVersion {
+			digest, digestErr := sequenceFileDigest(filepath.Join(cachedDir, "program.mp4"))
+			cachedMovie = digestErr == nil && digest == cached.SHA256
+		}
 	}
 	if cachedMovie {
 		parent := filepath.Join(s.workspace.root, "sequence-frames")
@@ -189,7 +203,7 @@ func (s *Service) CreateSequenceFrame(ctx context.Context, projectID, sequenceID
 		if err = cmd.Run(); err != nil {
 			return result, err
 		}
-	} else {
+	} else if !cachedStill {
 		result, err = s.persistentSequenceFrame(ctx, projectID, sequenceID, view, sources, req.Frame)
 		if err != nil {
 			return result, err
@@ -212,7 +226,27 @@ func (s *Service) CreateSequenceFrame(ctx context.Context, projectID, sequenceID
 		}
 		result = SequenceFramePreview{ContentVersion: view.ContentVersion, Frame: req.Frame, Image: "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw), Diagnostics: map[string]any{"backend": "cached-movie"}}
 	}
+	if stillPath != "" && !cachedStill && ctx.Err() == nil {
+		if raw, err := json.Marshal(SequenceFramePreview{
+			ContentVersion: result.ContentVersion, Frame: result.Frame, Image: result.Image,
+		}); err == nil {
+			s.writeVisualCache(stillPath, raw)
+		}
+	}
 	return result, nil
+}
+
+func (s *Service) savedSequenceFrame(sequenceID string, end int64) int64 {
+	w := s.workspace
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var states map[string]struct {
+		Head int64 `json:"head"`
+	}
+	if raw, err := json.Marshal(w.document.Workspace["sequence_states"]); err == nil {
+		_ = json.Unmarshal(raw, &states)
+	}
+	return min(max(0, states[sequenceID].Head), end-1)
 }
 
 type sequenceSource struct {
@@ -551,34 +585,32 @@ func (s *Service) ResourceThumbnail(ctx context.Context, projectID, id string, a
 		return s.DrawResourceThumbnail(ctx, projectID, r, at)
 	}
 	output := filepath.Join(s.workspace.root, "previews", project.ResourceContentVersion(r)+"-"+skillHash(at)+".png")
-	if _, err = os.Stat(output); err == nil {
-		return output, nil
-	}
-	release, err := s.acquireScript("thumbnail:" + output)
+	err = s.renderThumbnail(ctx, output, func() error {
+		if err := os.MkdirAll(filepath.Dir(output), 0700); err != nil {
+			return err
+		}
+		stream := 0
+		if indexes := project.Streams(r, "video"); len(indexes) > 0 {
+			stream = indexes[0]
+		}
+		source, err := s.imageRenderPath(ctx, projectID, r)
+		if err != nil {
+			return err
+		}
+		temporary := output + ".tmp.png"
+		defer os.Remove(temporary)
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(at, 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", source, "-map", fmt.Sprintf("0:%d", stream), "-frames:v", "1", "-vf", "scale=160:-2", "-threads", "1", temporary)
+		configureMediaCommand(cmd)
+		cmd.Env = toolEnvironment()
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+		if err := os.Rename(temporary, output); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		return "", err
-	}
-	defer release()
-	if err = os.MkdirAll(filepath.Dir(output), 0700); err != nil {
-		return "", err
-	}
-	stream := 0
-	if indexes := project.Streams(r, "video"); len(indexes) > 0 {
-		stream = indexes[0]
-	}
-	source, err := s.imageRenderPath(ctx, projectID, r)
-	if err != nil {
-		return "", err
-	}
-	temporary := output + ".tmp.png"
-	defer os.Remove(temporary)
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-ss", strconv.FormatFloat(at, 'f', 9, 64), "-protocol_whitelist", "file,pipe", "-i", source, "-map", fmt.Sprintf("0:%d", stream), "-frames:v", "1", "-vf", "scale=160:-2", "-threads", "1", temporary)
-	configureMediaCommand(cmd)
-	cmd.Env = toolEnvironment()
-	if err = cmd.Run(); err != nil {
-		return "", err
-	}
-	if err = os.Rename(temporary, output); err != nil {
 		return "", err
 	}
 	return output, nil

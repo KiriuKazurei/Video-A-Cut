@@ -7,7 +7,7 @@ import { createWorkflowPreview } from './src/previewContext.ts';
 import { currentMcpURL, mcpConnectionConfig, mcpInstallCommand } from './src/mcpConnection.ts';
 import * as presence from './src/externalAgentStatus.ts';
 import { EXPORT_SECTIONS, parseWorkspaceHash } from './src/navigation.ts';
-import { playbackClipAt, playbackSourceTime, setSegmentWindow, segmentedProgramPlayer } from './src/programPlayback.ts';
+import { playbackClipAt, playbackSourceTime, setSegmentWindow, segmentedProgramPlayer, directProgramPlayer } from './src/programPlayback.ts';
 
 for(const earlyMetadata of [false,true])test(`cold segment restoration seeks when media ranges lag append (${earlyMetadata?'early':'late'} metadata)`,async t=>{
  const globals=['window','document','MediaSource','requestAnimationFrame','cancelAnimationFrame'];
@@ -32,10 +32,20 @@ for(const earlyMetadata of [false,true])test(`cold segment restoration seeks whe
  }
  Object.assign(globalThis,{window:{MediaSource:Source},MediaSource:Source,document:{createElement:()=>video},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{}});
  URL.createObjectURL=()=> 'blob:cold-segment';URL.revokeObjectURL=()=>{};
- const readiness=[],errors=[];
- player=segmentedProgramPlayer({append(){},dataset:{}},{frames:120,fps:{num:30,den:1},segment_frames:60},async()=>({report:{start_frame:60,frames:60},bytes:new ArrayBuffer(0)}),{media(){},frame(){},ready:value=>readiness.push(value),error:error=>errors.push(error)},119/30);
- await new Promise(resolve=>setTimeout(resolve,40));
- assert.deepEqual(errors,[]);assert.equal(video.currentTime,119/30,'restored playhead must seek into the buffered final segment');assert.equal(readiness.at(-1),true);
+ const readiness=[],errors=[],requests=[];
+ let warmed;
+ const preheated=new Promise(resolve=>{warmed=resolve;});
+ player=segmentedProgramPlayer({append(){},dataset:{}},{frames:240,fps:{num:30,den:1},segment_frames:60},async frame=>{
+  requests.push({frame,ready:readiness.at(-1)});
+  if(frame===120)warmed();
+  return {report:{start_frame:frame,frames:60},bytes:new ArrayBuffer(0)};
+ },{media(){},frame(){},ready:value=>readiness.push(value),error:error=>errors.push(error)},119/30);
+ let timeout;
+ try{await Promise.race([preheated,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('next segment was not preheated')),2000);})]);}
+ finally{clearTimeout(timeout);}
+ assert.deepEqual(errors,[]);
+ assert.equal(video.currentTime,119/30,'restored playhead must seek into the buffered segment');
+ assert.deepEqual(requests,[{frame:60,ready:false},{frame:120,ready:true}],'warm the next segment only after the restored segment is playable');
 });
 
 test('segment append windows can advance to the preceding end and seek backwards',()=>{
@@ -49,6 +59,47 @@ test('direct playback uses half-open timeline cuts and exact source offsets',()=
  const clips=[{id:'a',resource_id:'a',at:0,duration:1748,source_in:0},{id:'b',resource_id:'a',at:1748,duration:52,source_in:1748/30},{id:'c',resource_id:'b',at:1800,duration:1800,source_in:0}];
  assert.equal(playbackClipAt(clips,1747)?.id,'a');assert.equal(playbackClipAt(clips,1748)?.id,'b');assert.equal(playbackClipAt(clips,1800)?.id,'c');assert.equal(playbackClipAt(clips,3600),undefined);
  assert(Math.abs(playbackSourceTime(clips[1],59,30)-59)<1e-9);assert.equal(playbackSourceTime(clips[2],61,30),1);
+});
+
+test('direct video falls back to its original at the same source time when the proxy fails',{timeout:3000},async t=>{
+ const saved=new Map(['document','requestAnimationFrame','cancelAnimationFrame'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+ let player;
+ t.after(()=>{
+  player?.close();
+  for(const [key,descriptor] of saved){
+   if(descriptor)Object.defineProperty(globalThis,key,descriptor);
+   else delete globalThis[key];
+  }
+ });
+ const loaded=[];
+ class Media extends EventTarget{
+  currentTime=0;readyState=0;seeking=false;paused=true;error=null;
+  constructor(kind){super();this.kind=kind;}
+  load(){
+   this.error=null;
+   this.readyState=0;
+   if(!this.src)return;
+   loaded.push([this.kind,this.src]);
+   queueMicrotask(()=>{
+    if(this.src==='/proxy'){this.error={message:'bad proxy'};this.dispatchEvent(new Event('error'));return;}
+    this.readyState=2;
+    this.dispatchEvent(new Event('loadedmetadata'));
+    this.dispatchEvent(new Event('loadeddata'));
+   });
+  }
+  pause(){this.paused=true;}setAttribute(){}removeAttribute(){this.src='';}remove(){}
+ }
+ Object.assign(globalThis,{document:{createElement:kind=>new Media(kind)},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{}});
+ let clock,resolveReady,rejectReady;
+ const ready=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
+ const video={id:'v',resource_id:'video',at:0,duration:60,source_in:4};
+ const audio={id:'a',resource_id:'audio',at:0,duration:60,source_in:2};
+ player=directProgramPlayer({append(){},dataset:{}},{frames:60,fps:{num:30,den:1},video:[video],audio:[audio]},
+  id=>'/'+id,{media:(image,sound)=>{if(image&&sound)clock=[image.currentTime,sound.currentTime];},frame(){},ready:value=>{if(value)resolveReady();},error:rejectReady},.5,
+  {url:()=>'/proxy',warm(){}});
+ await ready;
+ assert.deepEqual(loaded,[['video','/proxy'],['audio','/audio'],['video','/video']]);
+ assert.deepEqual(clock,[4.5,2.5]);
 });
 
 test('retired acceptance page resolves to the editing workspace',()=>{

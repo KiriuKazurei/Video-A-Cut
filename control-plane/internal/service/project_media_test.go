@@ -18,6 +18,61 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
 )
 
+func TestTimelineVideoProxy(t *testing.T) {
+	svc, root := avpWorkspaceFixture(t)
+	ctx := t.Context()
+	source := filepath.Join(root, "portrait.mp4")
+	mediaTool(t, "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1080x1920:r=30:d=0.5", "-f", "lavfi", "-i", "sine=d=0.5", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-threads", "1", "-c:a", "aac", source)
+	session, err := svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(root, "proxy.avp"), Name: "Proxy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := session.Document.Project.ID
+	session, err = svc.ImportProjectResource(ctx, pid, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq, resource := session.Document.Sequences[0], session.Document.Resources[0]
+	view, err := svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{
+		Session: session.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "proxy-clip",
+		Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: resource.ID}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := service.SequencePreviewRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion}
+	plan, err := svc.SequencePlaybackPlan(ctx, pid, seq.ID, request)
+	if err != nil || plan.Mode != "direct" || len(plan.Video) != 1 || plan.Video[0].ProxyVersion == "" || plan.Video[0].ProxyReady {
+		t.Fatalf("cold plan should be playable before the proxy exists: %+v %v", plan, err)
+	}
+	version := plan.Video[0].ProxyVersion
+	if _, err = svc.TimelineProxyPath(pid, resource.ID, version); !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("missing proxy should not be served: %v", err)
+	}
+	if ready, err := svc.CreateTimelineProxy(ctx, pid, resource.ID, version); err != nil || !ready {
+		t.Fatalf("proxy generation: ready=%t %v", ready, err)
+	}
+	proxy, err := svc.TimelineProxyPath(pid, resource.ID, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height,nb_frames", "-of", "csv=p=0", proxy).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(probe)) != "video,540,960,15" {
+		t.Fatalf("proxy should preserve frames while downscaling video only: %q", probe)
+	}
+	original, err := svc.ProjectResourcePath(pid, resource.ID, false)
+	if err != nil || original != source {
+		t.Fatalf("original media path changed: %q %v", original, err)
+	}
+	plan, err = svc.SequencePlaybackPlan(ctx, pid, seq.ID, request)
+	if err != nil || len(plan.Video) != 1 || !plan.Video[0].ProxyReady || plan.Video[0].ProxyVersion != version {
+		t.Fatalf("warm plan should use the generated proxy: %+v %v", plan, err)
+	}
+	if _, err = svc.TimelineProxyPath(pid, resource.ID, "obsolete"); !errors.Is(err, model.ErrNotFound) {
+		t.Fatalf("stale proxy URL was accepted: %v", err)
+	}
+}
+
 func TestSequenceCurrentFrame(t *testing.T) {
 	svc, root := avpWorkspaceFixture(t)
 	wd, _ := os.Getwd()
@@ -37,6 +92,22 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resource := session.Document.Resources[0]
+	results := make(chan error, 8)
+	for range cap(results) {
+		go func() {
+			path, err := svc.ResourceThumbnail(ctx, pid, resource.ID, 0)
+			if err == nil {
+				_, err = os.Stat(path)
+			}
+			results <- err
+		}()
+	}
+	for range cap(results) {
+		if err := <-results; err != nil {
+			t.Fatalf("concurrent identical thumbnails should share one completed render: %v", err)
+		}
+	}
 	seq := session.Document.Sequences[0]
 	view, err := svc.TimelineCommand(ctx, "human:window", pid, seq.ID, project.Command{Session: session.ID, ExpectedRevision: seq.Revision, IdempotencyKey: "insert", Operations: []project.Operation{{Type: "clip.insert", TrackID: seq.Tracks[0].ID, ResourceID: session.Document.Resources[0].ID}}})
 	if err != nil {
@@ -46,6 +117,11 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	plan, err := svc.SequencePlaybackPlan(ctx, pid, seq.ID, service.SequencePreviewRequest{Session: session.ID, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion})
 	if err != nil || plan.Mode != "direct" || len(plan.Video) != 1 || len(plan.Audio) != 0 || plan.Video[0].ResourceID != session.Document.Resources[0].ID {
 		t.Fatalf("simple source playback must not render a movie: %+v %v", plan, err)
+	}
+	if _, err = svc.UpdateProjectWorkspaceState(ctx, session.ID, map[string]any{
+		"sequence_states": map[string]any{seq.ID: map[string]any{"head": 45, "zoom": 60}},
+	}); err != nil {
+		t.Fatal(err)
 	}
 	frame, err := svc.CreateSequenceFrame(ctx, pid, seq.ID, req)
 	if err != nil {
@@ -91,6 +167,15 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	edl := filepath.Join(root, "delivery", "projects", pid, "references", resource.ID, "edl.json")
+	edlBefore, err := os.Stat(edl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.ProjectFileCommand(ctx, "save", service.ProjectCommand{ExpectedSession: session.ID}); err != nil {
+		t.Fatal(err)
+	}
+	restoreReq, initialImage := req, frame.Image
 	req.Frame = -1
 	if _, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req); !errors.Is(err, model.ErrArgument) {
 		t.Fatal("negative frame accepted", err)
@@ -111,8 +196,8 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.ContentVersion = view.ContentVersion
-	if frame, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req); err != nil || frame.Frame != 45 {
+	req.ContentVersion, req.Frame = view.ContentVersion, 44
+	if frame, err = svc.CreateSequenceFrame(ctx, pid, seq.ID, req); err != nil || frame.Frame != 44 || frame.Diagnostics["backend"] != "cached-movie" {
 		t.Fatal("cached movie frame", err)
 	}
 	after, err := os.Stat(cachedPath)
@@ -244,6 +329,19 @@ func TestSequenceCurrentFrame(t *testing.T) {
 	}
 	if err = svc.CloseSequenceFrame(pid, current.ID, seq.ID); err != nil {
 		t.Fatal(err)
+	}
+	session, err = svc.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: session.Path, ExpectedSession: session.ID, Decision: "discard", StopTasks: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edlAfter, err := os.Stat(edl)
+	if err != nil || !edlAfter.ModTime().Equal(edlBefore.ModTime()) {
+		t.Fatal("unchanged resource projection was rewritten on reopen", err)
+	}
+	restoreReq.Session = session.ID
+	restored, err := svc.CreateSequenceFrame(ctx, pid, seq.ID, restoreReq)
+	if err != nil || restored.Image != initialImage || restored.WorkerPID != 0 || restored.Diagnostics["backend"] != "cached-still" {
+		t.Fatalf("reopen should reuse the saved playhead frame without starting a worker: backend=%v pid=%d error=%v", restored.Diagnostics["backend"], restored.WorkerPID, err)
 	}
 }
 

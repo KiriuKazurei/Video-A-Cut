@@ -157,6 +157,12 @@ func TestProjectHTTPRangeAndIsolation(t *testing.T) {
 	if len(rec.Result().Cookies()) != 0 {
 		t.Fatal("preview created human cookie")
 	}
+	if rec = call("GET", path+"?timeline_proxy=invalid", "", first.ID); rec.Code != 404 {
+		t.Fatal("invalid timeline proxy returned source bytes", rec.Code)
+	}
+	if rec = call("POST", strings.TrimSuffix(path, "/content")+"/preview?timeline_proxy=invalid", "{}", first.ID); rec.Code != 409 {
+		t.Fatal("nonvideo resource accepted a timeline proxy request", rec.Code)
+	}
 	rec = call("POST", "/api/projects/"+first.Document.Project.ID+"/resources", `{"kind":"script"}`, first.ID)
 	if rec.Code != 200 {
 		t.Fatalf("new script HTTP request failed: %d %s", rec.Code, rec.Body.String())

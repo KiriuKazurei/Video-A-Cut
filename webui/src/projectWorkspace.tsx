@@ -6,11 +6,15 @@ import { desktopCommand, isDesktop, projectEventListener } from './desktop';
 import { pauseMediaPlayers } from './humanSession';
 import { projectApi } from './projectApi';
 import type { AvsDocument, AvsImport, ProjectResource, ProjectSession, ResourcePatch } from './projectContracts';
+import { useDesktopRuntimeStatus } from './components/DesktopRuntime';
 import { errorText } from './components/ui';
+
+type RecentProject = Pick<ProjectSession['recent'][number], 'path' | 'name'>;
 
 type Editor = { dirty: boolean; flush: () => Promise<void> };
 interface ProjectWorkspaceValue {
   session?: ProjectSession; resource?: ProjectResource; selectedId: string; busy: boolean; error: string; localDirty: boolean;
+  ready: boolean; recent?: RecentProject[]; recentError: boolean; pendingPath?: string; openingPath?: string; cancelOpen: () => void;
   selectResource: (id: string) => Promise<void>;
   create: () => Promise<void>; open: (path?: string) => Promise<void>; save: () => Promise<void>; saveAs: () => Promise<void>; close: () => Promise<boolean>;
   recover: (value: ProjectSession['recoveries'][number]) => Promise<void>;
@@ -29,26 +33,37 @@ async function pick(mode: string, defaultPath?: string): Promise<string[]> {
 
 export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
+  const runtime = useDesktopRuntimeStatus();
+  const ready = !isDesktop() || runtime?.status === 'ready';
   const { modal, message } = App.useApp();
   const [busy, setBusy] = useState(false);
+  const [pendingPath, setPendingPath] = useState<string>();
+  const [openingPath, setOpeningPath] = useState<string>();
+  const [error, setError] = useState('');
   useEffect(() => {
     if (!isDesktop()) return;
     let active = true;
     const disposers: (() => void)[] = [];
     const consume = async () => {
       if (!active) return;
-      const path = await desktopCommand<string | null>('project_open_request');
-      if (path) window.dispatchEvent(new CustomEvent('vac:open-project', { detail: path }));
+      try {
+        const path = await desktopCommand<string | null>('project_open_request');
+        if (active && path) setPendingPath(path);
+      } catch (reason) {
+        if (active) setError(errorText(reason));
+      }
     };
     void (async () => {
       const openDispose = await projectEventListener('project-open-requested', () => { void consume(); });
+      if (!active) { openDispose(); return; }
+      disposers.push(openDispose);
       const closeDispose = await projectEventListener('project-close-requested', () => window.dispatchEvent(new Event('vac:request-exit')));
-      if (!active) { openDispose(); closeDispose(); return; }
-      disposers.push(openDispose, closeDispose); await consume();
+      if (!active) { closeDispose(); return; }
+      disposers.push(closeDispose);
+      await consume();
     })().catch(reason => { if (active) setError(errorText(reason)); });
     return () => { active = false; disposers.forEach(dispose => dispose()); };
   }, []);
-  const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [localDirty, setLocalDirty] = useState(false);
   const editors = useRef(new Map<string, Editor>());
@@ -57,7 +72,22 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
   const operation = useRef(false);
   const operationDone = useRef<Promise<void>>(Promise.resolve());
   const exitRequested = useRef(false);
-  const workspace = useQuery({ queryKey: ['project-workspace'], queryFn: async ({ signal }) => {const next=await projectApi.workspace(signal);if(!signal.aborted)setProjectSession(next.id);return next;}, staleTime: 0, refetchInterval: busy ? false : 2000 });
+  const workspaceQuery = {
+    queryKey: ['project-workspace'],
+    queryFn: async ({ signal }: { signal: AbortSignal }) => {
+      const next = await projectApi.workspace(signal);
+      if (!signal.aborted) setProjectSession(next.id);
+      return next;
+    },
+  };
+  const workspace = useQuery({ ...workspaceQuery, enabled: ready, staleTime: 0, refetchInterval: busy ? false : 2000 });
+  const recent = useQuery({
+    queryKey: ['desktop-recent-projects', runtime?.data_directory],
+    queryFn: () => desktopCommand<RecentProject[]>('recent_projects'),
+    enabled: Boolean(runtime?.data_directory) && !workspace.data,
+    staleTime: 0,
+    retry: false,
+  });
   const session = workspace.data;
   useEffect(() => {
     if (!session) return;
@@ -74,7 +104,7 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
     const switched = activeSession.current !== next.id;
     if (switched) {
       pauseMediaPlayers(); await client.cancelQueries();
-      client.removeQueries({ predicate: query => query.queryKey[0] !== 'project-workspace' });
+      client.removeQueries({ predicate: query => !['project-workspace', 'desktop-recent-projects', 'shotcraft-templates', 'shotcraft-frame'].includes(String(query.queryKey[0])) });
       editors.current.clear(); setLocalDirty(false); setSelectedId(String(next.document?.workspace?.selected_resource ?? ''));
     }
     activeSession.current = next.id; setProjectSession(next.id); client.setQueryData(['project-workspace'], next);
@@ -104,9 +134,15 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
     });
   };
   const change = async (action: string, value: { path?: string; name?: string; recovery_path?: string } = {}): Promise<boolean> => {
-    if (action === 'open' && value.path) await projectApi.inspectProject(value.path);
+    const opening = action === 'open' && Boolean(value.path);
+    const cached = client.getQueryData<ProjectSession>(workspaceQuery.queryKey);
+    const current = opening && !cached ? await client.fetchQuery(workspaceQuery) : cached;
+    if (opening && current?.document && value.path) await projectApi.inspectProject(value.path);
     await flushEditors();
-    const view = await projectApi.workspace();
+    // A home-screen open can use the empty session obtained during startup.
+    // The server checks expected_session and validates the file before switching.
+    const view = opening && current && !current.document && current.active_tasks === 0
+      ? current : await projectApi.workspace();
     const decision = await leaveDecision(view, action === 'save-as'); if (decision === 'cancel') return false;
     pauseMediaPlayers(); await client.cancelQueries();
     const next = await projectApi.command(action, { ...value, decision, stop_tasks: true, expected_session: view.id });
@@ -117,7 +153,28 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
     const name = path.split(/[\\/]/).at(-1)!.replace(/\.avp$/i, '');
     await change('new', { path, name });
   });
-  const open = (path?: string) => run(async () => { const target = path ?? (await pick('open-project'))[0]; if (target) await change('open', { path: target }); });
+  const openNow = (path: string) => run(async () => {
+    setOpeningPath(path);
+    try { await change('open', { path }); }
+    finally { setOpeningPath(undefined); }
+  });
+  const open = async (path?: string) => {
+    if (!ready) {
+      const target = path ?? (await pick('open-project'))[0];
+      if (target) setPendingPath(target);
+      return;
+    }
+    if (path) return openNow(path);
+    await run(async () => {
+      const [target] = await pick('open-project');
+      if (target) await change('open', { path: target });
+    });
+  };
+  useEffect(() => {
+    if (!ready || !pendingPath || busy || operation.current || exitRequested.current) return;
+    setPendingPath(undefined);
+    void openNow(pendingPath).catch(() => {});
+  }, [ready, pendingPath, busy]);
   const save = () => run(async () => { if (!session?.document) return; await flushEditors(); await accept(await projectApi.command('save', { expected_session: activeSession.current })); void message.success('工程已保存'); });
   const saveAs = () => run(async () => { const [path] = await pick('save-project', session?.path); if (path) await change('save-as', { path }); });
   const close = async () => { let closed = false; await run(async () => { closed = await change('close'); }); return closed; };
@@ -188,20 +245,20 @@ export function ProjectWorkspaceProvider({ children }: { children: ReactNode }) 
       exitRequested.current = true;
       try {
         await operationDone.current;
-        if (await close()) await desktopCommand('confirm_project_exit');
+        if (!ready || await close()) await desktopCommand('confirm_project_exit');
       } catch (reason) { report(reason); }
       finally { exitRequested.current = false; }
     };
     const fileOpened = (event: Event) => { const path = (event as CustomEvent<string>).detail; if (path) void open(path).catch(report); };
-    const beforeInstall = (event: Event) => { event.preventDefault(); const complete = (event as CustomEvent<{ complete: (ok: boolean) => void }>).detail.complete; void close().then(complete).catch(reason => { report(reason); complete(false); }); };
+    const beforeInstall = (event: Event) => { if (!ready) return; event.preventDefault(); const complete = (event as CustomEvent<{ complete: (ok: boolean) => void }>).detail.complete; void close().then(complete).catch(reason => { report(reason); complete(false); }); };
     window.addEventListener('vac:before-install', beforeInstall);
     const browserClose = (event: BeforeUnloadEvent) => { if (session?.dirty || localDirty) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('vac:request-exit', closeRequested);
     window.addEventListener('vac:open-project', fileOpened);
     window.addEventListener('beforeunload', browserClose);
     return () => { window.removeEventListener('vac:request-exit', closeRequested); window.removeEventListener('vac:open-project', fileOpened); window.removeEventListener('beforeunload', browserClose); window.removeEventListener('vac:before-install', beforeInstall); };
-  }, [session, localDirty]);
-  return <ProjectContext.Provider value={{ session, resource, selectedId, busy, error: error || (workspace.error ? errorText(workspace.error) : ''), localDirty, selectResource, create, open, save, saveAs, close, recover, importFiles, exportScript, patchResource, relink, registerEditor, refresh, flushEditors, history, setWorkspaceState, rebindScript }}>
+  }, [session, localDirty, ready]);
+  return <ProjectContext.Provider value={{ session, resource, selectedId, busy, ready, recent: session?.recent ?? recent.data, recentError: recent.isError || (runtime?.status === 'fault' && !runtime.data_directory), pendingPath, openingPath, cancelOpen: () => setPendingPath(undefined), error: error || (workspace.error ? errorText(workspace.error) : ''), localDirty, selectResource, create, open, save, saveAs, close, recover, importFiles, exportScript, patchResource, relink, registerEditor, refresh, flushEditors, history, setWorkspaceState, rebindScript }}>
     {children}
     <Modal title="关联脚本素材" open={Boolean(binding)} onCancel={() => { binding?.resolve(); setBinding(undefined); }}
       footer={<Space><Button onClick={() => { binding?.resolve(); setBinding(undefined); }}>取消</Button><Button disabled={!binding?.path} onClick={() => { binding?.resolve({ path: binding.path, script_only: true }); setBinding(undefined); }}>仅导入脚本</Button><Button type="primary" disabled={!Object.values(bindingIDs).some(Boolean) && !Object.values(bindingFiles).some(Boolean)} onClick={() => { binding?.resolve({ path: binding.path, bindings: bindingIDs, files: bindingFiles }); setBinding(undefined); }}>关联并导入</Button></Space>}>

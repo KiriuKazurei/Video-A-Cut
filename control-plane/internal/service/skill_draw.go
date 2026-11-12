@@ -67,7 +67,7 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 		return respond(v)
 	}
 	if name == "draw.shot" {
-		return shotTool(args)
+		return s.shotTool(ctx, args)
 	}
 	if name == "draw.save" {
 		var req struct {
@@ -78,7 +78,7 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 			return nil, e
 		}
 		if req.ShotCard != "" {
-			if e := useShotTemplate(&req.Composition, req.ShotCard); e != nil {
+			if e := s.useShotTemplate(ctx, &req.Composition, req.ShotCard); e != nil {
 				return nil, e
 			}
 		}
@@ -207,7 +207,7 @@ func (s *Service) executeDrawTool(ctx context.Context, r *skill.Run, name string
 	return nil, fmt.Errorf("unknown draw tool %s: %w", strings.TrimPrefix(name, "draw."), model.ErrArgument)
 }
 
-func shotTool(args json.RawMessage) (json.RawMessage, error) {
+func (s *Service) shotTool(ctx context.Context, args json.RawMessage) (json.RawMessage, error) {
 	var req struct {
 		Action     string `json:"action"`
 		ID         string `json:"id,omitempty"`
@@ -220,15 +220,28 @@ func shotTool(args json.RawMessage) (json.RawMessage, error) {
 	}
 	switch req.Action {
 	case "list":
-		cards := shotcraft.List(req.Query)
+		cards, err := s.ListShotCards(ctx, req.Query)
+		if err != nil {
+			return nil, err
+		}
 		if req.Offset < 0 || req.Offset > len(cards) {
 			return nil, model.ErrArgument
 		}
 		return json.Marshal(map[string]any{"revision": shotcraft.Revision, "total": len(cards), "cards": cards[req.Offset:min(req.Offset+12, len(cards))]})
 	case "read":
-		card, style, ok := shotcraft.Lookup(req.ID)
-		if !ok {
-			return nil, fmt.Errorf("unknown shot card or variant %q: %w", req.ID, model.ErrArgument)
+		card, style, tpl, err := s.lookupShot(ctx, req.ID)
+		if err != nil {
+			return nil, shotLookupError(req.ID, err)
+		}
+		if card.User {
+			if req.Dependency != "" {
+				return nil, model.ErrArgument
+			}
+			return json.Marshal(map[string]any{
+				"card": card, "style": style, "recipe": card.Summary, "engine": "remotion",
+				"width": 1920, "height": 1080, "fps": project.Rate{Num: 30, Den: 1},
+				"duration_frames": tpl.DurationFrames, "source": tpl.Source,
+			})
 		}
 		if req.Dependency != "" {
 			if !strings.HasPrefix(req.Dependency, "demos/_fixtures/") && !strings.HasPrefix(req.Dependency, "demos/_textures/") && !strings.HasPrefix(req.Dependency, "assets/lib/") {
@@ -244,7 +257,6 @@ func shotTool(args json.RawMessage) (json.RawMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		tpl := shotcraft.Compiled(card, style)
 		result := map[string]any{
 			"card": card, "style": style, "recipe": recipe, "revision": shotcraft.Revision,
 			"license": "Apache-2.0", "author": "Vincentwei1021", "engine": "remotion", "width": 1920, "height": 1080,
@@ -265,12 +277,15 @@ func shotTool(args json.RawMessage) (json.RawMessage, error) {
 	}
 }
 
-func useShotTemplate(c *project.DrawComposition, id string) error {
-	card, variant, ok := shotcraft.Lookup(id)
-	if !ok {
-		return fmt.Errorf("unknown shot card or variant %q: %w", id, model.ErrArgument)
+func (s *Service) useShotTemplate(ctx context.Context, c *project.DrawComposition, id string) error {
+	_, variant, tpl, err := s.lookupShot(ctx, id)
+	if err != nil {
+		return shotLookupError(id, err)
 	}
-	tpl := shotcraft.Compiled(card, variant)
+	return applyShotTemplate(c, id, variant, tpl)
+}
+
+func applyShotTemplate(c *project.DrawComposition, id string, variant shotcraft.Variant, tpl shotcraft.Template) error {
 	if tpl.Source == "" {
 		return fmt.Errorf("shot card %q needs adaptation: %s: %w", id, tpl.NeedsAdapter, model.ErrArgument)
 	}
@@ -290,8 +305,12 @@ func useShotTemplate(c *project.DrawComposition, id string) error {
 	if c.Name == "" {
 		c.Name = variant.ID
 	}
+	setShotComposition(c, tpl)
+	return nil
+}
+
+func setShotComposition(c *project.DrawComposition, tpl shotcraft.Template) {
 	c.Engine, c.Source, c.Width, c.Height = "remotion", tpl.Source, 1920, 1080
 	c.FPS = project.Rate{Num: 30, Den: 1}
 	c.DurationFrames = int64(tpl.DurationFrames)
-	return nil
 }

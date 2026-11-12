@@ -35,8 +35,9 @@ export function ResourceBin({ onOpenScript }: { onOpenScript: (asset: string, sc
           const linked = item.asset_id ? byAsset.get(item.asset_id) : undefined;
           const inLibrary = Boolean(item.asset_id) && !item.removed;
           const agentVisible = Boolean(linked?.agent_visible);
-          const thumb = projectId && (item.kind === 'video' || item.kind === 'image') && !item.missing && !item.removed
-            ? timelineApi.thumbnailURL(projectId, item.id, item.in ?? 0)+(item.raw_develop?"&recipe="+encodeURIComponent(JSON.stringify(item.raw_develop)):"")
+          const thumb = projectId && (item.kind === 'video' || item.kind === 'image') && !item.missing && !item.removed && !item.changed
+            ? timelineApi.thumbnailURL(projectId, item.id, item.in ?? 0, JSON.stringify([item.source.sha256, item.raw_develop,
+                item.draw_source?.mode === 'follow' ? project.session?.document?.draw_compositions?.find(c => c.id === item.draw_source?.composition_id)?.content_version : item.draw_source?.snapshot?.content_version]))
             : undefined;
           return <List.Item key={item.id} role="button" tabIndex={0} aria-pressed={project.selectedId === item.id}
             data-resource-id={item.id} className={project.selectedId === item.id ? 'is-selected' : ''}
@@ -47,7 +48,7 @@ export function ResourceBin({ onOpenScript }: { onOpenScript: (asset: string, sc
             onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void project.selectResource(item.id); } }}>
             <List.Item.Meta
               avatar={thumb
-                ? <img className="resource-bin-thumb" src={thumb} alt="" loading="lazy" draggable={false} />
+                ? <img className="resource-bin-thumb" src={thumb} alt="" loading="lazy" decoding="async" draggable={false} />
                 : <span className="resource-bin-thumb is-icon" aria-hidden="true">{icons[item.kind]}</span>}
               title={<Flex align="center" gap={4} wrap={false}>
                 <Typography.Text ellipsis={{ tooltip: item.name }} style={{ flex: 1, minWidth: 0 }}>{item.name}</Typography.Text>

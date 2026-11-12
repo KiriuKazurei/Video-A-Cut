@@ -218,3 +218,11 @@ test('script links open the standalone workspace and preserve the selected revis
   assert.equal(buildWorkspaceHash({ workspace: 'script', scriptId: 's1', scriptVersion: 3 }), '/script?script=s1&version=3');
   assert.equal(buildWorkspaceHash({ workspace: 'editing', editingSection: 'content', scriptId: 's1' }), '/script?script=s1');
 });
+
+test('imported shot cards complete in the workbench and remain valid portable references', async () => {
+ const {directiveCompletions,readDirective}=await import('./src/scriptGrammar.ts');
+ const custom=[{id:'user-title',summary:'我的标题',styles:[{id:'default',description:'我的标题'}]}];
+ assert.equal(directiveCompletions('{#user-ti',9,'code',custom)[0].text,'{#user-title}');
+ assert.equal(readDirective('#user-title/default').error,'');
+ assert.match(readDirective('#user-title/missing').error,/未知镜头卡/);
+});

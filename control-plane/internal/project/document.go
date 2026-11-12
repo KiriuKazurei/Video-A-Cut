@@ -325,7 +325,11 @@ func WriteAtomic(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	raw = append(raw, '\n')
+	return WriteBytesAtomic(path, append(raw, '\n'))
+}
+
+// WriteBytesAtomic publishes bytes using the same atomic replacement as AVP.
+func WriteBytesAtomic(path string, raw []byte) error {
 	f, err := os.CreateTemp(filepath.Dir(path), ".vac-save-*.tmp")
 	if err != nil {
 		return err

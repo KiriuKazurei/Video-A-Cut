@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/events"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/model"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/preview"
@@ -30,10 +32,13 @@ type Service struct {
 	harnessCancel   map[string]context.CancelFunc
 	harnessProgress map[string]skill.RunProgress
 	// st is the persistence layer. It never sees a business rule.
-	st         *store.Store
-	ttsRuntime *ttsRuntime
-	scriptMu   sync.Mutex
-	scriptBusy map[string]bool
+	st             *store.Store
+	ttsRuntime     *ttsRuntime
+	scriptMu       sync.Mutex
+	scriptBusy     map[string]bool
+	visualCacheMu  sync.Mutex
+	thumbnailSlots *semaphore.Weighted
+	shotPreview    *semaphore.Weighted
 	// deliveryRoot is configured before serving HTTP and never changes after startup.
 	deliveryRoot string
 	// maxAttempts caps lease recoveries per task; see SetMaxAttempts.
@@ -91,7 +96,11 @@ type Service struct {
 // New returns a Service backed by st with no bus attached. SetBus attaches
 // one later; until then publishes are no-ops.
 func New(st *store.Store) *Service {
-	return &Service{st: st, prober: preview.DefaultProber}
+	return &Service{
+		st: st, prober: preview.DefaultProber,
+		thumbnailSlots: semaphore.NewWeighted(2),
+		shotPreview:    semaphore.NewWeighted(1),
+	}
 }
 
 // SetMediaProber configures the prober used for preview media validation.

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Button, Card, Grid, Menu, Tabs, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, ApiOutlined, AppstoreOutlined, CheckCircleOutlined, FileSearchOutlined, HeartOutlined, RobotOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ApiOutlined, AppstoreOutlined, CheckCircleOutlined, FileSearchOutlined, FolderOpenOutlined, HeartOutlined, RobotOutlined } from '@ant-design/icons';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { Asset, AuditLog, WorkflowRun } from '../types';
 import type { RouteState, SettingsCategory } from '../navigation';
@@ -13,6 +13,7 @@ import { AgentOperationPanel } from '../components/AgentOperationPanel';
 import { ProjectProviderPolicy } from '../components/ProjectProviderPolicy';
 import { McpConnectionPanel } from '../components/McpConnectionPanel';
 import { ValueSelect } from '../components/ui';
+import { ShotcraftDirectorySettings } from '../components/ShotcraftDirectorySettings';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 
 interface SettingsWorkspaceProps {
@@ -35,10 +36,10 @@ interface SettingsWorkspaceProps {
 
 const groups = [
   {label:'工作流配置',ids:['profiles','providers','preparation']},
-  {label:'Agent 扩展',ids:['skills']},
+  {label:'扩展与模板',ids:['skills','templates']},
   {label:'诊断与维护',ids:['logs','status']}
 ] as const;
-const icons = { profiles:<AppstoreOutlined aria-hidden />, providers:<ApiOutlined aria-hidden />, preparation:<CheckCircleOutlined aria-hidden />, skills:<RobotOutlined aria-hidden />, logs:<FileSearchOutlined aria-hidden />, status:<HeartOutlined aria-hidden /> };
+const icons = { profiles:<AppstoreOutlined aria-hidden />, providers:<ApiOutlined aria-hidden />, preparation:<CheckCircleOutlined aria-hidden />, skills:<RobotOutlined aria-hidden />, templates:<FolderOpenOutlined aria-hidden />, logs:<FileSearchOutlined aria-hidden />, status:<HeartOutlined aria-hidden /> };
 
 /** Global settings keep one preparation draft mounted across category changes. */
 export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, connection, events, controlPlane }: SettingsWorkspaceProps) {
@@ -68,6 +69,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
           <PreparationPanel assetId={asset?.asset_id ?? ''} onStarted={onStarted} activeSection={isProfileCategory ? settingsCategory as 'profiles'|'providers'|'preparation' : 'profiles'} onNavigate={navigate}/>
         </div>
         {settingsCategory==='skills' && <div className="settings-stack"><McpConnectionPanel active={route.workspace==='settings'} /><SkillManagerModule /></div>}
+        {route.workspace==='settings' && settingsCategory==='templates' && <ShotcraftDirectorySettings />}
         {settingsCategory==='logs' && <Tabs className="settings-log-tabs" items={[
           {key:'audit',label:'审计日志',children:<AuditLogViewer />},
           {key:'operations',label:'Agent 操作记录',children:<Card size="small" title="Agent 操作记录"><AgentOperationPanel /></Card>}

@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     fs::{self, OpenOptions},
-    io,
+    io::{self, Read},
     sync::atomic::Ordering,
     time::Duration,
 };
@@ -37,6 +37,38 @@ fn project_argument(args: &[String], cwd: &str) -> Option<String> {
 #[tauri::command]
 fn project_open_request(pending: tauri::State<'_, ProjectOpenRequest>) -> Option<String> {
     pending.0.lock().ok()?.take()
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct RecentProject {
+    path: String,
+    name: String,
+}
+
+#[tauri::command]
+async fn recent_projects(runtime: tauri::State<'_, Runtime>) -> Result<Vec<RecentProject>, String> {
+    let data = runtime.snapshot().data_directory;
+    if data.is_empty() {
+        return Ok(vec![]);
+    }
+    let path = std::path::PathBuf::from(data)
+        .join("workspace")
+        .join("recent.json");
+    tauri::async_runtime::spawn_blocking(move || {
+        plain_path(&path)?;
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(err) => return Err(err.to_string()),
+        };
+        let entries: Option<Vec<RecentProject>> =
+            serde_json::from_reader(file.take(2 * 1024 * 1024)).map_err(|err| err.to_string())?;
+        let mut entries = entries.unwrap_or_default();
+        entries.truncate(10);
+        Ok(entries)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
@@ -113,6 +145,7 @@ async fn project_dialog(
                 .set_title("导出透明绘制视频")
                 .add_filter("ProRes 4444", &["mov"]),
             "transcription-model" => dialog.set_title("选择本地转录模型目录"),
+            "shotcraft-directory" => dialog.set_title("选择 Shotcraft 模板库目录"),
             "transcription-python" => dialog
                 .set_title("选择本地转录 Python")
                 .add_filter("Python", &["exe"]),
@@ -127,9 +160,10 @@ async fn project_dialog(
             ),
             _ => return Err("未知文件操作".into()),
         };
+        let folder = matches!(mode.as_str(), "transcription-model" | "shotcraft-directory");
         if let Some(path) = default_path {
             let path = std::path::PathBuf::from(path);
-            if mode == "transcription-model" && path.is_dir() {
+            if folder && path.is_dir() {
                 dialog = dialog.set_directory(&path);
             } else if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
                 dialog = dialog.set_directory(parent);
@@ -140,7 +174,7 @@ async fn project_dialog(
         }
         let files = if save {
             dialog.blocking_save_file().map(|file| vec![file])
-        } else if mode == "transcription-model" {
+        } else if folder {
             dialog.blocking_pick_folder().map(|file| vec![file])
         } else if mode == "import-resources" {
             dialog.blocking_pick_files()
@@ -362,6 +396,7 @@ pub fn run(environment: tauri::Env) {
             confirm_project_exit,
             project_dialog,
             project_open_request,
+            recent_projects,
             clipboard_read_text,
             clipboard_write_text,
             set_window_title,

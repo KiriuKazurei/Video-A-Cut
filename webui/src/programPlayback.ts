@@ -28,25 +28,37 @@ function disposeMedia(media:HTMLMediaElement) {media.pause();media.removeAttribu
 
 // Two source slots per media type keep the following cut preloaded. The active
 // audio element supplies the master clock; a silent gap uses a monotonic clock.
-export function directProgramPlayer(container:HTMLElement,plan:SequencePlayback,url:(id:string)=>string,events:PlayerEvents,initial:number):ProgramPlayer {
+interface DirectProxy {
+ url:(clip:PlaybackClip)=>string|undefined;
+ warm:(current:PlaybackClip|undefined,next:PlaybackClip|undefined)=>void;
+}
+
+export function directProgramPlayer(container:HTMLElement,plan:SequencePlayback,url:(id:string)=>string,events:PlayerEvents,initial:number,proxy?:DirectProxy):ProgramPlayer {
  const fps=plan.fps.num/plan.fps.den,duration=plan.frames/fps;
  const videos=[document.createElement('video'),document.createElement('video')],audios=[document.createElement('audio'),document.createElement('audio')];
  for(const v of videos){v.crossOrigin='anonymous';v.muted=true;v.preload='auto';v.playsInline=true;v.className='program-preload';container.append(v);}
  for(const a of audios){a.crossOrigin='anonymous';a.preload='auto';container.append(a);}
- type Slot={el:HTMLMediaElement;resource:string;clip?:PlaybackClip};
- const videoSlots=videos.map(el=>({el,resource:''} as Slot)),audioSlots=audios.map(el=>({el,resource:''} as Slot));
+ type Slot={el:HTMLMediaElement;resource:string;url:string;clip?:PlaybackClip};
+ const videoSlots=videos.map(el=>({el,resource:'',url:''} as Slot)),audioSlots=audios.map(el=>({el,resource:'',url:''} as Slot));
+ const failedProxies=new Set<string>();
  let video:Slot|undefined,audio:Slot|undefined,time=initial,epoch=performance.now(),epochTime=initial,intent=false,busy=false,closed=false,generation=0,raf=0,lastNotify=0,lastHardSeek=0,abort=new AbortController();
  container.dataset.mode='direct';
  const stop=()=>{for(const slot of [...videoSlots,...audioSlots])slot.el.pause();};
  const current=()=>audio?.clip&&!audio.el.paused&&!audio.el.seeking?audio.clip.at/fps+audio.el.currentTime-audio.clip.source_in:epochTime+(intent&&!busy?(performance.now()-epoch)/1000:0);
  const assign=(slots:Slot[],previous:Slot|undefined,clip:PlaybackClip|undefined,seconds:number,force:boolean)=>{
   if(!clip)return undefined;
-  const slot=(previous?.resource===clip.resource_id?previous:slots.find(s=>s!==previous&&s.resource===clip.resource_id))??slots.find(s=>s!==previous)??slots[0];
-  const target=playbackSourceTime(clip,seconds,fps);slot.clip=clip;
-  if(slot.resource!==clip.resource_id){slot.el.src=url(clip.resource_id);slot.resource=clip.resource_id;slot.el.load();}
+  const original=url(clip.resource_id);
+  const candidate=slots===videoSlots?proxy?.url(clip):undefined;
+  const preferred=candidate&&!failedProxies.has(candidate)?candidate:original;
+  const keepActive=previous?.clip?.id===clip.id&&!force&&previous.url!==''&&!failedProxies.has(previous.url);
+  const source=keepActive?previous.url:preferred;
+  const slot=(previous?.url===source?previous:slots.find(s=>s!==previous&&s.url===source))??slots.find(s=>s!==previous)??slots[0];
+  const target=playbackSourceTime(clip,seconds,fps);
+  slot.clip=clip;
+  if(slot.url!==source){slot.el.src=source;slot.url=source;slot.resource=clip.resource_id;slot.el.load();}
   if(force||Math.abs(slot.el.currentTime-target)>1/fps){
    if(slot.el.readyState>=1)slot.el.currentTime=target;
-   else slot.el.addEventListener('loadedmetadata',()=>{if(!closed&&slot.clip?.id===clip.id)slot.el.currentTime=target;},{once:true});
+   else slot.el.addEventListener('loadedmetadata',()=>{if(!closed&&slot.clip?.id===clip.id&&slot.url===source)slot.el.currentTime=target;},{once:true});
   }
   return slot;
  };
@@ -64,8 +76,22 @@ export function directProgramPlayer(container:HTMLElement,plan:SequencePlayback,
    if(closed||own!==generation)return;
    video=v;audio=a;for(const slot of videoSlots){slot.el.className=slot===video?'program-video':'program-preload';slot.el.setAttribute('aria-label',slot===video?'节目播放器':'预加载画面');}
    events.media((video?.el as HTMLVideoElement)??null,audio?.el??video?.el??null);busy=false;epoch=performance.now();epochTime=time;events.frame(time);events.ready(true);publish();
-   preload(videoSlots,video,plan.video);preload(audioSlots,audio,plan.audio);await resume();
-  }catch(error){if(!closed&&own===generation){busy=false;intent=false;events.error(error);}}
+   container.dataset.proxy=String(!!video?.clip&&video.url!==url(video.clip.resource_id));
+   preload(videoSlots,video,plan.video);
+   preload(audioSlots,audio,plan.audio);
+   proxy?.warm(video?.clip,plan.video.find(clip=>clip.at>time*fps&&clip.resource_id!==video?.resource));
+   await resume();
+  }catch(error){
+   if(closed||own!==generation)return;
+   if(v?.clip&&v.url!==url(v.clip.resource_id)){
+    failedProxies.add(v.url);
+    void position(time);
+    return;
+   }
+   busy=false;
+   intent=false;
+   events.error(error);
+  }
  };
  const tick=()=>{
   if(closed)return;raf=requestAnimationFrame(tick);
@@ -98,11 +124,12 @@ export function segmentedProgramPlayer(container:HTMLElement,plan:SequencePlayba
  const appended=new Set<number>();
  const wait=(target:EventTarget,event:string,signal:AbortSignal)=>new Promise<void>((resolve,reject)=>{const done=()=>{clearTimeout(timer);target.removeEventListener(event,ok);target.removeEventListener('error',bad);signal.removeEventListener('abort',bad);};const ok=()=>{done();resolve();};const bad=()=>{done();reject(signal.aborted?new DOMException('Superseded','AbortError'):Error('分段缓冲失败'));};const timer=setTimeout(bad,30000);target.addEventListener(event,ok,{once:true});target.addEventListener('error',bad,{once:true});signal.addEventListener('abort',bad,{once:true});if(signal.aborted)bad();});
  const contains=(seconds:number)=>{for(let i=0;i<video.buffered.length;i++)if(video.buffered.start(i)<=seconds+.02&&video.buffered.end(i)>seconds+.02)return true;return false;};
- const pump=async()=>{
+ let warmTimer:ReturnType<typeof setTimeout>|undefined;
+ const pump=async(lookahead=4)=>{
   if(pumping||closed||!buffer)return;pumping=true;const own=generation,signal=abort.signal;
   try{
    const first=Math.floor(desired*fps/plan.segment_frames)*plan.segment_frames;
-   for(let frame=first;frame<Math.min(plan.frames,first+plan.segment_frames*4);frame+=plan.segment_frames){
+   for(let frame=first;frame<Math.min(plan.frames,first+plan.segment_frames*lookahead);frame+=plan.segment_frames){
     if(closed||own!==generation)break;if(appended.has(frame))continue;
     const {report,bytes}=await segment(frame,signal);if(closed||own!==generation)return;
     if(buffer.buffered.length&&buffer.buffered.start(0)<desired-14){const removed=wait(buffer,'updateend',signal);buffer.remove(0,desired-10);await removed;for(const old of appended)if((old+plan.segment_frames)/fps<desired-10)appended.delete(old);}
@@ -123,13 +150,23 @@ export function segmentedProgramPlayer(container:HTMLElement,plan:SequencePlayba
   finally{if(own===generation)pumping=false;}
  };
  const open=async(seconds:number)=>{
+  clearTimeout(warmTimer);
   generation++;abort.abort();abort=new AbortController();pumping=false;appended.clear();desired=Math.min(Math.max(0,seconds),Math.max(0,duration-1/fps));events.ready(false);video.pause();if(objectURL)URL.revokeObjectURL(objectURL);media=new MediaSource();objectURL=URL.createObjectURL(media);const own=generation,signal=abort.signal;
   const opened=wait(media,'sourceopen',signal);video.src=objectURL;
-  try{await opened;if(closed||own!==generation)return;media.duration=duration;buffer=media.addSourceBuffer(mime);void pump();}catch(error){if(!closed&&own===generation)events.error(error);}
+  try{
+   await opened;
+   if(closed||own!==generation)return;
+   media.duration=duration;
+   buffer=media.addSourceBuffer(mime);
+   await pump(1);
+   if(!closed&&own===generation&&contains(desired)){
+    warmTimer=setTimeout(()=>{if(!closed&&own===generation)void pump(intent?4:2);},150);
+   }
+  }catch(error){if(!closed&&own===generation)events.error(error);}
  };
  const tick=()=>{if(closed)return;raf=requestAnimationFrame(tick);if(!video.paused){desired=video.currentTime;if(performance.now()-lastNotify>50){lastNotify=performance.now();events.frame(desired);container.dataset.playhead=String(desired);container.dataset.playing='true';void pump();}}};
  video.addEventListener('ended',()=>{intent=false;events.frame(Math.max(0,duration-1/fps));});
  video.addEventListener('error',()=>{if(!closed)events.error(Error(video.error?.message||'分段媒体解码失败'));});
  raf=requestAnimationFrame(tick);void open(initial);
- return {seek:seconds=>{if(contains(seconds)){desired=seconds;video.currentTime=seconds;}else void open(seconds);},toggle:()=>{intent=!intent;if(intent){if(video.ended||video.currentTime>=duration-1/fps)void open(0);else void video.play().catch(events.error);}else video.pause();},pause:()=>{intent=false;video.pause();},close:()=>{closed=true;intent=false;generation++;abort.abort();cancelAnimationFrame(raf);disposeMedia(video);if(objectURL)URL.revokeObjectURL(objectURL);events.media(null,null);}};
+ return {seek:seconds=>{if(contains(seconds)){desired=seconds;video.currentTime=seconds;}else void open(seconds);},toggle:()=>{intent=!intent;if(intent){if(video.ended||video.currentTime>=duration-1/fps)void open(0);else void video.play().catch(events.error);}else video.pause();},pause:()=>{intent=false;video.pause();},close:()=>{closed=true;intent=false;generation++;clearTimeout(warmTimer);abort.abort();cancelAnimationFrame(raf);disposeMedia(video);if(objectURL)URL.revokeObjectURL(objectURL);events.media(null,null);}};
 }

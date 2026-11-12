@@ -12,6 +12,7 @@ import (
 func (s *Server) projectRoutes() {
 	s.timelineRoutes()
 	s.drawRoutes()
+	s.shotcraftRoutes()
 	s.mux.HandleFunc("POST /api/workspace/inspect-project", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Path string `json:"path"`
@@ -103,6 +104,11 @@ func (s *Server) projectRoutes() {
 	})
 	s.mux.HandleFunc("GET /api/projects/{id}/resources/{resource}/content", s.projectResourceContent)
 	s.mux.HandleFunc("POST /api/projects/{id}/resources/{resource}/preview", func(w http.ResponseWriter, r *http.Request) {
+		if version := r.URL.Query().Get("timeline_proxy"); version != "" {
+			ready, e := s.svc.CreateTimelineProxy(r.Context(), r.PathValue("id"), r.PathValue("resource"), version)
+			skillResponse(w, map[string]bool{"ready": ready}, e)
+			return
+		}
 		_, e := s.svc.CreateResourcePreview(r.Context(), r.PathValue("id"), r.PathValue("resource"))
 		skillResponse(w, map[string]bool{"ready": e == nil}, e)
 	})
@@ -145,6 +151,16 @@ func (s *Server) projectResourceContent(w http.ResponseWriter, r *http.Request) 
 		writeServiceError(w, err)
 		return
 	}
+	if version := r.URL.Query().Get("timeline_proxy"); version != "" {
+		path, err := s.svc.TimelineProxyPath(r.PathValue("id"), resource.ID, version)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		http.ServeFile(w, r, path)
+		return
+	}
 	if resource.Kind == "script" {
 		view, err := s.svc.GetScriptWorkbench(r.Context(), resource.ScriptID)
 		if err != nil {
@@ -173,7 +189,7 @@ func (s *Server) projectResourceContent(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) workspaceGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.svc.WorkspaceEnabled() || !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/workspace") || r.URL.Path == "/api/events" {
+		if !s.svc.WorkspaceEnabled() || !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/workspace") || strings.HasPrefix(r.URL.Path, "/api/shotcraft/") || r.URL.Path == "/api/events" {
 			next.ServeHTTP(w, r)
 			return
 		}

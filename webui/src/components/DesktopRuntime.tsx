@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { App, Badge, Button, Card, Space, Spin, Typography } from 'antd';
+import { App, Badge, Button, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { desktopCommand, isDesktop, runtimeListener, type RuntimeStatus } from '../desktop';
 import { setApiBase } from '../runtimeUrl.ts';
@@ -32,13 +32,15 @@ export function DesktopRuntime({ children }: { children: ReactNode }) {
   const [runtime, setRuntime] = useState<RuntimeStatus>();
   const [error, setError] = useState('');
   const [maintenance, setMaintenance] = useState(false);
+  const [generation, setGeneration] = useState(0);
   const client = useQueryClient();
   const { message } = App.useApp();
   useEffect(() => {
     if (!isDesktop()) return;
     let active = true;
     let unlisten: (() => void) | undefined;
-    let session = '';
+    let session: string | undefined;
+    let wasReady = false;
     let revision = -1;
     const receive = (value: RuntimeStatus) => {
       if (!active || value.revision < revision) return;
@@ -46,7 +48,17 @@ export function DesktopRuntime({ children }: { children: ReactNode }) {
       try {
         if (value.status === 'ready' && value.api_base_url) {
           setApiBase(value.api_base_url);
-          if (session !== value.session_id) { client.clear(); session = value.session_id ?? ''; }
+          if (wasReady && session !== value.session_id) {
+            client.clear();
+            setGeneration(current => current + 1);
+          }
+          session = value.session_id;
+          wasReady = true;
+        } else if (value.status !== 'ready' && wasReady) {
+          wasReady = false;
+          setApiBase('');
+          client.clear();
+          setGeneration(current => current + 1);
         }
         setRuntime(value); setError('');
       } catch (e) { setError(String(e)); }
@@ -77,13 +89,11 @@ export function DesktopRuntime({ children }: { children: ReactNode }) {
   const command = (name: string) => { setError(''); void desktopCommand(name).catch(e => setError(String(e))); };
   return <RuntimeContext.Provider value={{ runtime, error, command }}><div className="desktop-runtime-shell">
     <DesktopUpdates onMaintenance={setMaintenance} />
-    {runtime?.status === 'ready' ? <div className="desktop-runtime-content" key={runtime.session_id}>{children}</div> :
-      <><div className="desktop-runtime-content"><Card style={{ maxWidth: 640, margin: '64px auto' }} title="Video Auto Cut">
-        <Space direction="vertical" size="large">
-          {(!runtime || runtime.status === 'starting' || runtime.status === 'stopping') && <Spin />}
-          <Typography.Paragraph role={runtime?.status === 'fault' ? 'alert' : 'status'}>{runtime?.message ?? '正在启动本地服务…'}</Typography.Paragraph>
-          {(runtime?.status === 'fault' || runtime?.status === 'stopped') && <Button type="primary" disabled={maintenance} onClick={() => command('restart_runtime')}>重新启动</Button>}
-        </Space>
-      </Card></div><footer className="app-footer desktop-runtime-footer"><DesktopServiceStatus /></footer></>}
+    <div className="desktop-runtime-content" key={generation}>{children}</div>
+    {runtime?.status !== 'ready' && <footer className="app-footer desktop-runtime-footer">
+      <DesktopServiceStatus />
+      {(runtime?.status === 'fault' || runtime?.status === 'stopped') &&
+        <Button size="small" disabled={maintenance} onClick={() => command('restart_runtime')}>重新启动</Button>}
+    </footer>}
   </div></RuntimeContext.Provider>;
 }

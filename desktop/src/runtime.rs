@@ -55,7 +55,7 @@ impl Runtime {
             api_base_url: None,
             mcp_url: None,
             session_id: None,
-            data_directory: config.data_directory.display().to_string(),
+            data_directory: String::new(),
             message: "正在检查本地运行环境…".into(),
             workers: vec![],
         }));
@@ -138,7 +138,6 @@ fn supervise(
     let mut start = true;
     loop {
         if start {
-            publish(&state, &app, "starting", "正在启动 Go 与媒体 Worker…", None);
             let result = Config::load(
                 defaults.data_directory.clone(),
                 defaults.resource_root.clone(),
@@ -150,6 +149,7 @@ fn supervise(
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .data_directory = loaded.data_directory.display().to_string();
+                publish(&state, &app, "starting", "正在启动 Go 与媒体 Worker…", None);
                 Pipeline::start(&loaded)
             });
             match result {
@@ -517,21 +517,15 @@ impl Pipeline {
             "{}/api/processing-profiles/{}/revisions/{}",
             p.base, id, revision
         );
-        let response = client.get(&profile_url).send().map_err(|e| e.to_string())?;
+        let mut response = client.get(&profile_url).send().map_err(|e| e.to_string())?;
         if response.status() == 404 && revision == 1 {
             client.post(format!("{}/api/processing-profiles", p.base)).json(&json!({"profile":profile,"expected_revision":0,"idempotency_key":format!("desktop-bootstrap-{id}")}))
                 .send().map_err(|e| e.to_string())?.error_for_status().map_err(|e| e.to_string())?;
-        } else {
-            response
-                .error_for_status()
-                .map_err(|e| format!("选定预设版本不可用：{e}"))?;
+            response = client.get(&profile_url).send().map_err(|e| e.to_string())?;
         }
-        let resolved: Value = client
-            .get(&profile_url)
-            .send()
-            .map_err(|e| e.to_string())?
+        let resolved: Value = response
             .error_for_status()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("选定预设版本不可用：{e}"))?
             .json()
             .map_err(|e| e.to_string())?;
         for (role, token_name, token) in tokens {

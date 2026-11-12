@@ -14,9 +14,9 @@ export interface TimelineOperation {code_run_id?:string;description?:string;code
 export interface TimelineView { session: string; project_revision: number; sequence: TimelineSequence; history: { id: string; label: string; actor: string; applied: boolean }[]; content_version: string }
 export interface BasicQuality { sha256?: string; status: 'passed' | 'failed' | 'not_checked'; audio_status: string; video_status: string; issues: { kind: string; start: number; end: number }[] }
 export interface SequencePreview { basic_quality?: BasicQuality; content_version: string; sha256: string; duration: number; frames: number; width: number; height: number; fps: FrameRate; scope_group: string }
-export interface SequenceFrameDiagnostics { backend:'webgl2'|'cpu-ffmpeg'|'cached-movie'; hardware_accelerated?:boolean; renderer?:string; fallback_reason?:string; elapsed_ms?:number; frame_cache_hits?:number; source_cache_hits?:number; cache_bytes?:number }
+export interface SequenceFrameDiagnostics { backend:'webgl2'|'cpu-ffmpeg'|'cached-movie'|'cached-still'; hardware_accelerated?:boolean; renderer?:string; fallback_reason?:string; elapsed_ms?:number; frame_cache_hits?:number; source_cache_hits?:number; cache_bytes?:number }
 export interface SequenceFramePreview { content_version:string; frame:number; image:string; worker_pid?:number; diagnostics?:SequenceFrameDiagnostics }
-export interface PlaybackClip { id:string; resource_id:string; at:number; duration:number; source_in:number }
+export interface PlaybackClip { id:string; resource_id:string; at:number; duration:number; source_in:number; proxy_version?:string; proxy_ready?:boolean }
 export interface SequencePlayback { mode:'direct'|'segments'|'cached'; content_version:string; frames:number; fps:FrameRate; segment_frames:number; video:PlaybackClip[]; audio:PlaybackClip[] }
 export interface SequenceSegment extends SequencePreview { key:string; start_frame:number; cached:boolean }
 export const fpsValue = (rate: FrameRate) => rate.num / rate.den;

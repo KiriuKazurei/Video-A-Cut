@@ -40,6 +40,7 @@
 .editor-monitor-screen video,.editor-monitor-screen img { width:100%; height:100%; min-width:0; min-height:0; object-fit:contain; }
 .program-monitor .program-video,.program-monitor .program-frame { grid-area:1 / 1; }
 .program-monitor .program-video.is-loading { visibility:hidden; }
+.program-monitor .program-frame { position:relative; background:var(--vac-media); }
 .editor-monitor-controls { padding:3px 8px; flex-shrink:0; min-height:28px; }
 .program-updating { position:absolute; inset:0; display:flex; justify-content:center; align-items:center; gap:10px; background:var(--vac-bg); color:var(--vac-text); }
 .program-updating.has-frame { inset:auto 8px 8px auto; max-width:calc(100% - 16px); padding:4px 8px; border:1px solid var(--vac-hairline); border-radius:2px; font-size:12px; pointer-events:none; }

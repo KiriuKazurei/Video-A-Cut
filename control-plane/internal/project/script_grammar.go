@@ -105,7 +105,7 @@ func ParseScriptBlock(body, context string) (ScriptBlock, error) {
 	block := ScriptBlock{Args: map[string]string{}}
 	if reference := strings.TrimSpace(body); strings.HasPrefix(reference, "#") {
 		id := strings.TrimSpace(reference[1:])
-		if _, _, ok := shotcraft.Lookup(id); !ok {
+		if _, _, ok := shotcraft.Lookup(id); !ok && !shotcraft.UserReference(id) {
 			return block, fmt.Errorf("未知镜头卡或变体 %q", id)
 		}
 		block.Name = "#"

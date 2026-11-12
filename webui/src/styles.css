@@ -1094,3 +1094,16 @@ body code, body .ant-typography code { font-size: 12px; }
 @media (max-width: 959px) {
  .script-editor-sider { position: fixed !important; inset-block: 90px 24px; right: 0; z-index: 20; max-width: calc(100vw - 36px) !important; }
 }
+
+.shotcraft-library { padding: 20px; display: grid; align-content: start; gap: 12px; }
+.shotcraft-library h3.ant-typography { margin: 0; }
+.shotcraft-browser { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.shotcraft-list { list-style: none; margin: 0; padding: 4px; max-height: min(62vh, 560px); overflow: auto; border: 1px solid var(--vac-border); }
+.shotcraft-list .ant-btn { min-height: 38px; display: flex; justify-content: space-between; }
+.shotcraft-list .ant-btn span { overflow: hidden; text-overflow: ellipsis; }
+.shotcraft-frame { display: grid; place-items: center; text-align: center; aspect-ratio: 16 / 9; background: var(--vac-control); }
+.shotcraft-frame img { width: 100%; height: 100%; object-fit: contain; }
+@media (max-width: 760px) {
+  .shotcraft-browser { grid-template-columns: minmax(0, 1fr); }
+  .shotcraft-list { max-height: 210px; }
+}

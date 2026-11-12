@@ -6,6 +6,7 @@ import { LockOutlined, UnlockOutlined, SoundOutlined, EyeInvisibleOutlined, Scis
 import { useSequenceEditor } from '../sequenceEditor';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { timelineApi } from '../timelineApi';
+import type { ProjectResource } from '../projectContracts';
 import { buildLevels, columns, drawColumns, loudnessRefetchInterval, loudnessRetry, loudnessRetryDelay, visibleSpan, sourceWindow, loudnessDisplayGain } from '../loudness';
 import { ClipGainBand } from './ClipGainBand';
 import { TimecodeField } from './TimecodeField';
@@ -45,9 +46,10 @@ function ClipLoudness({clip,track,px,scroller}:{clip:TimelineClip;track:Timeline
  return <canvas ref={canvas} className="clip-loudness" aria-label={`音量谱${clipped?` · ${clipped}`:''}`} style={{left:span[0],width:span[1]-span[0]}}/>;
 }
 /** Premiere-style: one source-in poster at the clip start, aspect ratio preserved. */
-function ClipThumbnails({clip}:{clip:TimelineClip}) {
- const e=useSequenceEditor(),p=useProjectWorkspace(),from=timeSeconds(clip.source_in);
- return <div className="clip-thumbnails" aria-hidden="true"><img draggable={false} loading="lazy" alt="" src={timelineApi.thumbnailURL(e.projectId,clip.resource_id,from)+((p.session?.document?.resources.find(r=>r.id===clip.resource_id)?.raw_develop)?"&recipe="+encodeURIComponent(JSON.stringify(p.session?.document?.resources.find(r=>r.id===clip.resource_id)?.raw_develop)):"")}/></div>;
+function ClipThumbnails({projectId,clip,resource,drawVersion}:{projectId:string;clip:TimelineClip;resource?:ProjectResource;drawVersion?:string}) {
+ if(!resource||resource.missing||resource.removed||resource.changed)return null;
+ const version=JSON.stringify([resource.source.sha256,resource.raw_develop,drawVersion]);
+ return <div className="clip-thumbnails" aria-hidden="true"><img draggable={false} loading="lazy" decoding="async" alt="" src={timelineApi.thumbnailURL(projectId,clip.resource_id,timeSeconds(clip.source_in),version)}/></div>;
 }
 type Drag={id:string;ids:string[];kind:'move'|'left'|'right';x:number;y:number;scroll:number;at:number;end:number;delta:number;target:string;started:boolean;snapped:boolean;unlinked:boolean};
 function effectLabel(clip:TimelineClip) {
@@ -56,6 +58,13 @@ function effectLabel(clip:TimelineClip) {
 }
 export function SequenceTimeline({ onOpenDraw }: { onOpenDraw?: () => void }) {
  const e=useSequenceEditor(),p=useProjectWorkspace(),s=e.view?.sequence;
+ const resources=useMemo(()=>new Map(p.session?.document?.resources.map(resource=>[resource.id,resource])),[p.session?.document?.resources]);
+ const drawingVersions=useMemo(()=>new Map(p.session?.document?.draw_compositions?.map(draw=>[draw.id,draw.content_version])),[p.session?.document?.draw_compositions]);
+ const thumbnail=(clip:TimelineClip)=>{
+  const resource=resources.get(clip.resource_id),draw=resource?.draw_source;
+  const version=draw?.mode==='follow'?drawingVersions.get(draw.composition_id):draw?.snapshot?.content_version;
+  return <ClipThumbnails projectId={e.projectId} clip={clip} resource={resource} drawVersion={version}/>;
+ };
  const scroller=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null),boxStart=useRef<{x:number;y:number}|null>(null);
  const [ghost,setGhost]=useState<Drag|null>(null),[box,setBox]=useState<{x:number;y:number;w:number;h:number}|null>(null),[drop,setDrop]=useState<{track:string;at:number;duration:number;insert:boolean}|null>(null),[insert,setInsert]=useState(false),[notice,setNotice]=useState(''),[headSnap,setHeadSnap]=useState(false);
  const cancel=()=>{drag.current=null;setGhost(null);boxStart.current=null;setBox(null);setDrop(null);setHeadSnap(false);};
@@ -214,7 +223,7 @@ export function SequenceTimeline({ onOpenDraw }: { onOpenDraw?: () => void }) {
         onPointerDown={event=>begin(event,clip,track,'move')} onPointerMove={move} onPointerUp={finish}
         onDoubleClick={event=>{event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);void p.selectResource(clip.resource_id);window.dispatchEvent(new CustomEvent('vac:open-source',{detail:{resourceId:clip.resource_id,time:timeSeconds(clip.source_in)}}));}}
         onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);}}}>
-        {track.kind==='audio'?<><ClipLoudness clip={clip} track={track} px={px} scroller={scroller}/><ClipGainBand clip={clip} track={track} px={px} height={track.height}/></>:track.kind==='code'?<><ClipThumbnails clip={clip}/><ClipGainBand clip={clip} track={track} px={px} height={track.height}/></>:track.kind==='video'?<ClipThumbnails clip={clip}/>:null}
+        {track.kind==='audio'?<><ClipLoudness clip={clip} track={track} px={px} scroller={scroller}/><ClipGainBand clip={clip} track={track} px={px} height={track.height}/></>:track.kind==='code'?<>{thumbnail(clip)}<ClipGainBand clip={clip} track={track} px={px} height={track.height}/></>:track.kind==='video'?thumbnail(clip):null}
         <span className="clip-title">{track.kind==='code'?'代码 · ':clip.origin.actor.startsWith('agent')?'Agent · ':''}{clip.name}{track.kind==='audio'?` · 流 ${clip.stream_index}`:''}{clip.link_id?' ↔':''}</span>
         {track.kind==='code'&&<span className="clip-code-color" aria-hidden="true" style={{background:codeColors[clip.id]}}/>}
         {clip.effects.fade_in>0&&<span className="clip-effect fade-in" style={{width:clip.effects.fade_in*px}} title="淡入"/>}{clip.effects.fade_out>0&&<span className="clip-effect fade-out" style={{width:clip.effects.fade_out*px}} title="淡出"/>}{clip.effects.transition>0&&<span className="clip-transition" style={{width:clip.effects.transition*px}}>溶解</span>}

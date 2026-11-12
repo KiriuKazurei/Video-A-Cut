@@ -18,6 +18,7 @@ import (
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/project"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/scriptsyntax"
 	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/service"
+	"github.com/KiriuKazurei/Video-A-Cut/control-plane/internal/shotcraft"
 )
 
 // TestDrawRT goes through the real HTTP MCP transport, browser renderer and
@@ -295,6 +296,11 @@ func TestMixedEditMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.T)
 	if e = f.svc.ConfigureSkillHarness(ctx); e != nil {
 		t.Fatal(e)
 	}
+	user := shotcraft.UserTemplate{Version: 1, ID: "user-mcp-title", Summary: "Global MCP title", Category: "opening", DurationFrames: 60,
+		Source: `export default function Title(){return <div>Global title</div>;}`}
+	if _, e = f.svc.ImportShotTemplate(ctx, user); e != nil {
+		t.Fatal(e)
+	}
 	view, e := f.svc.ProjectFileCommand(ctx, "new", service.ProjectCommand{Path: filepath.Join(t.TempDir(), "unified.avp"), Name: "Unified MCP"})
 	if e != nil {
 		t.Fatal(e)
@@ -394,6 +400,19 @@ func TestMixedEditMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.T)
 	if !strings.Contains(preset.Source, "Vincentwei1021") || preset.DurationFrames != int64(shot["duration_frames"].(float64)) {
 		t.Fatal("compiled source or native duration was not saved")
 	}
+	userScript := scriptsyntax.Parse("{#user-mcp-title/default}显示标题")
+	if len(userScript.Diagnostics) != 0 || len(userScript.Paragraphs) != 1 || userScript.Paragraphs[0].ShotCard != "user-mcp-title/default" {
+		t.Fatalf("user shot script did not resolve: %+v", userScript)
+	}
+	userShot := tool("draw.shot", map[string]any{"action": "read", "id": userScript.Paragraphs[0].ShotCard})
+	if userShot["source"] != user.Source || userShot["license"] != nil {
+		t.Fatalf("unexpected imported shot metadata: %v", userShot)
+	}
+	current = must("sequences.get", map[string]any{"project_id": pid, "sequence_id": sequence})
+	tool("draw.save", map[string]any{"session": view.ID, "expected_revision": current["project_revision"], "idempotency_key": "save-user-shot", "shot_card": user.ID, "composition": project.DrawComposition{ID: "custom-title"}})
+	if e = f.svc.DeleteShotTemplate(ctx, user.ID); e != nil {
+		t.Fatal(e)
+	}
 	tv := tool("timeline.read", map[string]any{"sequence_id": sequence})
 	tool("draw.import", map[string]any{"session": view.ID, "composition_id": c.ID, "content_version": c.ContentVersion, "sequence_id": sequence, "expected_revision": tv["sequence"].(map[string]any)["revision"], "idempotency_key": "attach", "source_mode": "snapshot"})
 	tv = tool("timeline.read", map[string]any{"sequence_id": sequence})
@@ -458,6 +477,15 @@ func TestMixedEditMCPPreviewAndSourceFinishWithoutStandaloneRender(t *testing.T)
 	reopened, e := f.svc.ProjectFileCommand(ctx, "open", service.ProjectCommand{Path: saved.Path, StopTasks: true})
 	if e != nil {
 		t.Fatal(e)
+	}
+	foundUserShot := false
+	for _, composition := range reopened.Document.DrawCompositions {
+		if composition.ID == "custom-title" && composition.Source == user.Source && composition.DurationFrames == 60 {
+			foundUserShot = true
+		}
+	}
+	if !foundUserShot {
+		t.Fatal("reopened AVP did not retain the imported source after library removal")
 	}
 	foundShot := false
 	for _, resource := range reopened.Document.Resources {

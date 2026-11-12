@@ -30,8 +30,8 @@
     "tool_count": 19,
     "inner_tool_count": 25
   },
-  "registered_route_count": 195,
-  "expanded_endpoint_count": 196,
+  "registered_route_count": 202,
+  "expanded_endpoint_count": 203,
   "routes_source": "control-plane/internal/api/api.go",
   "client_sources": [
     "webui/src/api.ts",
@@ -84,7 +84,10 @@
     "webui/src/components/SequenceTimeline.tsx",
     "webui/src/components/ScriptCompletion.tsx",
     "webui/src/systemContracts.ts",
-    "webui/src/components/DiagnosticsPanel.tsx"
+    "webui/src/components/DiagnosticsPanel.tsx",
+    "webui/src/shotcraftApi.ts",
+    "webui/src/workspaces/ShotcraftWorkspace.tsx",
+    "webui/src/components/ShotcraftDirectorySettings.tsx"
   ],
   "unimplemented_probe": "GET /api/v1/audit/logs 仅为前端404回退探测，不属于已实现接口",
   "endpoints": [
@@ -376,7 +379,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 244
+          "line": 245
         },
         {
           "file": "webui/src/components/IngestPanel.tsx",
@@ -1764,7 +1767,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 202
+          "line": 203
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -1802,7 +1805,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 196
+          "line": 197
         },
         {
           "file": "webui/src/components/TaskOrchestrator.tsx",
@@ -1856,7 +1859,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/App.tsx",
-          "line": 193
+          "line": 194
         },
         {
           "file": "webui/src/components/AssetManager.tsx",
@@ -4695,7 +4698,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 327
+          "line": 330
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -4758,7 +4761,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 308
+          "line": 311
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5007,7 +5010,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 382
+          "line": 385
         }
       ],
       "resolved_verification_findings": [
@@ -5112,7 +5115,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 392
+          "line": 394
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5146,7 +5149,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 392
+          "line": 394
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5180,7 +5183,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/components/SkillRunModule.tsx",
-          "line": 397
+          "line": 400
         }
       ],
       "lifecycle": "current_or_compatible"
@@ -5199,7 +5202,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 15
+        "line": 16
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5228,7 +5231,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 26
+        "line": 27
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5257,7 +5260,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 35
+        "line": 36
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5286,7 +5289,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 47
+        "line": 48
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5315,7 +5318,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 60
+        "line": 61
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5324,7 +5327,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 21
+          "line": 23
         }
       ],
       "frontend_calls": [],
@@ -5344,7 +5347,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 61
+        "line": 62
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5353,7 +5356,7 @@
       "frontend_wrapper": [
         {
           "file": "webui/src/projectApi.ts",
-          "line": 22
+          "line": 24
         }
       ],
       "frontend_calls": [],
@@ -5373,7 +5376,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 70
+        "line": 71
       },
       "frontend_status": "not_wrapped",
       "frontend_status_label": "未独立封装",
@@ -5397,7 +5400,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 74
+        "line": 75
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5426,7 +5429,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 95
+        "line": 96
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5446,16 +5449,16 @@
       "group": "工程文件与资源",
       "method": "GET",
       "path": "/api/projects/{id}/resources/{resource}/content",
-      "frontend_function": "projectApi.contentURL",
-      "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "Path id/resource；Query proxy=1 可选",
+      "frontend_function": "projectApi.contentURL / projectApi.timelineProxyURL",
+      "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench / ProgramPlayback",
+      "request": "Path id/resource，Query 可选 proxy=1 或 timeline_proxy=代理版本",
       "success_response": "200/206 媒体字节或 UTF-8 文本",
-      "behavior": "只读取当前资源，支持适用的 Range；脚本返回正文",
+      "behavior": "读取当前资源，支持适用的 Range。指定 timeline_proxy 时只读取该版本的已就绪素材代理。脚本返回正文",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 104
+        "line": 105
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5475,16 +5478,16 @@
       "group": "工程文件与资源",
       "method": "POST",
       "path": "/api/projects/{id}/resources/{resource}/preview",
-      "frontend_function": "projectApi.createPreview",
-      "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench",
-      "request": "Path id/resource；JSON {}",
+      "frontend_function": "projectApi.createPreview / projectApi.createTimelineProxy",
+      "frontend_ui": "ProjectWorkspaceProvider / ProjectMenuBar / ResourcesWorkspace / ScriptWorkbench / ProgramPlayback",
+      "request": "Path id/resource，Query 可选 timeline_proxy=代理版本，JSON {}",
       "success_response": "200 {ready:boolean}",
-      "behavior": "本地 FFmpeg 预览代理",
+      "behavior": "生成资源预览。指定 timeline_proxy 时后台准备时间线素材代理，已有版本直接复用，转码繁忙时返回 ready=false",
       "usage": "页面或 SDK 已接入，验收见 AVP 文档",
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 105
+        "line": 106
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5513,7 +5516,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 109
+        "line": 115
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5542,7 +5545,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 120
+        "line": 126
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5571,7 +5574,7 @@
       "backend_handler": "HandleFunc",
       "backend_source": {
         "file": "control-plane/internal/api/project.go",
-        "line": 129
+        "line": 135
       },
       "frontend_status": "page_integrated",
       "frontend_status_label": "页面已接入",
@@ -5591,12 +5594,12 @@
       "id": "AVP-157",
       "frontend_calls": [
         {
-          "line": 112,
+          "line": 148,
           "file": "webui/src/projectWorkspace.tsx"
         }
       ],
       "backend_source": {
-        "line": 51,
+        "line": 52,
         "file": "control-plane/internal/api/project.go"
       },
       "path": "/api/workspace/{action}",
@@ -5975,7 +5978,7 @@
       "path": "/api/projects/{id}/resources/{resource}/thumbnail",
       "frontend_function": "timelineApi.thumbnailURL",
       "frontend_ui": "统一编辑器 / 序列 / 属性 / 脚本补全",
-      "request": "query at=源秒数",
+      "request": "query at=源秒数；可选 version 仅区分浏览器缓存，实际来源和帧仍由后端按当前工程校验。",
       "success_response": "PNG 字节",
       "behavior": "当前资源源帧缩略图；按源哈希/位置缓存",
       "usage": "当前工程、当前会话；实现接线与真实验收分开记录",
@@ -6669,7 +6672,7 @@
       ],
       "frontend_calls": [
         {
-          "line": 83,
+          "line": 100,
           "file": "webui/src/sequenceEditor.tsx"
         }
       ],
@@ -6704,7 +6707,7 @@
       "frontend_calls": [
         {
           "file": "webui/src/sequenceEditor.tsx",
-          "line": 62
+          "line": 63
         }
       ],
       "lifecycle": "current_project_only"
@@ -6718,7 +6721,7 @@
       "frontend_ui": "统一编辑器 / 序列 / 属性 / 脚本补全",
       "request": "session,expected_revision,content_version；可选AbortSignal",
       "success_response": "SequencePlayback",
-      "behavior": "后端判定当前选中范围可否直播放，或复用有效完整MP4，其他情况返回分段计划；不渲染整段",
+      "behavior": "后端选择直放、完整MP4缓存或分段计划。兼容视频片段附素材代理版本与就绪状态",
       "usage": "当前工程、当前会话；实现接线与真实验收分开记录",
       "backend_handler": "HandleFunc",
       "backend_source": {
@@ -6795,6 +6798,244 @@
       ],
       "frontend_calls": [],
       "lifecycle": "current_project_only"
+    },
+    {
+      "id": "SHOT-01",
+      "group": "Shotcraft 模板库",
+      "method": "GET",
+      "path": "/api/shotcraft/templates",
+      "frontend_function": "useShotCards",
+      "frontend_ui": "Shotcraft 模板库",
+      "request": "query?",
+      "success_response": "ShotCard[]",
+      "behavior": "列出内置和用户模板元数据",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 32
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 19
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/ShotcraftWorkspace.tsx",
+          "line": 91
+        }
+      ],
+      "lifecycle": "application_library"
+    },
+    {
+      "id": "SHOT-02",
+      "group": "Shotcraft 模板库",
+      "method": "POST",
+      "path": "/api/shotcraft/templates",
+      "frontend_function": "shotcraftApi.import",
+      "frontend_ui": "Shotcraft 模板库",
+      "request": "v1 JSON：version、id、summary、category、duration_frames、source",
+      "success_response": "201 ShotCard",
+      "behavior": "验证并导入全局用户模板，重复 ID 返回 409",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 36
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 36
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/ShotcraftWorkspace.tsx",
+          "line": 106
+        }
+      ],
+      "lifecycle": "application_library"
+    },
+    {
+      "id": "SHOT-03",
+      "group": "Shotcraft 模板库",
+      "method": "GET",
+      "path": "/api/shotcraft/templates/{card}",
+      "frontend_function": "shotcraftApi.download",
+      "frontend_ui": "Shotcraft 模板库",
+      "request": "用户卡号",
+      "success_response": "用户模板 v1 JSON",
+      "behavior": "导出可再次导入的 JSON",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 49
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 39
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/ShotcraftWorkspace.tsx",
+          "line": 172
+        }
+      ],
+      "lifecycle": "application_library"
+    },
+    {
+      "id": "SHOT-04",
+      "group": "Shotcraft 模板库",
+      "method": "DELETE",
+      "path": "/api/shotcraft/templates/{card}",
+      "frontend_function": "shotcraftApi.remove",
+      "frontend_ui": "Shotcraft 模板库",
+      "request": "用户卡号",
+      "success_response": "{deleted:true}",
+      "behavior": "移除全局用户模板",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 53
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 40
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/ShotcraftWorkspace.tsx",
+          "line": 104
+        }
+      ],
+      "lifecycle": "application_library"
+    },
+    {
+      "id": "SHOT-05",
+      "group": "Shotcraft 模板库",
+      "method": "GET",
+      "path": "/api/shotcraft/templates/{card}/preview",
+      "frontend_function": "shotcraftApi.preview",
+      "frontend_ui": "Shotcraft 模板库",
+      "request": "variant?、position? (0–100)",
+      "success_response": "image/png",
+      "behavior": "从现有绘制 Worker 生成抽帧预览；按模板内容、帧位置和渲染环境复用本机 PNG 缓存。",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 57
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 41
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/workspaces/ShotcraftWorkspace.tsx",
+          "line": 44
+        }
+      ],
+      "lifecycle": "application_library"
+    },
+    {
+      "id": "SHOT-06",
+      "group": "Shotcraft 模板库",
+      "method": "GET",
+      "path": "/api/shotcraft/directory",
+      "frontend_function": "shotcraftApi.directory",
+      "frontend_ui": "设置 → 模板库",
+      "request": "无",
+      "success_response": "{directory: string}",
+      "behavior": "读取应用级模板库目录，空路径表示默认库",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 13
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 32
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ShotcraftDirectorySettings.tsx",
+          "line": 16
+        }
+      ],
+      "lifecycle": "application_library"
+    },
+    {
+      "id": "SHOT-07",
+      "group": "Shotcraft 模板库",
+      "method": "PUT",
+      "path": "/api/shotcraft/directory",
+      "frontend_function": "shotcraftApi.setDirectory",
+      "frontend_ui": "设置 → 模板库",
+      "request": "{directory: string}，空路径表示默认库",
+      "success_response": "{directory: string}",
+      "behavior": "校验现有绝对目录并持久化选择",
+      "usage": "应用级模板目录",
+      "backend_handler": "HandleFunc",
+      "backend_source": {
+        "file": "control-plane/internal/api/shotcraft.go",
+        "line": 17
+      },
+      "frontend_status": "page_integrated",
+      "frontend_status_label": "页面已接入",
+      "frontend_requirement": "current_workspace",
+      "frontend_gap": "",
+      "frontend_wrapper": [
+        {
+          "file": "webui/src/shotcraftApi.ts",
+          "line": 33
+        }
+      ],
+      "frontend_calls": [
+        {
+          "file": "webui/src/components/ShotcraftDirectorySettings.tsx",
+          "line": 20
+        }
+      ],
+      "lifecycle": "application_library"
     }
   ],
   "routes_source_sha256": "adcb918dcc3281a9a6b04a04e8286e37c6f4326ef6effc8e96fc4d1db604d64e",
@@ -6807,7 +7048,8 @@
     "control-plane/internal/api/project.go",
     "control-plane/internal/api/timeline.go",
     "control-plane/internal/api/draw.go",
-    "control-plane/internal/api/runtime.go"
+    "control-plane/internal/api/runtime.go",
+    "control-plane/internal/api/shotcraft.go"
   ],
   "sse_new_events_note": "workspace.changed / workspace.saved / resource.changed invalidate current-project queries; streams close when project session changes.",
   "additive_contract_note": "2026-10-18 续作: 增加 scripts/{id}/voice 与 delivery；分段可选 voice、tts_enabled、subtitles_enabled，TTS settings 可选三频 EQ；声音回写递增工作台修订，不改 workflow_runs JSON。",
@@ -6817,10 +7059,11 @@
     "control-plane/internal/api/tts.go": "a0ffaec8ee432656be67a7d60c3d9ff7ffcc8283a17ed6969227d804542e2cb8",
     "control-plane/internal/api/skill.go": "c675cb099572b63c9224e795bfbfc7066a35604f4fe155bad87e6fae6d95e140",
     "control-plane/internal/api/skill_editing.go": "d1a3945a023c2e21611232b119c2f8f49c59d96a54f2c1608ae3dee18c0d8e31",
-    "control-plane/internal/api/project.go": "aead2e50864355c0e9b57859b3a8d00189a11e774bdb0131ec02dbd9975d1cba",
+    "control-plane/internal/api/project.go": "504a8762ec475957127d47df8e683e1346e5e793be6a832d2f7f1295c4fdc07b",
     "control-plane/internal/api/timeline.go": "5ccd6fbe8685b861aa203caebde436a45fcc8c5aa280cbfab5bdfc1f98499c61",
     "control-plane/internal/api/draw.go": "812774438986eb74d100c2582a52275ab756541ccf657f1d8e725e52fc74bd88",
-    "control-plane/internal/api/runtime.go": "c71d9b91548845cc4bfba82e778c0a3a9dbcbc5a38c833daa7da5418690f9a8d"
+    "control-plane/internal/api/runtime.go": "c71d9b91548845cc4bfba82e778c0a3a9dbcbc5a38c833daa7da5418690f9a8d",
+    "control-plane/internal/api/shotcraft.go": "245d8cb1971f03c0ff0d9f929ac31707d645d1388f55c0ae9d0a5b6f7687a5b6"
   },
   "verified_checkout": "agent/vu-skill",
   "verification_note": "2026-10-20 AVP refactor: source registration and interface locations refreshed; runtime and visible window results separately recorded in docs/接口文档.md and scripts/TESTING.md.",
@@ -6850,7 +7093,7 @@
     "verified_date": "2026-11-01",
     "method": "本轮校对移除验收/人工确认后的接线；静态接线与原生/模型质量分别记录，兼容SDK不描述为当前页面。",
     "counts": {
-      "page_integrated": 164,
+      "page_integrated": 171,
       "sdk_only": 13,
       "retired_in_workspace": 9,
       "not_wrapped": 10
@@ -6905,7 +7148,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 174
+        "line": 208
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "RuntimeStatus",
@@ -6916,7 +7159,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 179
+        "line": 213
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6927,7 +7170,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 193
+        "line": 227
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6938,7 +7181,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 204
+        "line": 238
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6949,7 +7192,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 65
+        "line": 97
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -6957,10 +7200,10 @@
     },
     {
       "authorization": "visible_window_human_no_token",
-      "arguments": "{mode:new-project|open-project|save-project|save-script|import-resources|relink-resource|transcription-model|transcription-python, defaultPath?:string|null}",
+      "arguments": "{mode:new-project|open-project|save-project|save-script|import-resources|relink-resource|shotcraft-directory|transcription-model|transcription-python, defaultPath?:string|null}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 76
+        "line": 108
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "string[]",
@@ -6982,7 +7225,18 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 43
+        "line": 49
+      },
+      "frontend": "webui/src/projectWorkspace.tsx",
+      "result": "{path:string,name:string}[]",
+      "command": "recent_projects"
+    },
+    {
+      "authorization": "visible_window_human_no_token",
+      "arguments": "{}",
+      "source": {
+        "file": "desktop/src/shell.rs",
+        "line": 75
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "string",
@@ -6993,7 +7247,7 @@
       "arguments": "{text:string}；UTF-16 文本，不含 NUL，含终止符至多 8 Mi 个代码单元；由当前 WebView 提供 HWND",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 48
+        "line": 80
       },
       "frontend": "webui/src/components/McpConnectionPanel.tsx via desktopCommand",
       "result": "null；失败为 Promise rejection，页面显示复制失败",
@@ -7004,7 +7258,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 222
+        "line": 256
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -7015,7 +7269,7 @@
       "arguments": "{}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 236
+        "line": 270
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "{root_id,relative_path}|null; legacy picker",
@@ -7026,7 +7280,7 @@
       "arguments": "{url}",
       "source": {
         "file": "desktop/src/shell.rs",
-        "line": 255
+        "line": 289
       },
       "frontend": "webui/src/desktop.ts + DesktopRuntime/ProjectWorkspaceProvider/ProjectMenuBar/DesktopUpdates",
       "result": "void",
@@ -7080,7 +7334,7 @@
       "authorization": "visible_window_human_no_token",
       "arguments": "{title:string}；程序名及当前工程名/未保存标记",
       "source": {
-        "line": 60,
+        "line": 92,
         "file": "desktop/src/shell.rs"
       },
       "frontend": "webui/src/components/ProjectMenuBar.tsx via desktopCommand；浏览器同步 document.title",

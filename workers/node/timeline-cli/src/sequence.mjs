@@ -205,7 +205,22 @@ export async function renderSequenceFrame(input,{run=runTool,drawFrame}={}) {
 export async function renderSequence(input,{run=runTool,probe=probeMedia,prepareDrawFrames}={}) {
  const {output_dir:output,content_version:version,window,preview=false}=input;
  const sequence=structuredClone(input.sequence);let previewScale=1;
- if(preview&&sequence.width>960){const factor=960/sequence.width;previewScale=factor;sequence.width=960;sequence.height=Math.max(2,Math.round(sequence.height*factor/2)*2);for(const t of sequence.tracks)for(const c of t.clips){c.effects.x*=factor;c.effects.y*=factor;for(const k of c.effects.parameter_keyframes??[])if(k.kind==='移动'){k.x*=factor;k.y*=factor;}for(const cue of c.effects.subtitles??[])cue.size_px=(cue.size_px||36)*factor;if(t.kind==='subtitle'||c.font_size)c.font_size=Math.max(1,Math.round((c.font_size||36)*factor));}}
+ const longestEdge=Math.max(sequence.width,sequence.height);
+ if(preview&&longestEdge>960){
+  previewScale=960/longestEdge;
+  sequence.width=Math.max(2,Math.round(sequence.width*previewScale/2)*2);
+  sequence.height=Math.max(2,Math.round(sequence.height*previewScale/2)*2);
+  for(const track of sequence.tracks)for(const clip of track.clips){
+   clip.effects.x*=previewScale;
+   clip.effects.y*=previewScale;
+   for(const keyframe of clip.effects.parameter_keyframes??[])if(keyframe.kind==='移动'){
+    keyframe.x*=previewScale;
+    keyframe.y*=previewScale;
+   }
+   for(const cue of clip.effects.subtitles??[])cue.size_px=(cue.size_px||36)*previewScale;
+   if(track.kind==='subtitle'||clip.font_size)clip.font_size=Math.max(1,Math.round((clip.font_size||36)*previewScale));
+  }
+ }
  sequenceGraph(sequence,input.resources.map(r=>r.draw_document?{...r,path:join(output,'draw.png')}:r),{window});
  const resources=[];
  for(const r of input.resources){
