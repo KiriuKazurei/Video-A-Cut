@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 test('code selection follows sequence time and ignores selected ordinary footage',async()=>{
  const {selectedCodeClips,codeDescription}=await import('./src/codeClips.ts');
@@ -231,11 +232,24 @@ test('Agent handoff preserves the current draft and identifies its project and b
   assert.match(task, /同一序列，按当前序列修订交付/);
 });
 
-test('script links open the standalone workspace and preserve the selected revision', () => {
-  assert.deepEqual(parseWorkspaceHash('#/script?script=s1&version=3&segment=0'), { workspace: 'script', scriptId: 's1', scriptVersion: 3, scriptSegment: 0 });
-  assert.deepEqual(parseWorkspaceHash('#/editing/content?script=s1&version=3'), { workspace: 'script', scriptId: 's1', scriptVersion: 3 });
-  assert.equal(buildWorkspaceHash({ workspace: 'script', scriptId: 's1', scriptVersion: 3 }), '/script?script=s1&version=3');
-  assert.equal(buildWorkspaceHash({ workspace: 'editing', editingSection: 'content', scriptId: 's1' }), '/script?script=s1');
+test('script links stay on the editing timeline and preserve the selected revision', () => {
+  assert.deepEqual(parseWorkspaceHash('#/script?script=s1&version=3&segment=0'), { workspace: 'editing', editingSection: 'content', scriptId: 's1', scriptVersion: 3, scriptSegment: 0 });
+  assert.deepEqual(parseWorkspaceHash('#/editing/content?script=s1&version=3'), { workspace: 'editing', editingSection: 'content', scriptId: 's1', scriptVersion: 3 });
+  assert.equal(buildWorkspaceHash({ workspace: 'script', scriptId: 's1', scriptVersion: 3 }), '/editing/content?script=s1&version=3');
+  assert.equal(buildWorkspaceHash({ workspace: 'editing', editingSection: 'content', scriptId: 's1' }), '/editing/content?script=s1');
+});
+
+test('script dock stays mounted when a code clip is selected', () => {
+  const dock = readFileSync(new URL('./src/components/EditorRightDock.tsx', import.meta.url), 'utf8');
+  const script = readFileSync(new URL('./src/workspaces/ScriptWorkspace.tsx', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('./src/App.tsx', import.meta.url), 'utf8');
+  assert.match(dock, /ScriptWorkspace/);
+  assert.match(dock, /CodeClipWorkbench/);
+  assert.match(dock, /hidden=\{!isOpen\}/);
+  assert.doesNotMatch(script, /CodeClipWorkbench/);
+  assert.doesNotMatch(script, /hidden=\{hasCode\}/);
+  assert.match(app, /TOP_NAV/);
+  assert.doesNotMatch(app, /data-workspace=\{item\.id\}[\s\S]{0,80}脚本/);
 });
 
 test('imported shot cards complete in the workbench and remain valid portable references', async () => {

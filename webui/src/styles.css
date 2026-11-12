@@ -97,7 +97,7 @@ body { background: var(--vac-bg); }
 .workspace { flex: 1; min-height: 0; }
 .dock > .ant-layout-sider-children { overflow-y: auto; }
 .stage-main { min-height: 0; min-width: 0; overflow-y: auto; padding: 0 var(--vac-page-x); scrollbar-gutter: stable; }
-.page-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--vac-section-gap); padding: var(--vac-page-y) 0 32px; min-width: 0; }
+.page-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--vac-section-gap); padding: var(--vac-page-y) 0; min-width: 0; }
 .page-body > *, .edit-stage > * { min-width: 0; }
 .task-actions { min-width: 0; }
 .task-actions .task-watch-input { width: 280px; max-width: 100%; min-width: 0; }
@@ -156,7 +156,7 @@ body { background: var(--vac-bg); }
   line-height: 32px;
   gap: 0; justify-content: flex-start;
 }
-/* 六项等宽；固定 600px 滑轨中直接展示脚本、编辑和其余工作区。 */
+/* 六项等宽：资源、编辑、绘制、模板库、导出、TTS。脚本在编辑右坞，设置在菜单。 */
 .app-nav.seg-nav > .ant-menu-item:not(.ant-menu-overflow-item-rest) {
   flex: 0 0 calc(100% / 6);
   width: calc(100% / 6);
@@ -984,25 +984,25 @@ body code, body .ant-typography code { font-size: 12px; }
 .settings-sidebar .ant-menu { border-inline-end: 0 !important; background: transparent; }
 .settings-sidebar .ant-menu-item-group-title { padding: 12px 12px 6px; font-size: var(--vac-font-sm); color: var(--vac-text-2); }
 .settings-sidebar .ant-menu-item { margin-inline: 0; width: 100%; }
-.settings-content { min-width: 0; display: grid; gap: 20px; }
+.settings-content { min-width: 0; display: grid; gap: var(--vac-section-gap); }
 .settings-content > * { min-width: 0; }
 .settings-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .settings-section-heading h2.ant-typography { margin: 0 0 8px; font-size: 18px; }
 .settings-section-heading .ant-typography { margin-bottom: 0; line-height: var(--vac-line-read); }
-.settings-stack { display: grid; gap: 20px; }
+.settings-stack { display: grid; gap: var(--vac-section-gap); }
 .settings-category-picker { display: grid; gap: 8px; }
 .settings-category-picker .ant-select { width: 100%; }
 .settings-workspace .ant-card-head { min-height: 44px; }
 .settings-workspace .ant-card-head-title { white-space: normal; }
 .settings-workspace .preparation-panel > .ant-card-head .ant-card-extra { max-width: 52%; }
 .settings-workspace .preparation-panel > .ant-card-head .ant-tag { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.settings-workspace .preparation-panel > .ant-card-body { padding: 20px; }
+.settings-workspace .preparation-panel > .ant-card-body { padding: 12px; }
 .settings-workspace .profile-picker { padding-bottom: 16px; border-bottom: 1px solid var(--vac-border); }
 .settings-workspace .prep-main h5.ant-typography { margin: 24px 0 16px; font-size: var(--vac-font-md); }
 .settings-workspace .prep-main > h5.ant-typography:first-child { margin-top: 4px; }
-.settings-workspace .prep-main .ant-form-item { margin-bottom: 20px; }
+.settings-workspace .prep-main .ant-form-item { margin-bottom: 12px; }
 .settings-workspace .prep-main .ant-input-number { width: 100%; }
-.settings-workspace .provider-editor > .ant-card-body { padding: 16px; }
+.settings-workspace .provider-editor > .ant-card-body { padding: 12px; }
 .settings-workspace .transcription-settings { padding-block: 8px 20px; }
 .settings-policy-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .settings-policy-row .ant-switch { flex: none; }
@@ -1010,9 +1010,9 @@ body code, body .ant-typography code { font-size: 12px; }
 .settings-save-bar { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 0 4px; border-top: 1px solid var(--vac-border); background: var(--vac-panel); }
 .settings-workspace .settings-config-code { font-family: ui-monospace, Consolas, monospace; line-height: 1.65; }
 .settings-workspace .ant-list-item-meta-description { line-height: var(--vac-line-read); }
-.settings-workspace .status-monitor .ant-list-item { align-items: flex-start; flex-wrap: wrap; gap: 12px; padding-block: 20px; }
+.settings-workspace .status-monitor .ant-list-item { align-items: flex-start; flex-wrap: wrap; gap: 8px; padding-block: 8px; }
 .settings-workspace .status-monitor .ant-list-item-extra { margin-inline-start: 0; }
-.settings-workspace .settings-log-tabs > .ant-tabs-nav { margin-bottom: 20px; }
+.settings-workspace .settings-log-tabs > .ant-tabs-nav { margin-bottom: 12px; }
 @media (max-width: 991px) {
  .settings-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
  .settings-sidebar { position: static; }
@@ -1055,8 +1055,8 @@ body code, body .ant-typography code { font-size: 12px; }
  .script-editor-sider { position: fixed !important; inset-block: 90px 24px; right: 0; z-index: 20; max-width: calc(100vw - 36px) !important; }
 }
 
-.shotcraft-library { padding: 20px; display: grid; align-content: start; gap: 12px; }
-.shotcraft-library h3.ant-typography { margin: 0; }
+.shotcraft-library { padding: var(--vac-page-y) var(--vac-page-x); display: grid; align-content: start; gap: var(--vac-section-gap); }
+.shotcraft-library h3.ant-typography { margin: 0; font-size: 24px; }
 .shotcraft-browser { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 .shotcraft-list { list-style: none; margin: 0; padding: 4px; max-height: min(62vh, 560px); overflow: auto; border: 1px solid var(--vac-border); }
 .shotcraft-list .ant-btn { min-height: 38px; display: flex; justify-content: space-between; }

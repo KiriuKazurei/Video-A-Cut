@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DRAW_HANDOFF_ACTIONS, DRAW_ZONES, drawAgentContext, drawDraftChanged, newDrawComposition, newDrawImage, drawImagePosition, drawImageReference, drawRoute, zoneForFocus, unifiedComposition, reconcileDrawDraft, acceptDrawSave } from './src/drawContracts.ts';
-import { WORKSPACE_KEYS, WORKSPACES, buildWorkspaceHash, parseWorkspaceHash } from './src/navigation.ts';
+import { TOP_NAV, WORKSPACE_KEYS, WORKSPACES, buildWorkspaceHash, parseWorkspaceHash } from './src/navigation.ts';
 import { locationCrumbs, stageOfRoute } from './src/pipeline.ts';
 import * as drawStatus from './src/drawContracts.ts';
 
@@ -24,13 +24,17 @@ test('draw task status reports actual ownership, phase and expired leases',()=>{
  assert.match(drawStatus.drawAgentStatus({...claimed,state:'succeeded'},now),/完成/);
 });
 
-test('draw is one top-level workspace and digit 6 opens it', () => {
+test('draw is one top-level workspace and digit 3 opens it', () => {
   const draw = WORKSPACES.filter((item) => item.id === 'draw');
   assert.equal(draw.length, 1);
   assert.equal(draw[0].label, '绘制');
-  assert.equal(WORKSPACE_KEYS['6'], 'draw');
-  assert.deepEqual(Object.values(WORKSPACE_KEYS), ['resources', 'editing', 'export', 'settings', 'tts', 'draw', 'script']);
+  assert.equal(WORKSPACE_KEYS['3'], 'draw');
+  assert.equal(WORKSPACE_KEYS['6'], 'tts');
+  assert.equal(WORKSPACE_KEYS['7'], undefined);
+  assert.deepEqual(TOP_NAV, ['resources', 'editing', 'draw', 'templates', 'export', 'tts']);
+  assert.deepEqual(Object.values(WORKSPACE_KEYS), ['resources', 'editing', 'draw', 'templates', 'export', 'tts']);
   assert.match(shortcuts, /WORKSPACE_KEYS\[e\.key\]/);
+  assert.doesNotMatch(shortcuts, /REVIEW_KEYS/);
   assert.match(app, /workspace !== 'draw'/);
   assert.doesNotMatch(app, /draw\/lint|workspace: 'draw-lint'/);
 });

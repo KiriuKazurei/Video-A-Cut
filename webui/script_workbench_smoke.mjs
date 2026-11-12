@@ -113,7 +113,8 @@ try {
   await page.goto(base + '/#/editing/content?script=s1');
   const workbench = page.locator('.script-editor-sider [data-testid="script-workbench"]');
   await workbench.waitFor();
-  assert.equal(await page.locator('[data-workspace="script"][aria-current="page"]').count(), 1);
+  assert.equal(await page.locator('[data-workspace="editing"][aria-current="page"]').count(), 1);
+  assert.equal(await page.locator('[data-workspace="script"]').count(), 0);
   assert.equal(await workbench.evaluate(el => !!el.closest('.script-editor-sider')), true);
   const handle=page.getByRole('separator',{name:'脚本侧栏宽度',exact:true});
   const pane=page.getByRole('complementary',{name:'脚本工作台侧栏',exact:true});
@@ -131,7 +132,7 @@ try {
   assert((await pane.boundingBox()).x>720,'script pane must be on the right, alongside the program');
   assert(await page.locator('.program-monitor').isVisible());
   check('right script pane supports pointer and keyboard resize, persists width, and coexists with editing');
-  for (const id of ['resources', 'script', 'editing', 'draw', 'export', 'tts']) assert(await page.locator(`.app-nav [data-workspace="${id}"]`).evaluate(el => {
+  for (const id of ['resources', 'editing', 'draw', 'templates', 'export', 'tts']) assert(await page.locator(`.app-nav [data-workspace="${id}"]`).evaluate(el => {
     const item = el.closest('li'), rail = el.closest('ul');
     return getComputedStyle(item).opacity === '1' && item.getBoundingClientRect().right <= rail.getBoundingClientRect().right + 1;
   }), id + ' must remain directly visible');
@@ -162,8 +163,9 @@ try {
   await page.getByRole('button',{name:'展开脚本侧栏',exact:true}).click();
   assert.equal(await body.inputValue(),'未保存脚本保留');
   check('collapsing and reopening the script pane retains the unsaved draft');
+  await page.locator('[data-workspace="resources"]').click();
   await page.locator('[data-workspace="editing"]').click();
-  await page.locator('[data-workspace="script"]').click();
+  await page.getByRole('button', { name: '脚本', exact: true }).click();
   assert.equal(await body.inputValue(), '未保存脚本保留');
   await workbench.getByRole('button', { name: '查看任务文本', exact: true }).click();
   const handoff = page.getByRole('textbox', { name: 'Agent 任务文本', exact: true });
