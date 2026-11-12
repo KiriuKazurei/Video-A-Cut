@@ -5,7 +5,6 @@ import { EDITING_SECTIONS, EXPORT_SECTIONS, SETTINGS_CATEGORIES, WORKSPACE_KEYS 
 /** 审查快捷键：由 WorkflowPanel（仅当前可见的那个）监听并执行，键盘层只负责守卫与分发。 */
 export const REVIEW_SHORTCUT_EVENT = 'vac:review-shortcut';
 export type ReviewShortcutAction = 'confirm' | 'approve' | 'next';
-const REVIEW_KEYS: Record<string, ReviewShortcutAction> = { c: 'confirm', a: 'approve', n: 'next' };
 
 interface UseKeyboardShortcutsOptions {
   route: RouteState;
@@ -54,14 +53,6 @@ export function isInteractiveControl(target: EventTarget | null): boolean {
     return true;
   }
   return false;
-}
-
-/** 字母键不会触发按钮/链接的原生行为，所以只在滑块、页签、下拉等会自己吃键盘的控件上让路 */
-function lettersBlocked(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  // 只在「会被字母键误伤」的控件上让路：审查卡片上的操作按钮（确认/退回/批准/撤销…）、链接、滑块、页签、下拉。
-  // 时间线片段等其它按钮点击后焦点会留在上面，此时 C/A/N 仍应可用。
-  return Boolean(target.closest('.workflow-card button, .workflow-card .ant-btn, a[href], .ant-slider, [role="slider"], [role="tab"], [role="combobox"], [role="listbox"], [role="menu"]'));
 }
 
 /** 
@@ -182,9 +173,9 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // 1–5 保持原工作区；6 打开「绘制」。绘制没有二级顶栏，[ ] 不在该页循环分区。
+      // 1–6 follow the top nav: 资源、编辑、绘制、模板库、导出、TTS. Settings and the old review page have no digit.
       const workspaceKey = WORKSPACE_KEYS[e.key];
-      if (workspaceKey && (e.key !== '5' || !isInteractiveControl(e.target))) {
+      if (workspaceKey && !isInteractiveControl(e.target)) {
         e.preventDefault();
         navigate({ workspace: workspaceKey });
         return;
@@ -200,17 +191,6 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         cycleSection(true);
         return;
-      }
-
-      // 审查快捷键 C / A / N：仅在「编辑 › 内容编辑/审查」生效；焦点在滑块、页签、下拉上时不触发
-      if (workspace === 'editing' && route.editingSection === 'content' && !e.shiftKey) {
-        const action = REVIEW_KEYS[e.key.toLowerCase()];
-        if (action && !lettersBlocked(e.target)) {
-          if (action !== 'next' && !(e.target instanceof Element && e.target.closest('.workflow-card, .timeline-clip'))) return;
-          e.preventDefault();
-          window.dispatchEvent(new CustomEvent(REVIEW_SHORTCUT_EVENT, { detail: { action } }));
-          return;
-        }
       }
 
       // P2-05: 空格键与媒体快捷键保护交互控件原生行为（按钮空格激活、滑块左右箭头等）

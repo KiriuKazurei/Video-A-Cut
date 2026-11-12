@@ -6,7 +6,7 @@ export function mergeEffectChanges<T extends object>(before:T,requested:T,curren
  const changed=Object.entries(requested).filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(before[key as keyof T]));
  return {...current,...Object.fromEntries(changed)};
 }
-export const GAIN_TOP_DB=12, GAIN_BOTTOM_DB=-24, GAIN_LINE='#4C8DFF', GAIN_HANDLE=7;
+export const GAIN_TOP_DB=12, GAIN_BOTTOM_DB=-24, GAIN_LINE='#5492FF', GAIN_HANDLE=7;
 
 /** Asymmetric map: top=+12 dB, middle=0 dB, bottom=−24 dB. */
 export function dbToY(db:number, height:number):number {
