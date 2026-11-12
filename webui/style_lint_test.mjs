@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { lintText } from './scripts/lint-style.mjs';
 
-const tokens = new Set(['#1E1E1E', '#FFFFFF', '#000000', '#4C8DFF', '#E6E6E6']);
+const tokens = new Set(['#1E1E1E', '#FFFFFF', '#000000', '#5492FF', '#E6E6E6']);
 
 function messages(filename, source) {
   return lintText(filename, source, tokens).map((item) => item.replace(/^.*?:\d+\s*/, ''));
@@ -17,7 +17,7 @@ test('lint catches the shapes Gate previously missed', () => {
     ['a.tsx', `style={{ borderTopLeftRadius: '16px' }}`, '圆角'],
     ['a.css', `.card{border-top-left-radius:20px}`, '圆角'],
     ['a.css', `.card{filter:drop-shadow(0 2px 4px #000)}`, 'drop-shadow'],
-    ['a.tsx', `strokeColor={{ '0%': '#4C8DFF', '100%': '#FFFFFF' }}`, '渐变'],
+    ['a.tsx', `strokeColor={{ '0%': '#5492FF', '100%': '#FFFFFF' }}`, '渐变'],
     ['a.tsx', `strokeColor={{ from: '#108ee9', to: '#87d068' }}`, '渐变'],
     ['a.css', `.x{color:red}`, '命名色'],
     ['a.tsx', `style={{ color: 'white' }}`, '命名色'],
@@ -61,7 +61,7 @@ test('lint allows the shapes Gate previously false-flagged', () => {
     ['a.ts', `export const borderRadius = 3`],
     ['a.css', `.page:not([hidden]) { animation: none; display: flex; }`],
     ['a.css', `.app-nav.seg-nav::before { transform: translateX(var(--nav-thumb-x)); }`],
-    ['src/codeClips.ts', `const palette=['--vac-accent','--vac-clip-effect'];`],
+    ['src/codeClips.ts', `colors[id]='var(--vac-clip-code)'`],
     ['components/Timeline.tsx', `audio: { background: 'var(--vac-clip-audio)', borderColor: 'var(--vac-clip-audio)' }`],
     ['components/Timeline.tsx', `ok: { background: 'var(--vac-success)' }`]
   ];

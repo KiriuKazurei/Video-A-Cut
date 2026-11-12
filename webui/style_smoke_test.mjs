@@ -32,11 +32,13 @@ test('workspace content does not enter with translate, and lists do not fade in'
   assert.doesNotMatch(css, /\.asset-card\s*\{[^}]*animation:/);
 });
 
-test('code clip identity and legacy audio bars do not use status colors', () => {
-  const palette = codeClips.match(/const palette=\[[^\]]+\]/)?.[0] ?? '';
-  assert.match(palette, /--vac-accent/);
-  assert.match(palette, /--vac-clip-effect/);
-  assert.doesNotMatch(palette, /status-cyan|warning|success|danger/);
+test('accent, code identity, and legacy audio bars stay on the approved tokens', () => {
+  assert.match(css, /--vac-accent:\s*#5492FF/i);
+  assert.match(css, /--vac-clip-code:\s*#3A7D86/i);
+  assert.match(theme, /export const ACCENT = '#5492FF'/);
+  assert.match(theme, /export const CLIP_CODE = '#3A7D86'/);
+  assert.match(codeClips, /var\(--vac-clip-code\)/);
+  assert.doesNotMatch(codeClips, /--vac-accent|--vac-clip-effect|status-cyan|warning|success|danger/);
   const audio = legacyTimeline.match(/audio:\s*\{[^}]+\}/)?.[0] ?? '';
   assert.match(audio, /--vac-clip-audio/);
   assert.doesNotMatch(audio, /status-cyan|warning|success|danger/);

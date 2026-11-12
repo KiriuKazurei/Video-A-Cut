@@ -382,10 +382,14 @@ function checkMotion(filename, text, mask, report) {
 function checkIdentityColor(filename, text, mask, report) {
   const norm = String(filename).replaceAll('\\', '/');
   if (norm.endsWith('codeClips.ts')) {
-    const status = /--vac-(?:status-cyan|warning(?:-text)?|success(?:-text)?|danger(?:-text|-soft)?)/g;
+    const status = /--vac-(?:accent|clip-effect|status-cyan|warning(?:-text)?|success(?:-text)?|danger(?:-text|-soft)?)/g;
+    let hit = false;
     for (const match of text.matchAll(status)) {
-      if (!masked(mask, match.index)) report(match.index, '代码条身份色不得使用状态色');
+      if (masked(mask, match.index)) continue;
+      hit = true;
+      report(match.index, '代码条身份色不得使用强调色或状态色');
     }
+    if (!hit && !text.includes('--vac-clip-code')) report(0, '代码条必须使用 --vac-clip-code');
   }
   if (norm.endsWith('Timeline.tsx')) {
     const audio = /audio:\s*\{[^}]*\}/;

@@ -47,21 +47,34 @@ test('code description retains authored layout and rebases only sequence time ar
  assert.equal(rebaseCodeDescription(text,30,{num:30,den:1}),expected);
 });
 
+test('video clip colors use presets or any hex, and other tracks keep their defaults', () => {
+  assert.equal(normalizeClipHex('#7a5362'), CLIP_ROSE);
+  assert.equal(normalizeClipHex('#7A5362FF'), CLIP_ROSE);
+  assert.equal(normalizeClipHex('red'), null);
+  assert.equal(presetSelected(undefined, CLIP_VIDEO), true);
+  assert.equal(presetSelected(CLIP_ROSE, CLIP_ROSE), true);
+  assert.equal(clipBarFill('video', 'human'), 'var(--vac-clip-video)');
+  assert.equal(clipBarFill('video', 'human', CLIP_ROSE), CLIP_ROSE);
+  assert.equal(clipBarFill('video', 'agent:1', '#C0FFEE'), '#C0FFEE');
+  assert.equal(clipBarFill('video', 'agent:1'), 'var(--vac-clip-effect)');
+  assert.equal(clipBarFill('code', 'agent:1', CLIP_ROSE), 'var(--vac-clip-code)');
+  assert.equal(clipBarFill('audio', 'human', CLIP_ROSE), 'var(--vac-clip-audio)');
+  assert.equal(clipBarFill('subtitle', 'human'), 'var(--vac-clip-subtitle)');
+});
+
 test('code colors survive inserting and removing other occurrences',async()=>{
  const {codeClipColors}=await import('./src/codeClips.ts');
  const sequence={tracks:[{kind:'code',clips:Array.from({length:30},(_,i)=>({id:`clip-${i}`}))}]};
  const before=codeClipColors(sequence);
- for (const color of Object.values(before)) {
-  assert.match(color, /var\(--vac-(?:accent|clip-effect)\)/);
-  assert.doesNotMatch(color, /status-cyan|warning|success|danger/);
- }
+ for (const color of Object.values(before)) assert.equal(color, 'var(--vac-clip-code)');
  sequence.tracks[0].clips.unshift({id:'clip-000'});
  const inserted=codeClipColors(sequence);
  for(const [id,color] of Object.entries(before))assert.equal(inserted[id],color,id);
  sequence.tracks[0].clips=sequence.tracks[0].clips.filter(c=>c.id!=='clip-1');
  const removed=codeClipColors(sequence);
  for(const [id,color] of Object.entries(before))if(id!=='clip-1')assert.equal(removed[id],color,id);
- assert.equal(new Set(Object.values(before)).size,30);
+ assert.equal(new Set(Object.values(before)).size,1);
+ assert.equal(inserted['clip-000'], 'var(--vac-clip-code)');
 });
 
 test('moving a dirty code draft rebases parameter times while preserving quoted and escaped text',async()=>{
@@ -75,6 +88,8 @@ import { applyAuthoringInsert, completionContext, filterFonts, filterParams, fil
 import { handleSSEEvent, REFRESH_DOMAINS, SUPPORTED_SSE_EVENTS } from './src/queryRefresh.ts';
 import { rebaseReferences, insertReference, candidateLabel, synchronizeReferenceNames } from './src/scriptReferences.ts';
 import { linkedSelection, omitsLinkedPartner, snapFrame, frameLabel, frameSeconds, parseTimecode, trackGaps } from './src/timelineContracts.ts';
+import { CLIP_ROSE, CLIP_VIDEO } from './src/theme.ts';
+import { clipBarFill, normalizeClipHex, presetSelected } from './src/clipColor.ts';
 
 test('script highlighting preserves all text, escaped braces and quoted closing brace', () => {
   const source = '自然语言\\{文本\\} {@片段.mp4}\n\n{"括号 } 与 \\"引号\\"", 字号:32px,}{白屏}';

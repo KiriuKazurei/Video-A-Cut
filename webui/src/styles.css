@@ -19,10 +19,16 @@
   --vac-border: #3A3A3A;
   --vac-text: #E6E6E6;
   --vac-text-2: #9A9A9A;
-  --vac-accent: #4C8DFF;
+  --vac-accent: #5492FF;
   --vac-hairline: #3A3A3A;
   --vac-clip-video: #3E6FB0;
+  --vac-clip-indigo: #4556A3;
+  --vac-clip-steel: #4A6D88;
+  --vac-clip-brown: #7A6248;
+  --vac-clip-rose: #7A5362;
+  --vac-clip-mist: #65588A;
   --vac-clip-audio: #3E8E6B;
+  --vac-clip-code: #3A7D86;
   --vac-clip-subtitle: #B08A3E;
   --vac-clip-effect: #8A5FB0;
   --vac-success: #49AA19;

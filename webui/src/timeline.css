@@ -90,14 +90,14 @@
 .timeline-row.is-target>.track-heading { border-left:2px solid var(--vac-accent); }
 .timeline-row.is-locked .timeline-lane { background:var(--vac-panel); }
 .sequence-timeline .timeline-lane { position:relative; height:100%; border:0; border-radius:0; background:var(--vac-bg); flex-shrink:0; touch-action:none; }
-.sequence-timeline .timeline-clip { position:absolute; top:4px; bottom:auto; height:calc(100% - 8px); box-sizing:border-box; padding:0; line-height:1.4; background:var(--vac-clip-video); color:var(--vac-on-media); border:1px solid var(--vac-clip-video); border-radius:2px; overflow:hidden; cursor:grab; touch-action:none; user-select:none; }
-.timeline-clip.is-agent { background:var(--vac-clip-effect); border-color:var(--vac-clip-effect); }
+.sequence-timeline .timeline-clip { position:absolute; top:4px; bottom:auto; height:calc(100% - 8px); box-sizing:border-box; padding:0; line-height:1.4; background:var(--clip-fill, var(--vac-clip-video)); color:var(--vac-on-media); border:1px solid var(--clip-fill, var(--vac-clip-video)); border-radius:2px; overflow:hidden; cursor:grab; touch-action:none; user-select:none; }
 .timeline-clip.is-selected { outline:2px solid var(--vac-on-media); outline-offset:-2px; z-index:2; }
 .timeline-row.is-locked .timeline-clip { cursor:default; border-style:dashed; }
 .timeline-row.is-locked .clip-trim { display:none; }
 .timeline-clip.is-disabled { opacity:.5; }
-.clip-title { position:relative; z-index:2; display:block; max-width:100%; padding:2px 8px; font-size:12px; font-weight:500; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; background:var(--vac-clip-video); pointer-events:none; }
-.is-agent .clip-title { background:var(--vac-clip-effect); }
+.clip-title { position:relative; z-index:2; display:block; max-width:100%; padding:2px 8px; font-size:12px; font-weight:500; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; background:var(--clip-fill, var(--vac-clip-video)); pointer-events:none; }
+.clip-color-row { display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin:8px 0; }
+.clip-color-swatch { display:inline-block; width:12px; height:12px; margin-inline-end:4px; border-radius:2px; border:1px solid var(--vac-border); vertical-align:-2px; }
 .clip-code-color { position:absolute; top:2px; bottom:2px; left:2px; width:4px; z-index:4; pointer-events:none; }
 /* Premiere-like: single start poster, height fills body, width from intrinsic AR (no stretch). */
 .clip-thumbnails { position:absolute; inset:19px 0 0; display:flex; align-items:stretch; justify-content:flex-start; overflow:hidden; opacity:.85; pointer-events:none; }
