@@ -1,6 +1,8 @@
 /**
- * 硬性样式检查。规则见 docs/架构与功能详解.md#style。
- * 扫描 webui/src：渐变、背景模糊、发光阴影、色板以外的颜色、过大圆角。
+ * 硬性样式检查。色板与效果见 docs/架构与功能详解.md#style；
+ * 动效、身份色与控件见 docs/development/visual-design-language.md。
+ * 扫描 webui/src：渐变、背景模糊、发光阴影、色板以外的颜色、过大圆角、
+ * 页面/列表入场位移，以及把状态色当成代码条或音频条身份色。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -61,6 +63,8 @@ export function lintText(filename, text, tokens = new Set()) {
   checkEffects(text, mask, report);
   checkShadow(text, mask, filename, report);
   checkRadius(filename, text, mask, report);
+  checkMotion(filename, text, mask, report);
+  checkIdentityColor(filename, text, mask, report);
   return errors;
 }
 
@@ -323,6 +327,77 @@ function checkRadius(filename, text, mask, report) {
       continue;
     }
     if (!radiusPieceOk(raw, '')) report(match.index, `圆角 ${raw} 超出规范`);
+  }
+}
+
+const ENTER_SELECTOR = [
+  /(^|[\s>+~])\.page(?![\w-])/,
+  /(^|[\s>+~])\.section-content(?![\w-])/,
+  /(^|[\s>+~])\.context-crumbs(?![\w-])/,
+  /(^|[\s>+~])\.next-step-btn(?![\w-])/,
+  /(^|[\s>+~])\.asset-card(?![\w-])/,
+  /\.ant-list-item(?![\w-])/,
+  /\.ant-table-row(?![\w-])/,
+  /\.ant-alert(?![\w-])/,
+  /\.ant-empty(?![\w-])/,
+  /\.ant-result(?![\w-])/,
+  /\.ant-tabs-tabpane-active(?![\w-])/
+];
+
+function checkMotion(filename, text, mask, report) {
+  const named = /\bvac-(?:page|item)-in\b/g;
+  for (const match of text.matchAll(named)) {
+    if (!masked(mask, match.index)) report(match.index, '禁止页面或列表入场动画 vac-page-in / vac-item-in');
+  }
+  if (!String(filename).endsWith('.css')) return;
+  const frames = /@keyframes\b/g;
+  for (const match of text.matchAll(frames)) {
+    if (masked(mask, match.index)) continue;
+    const open = text.indexOf('{', match.index);
+    if (open < 0) continue;
+    let depth = 0;
+    let end = open;
+    for (; end < text.length; end += 1) {
+      if (text[end] === '{') depth += 1;
+      else if (text[end] === '}') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    if (/translate(?:X|Y|3d)?\s*\(/i.test(text.slice(open, end + 1))) {
+      report(match.index, '关键帧禁止位移 translate；只有顶栏分段滑块可以使用位移动效');
+    }
+  }
+  const anim = /(?<![\w-])animation\s*:/g;
+  for (const match of text.matchAll(anim)) {
+    if (masked(mask, match.index)) continue;
+    const raw = cleanValue(readValue(text, match.index + match[0].length));
+    if (!raw || raw === 'none' || raw.startsWith('none ')) continue;
+    const selector = normSelector(selectorAt(text, match.index));
+    const hit = splitSelectors(selector).some((part) => ENTER_SELECTOR.some((re) => re.test(part)));
+    if (hit) report(match.index, `禁止在 ${selector.slice(0, 80)} 上使用入场 animation`);
+  }
+}
+
+function checkIdentityColor(filename, text, mask, report) {
+  const norm = String(filename).replaceAll('\\', '/');
+  if (norm.endsWith('codeClips.ts')) {
+    const status = /--vac-(?:accent|clip-effect|status-cyan|warning(?:-text)?|success(?:-text)?|danger(?:-text|-soft)?)/g;
+    let hit = false;
+    for (const match of text.matchAll(status)) {
+      if (masked(mask, match.index)) continue;
+      hit = true;
+      report(match.index, '代码条身份色不得使用强调色或状态色');
+    }
+    if (!hit && !text.includes('--vac-clip-code')) report(0, '代码条必须使用 --vac-clip-code');
+  }
+  if (norm.endsWith('Timeline.tsx')) {
+    const audio = /audio:\s*\{[^}]*\}/;
+    const match = audio.exec(text);
+    if (!match || masked(mask, match.index)) return;
+    if (!match[0].includes('--vac-clip-audio') || /--vac-(?:status-cyan|warning|success|danger)/.test(match[0])) {
+      report(match.index, '旧时间线音频条必须使用 --vac-clip-audio，不能用状态色');
+    }
   }
 }
 
