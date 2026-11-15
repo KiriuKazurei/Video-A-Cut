@@ -8,13 +8,8 @@ export function selectedCodeClips(sequence:TimelineSequence,ids:string[]){
   .sort((a,b)=>a.clip.at-b.clip.at||a.order-b.order||a.clip.id.localeCompare(b.clip.id));
 }
 export function codeClipColors(sequence:TimelineSequence){
- const palette=['--vac-accent','--vac-status-cyan','--vac-warning-text','--vac-success-text','--vac-clip-effect','--vac-danger-text'];
  const colors:Record<string,string>={};
- const ids=sequence.tracks.filter(t=>t.kind==='code').flatMap(t=>t.clips.map(c=>c.id)).sort();
- for(const id of ids){let hash=2166136261;for(const c of id)hash=Math.imul(hash^c.charCodeAt(0),16777619)>>>0;
-  const base=`var(${palette[hash%palette.length]})`,weight=60+(hash>>>8)%4000/100;
-  colors[id]=`color-mix(in srgb, ${base} ${weight}%, var(--vac-text))`;
- }
+ for(const track of sequence.tracks) if(track.kind==='code') for(const clip of track.clips) colors[clip.id]='var(--vac-clip-code)';
  return colors;
 }
 

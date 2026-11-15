@@ -1,4 +1,5 @@
 import {codeClipColors} from '../codeClips';
+import {clipBarFill} from '../clipColor';
 import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Dropdown, Flex, Select, Slider, Space, Tooltip, Typography, type MenuProps } from 'antd';
@@ -219,7 +220,7 @@ export function SequenceTimeline({ onOpenDraw }: { onOpenDraw?: () => void }) {
       {(headSnap||ghost?.snapped)&&<div className="timeline-snap-flash" style={{left:e.head*px}} aria-hidden="true"/>}
       <div className={`timeline-playhead${headSnap||ghost?.snapped?' is-snapped':''}`} style={{left:e.head*px}}/>
       {track.clips.map(clip=><Dropdown key={clip.id} trigger={['contextMenu']} menu={{items:clipMenu(clip,track)}} onOpenChange={open=>{if(open){if(!selected.has(clip.id))e.select([clip.id]);e.setSelectedTrack(track.id);}}}>
-       <div className={`timeline-clip${clip.origin.actor.startsWith('agent')?' is-agent':''}${selected.has(clip.id)?' is-selected':''}${clip.link_id?' is-linked':''}${track.hidden||track.muted?' is-disabled':''}`} data-clip-id={clip.id} role="button" tabIndex={0} aria-label={`${clip.name} · ${track.kind} · ${frameLabel(clip.at,s.fps)}`} aria-pressed={selected.has(clip.id)} style={{left:clip.at*px,width:Math.max(3,clip.duration*px),...(track.kind==='code'?{borderColor:codeColors[clip.id]}:{})}}
+       <div className={`timeline-clip${track.kind==='code'?' is-code':''}${clip.origin.actor.startsWith('agent')?' is-agent':''}${selected.has(clip.id)?' is-selected':''}${clip.link_id?' is-linked':''}${track.hidden||track.muted?' is-disabled':''}`} data-clip-id={clip.id} role="button" tabIndex={0} aria-label={`${clip.name} · ${track.kind} · ${frameLabel(clip.at,s.fps)}`} aria-pressed={selected.has(clip.id)} style={{left:clip.at*px,width:Math.max(3,clip.duration*px),['--clip-fill' as string]:clipBarFill(track.kind,clip.origin.actor,clip.color)}}
         onPointerDown={event=>begin(event,clip,track,'move')} onPointerMove={move} onPointerUp={finish}
         onDoubleClick={event=>{event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);void p.selectResource(clip.resource_id);window.dispatchEvent(new CustomEvent('vac:open-source',{detail:{resourceId:clip.resource_id,time:timeSeconds(clip.source_in)}}));}}
         onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();event.stopPropagation();e.select([clip.id]);e.setSelectedTrack(track.id);}}}>

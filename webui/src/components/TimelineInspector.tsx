@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Checkbox, Descriptions, Divider, Empty, Flex, Input, InputNumber, Select, Space, Tag, Typography } from 'antd';
+import { Button, Card, Checkbox, ColorPicker, Descriptions, Divider, Empty, Flex, Input, InputNumber, Select, Space, Tag, Typography } from 'antd';
 import { useProjectWorkspace } from '../projectWorkspace';
 import { useSequenceEditor } from '../sequenceEditor';
 import { frameLabel, fpsValue, timeSeconds, type TimelineClip, type TimelineMarker, type ClipEffects } from '../timelineContracts';
 import { constantGainEffects } from '../gainEnvelope';
+import { CLIP_VIDEO, normalizeClipHex, presetSelected, VIDEO_CLIP_PRESETS } from '../clipColor';
 import { ResourceInspector } from './ResourceInspector';
 import { api } from '../api';
 
@@ -38,6 +39,7 @@ function ClipProperties({clip,trackId}:{clip:TimelineClip;trackId:string}) {
    <label>时长（帧）<InputNumber aria-label="片段时长帧" min={1} precision={0} value={duration} onChange={value=>setDuration(value ?? 1)}/></label>
   </div>
   <Flex gap={6} wrap><Button size="small" disabled={locked||e.pending} onClick={()=>run([{type:'clip.move',clip_ids:ids,at,target_track_id:target}],'移动片段')}>应用位置</Button><Button size="small" disabled={locked||e.pending} onClick={()=>run([{type:'clip.update',clip_ids:ids,duration}],'调整时长')}>应用时长</Button><Button size="small" disabled={locked||e.pending} onClick={()=>run([{type:clip.link_id?'clip.unlink':'clip.link',clip_ids:ids}],'音画链接')}>{clip.link_id?'分离音画':'链接所选'}</Button></Flex>
+  {track.kind==='video'&&<div className="clip-color-row" role="group" aria-label="片段颜色">{VIDEO_CLIP_PRESETS.map(preset=><Button key={preset.id} size="small" aria-pressed={presetSelected(clip.color,preset.hex)} disabled={locked||e.pending} onClick={()=>run([{type:'clip.update',clip_ids:[clip.id],color:preset.hex===CLIP_VIDEO?'':preset.hex,unlinked:true}],preset.hex===CLIP_VIDEO?'恢复默认片段颜色':'片段颜色')}><span className="clip-color-swatch" style={{background:preset.hex}} aria-hidden="true"/>{preset.label}</Button>)}<ColorPicker size="small" aria-label="自定义片段颜色" disabled={locked||e.pending} disabledAlpha format="hex" value={normalizeClipHex(clip.color??'')??CLIP_VIDEO} presets={[{label:'内置',colors:VIDEO_CLIP_PRESETS.map(preset=>preset.hex)}]} onChangeComplete={color=>{const next=normalizeClipHex(color.toHexString());if(!next)return;run([{type:'clip.update',clip_ids:[clip.id],color:next===CLIP_VIDEO?'':next,unlinked:true}],next===CLIP_VIDEO?'恢复默认片段颜色':'片段颜色');}}/><Button size="small" disabled={locked||e.pending||!clip.color} onClick={()=>run([{type:'clip.update',clip_ids:[clip.id],color:'',unlinked:true}],'恢复默认片段颜色')}>恢复默认</Button></div>}
   <Divider plain>速度与效果</Divider>
   <div className="timeline-property-grid">
    <label>速度（保持音调）<InputNumber aria-label="片段速度" min={.05} max={100} step={.1} value={speed} onChange={value=>setSpeed(value ?? 1)}/></label>

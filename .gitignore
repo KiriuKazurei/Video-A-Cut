@@ -58,6 +58,7 @@ Thumbs.db
 !/docs/development/AI画面修改.md
 !/docs/development/当前问题清单与修复指导.md
 !/docs/development/Agent视频创作与内置素材库.md
+!/docs/development/visual-design-language.md
 !/docs/user-guide/
 /docs/user-guide/*
 !/docs/user-guide/脚本语法教程.md

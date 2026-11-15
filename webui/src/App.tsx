@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Badge, Button, ConfigProvider, Drawer, Grid, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd';
 import {
-  ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  AppstoreOutlined, ExportOutlined, FileSearchOutlined, FileTextOutlined, FolderOpenOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   CompassOutlined, HighlightOutlined, PlaySquareOutlined, QuestionCircleOutlined, ReloadOutlined, SettingOutlined, SoundOutlined
 } from '@ant-design/icons';
 import { api, ingestApi } from './api';
@@ -19,7 +19,7 @@ import { ProjectHome } from './components/ProjectHome';
 import { useProjectWorkspace } from './projectWorkspace';
 import { WorkspacePage } from './components/WorkspacePage';
 import { useWorkflowData, type RunSelection } from './components/WorkflowPanel';
-import { WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
+import { TOP_NAV, WORKSPACES, useWorkspaceRoute, type WorkspaceId } from './navigation';
 import { siderTheme } from './theme';
 import { useResizable } from './hooks/useResizable';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -36,15 +36,15 @@ import { SettingsWorkspace } from './workspaces/SettingsWorkspace';
 import { TtsWorkspace } from './workspaces/TtsWorkspace';
 import { ShotcraftWorkspace } from './workspaces/ShotcraftWorkspace';
 import { DrawWorkspace } from './workspaces/DrawWorkspace';
-import { ScriptWorkspace } from './workspaces/ScriptWorkspace';
 import { SkillWorkspaceProvider } from './skillWorkspace';
 import { protectedQueryRetry } from './skillView';
 
-const WORKSPACE_ICONS: Record<Exclude<WorkspaceId, 'templates'>, React.ReactNode> = {
+const WORKSPACE_ICONS: Record<WorkspaceId, React.ReactNode> = {
   resources: <FolderOpenOutlined />,
   editing: <PlaySquareOutlined />,
   script: <FileTextOutlined />,
   draw: <HighlightOutlined />,
+  templates: <AppstoreOutlined />,
   export: <ExportOutlined />,
   settings: <SettingOutlined />,
   tts: <SoundOutlined />
@@ -52,8 +52,7 @@ const WORKSPACE_ICONS: Record<Exclude<WorkspaceId, 'templates'>, React.ReactNode
 
 /**
  * 工作区外壳：顶部导航切换主工作区，左右侧栏响应式折叠。
- * 资源、编辑、绘制、导出、TTS 在顶栏；绘制是少开顶栏的显式例外，页内不再拆子页。
- * 设置从菜单进入，不占顶栏。
+ * 顶栏是资源、编辑、绘制、模板库、导出、TTS。脚本在编辑右坞，设置从菜单进入。
  */
 export default function App() {
   const projectWorkspace = useProjectWorkspace();
@@ -288,9 +287,9 @@ export default function App() {
 
   // 响应式策略：lg 及以下使用抽屉，xl 及以上使用侧栏
   const useSidebar = screens.xl;
-  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw' || workspace === 'templates' || workspace === 'script';
+  const independentWorkspace = workspace === 'settings' || workspace === 'tts' || workspace === 'draw' || workspace === 'templates';
   const showLeftSider = useSidebar && !independentWorkspace;
-  const showRightSider = useSidebar && !independentWorkspace && workspace !== 'editing';
+  const showRightSider = useSidebar && !independentWorkspace && workspace !== 'editing' && workspace !== 'script';
 
   // 侧栏内容
   const leftSiderContent = (
@@ -302,7 +301,7 @@ export default function App() {
   const rightSiderContent = (
     <ConfigProvider theme={siderTheme}>
       {workspace==='editing'
-        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)}/>
+        ? <EditorRightDock navigate={navigate} active={workspace==='editing'} route={route} assetId={selected?.asset_id} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)} onCollapse={()=>setRightCollapsed(true)}/>
         : <ResourceInspector />}
     </ConfigProvider>
   );
@@ -325,15 +324,18 @@ export default function App() {
             mode="horizontal" 
             aria-label="工作区" 
             overflowedIndicatorPopupClassName="app-nav-popup"
-            selectedKeys={[workspace]}
+            selectedKeys={[workspace === 'script' ? 'editing' : workspace]}
             onClick={({ key }) => navigate({ workspace: key as WorkspaceId })}
-            items={WORKSPACES.flatMap(item => item.id === 'settings' || item.id === 'templates' ? [] : [{
-              key: item.id, 
-              icon: WORKSPACE_ICONS[item.id], 
+            items={TOP_NAV.map(id => {
+              const item = WORKSPACES.find(entry => entry.id === id)!;
+              const current = workspace === id || (id === 'editing' && workspace === 'script');
+              return {
+              key: item.id,
+              icon: WORKSPACE_ICONS[item.id],
               title: item.description,
-              disabled: !projectWorkspace.session?.document && item.id !== 'resources',
-              label: <span data-workspace={item.id} aria-current={workspace === item.id ? 'page' : undefined}>{item.label}</span>
-            }])}
+              disabled: !projectWorkspace.session?.document && item.id !== 'resources' && item.id !== 'templates',
+              label: <span data-workspace={item.id} aria-current={current ? 'page' : undefined}>{item.label}</span>
+            }; })}
           />
         </div>
 
@@ -466,13 +468,7 @@ export default function App() {
             role="separator" aria-orientation="vertical" aria-label="脚本侧栏宽度" aria-valuemin={240} aria-valuemax={720} aria-valuenow={rightSiderWidth}
             tabIndex={0} onKeyDown={event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();setRightWidth(Math.max(240,Math.min(720,rightSiderWidth+(event.key==='ArrowLeft'?24:-24))));}}}
             title="拖动调整宽度，方向键微调，双击重置" />
-          <Button type="text" size="small" onClick={()=>setRightCollapsed(!rightCollapsed)} aria-label={rightCollapsed?'展开脚本侧栏':'收起脚本侧栏'}>{rightCollapsed?'脚本':'收起侧栏'}</Button>
-          <div hidden={rightCollapsed}>
-            <WorkspacePage pageId="script" active={(workspace==='editing'||workspace==='script')&&!rightCollapsed}>
-            <ScriptWorkspace route={route} navigate={navigate} assetId={selected?.asset_id} active={(workspace==='editing'||workspace==='script')&&!rightCollapsed} dock />
-            </WorkspacePage>
-            <EditorRightDock navigate={navigate} active={(workspace==='editing'||workspace==='script')&&!rightCollapsed}/>
-          </div>
+          <EditorRightDock navigate={navigate} active={workspace==='editing'||workspace==='script'} route={route} assetId={selected?.asset_id} stripOnly={rightCollapsed} onExpand={()=>setRightCollapsed(false)} onCollapse={()=>setRightCollapsed(true)}/>
         </Layout.Sider>
         {/* 右侧栏：xl 及以上显示，lg 及以下折叠，Phase 3 支持宽度拖拽 */}
         {showRightSider && (
@@ -519,7 +515,7 @@ export default function App() {
         width={320}
       >
         {workspace==='editing'
-          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active stripOnly={false}/></ConfigProvider>
+          ? <ConfigProvider theme={siderTheme}><EditorRightDock navigate={navigate} active route={route} assetId={selected?.asset_id} stripOnly={false} onCollapse={()=>setRightDrawerOpen(false)}/></ConfigProvider>
           : rightSiderContent}
       </Drawer>
 

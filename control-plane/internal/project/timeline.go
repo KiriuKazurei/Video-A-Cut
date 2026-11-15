@@ -125,6 +125,7 @@ type Clip struct {
 	Text        string    `json:"text,omitempty"`
 	Font        string    `json:"font,omitempty"`
 	FontSize    int       `json:"font_size,omitempty"`
+	Color       string    `json:"color,omitempty"`
 }
 type Track struct {
 	VisualGroup string  `json:"visual_group,omitempty"`
@@ -222,6 +223,21 @@ func NewSequence(name string) Sequence {
 func newTrack(kind, group string) Track {
 	return Track{ID: TimelineID("trk"), Kind: kind, Name: map[string]string{"video": "视频", "audio": "音频", "subtitle": "字幕", "code": "代码"}[kind], Height: 64, GroupID: group, Clips: []Clip{}}
 }
+func normalizeClipColor(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	if len(value) != 7 || value[0] != '#' {
+		return "", fmt.Errorf("片段颜色必须是 #RRGGBB")
+	}
+	for _, c := range value[1:] {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return "", fmt.Errorf("片段颜色必须是 #RRGGBB")
+		}
+	}
+	return strings.ToUpper(value), nil
+}
+
 func clone[T any](v T) T {
 	raw, _ := json.Marshal(v)
 	var out T
@@ -435,6 +451,7 @@ type Operation struct {
 	Text          string        `json:"text,omitempty"`
 	Font          string        `json:"font,omitempty"`
 	FontSize      int           `json:"font_size,omitempty"`
+	Color         *string       `json:"color,omitempty"`
 	Clips         []Clip        `json:"clips,omitempty"`
 	Unlinked      bool          `json:"unlinked,omitempty"`
 }
@@ -1167,6 +1184,7 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 		}
 	case "clip.trim", "clip.update", "clip.link", "clip.unlink":
 		count := 0
+		videoColor := false
 		linkID := TimelineID("link")
 		for i := range s.Tracks {
 			t := &s.Tracks[i]
@@ -1233,6 +1251,14 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 					if op.FontSize > 0 {
 						c.FontSize = op.FontSize
 					}
+					if op.Color != nil && t.Kind == "video" {
+						color, err := normalizeClipColor(*op.Color)
+						if err != nil {
+							return err
+						}
+						c.Color = color
+						videoColor = true
+					}
 					syncCodeScript(before, c, s.FPS)
 				}
 				c.Origin = editedOrigin(c.Origin, origin)
@@ -1249,6 +1275,9 @@ func (s *Sequence) apply(d *AvpDocument, op Operation, origin Origin) error {
 		}
 		if count == 0 {
 			return fmt.Errorf("未选择片段")
+		}
+		if op.Color != nil && !videoColor {
+			return fmt.Errorf("只有视频片段可以设置颜色")
 		}
 		if op.Type == "clip.trim" || op.Type == "clip.update" {
 			for _, t := range s.Tracks {

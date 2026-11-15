@@ -70,7 +70,7 @@ export function SettingsWorkspace({ route, navigate, asset, onStarted, audit, co
         </div>
         {settingsCategory==='skills' && <div className="settings-stack"><McpConnectionPanel active={route.workspace==='settings'} /><SkillManagerModule /></div>}
         {route.workspace==='settings' && settingsCategory==='templates' && <ShotcraftDirectorySettings />}
-        {settingsCategory==='logs' && <Tabs className="settings-log-tabs" items={[
+        {settingsCategory==='logs' && <Tabs className="settings-log-tabs" animated={false} items={[
           {key:'audit',label:'审计日志',children:<AuditLogViewer />},
           {key:'operations',label:'Agent 操作记录',children:<Card size="small" title="Agent 操作记录"><AgentOperationPanel /></Card>}
         ]}/>}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { lintText } from './scripts/lint-style.mjs';
 
-const tokens = new Set(['#1E1E1E', '#FFFFFF', '#000000', '#4C8DFF', '#E6E6E6']);
+const tokens = new Set(['#1E1E1E', '#FFFFFF', '#000000', '#5492FF', '#E6E6E6']);
 
 function messages(filename, source) {
   return lintText(filename, source, tokens).map((item) => item.replace(/^.*?:\d+\s*/, ''));
@@ -17,7 +17,7 @@ test('lint catches the shapes Gate previously missed', () => {
     ['a.tsx', `style={{ borderTopLeftRadius: '16px' }}`, '圆角'],
     ['a.css', `.card{border-top-left-radius:20px}`, '圆角'],
     ['a.css', `.card{filter:drop-shadow(0 2px 4px #000)}`, 'drop-shadow'],
-    ['a.tsx', `strokeColor={{ '0%': '#4C8DFF', '100%': '#FFFFFF' }}`, '渐变'],
+    ['a.tsx', `strokeColor={{ '0%': '#5492FF', '100%': '#FFFFFF' }}`, '渐变'],
     ['a.tsx', `strokeColor={{ from: '#108ee9', to: '#87d068' }}`, '渐变'],
     ['a.css', `.x{color:red}`, '命名色'],
     ['a.tsx', `style={{ color: 'white' }}`, '命名色'],
@@ -26,7 +26,14 @@ test('lint catches the shapes Gate previously missed', () => {
     ['a.css', `.seg-nav-card{border-radius:12px}`, '圆角'],
     ['a.css', `.seg-nav{border-radius:12px}`, '圆角'],
     ['a.css', `.stage-dot-extra{border-radius:50%}`, '圆角'],
-    ['a.css', `.btn{box-shadow:0 2px 0 0}`, 'box-shadow']
+    ['a.css', `.btn{box-shadow:0 2px 0 0}`, 'box-shadow'],
+    ['a.css', `@keyframes vac-page-in { from { transform: translateY(6px); } }`, 'vac-page-in'],
+    ['a.css', `@keyframes rise { from { transform: translateY(6px); } to { transform: none; } }`, 'translate'],
+    ['a.css', `.page:not([hidden]) { animation: rise 200ms; }`, '入场'],
+    ['a.css', `.asset-card { animation: rise 200ms; }`, '入场'],
+    ['a.css', `.ant-list-item, .ant-alert { animation: vac-item-in 200ms; }`, 'vac-item-in'],
+    ['src/codeClips.ts', `const palette=['--vac-accent','--vac-status-cyan','--vac-danger-text'];`, '身份色'],
+    ['components/Timeline.tsx', `audio: { background: 'var(--vac-status-cyan)', borderColor: 'var(--vac-status-cyan)' }`, '音频条']
   ];
   for (const [file, source, needle] of cases) {
     const found = messages(file, source);
@@ -51,7 +58,12 @@ test('lint allows the shapes Gate previously false-flagged', () => {
     ['a.css', `.ok{color:#fff;background:#1E1E1E}`],
     ['a.tsx', `fill="%231E1E1E"`],
     ['a.css', `.ok{border-top-left-radius:4px}`],
-    ['a.ts', `export const borderRadius = 3`]
+    ['a.ts', `export const borderRadius = 3`],
+    ['a.css', `.page:not([hidden]) { animation: none; display: flex; }`],
+    ['a.css', `.app-nav.seg-nav::before { transform: translateX(var(--nav-thumb-x)); }`],
+    ['src/codeClips.ts', `colors[id]='var(--vac-clip-code)'`],
+    ['components/Timeline.tsx', `audio: { background: 'var(--vac-clip-audio)', borderColor: 'var(--vac-clip-audio)' }`],
+    ['components/Timeline.tsx', `ok: { background: 'var(--vac-success)' }`]
   ];
   for (const [file, source] of cases) {
     const found = messages(file, source);

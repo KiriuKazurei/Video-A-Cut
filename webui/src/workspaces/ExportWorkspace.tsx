@@ -182,6 +182,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
   return (
     <div className="page-body">
       <Tabs
+        animated={false}
         activeKey={exportSection}
         onChange={(key) => navigate({ exportSection: key as typeof exportSection })}
         items={EXPORT_SECTIONS.map((section) => ({
@@ -194,7 +195,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
                   {asset && <Col span={24}><ScriptDeliveryPanel key={asset.asset_id} assetId={asset.asset_id} active={route.workspace === 'export' && exportSection === 'delivery'} /></Col>}
                   <Col span={24}><SkillDeliveryModule /></Col>
                   <Col xs={24} xl={14}>
-                    <Flex vertical gap={16}>
+                    <Flex vertical gap={12}>
                       <Monitor 
                         label="节目" 
                         preview={preview} 

@@ -274,26 +274,26 @@ export function ScriptWorkbench({ assetId, navigate, selectedScriptId, active = 
             <ScriptCompletion editor={editor} body={body} references={references} directory={directory.data ?? []} fonts={fonts.data ?? []} onEdit={(next,refs)=>{setBody(next);setReferences(refs);changed();}}/>
           </div>
           {pendingReferences.length>0&&<Alert type="warning" message="引用需要选择具体对象；失效引用会保留，生成或渲染前请重新关联。" description={<Flex vertical gap={6}>{pendingReferences.map(token=><Select<number> key={token.start} aria-label={`关联引用 ${token.name} ${token.start}`} placeholder={`{@${token.name}} · 选择类型、所属素材及位置`} value={undefined} options={(directory.data ?? []).map((candidate,index)=>({value:index,label:candidateLabel(candidate)}))} showSearch optionFilterProp="label" onChange={index=>{const next=insertReference(body,references,token.start,token.end,directory.data![index]);setBody(next.body);setReferences(next.references);changed();}}/>)}</Flex>}/>}
-          {invalidTokens.length > 0 && <div className="script-invalid-list" aria-label="可修正的语法">{invalidTokens.slice(0, 6).map(token => <div key={`${token.start}:${token.end}`} className="script-chip-bar"><button type="button" className="script-chip script-chip-invalid" onClick={() => { selection.current = { start: token.start, end: token.end }; const el = editor.current?.resizableTextArea?.textArea; el?.focus(); el?.setSelectionRange(token.start, token.end); }}>{token.text}</button>{invalidReplacements(token.text).map(fix => <button key={fix.label} type="button" className="script-chip" disabled={!canEdit} onClick={() => { selection.current = { start: token.start, end: token.end }; place(fix); }}>{fix.label}</button>)}</div>)}{invalidTokens.length > 6 && <Typography.Text type="secondary">还有 {invalidTokens.length - 6} 处无效语法。</Typography.Text>}</div>}
-          <div className="script-chip-bar" role="toolbar" aria-label="脚本插入">
+          {invalidTokens.length > 0 && <div className="script-invalid-list" aria-label="可修正的语法">{invalidTokens.slice(0, 6).map(token => <Flex key={`${token.start}:${token.end}`} gap={4} wrap className="script-chip-bar"><Button size="small" danger className="script-chip-invalid" onClick={() => { selection.current = { start: token.start, end: token.end }; const el = editor.current?.resizableTextArea?.textArea; el?.focus(); el?.setSelectionRange(token.start, token.end); }}>{token.text}</Button>{invalidReplacements(token.text).map(fix => <Button key={fix.label} size="small" disabled={!canEdit} onClick={() => { selection.current = { start: token.start, end: token.end }; place(fix); }}>{fix.label}</Button>)}</Flex>)}{invalidTokens.length > 6 && <Typography.Text type="secondary">还有 {invalidTokens.length - 6} 处无效语法。</Typography.Text>}</div>}
+          <Flex gap={4} wrap className="script-chip-bar" role="toolbar" aria-label="脚本插入">
             <Select<number> className="script-chip-select" size="small" aria-label="插入素材或标记引用" placeholder="引用" showSearch optionFilterProp="label" disabled={!canEdit} value={undefined} popupMatchSelectWidth={280} options={(directory.data ?? []).map((item,index)=>({value:index,label:candidateLabel(item)}))} onChange={index=>{const item=directory.data![index],{start,end}=selection.current;const next=insertReference(body,references,start,end,item);setBody(next.body);setReferences(next.references);changed();selection.current={start:next.caret,end:next.caret};requestAnimationFrame(()=>{const el=editor.current?.resizableTextArea?.textArea;el?.focus();el?.setSelectionRange(next.caret,next.caret);});}}/>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(SUBTITLE_INSERT)}>字幕</button>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.黑屏)}>黑屏</button>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.白屏)}>白屏</button>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.溶解)}>溶解</button>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(PARAGRAPH_BREAK)}>空行分段</button>
-          </div>
-          <div className="script-chip-bar" role="toolbar" aria-label="段落模板">
+            <Button size="small" disabled={!canEdit} onClick={() => place(SUBTITLE_INSERT)}>字幕</Button>
+            <Button size="small" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.黑屏)}>黑屏</Button>
+            <Button size="small" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.白屏)}>白屏</Button>
+            <Button size="small" disabled={!canEdit} onClick={() => place(EFFECT_INSERTS.溶解)}>溶解</Button>
+            <Button size="small" disabled={!canEdit} onClick={() => place(PARAGRAPH_BREAK)}>空行分段</Button>
+          </Flex>
+          <Flex gap={4} wrap align="center" className="script-chip-bar" role="toolbar" aria-label="段落模板">
             <span className="script-chip-label">模板</span>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(paragraphTemplate('open'))}>开场</button>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(paragraphTemplate('result'))}>结果</button>
-            <button type="button" className="script-chip" disabled={!canEdit} onClick={() => place(paragraphTemplate('transition'))}>转场</button>
-          </div>
+            <Button size="small" disabled={!canEdit} onClick={() => place(paragraphTemplate('open'))}>开场</Button>
+            <Button size="small" disabled={!canEdit} onClick={() => place(paragraphTemplate('result'))}>结果</Button>
+            <Button size="small" disabled={!canEdit} onClick={() => place(paragraphTemplate('transition'))}>转场</Button>
+          </Flex>
           <Collapse size="small" items={[{ key: 'syntax', label: '语法速查', children: (
-            <div className="script-cheat-list">
+            <Flex vertical gap={4} className="script-cheat-list">
               <Typography.Text type="secondary" className="script-cheat-note">只有这五种写法。点击一行，插入到光标处。</Typography.Text>
-              {CHEATSHEET.map(row => <button key={row.label} type="button" className="script-cheat-row" disabled={!canEdit} onClick={() => place(row.insert)}><code>{row.label}</code><span>{row.hint}</span></button>)}
-            </div>
+              {CHEATSHEET.map(row => <Button key={row.label} size="small" block className="script-cheat-row" disabled={!canEdit} onClick={() => place(row.insert)}><code>{row.label}</code><span>{row.hint}</span></Button>)}
+            </Flex>
           ) }]} />
           <Collapse size="small" items={[{key:"markers",label:"时间线标记",children:<ScriptTimelineMarkers canEdit={canEdit} document={doc} segments={drafts} onInsert={insert} />}]} />
           {fonts.isError && <Typography.Text type="secondary">暂时无法读取本机字体；可以先编辑脚本，交付前会核验字体。</Typography.Text>}

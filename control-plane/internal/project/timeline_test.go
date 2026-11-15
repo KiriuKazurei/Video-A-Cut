@@ -12,6 +12,61 @@ func timelineFixture() AvpDocument {
 	return AvpDocument{Format: "avp", SchemaVersion: 2, Project: Identity{ID: "p", Name: "test"}, Resources: []Resource{{ID: "r", Name: "source", Kind: "video", Out: 10, Metadata: map[string]any{"duration": 10, "width": 1920, "height": 1080, "avg_frame_rate": "30000/1001", "streams": []map[string]any{{"index": 0, "codec_type": "video"}, {"index": 2, "codec_type": "audio"}, {"index": 4, "codec_type": "audio"}, {"index": 5, "codec_type": "audio"}, {"index": 7, "codec_type": "audio"}}}}}, Sequences: []Sequence{NewSequence("main")}}
 }
 
+func TestVideoClipColorPersistsResetsAndRejectsOtherTracks(t *testing.T) {
+	d := timelineFixture()
+	s := &d.Sequences[0]
+	if err := s.Apply(&d, Operation{Type: "clip.insert", TrackID: s.Tracks[0].ID, ResourceID: "r"}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	id := s.Tracks[0].Clips[0].ID
+	rose := "#7a5362"
+	if err := s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{id}, Color: &rose}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Tracks[0].Clips[0].Color != "#7A5362" {
+		t.Fatalf("color = %q", s.Tracks[0].Clips[0].Color)
+	}
+	raw, err := json.Marshal(s.Tracks[0].Clips[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again Clip
+	if err = json.Unmarshal(raw, &again); err != nil {
+		t.Fatal(err)
+	}
+	if again.Color != "#7A5362" {
+		t.Fatal("color did not survive JSON reload")
+	}
+	fx := s.Tracks[0].Clips[0].Effects
+	if err = s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{id}, Effects: &fx}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Tracks[0].Clips[0].Color != "#7A5362" {
+		t.Fatal("effect update cleared the clip color")
+	}
+	empty := ""
+	if err = s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{id}, Color: &empty}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Tracks[0].Clips[0].Color != "" {
+		t.Fatal("reset did not clear the color")
+	}
+	custom := "#C0FFEE"
+	if err = s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{id}, Color: &custom}, Origin{Actor: "human"}); err != nil {
+		t.Fatal(err)
+	}
+	named := "red"
+	if err = s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{id}, Color: &named}, Origin{Actor: "human"}); err == nil {
+		t.Fatal("accepted a named color")
+	}
+	audio := s.Tracks[3]
+	audio.Clips = []Clip{{ID: "a1", ResourceID: "r", Duration: 30, Speed: 1, Effects: Effects{Scale: 1}}}
+	s.Tracks[3] = audio
+	if err = s.Apply(&d, Operation{Type: "clip.update", ClipIDs: []string{"a1"}, Color: &rose}, Origin{Actor: "human"}); err == nil || !strings.Contains(err.Error(), "只有视频片段") {
+		t.Fatal(err)
+	}
+}
+
 func TestCodeTrackAcceptsSourceAndRejectsRenderedVideo(t *testing.T) {
 	d := timelineFixture()
 	d.Resources[0].Draw = &DrawSourceReference{CompositionID: "scene", Mode: "snapshot"}

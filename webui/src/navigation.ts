@@ -8,15 +8,17 @@ import { isDrawEngine, isDrawFocus, type DrawEngine, type DrawFocus } from './dr
  */
 export type WorkspaceId = 'resources' | 'editing' | 'script' | 'draw' | 'templates' | 'export' | 'settings' | 'tts';
 
-/** Digit keys. 1–5 stay on the existing workspaces; 6 opens 绘制. */
+/** Top segmented nav. Settings stays in the File menu. Script stays in the editing dock. */
+export const TOP_NAV: readonly WorkspaceId[] = ['resources', 'editing', 'draw', 'templates', 'export', 'tts'];
+
+/** Digit keys follow TOP_NAV. Review-page and script-tab digits are not reused. */
 export const WORKSPACE_KEYS: Record<string, WorkspaceId> = {
   '1': 'resources',
   '2': 'editing',
-  '3': 'export',
-  '4': 'settings',
-  '5': 'tts',
-  '6': 'draw',
-  '7': 'script'
+  '3': 'draw',
+  '4': 'templates',
+  '5': 'export',
+  '6': 'tts'
 };
 
 /**
@@ -129,14 +131,14 @@ export function parseWorkspaceHash(hash: string): RouteState {
     'import': { workspace: 'editing', editingSection: 'import' },
     'assembly': { workspace: 'editing', editingSection: 'import' },
     'prepare': { workspace: 'settings', settingsCategory: 'preparation' },
-    'edit': { workspace: 'script' },
+    'edit': { workspace: 'editing', editingSection: 'content' },
     'export': { workspace: 'export', exportSection: 'delivery' },
     'monitor': { workspace: 'export', exportSection: 'tasks' }
   };
   if (!second && legacyMap[first]) return legacyMap[first];
 
   // 新路径解析
-  const workspace = first === 'editing' && second === 'content' ? 'script' : WORKSPACES.find((w) => w.id === first)?.id ?? DEFAULT_WORKSPACE;
+  const workspace = WORKSPACES.find((w) => w.id === first)?.id ?? DEFAULT_WORKSPACE;
   const state: RouteState = { workspace };
   const parameters = new URLSearchParams(query);
   if (parameters.get('script')) state.scriptId = parameters.get('script')!;
@@ -145,9 +147,12 @@ export function parseWorkspaceHash(hash: string): RouteState {
   const segment = Number(parameters.get('segment'));
   if (Number.isInteger(segment) && segment >= 0 && parameters.has('segment')) state.scriptSegment = segment;
 
-  if (workspace === 'editing') {
-    // Legacy `#/editing/review` (旧「审查」页) → 时间线；效果在节目监视器查看
-    state.editingSection = second === 'review' ? 'import'
+  if (workspace === 'editing' || workspace === 'script') {
+    if (workspace === 'script') state.workspace = 'editing';
+    // `#/script` and `#/editing/content` stay on the timeline and open the script dock.
+    // `#/editing/review` is the retired review page.
+    state.editingSection = workspace === 'script' || second === 'content' ? 'content'
+      : second === 'review' ? 'import'
       : (EDITING_SECTIONS.find((s) => s.id === second)?.id ?? DEFAULT_EDITING_SECTION);
   } else if (workspace === 'export') {
     state.exportSection = EXPORT_SECTIONS.find((s) => s.id === second)?.id ?? DEFAULT_EXPORT_SECTION;
@@ -174,13 +179,14 @@ function parseHash(): RouteState {
 }
 
 export function buildWorkspaceHash(state: RouteState): string {
-  if (state.workspace === 'editing' && state.editingSection === 'content') return buildWorkspaceHash({ ...state, workspace: 'script', editingSection: undefined });
-  const { workspace, editingSection, exportSection, settingsCategory } = state;
+  const workspace = state.workspace === 'script' ? 'editing' : state.workspace;
+  const editingSection = state.workspace === 'script' ? 'content' : state.editingSection;
+  const { exportSection, settingsCategory } = state;
   const path = workspace === 'editing' && editingSection ? `/${workspace}/${editingSection}`
     : workspace === 'export' && exportSection ? `/${workspace}/${exportSection}`
     : workspace === 'settings' && settingsCategory ? `/${workspace}/${settingsCategory}` : `/${workspace}`;
   const query = new URLSearchParams();
-  if (state.scriptId && (workspace === 'tts' || workspace === 'script')) {
+  if (state.scriptId && (workspace === 'tts' || workspace === 'editing' || state.workspace === 'script')) {
     query.set('script', state.scriptId);
     if (state.scriptVersion !== undefined) query.set('version', String(state.scriptVersion));
     if (state.scriptSegment !== undefined) query.set('segment', String(state.scriptSegment));
@@ -219,11 +225,11 @@ export function useWorkspaceRoute() {
 
   const navigate = useCallback((state: Partial<RouteState>) => {
     const next: RouteState = { ...route, ...state };
-    if (next.workspace === 'editing' && next.editingSection === 'content') { next.workspace = 'script'; delete next.editingSection; }
+    if (next.workspace === 'script') { next.workspace = 'editing'; next.editingSection = 'content'; }
     if (state.scriptId === '') {
       delete next.scriptId; delete next.scriptVersion; delete next.scriptSegment;
     }
-    if (next.workspace !== 'tts' && next.workspace !== 'script') {
+    if (next.workspace !== 'tts' && next.workspace !== 'editing') {
       delete next.scriptId; delete next.scriptVersion; delete next.scriptSegment;
     }
     const bareDrawTab = state.workspace === 'draw'

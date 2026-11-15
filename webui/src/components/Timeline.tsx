@@ -94,7 +94,7 @@ export function Timeline({ label, duration, tracks, formatTick, caption, emptyTe
   const tones: Record<ClipTone, { background: string; color: string; borderColor: string }> = {
     video: { background: 'var(--vac-clip-video)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-clip-video)' },
     selected: { background: 'var(--vac-clip-video)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-clip-video)' },
-    audio: { background: 'var(--vac-status-cyan)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-status-cyan)' },
+    audio: { background: 'var(--vac-clip-audio)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-clip-audio)' },
     candidate: { background: token.colorFillSecondary, color: token.colorText, borderColor: token.colorBorder },
     ok: { background: 'var(--vac-success)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-success)' },
     warn: { background: 'var(--vac-warning)', color: 'var(--vac-on-media)', borderColor: 'var(--vac-warning)' },

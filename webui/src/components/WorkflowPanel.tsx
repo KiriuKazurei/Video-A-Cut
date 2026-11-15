@@ -102,7 +102,7 @@ function RunStrip({ runs, currentId, busy, onSelect }: { runs: WorkflowRun[] | u
       {runs.map((r, i) => {
         const active = r.run_id === currentId;
         return (
-          <button type="button" key={r.run_id} role="listitem" disabled={busy}
+          <Button key={r.run_id} size="small" type={active ? 'primary' : 'default'} role="listitem" disabled={busy}
             className={`run-chip${active ? ' is-active' : ''}`}
             aria-current={active ? 'true' : undefined}
             title={`${r.run_id} · ${r.status} / ${r.stage}`}
@@ -111,7 +111,7 @@ function RunStrip({ runs, currentId, busy, onSelect }: { runs: WorkflowRun[] | u
             <Tag color={statusColor(r.status)} bordered={false}>{STATUS_ZH[r.status] ?? r.status}</Tag>
             <span className="run-chip-meta">{STAGE_ZH[r.stage] ?? r.stage}</span>
             <span className="run-chip-id">{shortId(r.run_id)}</span>
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -298,7 +298,7 @@ function WorkflowContent({ assetId, selection, monitor, onGoExport, onGoTasks, o
         </div>
         <div className="edit-stage">
           <div className="edit-stage-monitor">{monitor}</div>
-          <Card size="small" className="review-panel" activeTabKey={activeTab} onTabChange={(key) => setTab(key as 'scenes' | 'narration')}
+          <Card size="small" className="review-panel" tabProps={{ animated: false }} activeTabKey={activeTab} onTabChange={(key) => setTab(key as 'scenes' | 'narration')}
             tabList={[{ key: 'scenes', label: `场景画面 (${scenes.length})` }, { key: 'narration', label: `解说文稿 (${lines.length})` }]}
             tabBarExtraContent={<Tag bordered={false}>{sceneGate ? '等待场景确认' : draftGate ? '等待解说批准' : (STAGE_ZH[current.stage] ?? current.stage)}</Tag>}>
             <Spin spinning={review.isLoading || (review.isFetching && !review.data)}>

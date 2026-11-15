@@ -22,7 +22,7 @@ export function AssetThumbGrid({ rows, selectedId, pendingId, onSelect, onToggle
   if (rows.length === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有可显示的资产" />;
   return (
     <div className="asset-grid" role="list" aria-label="资产缩略图">
-      {rows.map((row, index) => {
+      {rows.map((row) => {
         const { asset, draft } = row;
         const inLibrary = !draft;
         const visible = asset.agent_visible;
@@ -31,7 +31,7 @@ export function AssetThumbGrid({ rows, selectedId, pendingId, onSelect, onToggle
         const visibleTip = draft ? '本地草稿没有 Agent 可见字段' : asset.locked ? '资产已锁定，需先解锁才能修改可见性' : visible ? 'Agent 可见 · 点击设为不可见' : 'Agent 不可见 · 点击设为可见';
         return (
           <div key={asset.asset_id} role="listitem" data-asset-card={asset.asset_id}
-            className={`asset-card${selected ? ' is-selected' : ''}${inLibrary ? '' : ' is-draft'}`} style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }}>
+            className={`asset-card${selected ? ' is-selected' : ''}${inLibrary ? '' : ' is-draft'}`}>
             {/* 选择按钮与眼睛/入库徽标是同级兄弟：徽标绝对定位叠在缩略图上，不嵌在按钮里（避免 button 套 button） */}
             <div className="asset-card-media">
               <button type="button" className="asset-card-thumb" aria-pressed={selected} aria-label={`选择资产 ${asset.asset_id}`} onClick={() => onSelect(asset.asset_id)}>
