@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Table, Typography } from 'antd';
 import { TimelineInspector } from './TimelineInspector';
@@ -33,8 +33,13 @@ export function EditorRightDock({ navigate, active, route, assetId, stripOnly = 
 }) {
   const e = useSequenceEditor();
   const selectedRun = useSkillWorkspace().runId;
-  const [open, setOpen] = useState<Record<DockModuleId, boolean>>({ script: false, properties: !selectedRun, skill: !!selectedRun, history: false });
+  // The route is known on the first render. A same-commit `vac:open-script-dock`
+  // is dispatched before this listener exists, so the event alone misses a fresh deep link.
+  const scriptFromRoute = route.editingSection === 'content' || Boolean(route.scriptId);
+  const [open, setOpen] = useState<Record<DockModuleId, boolean>>({ script: scriptFromRoute, properties: !selectedRun, skill: !!selectedRun, history: false });
   const [scriptFocus, setScriptFocus] = useState(false);
+  const onExpandRef = useRef(onExpand);
+  onExpandRef.current = onExpand;
   const runs = useQuery({ queryKey: e.projectId ? skillQueryKeys.runs(e.projectId) : ['vu-runs', 'dock-idle'],
     queryFn: ({ signal }) => skillApi.runs(e.projectId, signal), enabled: Boolean(e.projectId) && active,
     refetchInterval: active ? 2500 : false, retry: protectedQueryRetry });
@@ -42,6 +47,13 @@ export function EditorRightDock({ navigate, active, route, assetId, stripOnly = 
   const codeSelected = !!e.view?.sequence.tracks.some(track => track.kind === 'code' && track.clips.some(clip => e.selected.includes(clip.id)));
   const expanded = (id: DockModuleId) => !stripOnly && (scriptFocus ? id === 'script' : open[id]);
   useEffect(() => { if (active && selectedRun && !scriptFocus) { setOpen(prev => ({ ...prev, skill: true })); if (stripOnly) onExpand?.(); } }, [active, selectedRun, scriptFocus, stripOnly, onExpand]);
+  useEffect(() => {
+    setOpen(prev => (prev.script === scriptFromRoute ? prev : { ...prev, script: scriptFromRoute }));
+  }, [scriptFromRoute]);
+  useEffect(() => {
+    if (!scriptFromRoute || !active) return;
+    onExpandRef.current?.();
+  }, [scriptFromRoute, active]);
   useEffect(() => {
     const openScript = () => {
       if (!active) return;
