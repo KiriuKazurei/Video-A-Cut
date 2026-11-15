@@ -64,7 +64,7 @@ try {
         }
         return ({
           runtime_status: { status: 'starting', revision: 0, data_directory: '', workers: [], message: '正在检查本地运行环境…' },
-          update_status: { phase: 'idle', current_version: '0.5.3' },
+          update_status: { phase: 'idle', current_version: '0.6.0' },
         })[command];
       } },
       event: { listen: async (name, callback) => { listeners.set(name, callback); return () => {

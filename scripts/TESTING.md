@@ -4,11 +4,11 @@
 
 ## 1. 统一规则与源码身份
 
-版本取 desktop/tauri.conf.json，当前0.5.2。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
+版本取 desktop/tauri.conf.json，当前0.6.0。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。
 
 `scripts/TestWorkspace.ps1` 统一设置 VAC_TEST_ROOT/VAC_TEST_OUTPUT、TEMP/TMP/TMPDIR、Go/npm 缓存、禁 Python 写缓存及离线 Go。支持 go/python/webui/pipeline/timeline/exporter/guard/workspace/custom。`webui` 现在调用完整 `npm run test:unit`，同时执行样式检查；旧基础子集退出受管默认入口。保留 `pipeline` 作为有明确范围的定向入口。
 
-当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，当前基线`75d0a25`加 Shotcraft 编译和目录，应用 `0.5.2`。本地`checkpoint/0.4.0-before-script-syntax`保留原基线。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
+当前整合源码为 `E:/AI/Video Auto Cut/.run-data/worktrees/integrate-remote-20261029`，分支 `codex/integrate-remote-20261029`，当前基线`b135ad0`，应用 `0.6.0`。本地`checkpoint/0.4.0-before-script-syntax`保留原基线。原根和其他旧工作树保留不同源码，不能用旧根 HEAD 或端口健康证明当前代码。`custom` 的 WorkingDirectory 必须明确；新摘要从实际执行目录记录 head/working_directory，旧摘要若只记录runner身份仍按历史边界解释。
 
 自定义检查使用稳定 `-TestName`，例如 `go-core`、`go-code-service`、`browser-editor`、`doc-contracts`。日志写入 `artifacts/custom/<TestName>/output.log`，summary按 `custom/<TestName>` 分开保存；不同检查互不覆盖，也不把无关检查的通过记成先前失败已修复。不按日期或每次重跑新建StorageRoot；同一检查重复使用同一名称。未命名旧custom结果保留溯源，不作为全套结论。
 
@@ -111,6 +111,10 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 `webui/run-local-smokes.mjs` 服务生产构建，`review_shortcuts_smoke.mjs` 当前22组覆盖统一编辑器、播放接管、多选代码条、参数工作台及局部生成。写请求只记录到本机夹具，不当成真实Go编辑或模型验证。已不挂载的quickstart卡片检查退出默认入口，原源码保留溯源；不把旧CR03计数当当前结果。生产构建写入VAC_TEST_OUTPUT/ui-dist，浏览器运行前令VAC_DIST指向它，再从webui目录通过命名custom执行 `node run-local-smokes.mjs review_shortcuts_smoke.mjs`。
 
 本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
+
+## 0.6.0 内容更新与版本对齐（2026-11-15 VERSION060）
+
+源码版本从 0.5.3 升至 0.6.0。基线 `b135ad0` 已包含统一视觉设计语言（强调色 #5492FF、轨道与片段颜色、布局疏密及设计语言文档）。本次只对齐应用、锁文件、MCP、操作 Skill 与文档中的当前版本，没有新的安装包、原生计时或全量回归。0.5.3 及更早的证据仍按原记录使用。
 
 ## 0.5.3 启动、模板样例与编辑预览（2026-11-13）
 
