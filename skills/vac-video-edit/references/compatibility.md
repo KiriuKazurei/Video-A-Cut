@@ -41,5 +41,6 @@
 - `control-plane/internal/skill/{contracts,builtin}.go`、`builtin/vac-tool-contracts.md`：任务字段、执行包与受控工具。
 - `control-plane/internal/project/{script_directives.json,script_grammar.go,timeline.go}`、`internal/scriptsyntax/`：语法、单位和编辑模型。
 - `skills/video-use/vac/tool-contracts.md`、`skills/vac-script-syntax/SKILL.md`：分发合同（与嵌入副本核对）。
+- 0.6.0 源码增加 `sequence.frames` 与 `assets.import`，应用版本号未再升。旧的冻结任务仍使用创建时的工具名单；新任务才声明这两项。省略 `run.finish.review` 时，结构化交付和以前一样直接完成。
 
 MCP 将本指南登记为说明包。执行任务使用实时发现的执行包。宿主自动发现 Skill 与 VAC 的 `skills.list` 是两套不同的发现机制。

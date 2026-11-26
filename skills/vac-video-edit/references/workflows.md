@@ -15,7 +15,7 @@
 
 1. 用转录或画面证据确定源素材的入出点，按脚本镜头顺序编排普通视频和音频轨。
 2. 用 `draw.check` 和 `draw.preview` 检查生成画面，以 `draw.import source_mode:snapshot` 按序列帧放入代码轨。常规源声、旁白、音乐、字幕保留各自的编辑结构。
-3. 以同一序列完成组合。直接写结构化时间线，避免在同一任务额外提交扁平 `scripts.propose`。检查真实画面、切点和音画衔接，然后读取最新序列版本，使用 `run.finish {sequence_revision,content_version}` 输出组合成片。
+3. 以同一序列完成组合。直接写结构化时间线，避免在同一任务额外提交扁平 `scripts.propose`。用 `sequence.frames` 查看合成后的节目帧，确认字幕、效果和叠层，而不是只看源素材帧或单张绘制预览。读取最新序列版本后，使用 `run.finish {sequence_revision,content_version}` 输出组合成片；需要把这次检查记为交付前复核时加 `review:true`。
 
 ## 素材成片路线
 
@@ -45,7 +45,7 @@ MP4和Premiere ZIP为精确计划版本的产物；完成后整片可作为一�
 - 使用真实stream_index；独立音乐、旁白、源声不重复混入。图层隐藏与声音静音分别控制。
 - 复杂操作按服务端schema填写，不猜新增效果字段。所有operations原子成功或失败，错误不允许偷偷提交部分命令。
 
-编辑后使用返回的当前序列信息。没有扁平计划时 `run.finish {sequence_revision,content_version}` 对该精确序列共享合成、验证并交付MP4；不要为了finish额外提出扁平计划，重复添加整片。检查实际产物和技术警告，不把预览代理或单帧就绪当成正式导出。
+编辑后使用返回的当前序列信息。交付前用 `sequence.frames` 抽看合成节目帧，再用 `artifacts.get` 看实际 PNG。没有扁平计划时 `run.finish {sequence_revision,content_version}` 对该精确序列共享合成、验证并交付MP4；`review:true` 要求这些节目帧属于同一个 `content_version`。不要为了finish额外提出扁平计划，重复添加整片。检查实际产物和技术警告，不把预览代理或单帧就绪当成正式导出。
 
 ## 成片局部修改
 
@@ -57,6 +57,6 @@ MP4和Premiere ZIP为精确计划版本的产物；完成后整片可作为一�
 
 运行状态名 `waiting_human` 不一定要求人工点击：可能是依赖或Worker失败，Agent修复原因后可resume。参数错误/过期上下文通常仍queued，刷新并修正即可。`run.steps`读取本任务诊断，不读取人工操作历史。预算耗尽或无法修复时报告具体缺口，不重建任务消除消耗。
 
-保存脚本不启动生成；复制交接文字不证明已派发；任务完成不证明无路径工程已跨重启保存。当前MCP表没有通用AVP另存/素材导入/全局设置写入入口：如需这类操作，说明VAC界面中的对应步骤，不发明 `projects.save` 或 `resources.import`。已有工程资源无需重复导入。
+保存脚本不启动生成；复制交接文字不证明已派发；任务完成不证明无路径工程已跨重启保存。当前 MCP 仍没有通用 AVP 另存或全局设置写入入口，不发明 `projects.save`。新素材用 `assets.import`：导入根目录里的文件，以及工程中已经存在的同一路径或同一 SHA-256，会去重并补进本任务冻结可见集。范围外路径停在 `approve_asset_import`，运行变为 `waiting_human` / `import_approval_required`，文件不会被复制。用户在 VAC 资源工作区导入后，`resume` 再用新幂等键重试同一路径。`library_id` 已留作以后的内置库条目，当前还没有可发布条目。已有工程资源无需重复导入。
 
 交付说明包含产物ID/名称（有真实可用链接才给链接）、对应计划或序列版本、时长/规格及实际检查结果。技术黑屏/静音警告仅按事实提示，不能为了显示passed改掉用户要求的黑场/静音；人工验收未做写not_checked。保存、连接或HTTP成功都不能替代真实成片。

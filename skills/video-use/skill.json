@@ -38,6 +38,8 @@
     "draw.import",
     "draw.capabilities",
     "draw.preview",
+    "sequence.frames",
+    "assets.import",
     "draw.shot"
   ],
   "permissions": [

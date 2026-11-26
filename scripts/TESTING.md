@@ -2,6 +2,26 @@
 
 更新：2026-11-06。本文是既有测试权威入口，主文档为[项目](../docs/项目文档.md)、[计划](../docs/计划文档.md)、[接口](../docs/接口文档.md)及[架构功能详解](../docs/架构与功能详解.md)。统一多轨编辑沿用现有工程、媒体、前端、Worker 和原生桌面套件，不删除测试源码/样本，不执行产品数据清理。
 
+## P0 节目帧与受控导入（2026-11-26）
+
+源码版本仍为 0.6.0，分支 `cursor/program-frames-asset-import-1bfb`，基线 `codex/integrate-remote-20261029` @ `df4f95e`。本轮只增加 `sequence.frames` 与 `assets.import`，没有升版本，也没有改 `main`。
+
+Linux 上执行：`workers/node/timeline-cli` 已 `npm ci`。`workers/node/export-worker` 没有 `package-lock.json`，`npm ci` 无法执行；该包没有自己的依赖声明。`python` 在本环境指向 Python 3.12.3。测试使用临时目录，没有写入 `.run-data/`。
+
+| 命令 | 结果 |
+| --- | --- |
+| `go test ./internal/skill -count=1` | 通过，0.032 秒 |
+| `go test ./internal/service ./internal/mcpserver -count=1 -timeout 20m` | mcpserver 通过，47.835 秒。service 148.197 秒后失败，仅剩两个既有用例 |
+| `go vet ./internal/service ./internal/mcpserver ./internal/skill ./internal/store` | 通过 |
+| `npm run test:unit`（webui） | 通过：75 + 79 + 5 项，样式检查通过 |
+| `npx tsc --noEmit`（webui） | 通过。只改了 `SkillToolName`，没有改界面 |
+
+service 的两个失败都是既有环境问题，本轮没有改导出链路：`TestVariantRealWorkerChain` 在 Linux 上找不到 `C:/Windows/Fonts/msyh.ttc`；`TestPreviewRealWorkerChain` 里 export worker 登记后 idle 退出，预览保持 queued。没有把它们记为通过。
+
+`node scripts/update-interface-documentation.mjs --check` 仍会失败。对照生成结果，差的只有既有的两行：`TimelineClip.color?` 与 `TimelineOperation.color?`。本轮把 `sequence.frames` 和 `assets.import` 写进了 `SkillToolName` 的同一行，生成区与源码一致，没有执行 `--write`。
+
+新增用例覆盖：白名单导入、SHA-256 去重、范围外决策暂停、符号链接拒绝、用户导入后重试并更新冻结可见集、未发布的 `library_id`、错误序列、帧预算不截断、冻结集外素材拒绝、未检查就 `review:true` 保持 queued，以及一张真实合成红色节目帧后的 `review` 交付。人工观感、真实外部模型和桌面安装版未测。
+
 ## 1. 统一规则与源码身份
 
 版本取 desktop/tauri.conf.json，当前0.6.0。测试生成物只放 `.run-data/tests/<完整版本号>/`；固定媒体在 `workers/node/timeline-cli/fixtures/media/`。原录像、正式业务数据、签名密钥、正常开发依赖与 test-support/legacy 恢复副本不属于测试生成物。

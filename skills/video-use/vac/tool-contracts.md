@@ -101,6 +101,7 @@ Read the returned generated track ID before a subsequent clip.insert.
 | timeline.edit | {sequence_id,command:{session,expected_revision,idempotency_key,label,operations:[...]}} | Atomic current-project edits on run.sequence_id only. Operations: track.add/update/remove, clip.insert/move/trim/split/update/link/unlink/delete/paste, marker.add/update/remove, gap.insert/close, sequence.rename, scope.set. history.undo/redo stay human-only. Lock/type/source failures roll back the whole command. Source identity is Agent and cannot be supplied as a human actor. |
 | media.list | {} | Array of {id,asset_id,name,in,out,sha256}, no disk paths. |
 | media.get_frames | {} or {media_id,every,interval_seconds,threshold,coverage_seconds} | {frames:[{id,media_id,pts,score,strategy,sha256}],strategy}. Optional ID selects one visible source; omit for all. every integer 1–30 (default 3), interval_seconds .25–30 (default 1), threshold .001–1 (default .12), coverage_seconds 1–120 (default 15). Frame budget overflow pauses, never silently truncates. |
+| sequence.frames | {frames:[int],sequence_id?,sequence_revision?,content_version?} | Composed program frames for this run's sequence only. 1–48 distinct frames, each 0 ≤ frame < sequence end. Optional revision/content_version must match the current timeline. Counts against the same frame budget as media.get_frames and draw.preview; overflow pauses and does not truncate. Result frames use strategy sequence:<content_version>. Read each PNG with artifacts.get. Video/audio on the sequence must already be in the frozen visible set. |
 | media.transcribe | {media_id} | {media_id,transcript,artifact}; transcript contains word-level timings and is cached by content/window/profile. Registers a transcript artifact. Requires a bound transcription Provider enabled in global provider settings and its configured key. Missing dependency: report it and stop; ask human to configure it or choose visual_heavy, do not change the flow yourself. |
 | summaries.get | {} | {summary}, possibly null. |
 | summaries.submit | {model,narrative,beats:[string],timeline:[{media_id,start,end,description,confidence,frame_ids:[string]}]} | {saved:true}; saves JSON/Markdown evidence summary. confidence is low/medium/high; every timeline item references existing extracted frames from that same media within its source interval. Do not invent evidence. |
@@ -112,7 +113,8 @@ Read the returned generated track ID before a subsequent clip.insert.
 | artifacts.list | {} | Current run artifact metadata [{id,name,kind,size_bytes,sha256,plan_version}]. |
 | artifacts.get | {id:artifact_id} | Only registered frame/transcript artifacts up to 256 KiB. Frames return {artifact,mime_type} AND native MCP image content; inspect the image. Transcripts return {artifact,base64}, decode JSON text for word timestamps. IDs are not paths. Full films/packages are browsed/downloaded by the human in VAC. |
 | renders.review | {plan_version,frame_ids,verdict:"passed",issues:[]} | Inspection. Read EVERY inspection frame via artifacts.get first. Use the exact ordered frame_ids from renders.inspect and current plan_version; verdict is passed/needs_changes, maximum 20 textual issues, passed requires no issues. This is machine review, not human acceptance. |
-| run.finish | {} for a finalized flattened plan; {sequence_revision,content_version} for a structured edit without a flattened plan | {completed:true}; requires the current confirmed plan, no pending edit_request, same-plan valid MP4 and passed inspection/review. Structured sequence completion also returns basic_quality bound to its MP4. Quality warnings do not block completion. Never claim completion from an unrendered proposal. |
+| run.finish | {} for a finalized flattened plan; {sequence_revision,content_version,review?} for a structured edit without a flattened plan | {completed:true}; requires the current confirmed plan, no pending edit_request, same-plan valid MP4 and passed inspection/review. Structured sequence completion also returns basic_quality bound to its MP4. review:true additionally requires sequence.frames for that same content_version and stays queued with invalid_tool_arguments when those frames are missing; omitting review keeps the previous direct delivery. Quality warnings do not block completion. Never claim completion from an unrendered proposal. |
+| assets.import | exactly one of {path}, {root_id,relative_path}, {library_id,library_version?} | Imports into the current project and adds a new video/audio item to this run's frozen visible set. An ingest-root file or a file already in the project is imported or hash-deduped. Any other path returns decision.kind=approve_asset_import and pauses with import_approval_required; the file is not copied. After the person imports it in VAC, resume and retry with a new idempotency key. library_id is reserved for a future builtin catalog entry and currently reports that the entry is not published. No disk path is returned. |
 
 
 scripts.propose also accepts references:[...] using the AVS v2 occurrence binding
@@ -120,10 +122,14 @@ contract (start/end are UTF-16 offsets). A typed marker is an anchor, not a vide
 name. Keep the bound source frame inside its associated generated source window.
 For structured track editing, first timeline.read; submit a CAS command through
 timeline.edit using stable clip/track/resource IDs. Read the resulting revision
-and content_version. With no flattened plan, run.finish accepts
+and content_version. Before delivery, sequence.frames reads composed program
+frames (subtitles, effects and overlays included) and artifacts.get shows the
+PNG. With no flattened plan, run.finish accepts
 {sequence_revision,content_version}, validates that exact shared composition,
 publishes its MP4 and completes the run without duplicating its edited tracks.
-This verifies rendering, not human perception or acceptance.
+Pass review:true only after sequence.frames has covered that content_version.
+Omitting review preserves the previous direct completion. This verifies
+rendering, not human perception or acceptance.
 
 Full-film Skills retain the finalize/render/inspect/review workflow below. A
 successful verified MP4 is imported once as a new resource and a parallel Agent

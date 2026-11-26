@@ -52,6 +52,8 @@
 |---|---|---|
 | `media.list` | `{}` | 冻结素材 `{id,asset_id,name,in,out,sha256}`；源窗口单位秒 |
 | `media.get_frames` | `{media_id?,every?,interval_seconds?,threshold?,coverage_seconds?}` | `{frames,strategy}`；每帧有ID、源pts、SHA。every 1–30，间隔.25–30秒，阈值.001–1，覆盖1–120秒；按预算定向抽取 |
+| `sequence.frames` | `{frames:[int],sequence_id?,sequence_revision?,content_version?}` | 当前任务序列上已合成的节目帧。1–48 个不重复的非负整数帧，计入同一帧预算，超预算暂停且不截断。再用 `artifacts.get` 看 PNG。策略为 `sequence:<content_version>` |
+| `assets.import` | `{path}` 或 `{root_id,relative_path}` 或 `{library_id,library_version?}` | 三选一。白名单根目录或工程中已有文件会导入或按 SHA-256 去重，并把该视频/音频补进本任务冻结可见集。范围外路径返回 `approve_asset_import` 决策并暂停，不复制文件。`library_id` 留给以后的内置库条目，当前条目尚未发布 |
 | `media.transcribe` | `{media_id}` | 词级 transcript 与 artifact；需配置提供方/本地依赖，缺失不静默换云 |
 | `summaries.get` | `{}` | 已存 summary 或 null |
 | `summaries.submit` | `{model,narrative,beats:[string],timeline:[{media_id,start,end,description,confidence,frame_ids}]}` | 视觉证据摘要；confidence 为 low/medium/high，每项帧必须来自对应素材及窗口 |
@@ -63,7 +65,7 @@
 | `artifacts.get` | `{id}` | 帧返回原生MCP图片，必须实际看图；文字转录返回base64 JSON。帧上限16MiB，转录256KiB；不能当任意文件下载工具 |
 | `renders.review` | `{plan_version,frame_ids,verdict,issues}` | 先读取inspect的每张图；原顺序完整frame_ids。verdict passed/needs_changes，passed的issues必须为空；最多20条问题 |
 | `run.steps` | `{}` | 本任务工具结果与失败诊断；不提供人工历史 |
-| `run.finish` | 依路线为 `{}` 或 `{sequence_revision,content_version}` | 普通计划要求同版成片与检查/review；结构化路线导出并验证指定序列；局部代码任务以目标写入为准 |
+| `run.finish` | 依路线为 `{}` 或 `{sequence_revision,content_version,review?}` | 普通计划要求同版成片与检查/review。结构化路线导出并验证指定序列；`review:true` 时必须已用 `sequence.frames` 看过该 `content_version`，否则仍为 queued。省略 `review` 时不要求先看节目帧。局部代码任务以目标写入为准 |
 
 ## 时间线与绘制
 
@@ -95,4 +97,4 @@
 
 计划 `plan.version` 另用于review/局部请求；`content_sha256` 是执行包摘要，不是成片SHA或序列content_version。
 
-网络超时：以同名、同参数、原幂等键重放确定是否已执行。参数错误：读取诊断、修正后使用新键。内容冲突：刷新全部相关版本并重新判断操作，不能仅替换版本号覆盖人工更改。依赖/Worker/超时失败：定位后修复可修复项，再resume；同一未修复失败不重复调用。取消/撤销授权不可恢复。默认预算24工具步/900活跃秒/24源帧，上限64/3600/48，以实际Run为准；成片检查帧另有48上限。长思考期间无工具在途才发progress，phase为working/generating/checking/rendering，不上传模型文本。
+网络超时：以同名、同参数、原幂等键重放确定是否已执行。参数错误：读取诊断、修正后使用新键。内容冲突：刷新全部相关版本并重新判断操作，不能仅替换版本号覆盖人工更改。依赖/Worker/超时失败：定位后修复可修复项，再resume；同一未修复失败不重复调用。取消/撤销授权不可恢复。默认预算24工具步/900活跃秒/24帧，上限64/3600/48，以实际Run为准。`media.get_frames`、`draw.preview` 和 `sequence.frames` 共用这 24 帧。成片 `renders.inspect` 另有 48 帧上限。长思考期间无工具在途才发progress，phase为working/generating/checking/rendering，不上传模型文本。

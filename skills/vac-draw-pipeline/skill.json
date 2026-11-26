@@ -28,7 +28,9 @@
     "artifacts.list",
     "artifacts.get",
     "run.finish",
-    "run.steps"
+    "run.steps",
+    "sequence.frames",
+    "assets.import"
   ],
   "permissions": [
     "project_media",

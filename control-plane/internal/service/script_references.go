@@ -108,6 +108,9 @@ func (s *Service) finishSequenceEdit(ctx context.Context, run *skill.Run, args j
 	var req struct {
 		Revision       uint64 `json:"sequence_revision"`
 		ContentVersion string `json:"content_version"`
+		// Review asks the Agent to inspect composed frames before this delivery.
+		// Omitted, the structured finish still renders and completes immediately.
+		Review bool `json:"review"`
 	}
 	if err := decodeSkillArgs(args, &req); err != nil {
 		return nil, err
@@ -118,6 +121,10 @@ func (s *Service) finishSequenceEdit(ctx context.Context, run *skill.Run, args j
 	}
 	if req.Revision != view.Sequence.Revision || req.ContentVersion != view.ContentVersion || run.SequenceContentVersion != view.ContentVersion {
 		return nil, model.ErrConflict
+	}
+	programFrames := sequenceProgramFrameIDs(run, view.ContentVersion)
+	if req.Review && len(programFrames) == 0 {
+		return nil, fmt.Errorf("sequence.frames must inspect this content version before a review finish: %w", model.ErrArgument)
 	}
 	report, err := s.CreateSequencePreview(ctx, run.ProjectID, run.SequenceID, SequencePreviewRequest{Session: view.Session, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion})
 	if err != nil {
@@ -137,5 +144,5 @@ func (s *Service) finishSequenceEdit(ctx context.Context, run *skill.Run, args j
 	artifact.BasicQuality = report.BasicQuality
 	run.Artifacts[len(run.Artifacts)-1].BasicQuality = report.BasicQuality
 	run.State = "succeeded"
-	return map[string]any{"completed": true, "structured_edit": true, "sequence_revision": view.Sequence.Revision, "content_version": view.ContentVersion, "artifact": artifact, "basic_quality": report.BasicQuality, "human_acceptance": "not_checked"}, nil
+	return map[string]any{"completed": true, "structured_edit": true, "reviewed": req.Review, "program_frame_ids": programFrames, "sequence_revision": view.Sequence.Revision, "content_version": view.ContentVersion, "artifact": artifact, "basic_quality": report.BasicQuality, "human_acceptance": "not_checked"}, nil
 }

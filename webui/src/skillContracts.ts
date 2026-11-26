@@ -106,7 +106,7 @@ export interface SkillRunCreate {code_targets?:Record<string,string>;code_action
 export type SkillToolName = 'draw.capabilities'|'draw.preview'|'draw.list'|'draw.save'|'draw.check'|'draw.render'|'draw.get_frame'|'draw.import'|'media.list' | 'media.get_frames' | 'media.transcribe'
   | 'timeline.read' | 'timeline.edit' | 'references.resolve'
   | 'summaries.get' | 'summaries.submit' | 'scripts.propose' | 'renders.create'
-  | 'renders.inspect' | 'renders.review' | 'artifacts.list' | 'artifacts.get' | 'run.finish';
+  | 'renders.inspect' | 'renders.review' | 'artifacts.list' | 'artifacts.get' | 'run.finish' | 'sequence.frames' | 'assets.import';
 export interface SkillToolRequest {
   name: SkillToolName; arguments: Record<string, unknown>;
   expected_version: number; idempotency_key: string;
