@@ -20,21 +20,27 @@ import (
 )
 
 type SequencePreviewRequest struct {
-	Session          string `json:"session"`
-	ExpectedRevision uint64 `json:"expected_revision"`
-	ContentVersion   string `json:"content_version"`
-	Path             string `json:"path,omitempty"`
+	Session          string                 `json:"session"`
+	ExpectedRevision uint64                 `json:"expected_revision"`
+	ContentVersion   string                 `json:"content_version"`
+	Path             string                 `json:"path,omitempty"`
+	Export           *SequenceExportOptions `json:"export,omitempty"`
 }
 type SequencePreview struct {
-	BasicQuality   json.RawMessage `json:"basic_quality,omitempty"`
-	ContentVersion string          `json:"content_version"`
-	SHA256         string          `json:"sha256"`
-	Frames         int64           `json:"frames"`
-	Duration       float64         `json:"duration"`
-	Width          int             `json:"width"`
-	Height         int             `json:"height"`
-	FPS            project.Rate    `json:"fps"`
-	ScopeGroup     string          `json:"scope_group"`
+	BasicQuality    json.RawMessage `json:"basic_quality,omitempty"`
+	ContentVersion  string          `json:"content_version"`
+	SHA256          string          `json:"sha256"`
+	Frames          int64           `json:"frames"`
+	Duration        float64         `json:"duration"`
+	Width           int             `json:"width"`
+	Height          int             `json:"height"`
+	FPS             project.Rate    `json:"fps"`
+	ScopeGroup      string          `json:"scope_group"`
+	PresetID        string          `json:"preset_id,omitempty"`
+	Codec           string          `json:"codec,omitempty"`
+	Subtitles       string          `json:"subtitles,omitempty"`
+	Loudness        string          `json:"loudness,omitempty"`
+	SubtitleSidecar string          `json:"subtitle_sidecar,omitempty"`
 }
 
 type SequenceFrameRequest struct {
@@ -470,6 +476,13 @@ func (s *Service) SequencePreviewPath(ctx context.Context, projectID, sequenceID
 func (s *Service) ExportSequence(ctx context.Context, projectID, sequenceID string, req SequencePreviewRequest) (SequencePreview, error) {
 	if !filepath.IsAbs(req.Path) || !slices.Contains([]string{".mp4", ".MP4"}, filepath.Ext(req.Path)) {
 		return SequencePreview{}, model.ErrArgument
+	}
+	spec, specErr := normalizeSequenceExport(req.Export)
+	if specErr != nil {
+		return SequencePreview{}, fmt.Errorf("%v: %w", specErr, model.ErrArgument)
+	}
+	if !spec.Native {
+		return s.exportEncodedSequence(ctx, projectID, sequenceID, req, spec)
 	}
 	report, err := s.CreateSequencePreview(ctx, projectID, sequenceID, req)
 	if err != nil {

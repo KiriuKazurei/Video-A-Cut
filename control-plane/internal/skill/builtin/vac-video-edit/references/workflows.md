@@ -45,7 +45,9 @@ MP4和Premiere ZIP为精确计划版本的产物；完成后整片可作为一�
 - 使用真实stream_index；独立音乐、旁白、源声不重复混入。图层隐藏与声音静音分别控制。
 - 复杂操作按服务端schema填写，不猜新增效果字段。所有operations原子成功或失败，错误不允许偷偷提交部分命令。
 
-编辑后使用返回的当前序列信息。没有扁平计划时 `run.finish {sequence_revision,content_version}` 对该精确序列共享合成、验证并交付MP4；不要为了finish额外提出扁平计划，重复添加整片。检查实际产物和技术警告，不把预览代理或单帧就绪当成正式导出。
+编辑后使用返回的当前序列信息。没有扁平计划时 `run.finish {sequence_revision,content_version}` 对该精确序列共享合成、验证并交付MP4；不要为了finish额外提出扁平计划，重复添加整片。需要另一套分辨率、码率、外挂字幕或响度时，在同一 finish 里带 `export`（预设与字段见工具表）。省略 export 仍是当前节目。检查实际产物和技术警告，不把预览代理或单帧就绪当成正式导出。
+
+旁白不要写进 `scripts.propose`：该工具会清掉提案中的配音设置。结构化路线调用 `voice.synthesize`，拿到 `resource_id` 和 `duration` 后，用 `clip.insert` 放上音轨。云端 StepFun 只在服务商已允许外部配音时使用；缺少运行环境就停止，不改用另一个引擎。
 
 ## 成片局部修改
 

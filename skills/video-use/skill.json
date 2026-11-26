@@ -20,6 +20,7 @@
     "summaries.submit",
     "scripts.propose",
     "scripts.voice",
+    "voice.synthesize",
     "run.steps",
     "renders.create",
     "renders.inspect",

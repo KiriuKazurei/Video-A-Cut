@@ -55,8 +55,8 @@ func TestExternalAgentProgressRenewsLeaseAndKeepsOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("long generation lost its lease: %v", err)
 	}
-	if r.Steps != 1 {
-		t.Fatalf("heartbeats must not consume tool budget: %+v", r)
+	if r.Steps != 0 || r.Remaining.Steps != r.Budget.MaxSteps {
+		t.Fatalf("heartbeats and read-only tools must not consume tool steps: %+v", r)
 	}
 	clock.Advance(3 * time.Minute)
 	if _, err = svc.ReportSkillProgress(ctx, "agent:narrator", r.ID, r.Version, "generating", 300); !errors.Is(err, model.ErrLeaseExpired) {

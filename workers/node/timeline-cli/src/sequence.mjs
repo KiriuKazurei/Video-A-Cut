@@ -5,6 +5,7 @@ import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { runTool, probeMedia } from './media.mjs';
+import { normalizeSequenceEncode, sequenceEncodeThreads, sequenceEncodeTimeoutMs, sequenceFilterThreads, sequenceVideoCodecArgs, srtDocument } from './sequence-encode.mjs';
 import { inspectBasicQuality, sequenceExpectations } from './basic-quality.mjs';
 import { installedFonts, resolveFonts } from './fonts.mjs';
 import { assText, assTime } from '../adapters/ass.mjs';
@@ -229,18 +230,27 @@ export async function renderSequence(input,{run=runTool,probe=probeMedia,prepare
  }
  const graph=sequenceGraph(sequence,resources,{window});await mkdir(output,{recursive:true});
  for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`源素材发生变化：${r.name}`);}
- const subtitles=await subtitleFile(output,graph.cues,sequence,previewScale);
+ const encode=normalizeSequenceEncode(preview?null:input.encode);
+ const subtitles=await subtitleFile(output,encode.subtitles==='sidecar'?[]:graph.cues,sequence,previewScale);
+ if(encode.subtitles==='sidecar'&&graph.cues.length)await writeFile(join(output,'subtitles.srt'),srtDocument(graph.cues),'utf8');
  const filters=[...graph.filters];let video=graph.canvas;
  if (subtitles){filters.push(`[${video}]ass=filename='${filterPath(subtitles.path)}'[subtitled]`);video='subtitled';}
+ if(encode.scale){filters.push(`[${video}]${encode.scale}[scaled]`);video='scaled';}
  let mix='mix';if(window){filters.push(`[${video}]setpts=PTS-STARTPTS[windowvideo]`,`[mix]atrim=start=${n(window.start/(sequence.fps.num/sequence.fps.den))}:end=${n(window.end/(sequence.fps.num/sequence.fps.den))},asetpts=PTS-STARTPTS[windowmix]`);video='windowvideo';mix='windowmix';}
+ if(encode.loudness){filters.push(`[${mix}]loudnorm=I=${encode.loudness}:TP=-1.5:LRA=11[loud]`);mix='loud';}
+ const threads=sequenceEncodeThreads(encode.threads,{preview});
+ const filterThreads=sequenceFilterThreads(threads,{preview,explicit:Boolean(input.encode)&&!preview});
+ const timeoutMs=sequenceEncodeTimeoutMs({duration:graph.duration,width:encode.width||encode.maxWidth||sequence.width,height:encode.height||encode.maxHeight||sequence.height,filterCount:filters.length,preview});
+ if(encode.codec==='hevc'){const encoders=await run('ffmpeg',['-hide_banner','-encoders'],{timeoutMs:15_000,maxOutputBytes:1024*1024});if(!/\blibx265\b/.test(encoders))throw Error('当前 FFmpeg 不支持 HEVC（libx265）');}
  const temporary=join(output,'rendering.mp4'),final=join(output,'program.mp4');
- await run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y',...graph.args,'-filter_complex_threads','1','-filter_complex',filters.join(';'),'-map',`[${video}]`,'-map',`[${mix}]`,'-frames:v',String(graph.frames),'-t',n(graph.duration),'-c:v','libx264','-preset',preview?'ultrafast':'veryfast','-crf',preview?'25':'20',...(preview?['-profile:v','main','-level:v','3.1','-bf','0','-g',String(Math.ceil(sequence.fps.num/sequence.fps.den*2))]:[]),'-threads','2','-pix_fmt','yuv420p','-c:a','aac','-ar',String(sequence.sample_rate),'-movflags',preview?'+frag_keyframe+empty_moov+default_base_moof':'+faststart',temporary],{timeoutMs:360_000});
- const media=await probe(temporary);if (!media.video || !media.audio || Math.abs(media.duration-graph.duration)>2/(sequence.fps.num/sequence.fps.den)) throw Error('节目输出验证失败');
+ const rateArgs=encode.fpsNum&&encode.fpsDen?['-r',`${encode.fpsNum}/${encode.fpsDen}`]:[];
+ await run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y',...graph.args,'-filter_complex_threads',String(filterThreads),'-filter_complex',filters.join(';'),'-map',`[${video}]`,'-map',`[${mix}]`,'-frames:v',String(graph.frames),'-t',n(graph.duration),...sequenceVideoCodecArgs(encode,{preview,fps:sequence.fps.num/sequence.fps.den}),...rateArgs,'-threads',String(threads),'-pix_fmt','yuv420p','-c:a','aac','-ar',String(sequence.sample_rate),'-movflags',preview?'+frag_keyframe+empty_moov+default_base_moof':'+faststart',temporary],{timeoutMs});
+ const media=await probe(temporary);const durationSlack=encode.loudness||encode.fpsNum?0.5:2/(sequence.fps.num/sequence.fps.den);if (!media.video || !media.audio || Math.abs(media.duration-graph.duration)>durationSlack) throw Error('节目输出验证失败');
  const sha256=await sequenceFileHash(temporary);
  for (const r of resources) {if (!r.draw_document && await sequenceFileHash(r.path)!==r.sha256) throw Error(`渲染期间源素材发生变化：${r.name}`);}
  await rename(temporary,final);
  const basic_quality=preview?{sha256,status:'not_checked',audio_status:'not_checked',video_status:'not_checked',issues:[]}:await inspectBasicQuality({path:final,sha256,duration:graph.duration,...sequenceExpectations(sequence,resources,selectedTracks(sequence))},{run});
- const report={schema_version:2,content_version:version,sha256,basic_quality,frames:graph.frames,duration:graph.duration,width:sequence.width,height:sequence.height,fps:sequence.fps,scope_group:sequence.scope_group || '',fonts:subtitles?.fonts || []};
+ const report={schema_version:2,content_version:version,sha256,basic_quality,frames:graph.frames,duration:graph.duration,width:media.video.width,height:media.video.height,fps:encode.fpsNum&&encode.fpsDen?{num:encode.fpsNum,den:encode.fpsDen}:sequence.fps,scope_group:sequence.scope_group || '',fonts:subtitles?.fonts || []};
 
  await writeFile(join(output,'sequence.json'),JSON.stringify({schema_version:2,sequence,resources:resources.map(({path,assets,...r})=>({...r,...(assets?{assets:assets.map(({path,...asset})=>asset)}:{})}))},null,2));
  await writeFile(join(output,'program.json'),JSON.stringify(report,null,2));if(preview)await rm(join(output,'draw-sources'),{recursive:true,force:true});return report;

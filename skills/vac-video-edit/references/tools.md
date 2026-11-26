@@ -56,14 +56,15 @@
 | `summaries.get` | `{}` | 已存 summary 或 null |
 | `summaries.submit` | `{model,narrative,beats:[string],timeline:[{media_id,start,end,description,confidence,frame_ids}]}` | 视觉证据摘要；confidence 为 low/medium/high，每项帧必须来自对应素材及窗口 |
 | `scripts.propose` | `{body,segments:[{media_id,start,end,narration,subtitles_enabled?}],subtitles,references?}` | 按段提出计划，由任务Agent确认并继续；1–20段，每段.1–120源秒；正文空行分段与segments对应 |
-| `scripts.voice` | `{segment_index,enabled,settings,offset_seconds?,accept_external?}` | 段配音设置；也可用公开 `skill_runs.edit action:voice`。settings依据当前声音合同/配置，不猜提供方和模板 |
+| `scripts.voice` | `{segment_index,enabled,settings,offset_seconds?,accept_external?}` | 扁平计划的段配音设置；也可用公开 `skill_runs.edit action:voice`。`scripts.propose` 会清掉提案里的配音字段。settings依据当前声音合同/配置，不猜提供方和模板 |
+| `voice.synthesize` | `{text,settings,name?}` | 结构化时间线旁白。用当前 SAPI / StepFun 在打开的工程里生成一条音频资源，返回 `{asset_id,resource_id,duration,name}`。再用 `timeline.edit` 的 `clip.insert` 放到音轨。不写扁平计划的 voice 字段，不接受文件路径 |
 | `renders.create` | `{}` | 该确定计划版本的MP4和Premiere包，不能含待处理 edit_request |
 | `renders.inspect` | `{}` | 当前计划检查与首/尾/切点帧ID；质量状态 passed/failed/not_checked，黑屏/静音为提示 |
 | `artifacts.list` | `{}` | 已登记产物ID/名称/类型/大小/SHA/plan_version |
 | `artifacts.get` | `{id}` | 帧返回原生MCP图片，必须实际看图；文字转录返回base64 JSON。帧上限16MiB，转录256KiB；不能当任意文件下载工具 |
 | `renders.review` | `{plan_version,frame_ids,verdict,issues}` | 先读取inspect的每张图；原顺序完整frame_ids。verdict passed/needs_changes，passed的issues必须为空；最多20条问题 |
 | `run.steps` | `{}` | 本任务工具结果与失败诊断；不提供人工历史 |
-| `run.finish` | 依路线为 `{}` 或 `{sequence_revision,content_version}` | 普通计划要求同版成片与检查/review；结构化路线导出并验证指定序列；局部代码任务以目标写入为准 |
+| `run.finish` | 依路线为 `{}` 或 `{sequence_revision,content_version,export?}` | 普通计划要求同版成片与检查/review；结构化路线导出并验证指定序列。`export` 省略或 `preset_id:program-native` 时复制当前节目预览。可选 `mp4-720p-v1`、`1080p-landscape`、`1080x1920-vertical`、`2160p-4k`、`custom`，以及 codec `h264`/`hevc`、`crf` 或 `video_bitrate`、`subtitles` `burn`/`sidecar`、`loudness` `-14`/`-16`、`threads`。局部代码任务以目标写入为准 |
 
 ## 时间线与绘制
 
@@ -95,4 +96,4 @@
 
 计划 `plan.version` 另用于review/局部请求；`content_sha256` 是执行包摘要，不是成片SHA或序列content_version。
 
-网络超时：以同名、同参数、原幂等键重放确定是否已执行。参数错误：读取诊断、修正后使用新键。内容冲突：刷新全部相关版本并重新判断操作，不能仅替换版本号覆盖人工更改。依赖/Worker/超时失败：定位后修复可修复项，再resume；同一未修复失败不重复调用。取消/撤销授权不可恢复。默认预算24工具步/900活跃秒/24源帧，上限64/3600/48，以实际Run为准；成片检查帧另有48上限。长思考期间无工具在途才发progress，phase为working/generating/checking/rendering，不上传模型文本。
+网络超时：以同名、同参数、原幂等键重放确定是否已执行。参数错误：读取诊断、修正后使用新键。内容冲突：刷新全部相关版本并重新判断操作，不能仅替换版本号覆盖人工更改。依赖/Worker/超时失败：定位后修复可修复项，再resume；同一未修复失败不重复调用。取消/撤销授权不可恢复。默认预算按路线：轻量剪辑 48 步/1200 秒/36 帧，画面或混合（`visual_heavy`/`custom` 且非 draw）96/2400/64，绘制 128/3600/96。上限 192/7200/128。名称以 list、get、read、get_frames、get_frame、capabilities、steps、resolve 结尾的工具不计步；时间和帧预算仍计，其余工具失败也计 1 步。`skill_runs.get` 与工具响应里的 `run.budget_remaining` 是剩余步数、秒和帧。以实际 Run 为准；成片检查帧另有 48 上限。长思考期间无工具在途才发progress，phase为working/generating/checking/rendering，不上传模型文本。

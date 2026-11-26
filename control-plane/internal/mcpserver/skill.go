@@ -175,7 +175,7 @@ func registerSkillTools(server *mcp.Server, svc *service.Service) {
 		v, e := svc.ReportSkillProgress(ctx, mcpSkillActor(ctx), a.RunID, a.Version, a.Phase, a.OutputChars)
 		return nil, v, e
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.get", Description: "Read this Agent's run and its immutable Skill/media context"}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillRunIDArgs) (*mcp.CallToolResult, map[string]any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.get", Description: "Read this Agent's run and its immutable Skill/media context. run.budget_remaining is the unused step, second and frame budget."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillRunIDArgs) (*mcp.CallToolResult, map[string]any, error) {
 		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
 			return nil, nil, e
 		}
@@ -189,7 +189,7 @@ func registerSkillTools(server *mcp.Server, svc *service.Service) {
 		v, e := svc.UpdateSkillRun(ctx, mcpSkillActor(ctx), a.RunID, "cancel", a.Version)
 		return nil, v, e
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview/shot; timeline.read/edit; run.finish. Frame artifacts return native MCP images. Use skill_runs.update to confirm a pending plan or resume your own run."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "skill_runs.tool", Description: "Invoke a declared tool with version and idempotency key. Read vac/tool-contracts.md using skills.read_resource first. media.list/get_frames/transcribe; summaries.get/submit; scripts.propose; scripts.voice; voice.synthesize; renders.create/inspect/review; artifacts.list/get; draw.list/save/check/render/get_frame/import/capabilities/preview/shot; timeline.read/edit; run.finish. Frame artifacts return native MCP images. run.budget_remaining reports steps, seconds and frames still available. Use skill_runs.update to confirm a pending plan or resume your own run."}, func(ctx context.Context, _ *mcp.CallToolRequest, a skillToolArgs) (*mcp.CallToolResult, map[string]any, error) {
 		if e := requireSkillSessionRole(ctx, svc, a.RunID); e != nil {
 			return nil, nil, e
 		}

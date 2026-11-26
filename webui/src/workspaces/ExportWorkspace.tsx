@@ -18,6 +18,7 @@ import { isCurrentMp4, previewApi, previewFileURL, previewQueryKey } from '../pr
 import { TaskOrchestrator } from '../components/TaskOrchestrator';
 import { ScriptDeliveryPanel } from '../components/ScriptDeliveryPanel';
 import { SkillDeliveryModule } from '../components/SkillDeliveryModule';
+import { SequenceExportPanel } from '../components/SequenceExportPanel';
 import { errorText, ValueSelect } from '../components/ui';
 import { fetchTasksByIds } from '../api';
 import { MAX_TASK_LOOKUPS, taskIdsFromAudit, taskStatusLabel } from '../components/governanceModel';
@@ -192,6 +193,7 @@ export function ExportWorkspace({ route, navigate, asset, selection, audit, task
             <div className="section-content" data-nav-anchor={section.id} tabIndex={-1}>
               {section.id === 'delivery' && (
                 <Row gutter={[24, 24]}>
+                  <Col span={24}><SequenceExportPanel /></Col>
                   {asset && <Col span={24}><ScriptDeliveryPanel key={asset.asset_id} assetId={asset.asset_id} active={route.workspace === 'export' && exportSection === 'delivery'} /></Col>}
                   <Col span={24}><SkillDeliveryModule /></Col>
                   <Col xs={24} xl={14}>
