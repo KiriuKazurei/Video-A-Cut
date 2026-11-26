@@ -22,7 +22,7 @@ var operatorGuide embed.FS
 // Builtins use the same snapshot contract as imported packages. Upstream documents
 // are reference data; VAC tool permissions are defined by the adapter.
 func Builtins() []Package {
-	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "scripts.voice", "run.steps", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview"}
+	tools := []string{"media.list", "media.get_frames", "media.transcribe", "summaries.get", "summaries.submit", "scripts.propose", "scripts.voice", "run.steps", "renders.create", "renders.inspect", "renders.review", "artifacts.list", "artifacts.get", "run.finish", "timeline.read", "timeline.edit", "references.resolve", "draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "sequence.frames", "assets.import"}
 	editTools := append(slices.Clone(tools), "draw.shot")
 	modes := []string{"external_mcp", "builtin_api"}
 	packages := []Package{
@@ -49,7 +49,7 @@ func Builtins() []Package {
 	packages = append(packages, drawSkills()...)
 	for i := range packages {
 		packages[i].Resources["vac/tool-contracts.md"] = ToolContracts
-		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.\n"
+		packages[i].Content += "\nRead vac/tool-contracts.md using skills.read_resource with this package's content_sha256 before calling tools. It defines every argument/result and the flattened-plan inspection flow and the version-checked structured-sequence finish flow.\nInspect composed program frames with sequence.frames before delivery when subtitles, effects or overlays matter. assets.import accepts an allow-listed path, a file already in the project, or a future builtin library id.\n"
 	}
 	return append(packages, operatorSkill())
 }
@@ -73,7 +73,7 @@ func operatorSkill() Package {
 }
 
 func drawSkills() []Package {
-	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "draw.shot", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish", "run.steps"}
+	tools := []string{"draw.list", "draw.save", "draw.check", "draw.render", "draw.get_frame", "draw.import", "draw.capabilities", "draw.preview", "draw.shot", "timeline.read", "timeline.edit", "references.resolve", "artifacts.list", "artifacts.get", "run.finish", "run.steps", "sequence.frames", "assets.import"}
 	makePackage := func(id, name, content string) Package {
 		return Package{ID: id, Name: name, Description: "Executable local code-to-video and editing handoff", Version: "0.3.1", Source: "builtin", Builtin: true, Enabled: true, Runtime: "harness", Flows: []string{"lightweight", "visual_heavy", "custom"}, Modes: []string{"external_mcp", "builtin_api"}, Tools: tools, Permissions: []string{"project_media", "ffmpeg", "browser_render"}, Inputs: []string{"goal", "composition_spec", "project_images"}, Outputs: []string{"composition_source", "mp4", "timeline"}, Content: content, Resources: map[string]string{}}
 	}

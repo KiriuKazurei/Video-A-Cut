@@ -108,7 +108,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	switch req.Name {
 	case "agent.model":
 		phase = "generating"
-	case "draw.check", "draw.preview", "draw.get_frame":
+	case "draw.check", "draw.preview", "draw.get_frame", "sequence.frames":
 		phase = "checking"
 	case "draw.render", "run.finish":
 		phase = "rendering"
@@ -184,6 +184,10 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		// Dependency/budget errors use fixed worker messages, never provider response bodies.
 		if errors.Is(toolErr, errFrameBudget) {
 			r.Reason = "frame_budget_exceeded"
+			step.Error = r.Reason
+		}
+		if errors.Is(toolErr, errImportApproval) {
+			r.Reason = "import_approval_required"
 			step.Error = r.Reason
 		}
 		if errors.Is(toolErr, errModelOutputTruncated) {
@@ -531,6 +535,10 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		return respond(review)
 	case "media.get_frames":
 		return s.extractSkillFrames(ctx, r, snap, args)
+	case "sequence.frames":
+		return s.inspectSequenceFrames(ctx, r, snap, args)
+	case "assets.import":
+		return s.importSkillAsset(ctx, r, args)
 	case "media.transcribe":
 		return s.transcribeSkillMedia(ctx, r, snap, args)
 	case "artifacts.get":

@@ -186,6 +186,26 @@ func (s *Store) PutSkillSnapshot(ctx context.Context, id string, in any) error {
 	_, err = s.q.ExecContext(ctx, "INSERT INTO vac_skill_snapshots VALUES (?,?)", id, string(raw))
 	return err
 }
+
+// ReplaceSkillSnapshot updates the frozen media snapshot for one existing run.
+func (s *Store) ReplaceSkillSnapshot(ctx context.Context, id string, in any) error {
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	res, err := s.q.ExecContext(ctx, "UPDATE vac_skill_snapshots SET body=? WHERE run_id=?", string(raw), id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return model.ErrNotFound
+	}
+	return nil
+}
 func (s *Store) PutSkillStep(ctx context.Context, id, run string, in any) error {
 	raw, err := json.Marshal(in)
 	if err != nil {
