@@ -28,7 +28,8 @@
     "artifacts.list",
     "artifacts.get",
     "run.finish",
-    "run.steps"
+    "run.steps",
+    "voice.synthesize"
   ],
   "permissions": [
     "project_media",

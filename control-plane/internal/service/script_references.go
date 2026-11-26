@@ -106,11 +106,16 @@ func (s *Service) bindHarnessReferences(plan *skill.Plan) error {
 
 func (s *Service) finishSequenceEdit(ctx context.Context, run *skill.Run, args json.RawMessage) (map[string]any, error) {
 	var req struct {
-		Revision       uint64 `json:"sequence_revision"`
-		ContentVersion string `json:"content_version"`
+		Revision       uint64                 `json:"sequence_revision"`
+		ContentVersion string                 `json:"content_version"`
+		Export         *SequenceExportOptions `json:"export,omitempty"`
 	}
 	if err := decodeSkillArgs(args, &req); err != nil {
 		return nil, err
+	}
+	spec, err := normalizeSequenceExport(req.Export)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %w", err, model.ErrArgument)
 	}
 	view, err := s.Timeline(ctx, run.ProjectID, run.SequenceID)
 	if err != nil {
@@ -118,6 +123,28 @@ func (s *Service) finishSequenceEdit(ctx context.Context, run *skill.Run, args j
 	}
 	if req.Revision != view.Sequence.Revision || req.ContentVersion != view.ContentVersion || run.SequenceContentVersion != view.ContentVersion {
 		return nil, model.ErrConflict
+	}
+	if !spec.Native {
+		report, path, err := s.renderSequenceExport(ctx, run.ProjectID, run.SequenceID, view, spec)
+		if err != nil {
+			return nil, err
+		}
+		artifact, err := s.registerSkillArtifact(run, path, "sequence-"+spec.ID+".mp4", "mp4", 0)
+		if err != nil {
+			return nil, err
+		}
+		if artifact.SHA != report.SHA256 {
+			return nil, model.ErrConflict
+		}
+		artifact.BasicQuality = report.BasicQuality
+		run.Artifacts[len(run.Artifacts)-1].BasicQuality = report.BasicQuality
+		if report.SubtitleSidecar != "" {
+			if _, err = s.registerSkillArtifact(run, report.SubtitleSidecar, "sequence-"+spec.ID+".srt", "srt", 0); err != nil {
+				return nil, err
+			}
+		}
+		run.State = "succeeded"
+		return map[string]any{"completed": true, "structured_edit": true, "sequence_revision": view.Sequence.Revision, "content_version": view.ContentVersion, "artifact": artifact, "basic_quality": report.BasicQuality, "preset_id": spec.ID, "subtitle_sidecar": report.SubtitleSidecar, "human_acceptance": "not_checked"}, nil
 	}
 	report, err := s.CreateSequencePreview(ctx, run.ProjectID, run.SequenceID, SequencePreviewRequest{Session: view.Session, ExpectedRevision: view.Sequence.Revision, ContentVersion: view.ContentVersion})
 	if err != nil {

@@ -88,6 +88,14 @@ type Budget struct {
 	MaxSeconds int `json:"max_seconds,omitempty"`
 	MaxFrames  int `json:"max_frames,omitempty"`
 }
+
+// BudgetRemaining is computed when a run is read or a tool returns.
+// It is not a second stored budget and is not restored by resume.
+type BudgetRemaining struct {
+	Steps   int `json:"steps"`
+	Seconds int `json:"seconds"`
+	Frames  int `json:"frames"`
+}
 type Run struct {
 	CodeCandidates          map[string]json.RawMessage `json:"code_candidates,omitempty"`
 	CodeTargets             map[string]string          `json:"code_targets,omitempty"`
@@ -119,6 +127,7 @@ type Run struct {
 	BudgetElapsedBase       int64                      `json:"budget_elapsed_base"`
 	ElapsedMilliseconds     int64                      `json:"elapsed_milliseconds"`
 	Budget                  Budget                     `json:"budget"`
+	Remaining               BudgetRemaining            `json:"budget_remaining"`
 	Goal                    string                     `json:"goal"`
 	ProfileID               string                     `json:"profile_id,omitempty"`
 	ProfileRevision         int                        `json:"profile_revision,omitempty"`

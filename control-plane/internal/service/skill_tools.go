@@ -29,6 +29,7 @@ import (
 // ExecuteSkillTool reserves a durable step before any billable or filesystem work.
 // Duplicate requests return the original result; incomplete work is never replayed.
 func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req skill.ToolRequest) (r skill.Run, result json.RawMessage, err error) {
+	defer func() { fillBudgetRemaining(&r) }()
 	r, err = s.GetSkillRun(ctx, actor, id)
 	if err != nil {
 		return r, nil, err
@@ -96,7 +97,8 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	if !internalModel && !slices.Contains(snap.Package.Tools, req.Name) {
 		return r, nil, model.ErrForbidden
 	}
-	if r.Steps-r.BudgetStepBase >= r.Budget.MaxSteps || r.ElapsedMilliseconds-r.BudgetElapsedBase >= int64(r.Budget.MaxSeconds)*1000 {
+	stepWeight := skillStepWeight(req.Name)
+	if (stepWeight > 0 && r.Steps-r.BudgetStepBase >= r.Budget.MaxSteps) || r.ElapsedMilliseconds-r.BudgetElapsedBase >= int64(r.Budget.MaxSeconds)*1000 {
 		return r, nil, fmt.Errorf("skill step budget exhausted: %w", model.ErrInvalidState)
 	}
 	step = skill.Step{ID: newID("step"), RunID: id, Name: req.Name, State: "running", RequestSHA: hash, CreatedAt: s.autoNow()}
@@ -110,7 +112,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		phase = "generating"
 	case "draw.check", "draw.preview", "draw.get_frame":
 		phase = "checking"
-	case "draw.render", "run.finish":
+	case "draw.render", "run.finish", "voice.synthesize":
 		phase = "rendering"
 	}
 	now := s.autoNow()
@@ -119,7 +121,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 		until := s.autoNow().Add(time.Duration(r.Budget.MaxSeconds) * time.Second)
 		r.LeaseUntil = &until
 	}
-	r.Steps++
+	r.Steps += stepWeight
 	r.UpdatedAt = s.autoNow()
 	err = s.st.Transaction(ctx, func(tx *store.Store) error {
 		if e := tx.SkillPut(ctx, "run", id, prior, r); e != nil {
@@ -212,6 +214,7 @@ func (s *Service) ExecuteSkillTool(ctx context.Context, actor, id string, req sk
 	}
 	r.Version++
 	r.UpdatedAt = s.autoNow()
+	fillBudgetRemaining(&r)
 	// Persist failure after cancellation using a short independent context.
 	saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer saveCancel()
@@ -424,6 +427,8 @@ func (s *Service) dispatchSkillTool(ctx context.Context, r *skill.Run, snap harn
 		return data, err
 	case "media.list":
 		return respond(snap.Media)
+	case "voice.synthesize":
+		return s.synthesizeSkillVoice(ctx, r, args)
 	case "scripts.voice":
 		var req SkillVoiceRequest
 		if e := decodeSkillArgs(args, &req); e != nil {

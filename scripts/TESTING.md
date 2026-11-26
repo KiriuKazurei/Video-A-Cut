@@ -112,6 +112,17 @@ Windows Tauri production overlay 的 frontendDist 使用相对 desktop 目录的
 
 本地 ASR 的默认单元/协议测试不下载模型；真实识别复用 service 现有 `TestProjectLocalTranscriptionRealRuntime`。仅在显式设置 VAC_ASR_TEST_MODEL（完整本地模型绝对目录）与 VAC_ASR_TEST_PYTHON（已安装 faster-whisper 的 Python）时执行，可选 VAC_ASR_TEST_AUDIO。未给音频时用 Windows 本机 SAPI 在 t.TempDir 生成语音；模型、依赖及原媒体不修改。用同一环境执行上面的 Go 全包，覆盖环境诊断、实际词时标、幂等重放、取消和跨工程拒绝；英文合成语音不能代替中文/长录像质量验收。桌面脚本同样读取这两个环境变量以检查原生选择、依赖诊断与预设持久化。
 
+## 0.6.0 旁白、预算与导出预设（2026-11-26 P1-VOICE-BUDGET-EXPORT）
+
+源码仍为 0.6.0，基线 `df4f95e`，工作分支 `cursor/p1-voice-budget-export-108f`。本轮只跑受影响的定向检查，没有全仓 Go、浏览器点击或原生安装。
+
+- `go test -count=1 -timeout 20m -p 1 ./internal/skill/ ./internal/mcpserver/ ./internal/service/`：skill 0.032 秒通过，mcpserver 41.000 秒通过。service 136.710 秒失败，仅两例：`TestPreviewRealWorkerChain` 中 export-worker `--once` 注册后立即 `exit: idle`，预览保持 queued；`TestVariantRealWorkerChain` 的 worker 已把 delivery_variant 标为 succeeded，随后测试读取 `C:/Windows/Fonts/msyh.ttc` 失败。二者都在既有 Windows/Linux 边界上，本轮序列导出没有改这条工作流预览链。同包其余用例通过。`go vet` 覆盖 service、skill、mcpserver，通过。
+- 定向服务用例 `TestSequenceExportPresets`、`TestSkillBudgetFollowsRouteAndSkipsReads`、`TestDrawRunUsesHigherBudget`、`TestVoiceSynthesizeRejectsClosedProjectAndBadRequests` 通过。Linux 上没有可用 SAPI，因此没有生成真实旁白文件；覆盖了未打开工程、空文本、未授权云端配音，以及失败时不导入资源。
+- `workers/node/timeline-cli`：`node --test test/sequence-encode.test.mjs test/sequence.test.mjs`。编码预算、12 秒竖屏外挂字幕和本机 libx265 短片通过。sequence 套件 25 项里 24 项通过；`WebGL preview agrees with CPU...` 得到 `cpu-ffmpeg` 而非 `webgl2`，当前环境没有 WebGL2。该项不读本轮编码参数。
+- `workers/node/export-worker` 的 package.json 没有依赖，也没有 package-lock.json，`npm ci` 无法执行。timeline-cli 与 webui 已执行 `npm ci`。
+- webui：`npx tsc --noEmit`、`npm run test:unit`、`npm run lint:style` 通过。单测包含导出预设请求。没有在浏览器里打开导出页点击导出。
+- 测试生成物在 `.run-data/tests/0.6.0`，本轮统计 `.run-data` 约 44,053,273 字节，低于 500 MiB，未做清理。
+
 ## 0.6.0 内容更新与版本对齐（2026-11-15 VERSION060）
 
 源码版本从 0.5.3 升至 0.6.0。基线 `b135ad0` 已包含统一视觉设计语言（强调色 #5492FF、轨道与片段颜色、布局疏密及设计语言文档）。本次只对齐应用、锁文件、MCP、操作 Skill 与文档中的当前版本，没有新的安装包、原生计时或全量回归。0.5.3 及更早的证据仍按原记录使用。

@@ -259,7 +259,7 @@ func testSkillMCPSDKMediaEditingLifecycle(t *testing.T, local bool) {
 	}
 	call("skill_runs.update", map[string]any{"run_id": run.ID, "expected_version": paused.Run.Version, "action": "resume"}, &paused)
 	run = paused.Run
-	if run.State != "queued" || run.BudgetStepBase != 0 || run.Steps != 1 {
+	if run.State != "queued" || run.BudgetStepBase != 0 || run.Steps != 0 || run.Remaining.Steps != run.Budget.MaxSteps {
 		t.Fatalf("self recovery changed budget: %+v", run)
 	}
 	step := 0

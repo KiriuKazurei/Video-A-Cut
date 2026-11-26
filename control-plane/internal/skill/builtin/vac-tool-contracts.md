@@ -270,6 +270,14 @@ For draw.render, optional format is mp4 (default), webm-alpha or prores4444. The
 
 artifacts.get reads verified frame PNG/JPEG artifacts up to 16 MiB; transcript reads remain limited to 256 KiB. This supports full RGBA inspection without silently downscaling detailed frames. Project, run, hash and tool budgets still apply.
 
+## Structured narration and run budget
+
+voice.synthesize {text, settings, name?} renders one narration asset inside the open project with the configured SAPI or StepFun provider. It returns {asset_id, resource_id, duration, name}. asset_id and resource_id are the same project resource. Place it with timeline.edit clip.insert on an audio track. It does not write scripts.voice fields. scripts.propose still clears Agent-submitted flat-plan voice settings. Text is 1–1000 characters. External StepFun requires the project provider policy. The file is created beside the open AVP; the tool accepts no filesystem path. A missing runtime or voice fails instead of switching engines.
+
+Run budgets are route-aware when a field is omitted: lightweight edit 48 steps / 1200 seconds / 36 frames; visual_heavy or custom without strategy draw (mixed) 96 / 2400 / 64; strategy draw 128 / 3600 / 96. Caps are 192 steps, 7200 seconds and 128 frames. Tools whose action is list, get, read, get_frames, get_frame, capabilities, steps or resolve cost zero steps. Time and frame budgets still apply, and every other tool costs one step even when it fails. skill_runs.get and skill_runs.tool return run.budget_remaining {steps, seconds, frames}. Resume does not refund spent steps.
+
+Structured run.finish may include export. Omitted export, or preset_id program-native with no encode fields, copies the verified program preview (H.264 veryfast CRF 20 at the sequence canvas). preset_id mp4-720p-v1 re-encodes this sequence to a maximum 1280×720 contain frame without upscaling; it does not change the workflow preview preset of the same name. 1080p-landscape is 1920×1080, 1080x1920-vertical is 1080×1920, and 2160p-4k is 3840×2160, each padded to the canvas. Optional codec is h264 or hevc (libx265 only when ffmpeg lists it), crf 0–51 or video_bitrate, subtitles burn or sidecar, loudness -14 or -16 LUFS, and threads 1–16. Sidecar subtitles are an SRT next to the mp4 when the sequence has cues.
+
 ## Autonomous task editing and diagnostics
 
 Use skill_runs.edit {run_id,expected_version,action,arguments} for your own task.

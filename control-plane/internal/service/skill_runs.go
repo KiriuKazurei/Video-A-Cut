@@ -34,6 +34,7 @@ func (s *Service) GetSkillRun(ctx context.Context, actor, id string) (skill.Run,
 			r.Progress = &progress
 		}
 	}
+	fillBudgetRemaining(&r)
 	return r, err
 }
 func (s *Service) ListSkillRuns(ctx context.Context, actor, project string) ([]skill.Run, error) {
@@ -132,16 +133,17 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 	if !pack.Enabled || slices.Contains(p.Disabled, sk) || !slices.Contains(pack.Flows, p.Flow) || !slices.Contains(pack.Modes, req.Mode) {
 		return r, model.ErrForbidden
 	}
+	defaults := defaultSkillBudget(req.Strategy, p.Flow)
 	if req.Budget.MaxSteps == 0 {
-		req.Budget.MaxSteps = 24
+		req.Budget.MaxSteps = defaults.MaxSteps
 	}
 	if req.Budget.MaxSeconds == 0 {
-		req.Budget.MaxSeconds = 900
+		req.Budget.MaxSeconds = defaults.MaxSeconds
 	}
 	if req.Budget.MaxFrames == 0 {
-		req.Budget.MaxFrames = 24
+		req.Budget.MaxFrames = defaults.MaxFrames
 	}
-	if req.Budget.MaxSteps < 1 || req.Budget.MaxSteps > 64 || req.Budget.MaxSeconds < 1 || req.Budget.MaxSeconds > 3600 || req.Budget.MaxFrames < 1 || req.Budget.MaxFrames > 48 {
+	if req.Budget.MaxSteps < 1 || req.Budget.MaxSteps > skillStepCap || req.Budget.MaxSeconds < 1 || req.Budget.MaxSeconds > skillSecondCap || req.Budget.MaxFrames < 1 || req.Budget.MaxFrames > skillFrameCap {
 		return r, model.ErrArgument
 	}
 	if req.Mode == "builtin_api" && !isHumanActor(actor) {
@@ -269,6 +271,7 @@ func (s *Service) CreateSkillRun(ctx context.Context, actor string, req skill.Ru
 		}
 		r.AgentRole = req.AgentRole
 		r.SequenceID = sequenceID
+		fillBudgetRemaining(&r)
 		if req.AgentRole != "" {
 			until := s.autoNow().Add(2 * time.Minute)
 			r.LeaseUntil = &until
